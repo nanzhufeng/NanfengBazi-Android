@@ -10,9 +10,14 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -46,7 +51,39 @@ class RoomCaseRepositoryTest {
 
     @Test
     fun `命例及来源证据可以完整往返`() = runTest {
-        val source = sampleCase().copy(
+        val base = sampleCase()
+        val records = base.textRecords.map { record ->
+            if (record.id == "record-commentary-1") {
+                record.copy(
+                    type = CaseTextRecordType.ANALYSIS,
+                    analysisCategory = AnalysisCategory.HEALTH,
+                )
+            } else {
+                record
+            }
+        }
+        val source = base.copy(
+            textRecords = records,
+            textRecordRevisions = records.mapIndexed { index, record ->
+                CaseTextRecordRevision(
+                    id = "record-revision-$index",
+                    recordId = record.id,
+                    version = 1,
+                    changeType = RecordChangeType.CREATED,
+                    snapshot = record,
+                    changedAt = FixtureInstant,
+                )
+            },
+            eventRevisions = listOf(
+                CaseEventRevision(
+                    id = "event-revision-1",
+                    eventId = base.events.single().id,
+                    version = 1,
+                    changeType = RecordChangeType.CREATED,
+                    snapshot = base.events.single(),
+                    changedAt = FixtureInstant,
+                ),
+            ),
             isFavorite = true,
             isPinned = true,
             lastViewedAt = FixtureInstant.plusSeconds(30),

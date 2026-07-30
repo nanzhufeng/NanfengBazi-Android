@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseEventEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEventRevisionEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseGroupCrossRefEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseGroupEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseTagCrossRefEntity
@@ -12,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.data.db.FieldEvidenceEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
+import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
@@ -20,10 +22,12 @@ import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseProfile
@@ -31,6 +35,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
@@ -93,7 +98,9 @@ class RoomCaseRepository(
         entity.toDomain(
             snapshots = dao.calculationSnapshots(id),
             textRecords = dao.textRecords(id),
+            textRecordRevisions = dao.textRecordRevisions(id),
             events = dao.events(id),
+            eventRevisions = dao.eventRevisions(id),
             attachments = dao.attachments(id),
             fieldEvidence = dao.fieldEvidence(id),
             groups = dao.groups(id),
@@ -169,7 +176,9 @@ class RoomCaseRepository(
         dao.deleteFieldEvidence(caseId)
         dao.deleteCalculationSnapshots(caseId)
         dao.deleteTextRecords(caseId)
+        dao.deleteTextRecordRevisions(caseId)
         dao.deleteEvents(caseId)
+        dao.deleteEventRevisions(caseId)
         dao.deleteCaseGroupCrossRefs(caseId)
         dao.deleteCaseTagCrossRefs(caseId)
         dao.deleteAttachments(caseId)
@@ -189,8 +198,18 @@ class RoomCaseRepository(
                 value.toEntity(case.id, index)
             },
         )
+        dao.insertTextRecordRevisions(
+            case.textRecordRevisions.mapIndexed { index, value ->
+                value.toEntity(case.id, index)
+            },
+        )
         dao.insertEvents(
             case.events.mapIndexed { index, value ->
+                value.toEntity(case.id, index)
+            },
+        )
+        dao.insertEventRevisions(
+            case.eventRevisions.mapIndexed { index, value ->
                 value.toEntity(case.id, index)
             },
         )
@@ -254,11 +273,27 @@ private fun CaseTextRecord.toEntity(caseId: String, sortOrder: Int) = TextRecord
     caseId = caseId,
     type = type.name,
     content = content,
+    analysisCategory = analysisCategory?.name,
     sourceAttachmentId = sourceAttachmentId,
     createdAtEpochMillis = createdAt.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
     sortOrder = sortOrder,
 )
+
+private fun CaseTextRecordRevision.toEntity(caseId: String, sortOrder: Int) =
+    TextRecordRevisionEntity(
+        id = id,
+        caseId = caseId,
+        recordId = recordId,
+        version = version,
+        changeType = changeType.name,
+        revisionJson = DomainJson.encodeToString(
+            CaseTextRecordRevision.serializer(),
+            this,
+        ),
+        changedAtEpochMillis = changedAt.toEpochMilli(),
+        sortOrder = sortOrder,
+    )
 
 private fun CaseEvent.toEntity(caseId: String, sortOrder: Int) = CaseEventEntity(
     id = id,
@@ -268,6 +303,21 @@ private fun CaseEvent.toEntity(caseId: String, sortOrder: Int) = CaseEventEntity
     createdAtEpochMillis = createdAt.toEpochMilli(),
     sortOrder = sortOrder,
 )
+
+private fun CaseEventRevision.toEntity(caseId: String, sortOrder: Int) =
+    CaseEventRevisionEntity(
+        id = id,
+        caseId = caseId,
+        eventId = eventId,
+        version = version,
+        changeType = changeType.name,
+        revisionJson = DomainJson.encodeToString(
+            CaseEventRevision.serializer(),
+            this,
+        ),
+        changedAtEpochMillis = changedAt.toEpochMilli(),
+        sortOrder = sortOrder,
+    )
 
 private fun SourceAttachment.toEntity(caseId: String, sortOrder: Int) = SourceAttachmentEntity(
     id = id,
@@ -294,7 +344,9 @@ private fun CaseFieldEvidence.toEntity(caseId: String, sortOrder: Int) = FieldEv
 private fun CaseEntity.toDomain(
     snapshots: List<CalculationSnapshotEntity>,
     textRecords: List<TextRecordEntity>,
+    textRecordRevisions: List<TextRecordRevisionEntity>,
     events: List<CaseEventEntity>,
+    eventRevisions: List<CaseEventRevisionEntity>,
     attachments: List<SourceAttachmentEntity>,
     fieldEvidence: List<FieldEvidenceEntity>,
     groups: List<CaseGroupEntity>,
@@ -312,13 +364,20 @@ private fun CaseEntity.toDomain(
             id = it.id,
             type = CaseTextRecordType.valueOf(it.type),
             content = it.content,
+            analysisCategory = it.analysisCategory?.let(AnalysisCategory::valueOf),
             sourceAttachmentId = it.sourceAttachmentId,
             createdAt = Instant.ofEpochMilli(it.createdAtEpochMillis),
             updatedAt = Instant.ofEpochMilli(it.updatedAtEpochMillis),
         )
     },
+    textRecordRevisions = textRecordRevisions.map {
+        DomainJson.decodeFromString(CaseTextRecordRevision.serializer(), it.revisionJson)
+    },
     events = events.map {
         DomainJson.decodeFromString(CaseEvent.serializer(), it.eventJson)
+    },
+    eventRevisions = eventRevisions.map {
+        DomainJson.decodeFromString(CaseEventRevision.serializer(), it.revisionJson)
     },
     calculationSnapshots = snapshots.map {
         DomainJson.decodeFromString(

@@ -1,12 +1,16 @@
 package com.nanzhufeng.nanfengbazi
 
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import java.time.Clock
 import java.time.ZoneOffset
@@ -86,7 +90,7 @@ class CaseManagementTest {
     }
 
     @Test
-    fun `文本记录新增修改删除保持身份与顺序`() = runTest {
+    fun `文本记录新增修改删除保留完整版本并统一分析分类`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-record"] = sampleStoredCase("case-record")
         }
@@ -113,17 +117,37 @@ class CaseManagementTest {
             "case-record",
             2,
             "record-1",
-            TextRecordDraft(CaseTextRecordType.ANALYSIS, "修改后的合成分析"),
+            TextRecordDraft(
+                type = CaseTextRecordType.ANALYSIS,
+                content = "修改后的合成分析",
+                analysisCategory = AnalysisCategory.CAREER,
+            ),
         )
         val edited = repository.stored.getValue("case-record").textRecords.single()
         assertEquals(created.createdAt, edited.createdAt)
         assertEquals(CaseTextRecordType.ANALYSIS, edited.type)
+        assertEquals(AnalysisCategory.CAREER, edited.analysisCategory)
 
         assertEquals(
             CaseMutationResult.Saved("case-record", 4),
             useCase.delete("case-record", 3, "record-1"),
         )
-        assertTrue(repository.stored.getValue("case-record").textRecords.isEmpty())
+        val deleted = repository.stored.getValue("case-record")
+        assertTrue(deleted.textRecords.isEmpty())
+        assertEquals(
+            listOf(
+                RecordChangeType.CREATED,
+                RecordChangeType.UPDATED,
+                RecordChangeType.DELETED,
+            ),
+            deleted.textRecordRevisions.map { it.changeType },
+        )
+        assertEquals(listOf(1, 2, 3), deleted.textRecordRevisions.map { it.version })
+        assertEquals("合成反馈", deleted.textRecordRevisions.first().snapshot.content)
+        assertEquals(
+            "修改后的合成分析",
+            deleted.textRecordRevisions.last().snapshot.content,
+        )
     }
 
     @Test
@@ -148,6 +172,38 @@ class CaseManagementTest {
             ),
         )
         assertTrue(repository.stored.getValue("case-invalid").events.isEmpty())
+    }
+
+    @Test
+    fun `旧记录首次修改先补建基线版本`() = runTest {
+        val legacy = CaseTextRecord(
+            id = "legacy-record",
+            type = CaseTextRecordType.NOTE,
+            content = "旧版原文",
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-legacy-record"] = sampleStoredCase("case-legacy-record").copy(
+                textRecords = listOf(legacy),
+            )
+        }
+
+        TextRecordUseCase(repository, fixedClock).save(
+            "case-legacy-record",
+            1,
+            legacy.id,
+            TextRecordDraft(content = "新版原文"),
+        )
+
+        val revisions = repository.stored
+            .getValue("case-legacy-record")
+            .textRecordRevisions
+        assertEquals(listOf("旧版原文", "新版原文"), revisions.map { it.snapshot.content })
+        assertEquals(
+            listOf(RecordChangeType.CREATED, RecordChangeType.UPDATED),
+            revisions.map { it.changeType },
+        )
     }
 
     @Test
@@ -179,6 +235,55 @@ class CaseManagementTest {
         assertEquals(EventDatePrecision.UNKNOWN, events[0].datePrecision)
         assertEquals(EventDatePrecision.DAY, events[1].datePrecision)
         assertEquals("已确认", events[1].status)
+        assertEquals(
+            listOf(1, 1),
+            repository.stored.getValue("case-event").eventRevisions.map { it.version },
+        )
+        assertTrue(
+            repository.stored.getValue("case-event").eventRevisions.all {
+                it.changeType == RecordChangeType.CREATED
+            },
+        )
+    }
+
+    @Test
+    fun `旧事件修改删除保留基线和删除快照`() = runTest {
+        val legacy = CaseEvent(
+            id = "legacy-event",
+            year = 2020,
+            datePrecision = EventDatePrecision.YEAR,
+            rawText = "旧版事件原文",
+            createdAt = FixedInstant,
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-legacy-event"] = sampleStoredCase("case-legacy-event").copy(
+                events = listOf(legacy),
+            )
+        }
+        val useCase = CaseEventUseCase(repository, fixedClock)
+
+        useCase.save(
+            "case-legacy-event",
+            1,
+            legacy.id,
+            EventDraft("2021", rawText = "新版事件原文"),
+        )
+        useCase.delete("case-legacy-event", 2, legacy.id)
+
+        val stored = repository.stored.getValue("case-legacy-event")
+        assertTrue(stored.events.isEmpty())
+        assertEquals(
+            listOf(
+                RecordChangeType.CREATED,
+                RecordChangeType.UPDATED,
+                RecordChangeType.DELETED,
+            ),
+            stored.eventRevisions.map { it.changeType },
+        )
+        assertEquals(
+            listOf("旧版事件原文", "新版事件原文", "新版事件原文"),
+            stored.eventRevisions.map { it.snapshot.rawText },
+        )
     }
 
     @Test
@@ -282,8 +387,27 @@ class CaseManagementTest {
 
     @Test
     fun `复制生成新身份并只复制出生资料与计算快照`() = runTest {
+        val sourceRecord = CaseTextRecord(
+            id = "source-record",
+            type = CaseTextRecordType.NOTE,
+            content = "不应进入副本的记录",
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
         val repository = FakeCaseRepository().apply {
-            stored["case-source"] = sampleStoredCase("case-source")
+            stored["case-source"] = sampleStoredCase("case-source").copy(
+                textRecords = listOf(sourceRecord),
+                textRecordRevisions = listOf(
+                    CaseTextRecordRevision(
+                        id = "source-record-revision",
+                        recordId = sourceRecord.id,
+                        version = 1,
+                        changeType = RecordChangeType.CREATED,
+                        snapshot = sourceRecord,
+                        changedAt = FixedInstant,
+                    ),
+                ),
+            )
         }
         val ids = ArrayDeque(listOf("case-copy", "snapshot-copy"))
         val useCase = CaseLifecycleUseCase(
@@ -300,7 +424,9 @@ class CaseManagementTest {
         assertEquals(CaseSourceType.CASE_COPY, copied.sourceType)
         assertEquals("snapshot-copy", copied.calculationSnapshots.single().id)
         assertTrue(copied.textRecords.isEmpty())
+        assertTrue(copied.textRecordRevisions.isEmpty())
         assertTrue(copied.events.isEmpty())
+        assertTrue(copied.eventRevisions.isEmpty())
         assertTrue(copied.attachments.isEmpty())
         assertTrue(copied.fieldEvidence.isEmpty())
     }

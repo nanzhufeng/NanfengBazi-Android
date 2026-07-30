@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -210,6 +211,49 @@ internal fun TextRecordEditorScreen(
                     onDraftChange { it.copy(type = type) }
                 },
             )
+            if (state.recordDraft.type == CaseTextRecordType.ANALYSIS) {
+                Text(
+                    "分析分类",
+                    modifier = Modifier.padding(top = 16.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                AnalysisCategoryRow(
+                    categories = listOf(
+                        AnalysisCategory.GENERAL,
+                        AnalysisCategory.PERSONALITY,
+                        AnalysisCategory.CAREER,
+                    ),
+                    selected = state.recordDraft.analysisCategory,
+                    enabled = !state.mutationSaving,
+                    onSelected = { category ->
+                        onDraftChange { it.copy(analysisCategory = category) }
+                    },
+                )
+                AnalysisCategoryRow(
+                    categories = listOf(
+                        AnalysisCategory.WEALTH,
+                        AnalysisCategory.RELATIONSHIP,
+                        AnalysisCategory.HEALTH,
+                    ),
+                    selected = state.recordDraft.analysisCategory,
+                    enabled = !state.mutationSaving,
+                    onSelected = { category ->
+                        onDraftChange { it.copy(analysisCategory = category) }
+                    },
+                )
+                AnalysisCategoryRow(
+                    categories = listOf(
+                        AnalysisCategory.EDUCATION,
+                        AnalysisCategory.FAMILY,
+                        AnalysisCategory.OTHER,
+                    ),
+                    selected = state.recordDraft.analysisCategory,
+                    enabled = !state.mutationSaving,
+                    onSelected = { category ->
+                        onDraftChange { it.copy(analysisCategory = category) }
+                    },
+                )
+            }
             OutlinedTextField(
                 value = state.recordDraft.content,
                 onValueChange = { value ->
@@ -259,6 +303,41 @@ internal fun TextRecordEditorScreen(
                 onDelete(destination.recordId)
             },
         )
+    }
+}
+
+@Composable
+private fun AnalysisCategoryRow(
+    categories: List<AnalysisCategory>,
+    selected: AnalysisCategory,
+    enabled: Boolean,
+    onSelected: (AnalysisCategory) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        categories.forEach { category ->
+            if (category == selected) {
+                Button(
+                    onClick = { onSelected(category) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(category.displayName())
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { onSelected(category) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(category.displayName())
+                }
+            }
+        }
     }
 }
 

@@ -62,10 +62,24 @@ enum class CaseTextRecordType {
 }
 
 @Serializable
+enum class AnalysisCategory {
+    GENERAL,
+    PERSONALITY,
+    CAREER,
+    WEALTH,
+    RELATIONSHIP,
+    HEALTH,
+    EDUCATION,
+    FAMILY,
+    OTHER,
+}
+
+@Serializable
 data class CaseTextRecord(
     val id: String,
     val type: CaseTextRecordType,
     val content: String,
+    val analysisCategory: AnalysisCategory? = null,
     val sourceAttachmentId: String? = null,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
@@ -75,6 +89,34 @@ data class CaseTextRecord(
     init {
         require(id.isNotBlank()) { "记录 id 不能为空" }
         require(content.isNotBlank()) { "记录正文不能为空" }
+        require(type == CaseTextRecordType.ANALYSIS || analysisCategory == null) {
+            "非分析记录不能设置分析分类"
+        }
+    }
+}
+
+@Serializable
+enum class RecordChangeType {
+    CREATED,
+    UPDATED,
+    DELETED,
+}
+
+@Serializable
+data class CaseTextRecordRevision(
+    val id: String,
+    val recordId: String,
+    val version: Int,
+    val changeType: RecordChangeType,
+    val snapshot: CaseTextRecord,
+    @Serializable(with = InstantIsoSerializer::class)
+    val changedAt: Instant,
+) {
+    init {
+        require(id.isNotBlank()) { "记录历史 id 不能为空" }
+        require(recordId.isNotBlank()) { "记录历史必须关联记录" }
+        require(version > 0) { "记录历史版本必须大于零" }
+        require(snapshot.id == recordId) { "记录历史快照身份不一致" }
     }
 }
 
@@ -106,6 +148,24 @@ data class CaseEvent(
         require(rawText.isNotBlank()) { "事件原文不能为空" }
         month?.let { require(it in 1..12) { "事件月份超出范围" } }
         day?.let { require(it in 1..31) { "事件日期超出范围" } }
+    }
+}
+
+@Serializable
+data class CaseEventRevision(
+    val id: String,
+    val eventId: String,
+    val version: Int,
+    val changeType: RecordChangeType,
+    val snapshot: CaseEvent,
+    @Serializable(with = InstantIsoSerializer::class)
+    val changedAt: Instant,
+) {
+    init {
+        require(id.isNotBlank()) { "事件历史 id 不能为空" }
+        require(eventId.isNotBlank()) { "事件历史必须关联事件" }
+        require(version > 0) { "事件历史版本必须大于零" }
+        require(snapshot.id == eventId) { "事件历史快照身份不一致" }
     }
 }
 
@@ -241,7 +301,9 @@ data class BaziCase(
     val birthInput: BirthInput,
     val profile: CaseProfile = CaseProfile(),
     val textRecords: List<CaseTextRecord> = emptyList(),
+    val textRecordRevisions: List<CaseTextRecordRevision> = emptyList(),
     val events: List<CaseEvent> = emptyList(),
+    val eventRevisions: List<CaseEventRevision> = emptyList(),
     val calculationSnapshots: List<CaseCalculationSnapshot> = emptyList(),
     val attachments: List<SourceAttachment> = emptyList(),
     val fieldEvidence: List<CaseFieldEvidence> = emptyList(),
@@ -270,7 +332,27 @@ data class BaziCase(
         require(revision >= 0) { "命例修订号不能为负数" }
         require(createdAt <= updatedAt) { "更新时间不能早于创建时间" }
         require(textRecords.map { it.id }.distinct().size == textRecords.size)
+        require(
+            textRecordRevisions.map { it.id }.distinct().size == textRecordRevisions.size,
+        )
+        require(
+            textRecordRevisions
+                .groupBy { it.recordId }
+                .values
+                .all { revisions ->
+                    revisions.map { it.version }.distinct().size == revisions.size
+                },
+        ) { "同一记录的历史版本号不能重复" }
         require(events.map { it.id }.distinct().size == events.size)
+        require(eventRevisions.map { it.id }.distinct().size == eventRevisions.size)
+        require(
+            eventRevisions
+                .groupBy { it.eventId }
+                .values
+                .all { revisions ->
+                    revisions.map { it.version }.distinct().size == revisions.size
+                },
+        ) { "同一事件的历史版本号不能重复" }
         require(calculationSnapshots.map { it.id }.distinct().size == calculationSnapshots.size)
         require(attachments.map { it.id }.distinct().size == attachments.size)
         require(fieldEvidence.map { it.id }.distinct().size == fieldEvidence.size)
@@ -281,9 +363,17 @@ data class BaziCase(
         require(textRecords.all {
             it.sourceAttachmentId == null || it.sourceAttachmentId in attachmentIds
         }) { "记录来源必须关联当前命例的附件" }
+        require(textRecordRevisions.all {
+            it.snapshot.sourceAttachmentId == null ||
+                it.snapshot.sourceAttachmentId in attachmentIds
+        }) { "记录历史来源必须关联当前命例的附件" }
         require(events.all {
             it.sourceAttachmentId == null || it.sourceAttachmentId in attachmentIds
         }) { "事件来源必须关联当前命例的附件" }
+        require(eventRevisions.all {
+            it.snapshot.sourceAttachmentId == null ||
+                it.snapshot.sourceAttachmentId in attachmentIds
+        }) { "事件历史来源必须关联当前命例的附件" }
     }
 }
 

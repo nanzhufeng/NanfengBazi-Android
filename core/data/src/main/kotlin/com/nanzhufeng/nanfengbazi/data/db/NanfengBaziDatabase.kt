@@ -10,7 +10,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CaseEntity::class,
         CalculationSnapshotEntity::class,
         TextRecordEntity::class,
+        TextRecordRevisionEntity::class,
         CaseEventEntity::class,
+        CaseEventRevisionEntity::class,
         SourceAttachmentEntity::class,
         FieldEvidenceEntity::class,
         CaseGroupEntity::class,
@@ -25,7 +27,7 @@ abstract class NanfengBaziDatabase : RoomDatabase() {
     internal abstract fun caseDao(): CaseDao
 
     companion object {
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
     }
 }
 
@@ -82,6 +84,66 @@ object DatabaseMigrations {
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS index_cases_deletedAtEpochMillis " +
                     "ON cases(deletedAtEpochMillis)",
+            )
+        }
+    }
+
+    val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE text_records ADD COLUMN analysisCategory TEXT",
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS text_record_revisions (
+                    id TEXT NOT NULL,
+                    caseId TEXT NOT NULL,
+                    recordId TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    changeType TEXT NOT NULL,
+                    revisionJson TEXT NOT NULL,
+                    changedAtEpochMillis INTEGER NOT NULL,
+                    sortOrder INTEGER NOT NULL,
+                    PRIMARY KEY(id),
+                    FOREIGN KEY(caseId) REFERENCES cases(id)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_text_record_revisions_caseId " +
+                    "ON text_record_revisions(caseId)",
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "index_text_record_revisions_caseId_recordId_version " +
+                    "ON text_record_revisions(caseId, recordId, version)",
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS case_event_revisions (
+                    id TEXT NOT NULL,
+                    caseId TEXT NOT NULL,
+                    eventId TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    changeType TEXT NOT NULL,
+                    revisionJson TEXT NOT NULL,
+                    changedAtEpochMillis INTEGER NOT NULL,
+                    sortOrder INTEGER NOT NULL,
+                    PRIMARY KEY(id),
+                    FOREIGN KEY(caseId) REFERENCES cases(id)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_case_event_revisions_caseId " +
+                    "ON case_event_revisions(caseId)",
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "index_case_event_revisions_caseId_eventId_version " +
+                    "ON case_event_revisions(caseId, eventId, version)",
             )
         }
     }

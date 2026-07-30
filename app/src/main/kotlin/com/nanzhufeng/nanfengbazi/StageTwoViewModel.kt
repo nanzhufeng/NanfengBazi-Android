@@ -8,6 +8,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
@@ -443,7 +444,12 @@ class StageTwoViewModel(
                 recordDraft = if (record == null) {
                     TextRecordDraft()
                 } else {
-                    TextRecordDraft(record.type, record.content)
+                    TextRecordDraft(
+                        type = record.type,
+                        content = record.content,
+                        analysisCategory = record.analysisCategory
+                            ?: AnalysisCategory.GENERAL,
+                    )
                 },
                 mutationError = null,
             )

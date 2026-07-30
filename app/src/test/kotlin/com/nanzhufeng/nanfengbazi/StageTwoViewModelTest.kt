@@ -123,6 +123,7 @@ class StageTwoViewModelTest {
         viewModel.saveTextRecord(null)
 
         assertEquals(1, viewModel.state.value.detail?.textRecords?.size)
+        assertEquals(1, viewModel.state.value.detail?.textRecordRevisions?.size)
         assertEquals(
             AppDestination.CaseDetail("case-records"),
             viewModel.state.value.destination,
@@ -135,6 +136,7 @@ class StageTwoViewModelTest {
         viewModel.saveEvent(null)
 
         assertEquals(1, viewModel.state.value.detail?.events?.size)
+        assertEquals(1, viewModel.state.value.detail?.eventRevisions?.size)
         assertEquals(3L, viewModel.state.value.detail?.revision)
     }
 

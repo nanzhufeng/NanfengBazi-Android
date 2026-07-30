@@ -5,6 +5,8 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.Files
@@ -172,7 +174,9 @@ class CaseBackupService(
         cases = dao.allCases(),
         calculationSnapshots = dao.allCalculationSnapshots(),
         textRecords = dao.allTextRecords(),
+        textRecordRevisions = dao.allTextRecordRevisions(),
         events = dao.allEvents(),
+        eventRevisions = dao.allEventRevisions(),
         attachments = dao.allAttachments(),
         fieldEvidence = dao.allFieldEvidence(),
         groups = dao.allGroups(),
@@ -191,14 +195,30 @@ class CaseBackupService(
         val analysis = snapshot.textRecords.filter {
             it.type == "MASTER_COMMENTARY" || it.type == "ANALYSIS"
         }
+        val revisionsByType = snapshot.textRecordRevisions.groupBy { entity ->
+            DomainJson.decodeFromString(
+                CaseTextRecordRevision.serializer(),
+                entity.revisionJson,
+            ).snapshot.type.name
+        }
+        val noteRevisions = revisionsByType["NOTE"].orEmpty() +
+            revisionsByType["OWNER_FEEDBACK"].orEmpty()
+        val analysisRevisions = revisionsByType["MASTER_COMMENTARY"].orEmpty() +
+            revisionsByType["ANALYSIS"].orEmpty()
         val jsonSources = listOf(
             CASES_PATH to DomainJson.encodeToString(CasesFile(snapshot.cases)),
             SNAPSHOTS_PATH to DomainJson.encodeToString(
                 SnapshotsFile(snapshot.calculationSnapshots),
             ),
-            NOTES_PATH to DomainJson.encodeToString(TextRecordsFile(notes)),
-            ANALYSIS_PATH to DomainJson.encodeToString(TextRecordsFile(analysis)),
-            EVENTS_PATH to DomainJson.encodeToString(EventsFile(snapshot.events)),
+            NOTES_PATH to DomainJson.encodeToString(
+                TextRecordsFile(notes, noteRevisions),
+            ),
+            ANALYSIS_PATH to DomainJson.encodeToString(
+                TextRecordsFile(analysis, analysisRevisions),
+            ),
+            EVENTS_PATH to DomainJson.encodeToString(
+                EventsFile(snapshot.events, snapshot.eventRevisions),
+            ),
             GROUPS_PATH to DomainJson.encodeToString(
                 GroupsFile(snapshot.groups, snapshot.caseGroupCrossRefs),
             ),
@@ -249,6 +269,8 @@ class CaseBackupService(
                 textRecords = snapshot.textRecords.size,
                 events = snapshot.events.size,
                 attachments = snapshot.attachments.size,
+                textRecordRevisions = snapshot.textRecordRevisions.size,
+                eventRevisions = snapshot.eventRevisions.size,
             ),
             files = sources.map {
                 BackupFileManifest(it.path, it.byteSize, it.sha256)
@@ -346,11 +368,11 @@ class CaseBackupService(
         val snapshots = decode<SnapshotsFile>(
             extracted.getValue(SNAPSHOTS_PATH),
         ).snapshots
-        val notes = decode<TextRecordsFile>(extracted.getValue(NOTES_PATH)).records
+        val notes = decode<TextRecordsFile>(extracted.getValue(NOTES_PATH))
         val analysis = decode<TextRecordsFile>(
             extracted.getValue(ANALYSIS_PATH),
-        ).records
-        val events = decode<EventsFile>(extracted.getValue(EVENTS_PATH)).events
+        )
+        val events = decode<EventsFile>(extracted.getValue(EVENTS_PATH))
         val groups = decode<GroupsFile>(extracted.getValue(GROUPS_PATH))
         val tags = decode<TagsFile>(extracted.getValue(TAGS_PATH))
         val imports = decode<ImportsFile>(extracted.getValue(IMPORTS_PATH))
@@ -358,8 +380,10 @@ class CaseBackupService(
         return RoomDataSnapshot(
             cases = cases,
             calculationSnapshots = snapshots,
-            textRecords = notes + analysis,
-            events = events,
+            textRecords = notes.records + analysis.records,
+            textRecordRevisions = notes.revisions + analysis.revisions,
+            events = events.events,
+            eventRevisions = events.revisions,
             attachments = imports.attachments,
             fieldEvidence = imports.fieldEvidence,
             groups = groups.groups,
@@ -380,14 +404,21 @@ class CaseBackupService(
         fun <T> duplicate(values: List<T>): Boolean = values.distinct().size != values.size
         val caseIds = snapshot.cases.map { it.id }
         val attachmentIds = snapshot.attachments.map { it.id }
-        if (duplicate(caseIds) || duplicate(attachmentIds)) {
-            return "DUPLICATE_ID" to "备份中存在重复命例或附件 ID。"
+        if (
+            duplicate(caseIds) ||
+            duplicate(attachmentIds) ||
+            duplicate(snapshot.textRecordRevisions.map { it.id }) ||
+            duplicate(snapshot.eventRevisions.map { it.id })
+        ) {
+            return "DUPLICATE_ID" to "备份中存在重复命例、附件或历史版本 ID。"
         }
         val caseIdSet = caseIds.toSet()
         if (
             snapshot.calculationSnapshots.any { it.caseId !in caseIdSet } ||
             snapshot.textRecords.any { it.caseId !in caseIdSet } ||
+            snapshot.textRecordRevisions.any { it.caseId !in caseIdSet } ||
             snapshot.events.any { it.caseId !in caseIdSet } ||
+            snapshot.eventRevisions.any { it.caseId !in caseIdSet } ||
             snapshot.attachments.any { it.caseId !in caseIdSet } ||
             snapshot.fieldEvidence.any { it.caseId !in caseIdSet }
         ) {
@@ -406,9 +437,35 @@ class CaseBackupService(
                 it.sourceAttachmentId != null &&
                     attachmentsById[it.sourceAttachmentId]?.caseId != it.caseId
             } ||
+            snapshot.textRecordRevisions.any {
+                val revision = DomainJson.decodeFromString(
+                    CaseTextRecordRevision.serializer(),
+                    it.revisionJson,
+                )
+                revision.id != it.id ||
+                    revision.recordId != it.recordId ||
+                    revision.version != it.version ||
+                    revision.changeType.name != it.changeType ||
+                    revision.changedAt.toEpochMilli() != it.changedAtEpochMillis ||
+                    revision.snapshot.sourceAttachmentId != null &&
+                    attachmentsById[revision.snapshot.sourceAttachmentId]?.caseId != it.caseId
+            } ||
             snapshot.events.any {
                 it.sourceAttachmentId != null &&
                     attachmentsById[it.sourceAttachmentId]?.caseId != it.caseId
+            } ||
+            snapshot.eventRevisions.any {
+                val revision = DomainJson.decodeFromString(
+                    CaseEventRevision.serializer(),
+                    it.revisionJson,
+                )
+                revision.id != it.id ||
+                    revision.eventId != it.eventId ||
+                    revision.version != it.version ||
+                    revision.changeType.name != it.changeType ||
+                    revision.changedAt.toEpochMilli() != it.changedAtEpochMillis ||
+                    revision.snapshot.sourceAttachmentId != null &&
+                    attachmentsById[revision.snapshot.sourceAttachmentId]?.caseId != it.caseId
             }
         ) {
             return "CROSS_CASE_ATTACHMENT_REFERENCE" to "记录引用了其他命例的附件。"
@@ -447,6 +504,8 @@ class CaseBackupService(
             textRecords = snapshot.textRecords.size,
             events = snapshot.events.size,
             attachments = snapshot.attachments.size,
+            textRecordRevisions = snapshot.textRecordRevisions.size,
+            eventRevisions = snapshot.eventRevisions.size,
         )
         if (manifest.counts != expectedCounts) {
             return "COUNT_MISMATCH" to "manifest 中的数据数量与实际内容不一致。"
@@ -461,7 +520,9 @@ class CaseBackupService(
         dao.insertAttachments(snapshot.attachments)
         dao.insertCalculationSnapshots(snapshot.calculationSnapshots)
         dao.insertTextRecords(snapshot.textRecords)
+        dao.insertTextRecordRevisions(snapshot.textRecordRevisions)
         dao.insertEvents(snapshot.events)
+        dao.insertEventRevisions(snapshot.eventRevisions)
         dao.insertFieldEvidence(snapshot.fieldEvidence)
         dao.insertCaseGroupCrossRefs(snapshot.caseGroupCrossRefs)
         dao.insertCaseTagCrossRefs(snapshot.caseTagCrossRefs)

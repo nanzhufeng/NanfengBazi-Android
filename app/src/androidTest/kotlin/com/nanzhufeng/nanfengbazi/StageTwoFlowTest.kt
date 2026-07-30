@@ -56,7 +56,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("别名：$alias").assertIsDisplayed().performClick()
 
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
-        composeRule.onNodeWithText("原始录入信息").assertIsDisplayed()
+        composeRule.onNodeWithText("原始录入信息").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("计算结果").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Tyme4j").performScrollTo().assertIsDisplayed()
 
@@ -116,13 +116,15 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasTestTag("record_editor_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("record_content").performTextInput("Stage3 合成笔记")
+        composeRule.onNodeWithText("分析记录").performClick()
+        composeRule.onNodeWithText("事业").performClick()
+        composeRule.onNodeWithTag("record_content").performTextInput("Stage3 合成分析初稿")
         composeRule.onNodeWithTag("save_record").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Stage3 合成笔记").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("分析记录 · 事业").performScrollTo().assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("记录已保存。"))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -130,6 +132,22 @@ class StageTwoFlowTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("记录已保存。")).fetchSemanticsNodes().isEmpty()
         }
+        composeRule.onNodeWithTag("record_card").performScrollTo().performClick()
+        composeRule.onNodeWithText("财运").performClick()
+        composeRule.onNodeWithTag("record_content")
+            .performTextReplacement("Stage3 合成分析修订稿")
+        composeRule.onNodeWithTag("save_record").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("分析记录 · 财运").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("版本历史（记录 2 / 事件 0）")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Stage3 合成分析初稿")
+            .performScrollTo()
+            .assertIsDisplayed()
 
         composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -143,7 +161,7 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("Stage3 合成关键事件")
+        composeRule.onAllNodes(hasText("Stage3 合成关键事件"))[0]
             .performScrollTo()
             .assertIsDisplayed()
 

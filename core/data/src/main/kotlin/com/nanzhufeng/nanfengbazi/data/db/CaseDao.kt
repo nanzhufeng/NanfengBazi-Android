@@ -32,7 +32,13 @@ internal interface CaseDao {
     suspend fun insertTextRecords(entities: List<TextRecordEntity>)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertTextRecordRevisions(entities: List<TextRecordRevisionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertEvents(entities: List<CaseEventEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertEventRevisions(entities: List<CaseEventRevisionEntity>)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAttachments(entities: List<SourceAttachmentEntity>)
@@ -58,8 +64,18 @@ internal interface CaseDao {
     @Query("SELECT * FROM text_records WHERE caseId = :caseId ORDER BY sortOrder, id")
     suspend fun textRecords(caseId: String): List<TextRecordEntity>
 
+    @Query(
+        "SELECT * FROM text_record_revisions WHERE caseId = :caseId ORDER BY sortOrder, id",
+    )
+    suspend fun textRecordRevisions(caseId: String): List<TextRecordRevisionEntity>
+
     @Query("SELECT * FROM case_events WHERE caseId = :caseId ORDER BY sortOrder, id")
     suspend fun events(caseId: String): List<CaseEventEntity>
+
+    @Query(
+        "SELECT * FROM case_event_revisions WHERE caseId = :caseId ORDER BY sortOrder, id",
+    )
+    suspend fun eventRevisions(caseId: String): List<CaseEventRevisionEntity>
 
     @Query("SELECT * FROM source_attachments WHERE caseId = :caseId ORDER BY sortOrder, id")
     suspend fun attachments(caseId: String): List<SourceAttachmentEntity>
@@ -93,8 +109,14 @@ internal interface CaseDao {
     @Query("DELETE FROM text_records WHERE caseId = :caseId")
     suspend fun deleteTextRecords(caseId: String)
 
+    @Query("DELETE FROM text_record_revisions WHERE caseId = :caseId")
+    suspend fun deleteTextRecordRevisions(caseId: String)
+
     @Query("DELETE FROM case_events WHERE caseId = :caseId")
     suspend fun deleteEvents(caseId: String)
+
+    @Query("DELETE FROM case_event_revisions WHERE caseId = :caseId")
+    suspend fun deleteEventRevisions(caseId: String)
 
     @Query("DELETE FROM field_evidence WHERE caseId = :caseId")
     suspend fun deleteFieldEvidence(caseId: String)
@@ -117,8 +139,14 @@ internal interface CaseDao {
     @Query("SELECT * FROM text_records ORDER BY caseId, sortOrder, id")
     suspend fun allTextRecords(): List<TextRecordEntity>
 
+    @Query("SELECT * FROM text_record_revisions ORDER BY caseId, sortOrder, id")
+    suspend fun allTextRecordRevisions(): List<TextRecordRevisionEntity>
+
     @Query("SELECT * FROM case_events ORDER BY caseId, sortOrder, id")
     suspend fun allEvents(): List<CaseEventEntity>
+
+    @Query("SELECT * FROM case_event_revisions ORDER BY caseId, sortOrder, id")
+    suspend fun allEventRevisions(): List<CaseEventRevisionEntity>
 
     @Query("SELECT * FROM source_attachments ORDER BY caseId, sortOrder, id")
     suspend fun allAttachments(): List<SourceAttachmentEntity>

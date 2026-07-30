@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi.data.backup
 import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseEventEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEventRevisionEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseGroupCrossRefEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseGroupEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseTagCrossRefEntity
@@ -10,6 +11,7 @@ import com.nanzhufeng.nanfengbazi.data.db.CaseTagEntity
 import com.nanzhufeng.nanfengbazi.data.db.FieldEvidenceEntity
 import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
+import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -33,6 +35,8 @@ data class BackupCounts(
     val textRecords: Int,
     val events: Int,
     val attachments: Int,
+    val textRecordRevisions: Int = 0,
+    val eventRevisions: Int = 0,
 )
 
 @Serializable
@@ -91,11 +95,13 @@ internal data class SnapshotsFile(
 @Serializable
 internal data class TextRecordsFile(
     val records: List<TextRecordEntity>,
+    val revisions: List<TextRecordRevisionEntity> = emptyList(),
 )
 
 @Serializable
 internal data class EventsFile(
     val events: List<CaseEventEntity>,
+    val revisions: List<CaseEventRevisionEntity> = emptyList(),
 )
 
 @Serializable

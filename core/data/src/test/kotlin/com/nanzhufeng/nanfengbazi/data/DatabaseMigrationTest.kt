@@ -10,6 +10,7 @@ import com.nanzhufeng.nanfengbazi.data.db.DatabaseMigrations
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import java.util.UUID
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
-    fun `v1 命例迁移到 v4 时补充管理与回收站字段且保留原值`() {
+    fun `v1 命例迁移到 v5 时补充管理历史字段且保留原值`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -60,6 +61,7 @@ class DatabaseMigrationTest {
             DatabaseMigrations.MIGRATION_1_2,
             DatabaseMigrations.MIGRATION_2_3,
             DatabaseMigrations.MIGRATION_3_4,
+            DatabaseMigrations.MIGRATION_4_5,
         )
             .allowMainThreadQueries()
             .build()
@@ -80,6 +82,26 @@ class DatabaseMigrationTest {
                 assertEquals(true, cursor.isNull(5))
                 assertEquals(true, cursor.isNull(6))
                 assertEquals(true, cursor.isNull(7))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "PRAGMA table_info(text_records)",
+            ).use { cursor ->
+                val names = buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(1))
+                }
+                assertTrue(names.contains("analysisCategory"))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "SELECT COUNT(*) FROM text_record_revisions",
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "SELECT COUNT(*) FROM case_event_revisions",
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
             }
         } finally {
             migrated.close()

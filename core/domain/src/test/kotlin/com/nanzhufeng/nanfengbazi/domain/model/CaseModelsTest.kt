@@ -75,4 +75,47 @@ class CaseModelsTest {
             )
         }
     }
+
+    @Test
+    fun `统一分析分类只允许分析记录使用`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            CaseTextRecord(
+                id = "record",
+                type = CaseTextRecordType.NOTE,
+                content = "脱敏记录",
+                analysisCategory = AnalysisCategory.CAREER,
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+        }
+        CaseTextRecord(
+            id = "analysis",
+            type = CaseTextRecordType.ANALYSIS,
+            content = "脱敏分析",
+            analysisCategory = AnalysisCategory.HEALTH,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+    }
+
+    @Test
+    fun `历史版本快照必须保持原记录身份`() {
+        val record = CaseTextRecord(
+            id = "record",
+            type = CaseTextRecordType.NOTE,
+            content = "脱敏记录",
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            CaseTextRecordRevision(
+                id = "revision",
+                recordId = "other-record",
+                version = 1,
+                changeType = RecordChangeType.CREATED,
+                snapshot = record,
+                changedAt = Instant.EPOCH,
+            )
+        }
+    }
 }

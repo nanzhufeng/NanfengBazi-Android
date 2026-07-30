@@ -12,6 +12,11 @@ import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -46,7 +51,35 @@ class CaseBackupServiceTest {
 
         withDatabase { sourceDatabase ->
             val sourceRepository = RoomCaseRepository(sourceDatabase)
-            sourceRepository.save(sampleCase(attachmentBytes), null)
+            val base = sampleCase(attachmentBytes)
+            val analysis = base.textRecords.last().copy(
+                type = CaseTextRecordType.ANALYSIS,
+                analysisCategory = AnalysisCategory.RELATIONSHIP,
+            )
+            val sourceCase = base.copy(
+                textRecords = base.textRecords.dropLast(1) + analysis,
+                textRecordRevisions = listOf(
+                    CaseTextRecordRevision(
+                        id = "record-history-1",
+                        recordId = analysis.id,
+                        version = 1,
+                        changeType = RecordChangeType.CREATED,
+                        snapshot = analysis,
+                        changedAt = FixtureInstant,
+                    ),
+                ),
+                eventRevisions = listOf(
+                    CaseEventRevision(
+                        id = "event-history-1",
+                        eventId = base.events.single().id,
+                        version = 1,
+                        changeType = RecordChangeType.CREATED,
+                        snapshot = base.events.single(),
+                        changedAt = FixtureInstant,
+                    ),
+                ),
+            )
+            sourceRepository.save(sourceCase, null)
             val firstBytes = ByteArrayOutputStream().also {
                 val result = CaseBackupService(sourceDatabase, fixedClock).export(
                     output = it,

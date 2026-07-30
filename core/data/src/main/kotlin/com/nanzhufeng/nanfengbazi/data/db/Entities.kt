@@ -81,9 +81,38 @@ data class TextRecordEntity(
     val caseId: String,
     val type: String,
     val content: String,
+    val analysisCategory: String? = null,
     val sourceAttachmentId: String?,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
+    val sortOrder: Int,
+)
+
+@Serializable
+@Entity(
+    tableName = "text_record_revisions",
+    foreignKeys = [
+        ForeignKey(
+            entity = CaseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["caseId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index(value = ["caseId"]),
+        Index(value = ["caseId", "recordId", "version"], unique = true),
+    ],
+)
+data class TextRecordRevisionEntity(
+    @androidx.room.PrimaryKey
+    val id: String,
+    val caseId: String,
+    val recordId: String,
+    val version: Int,
+    val changeType: String,
+    val revisionJson: String,
+    val changedAtEpochMillis: Long,
     val sortOrder: Int,
 )
 
@@ -110,6 +139,34 @@ data class CaseEventEntity(
     val eventJson: String,
     val sourceAttachmentId: String?,
     val createdAtEpochMillis: Long,
+    val sortOrder: Int,
+)
+
+@Serializable
+@Entity(
+    tableName = "case_event_revisions",
+    foreignKeys = [
+        ForeignKey(
+            entity = CaseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["caseId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index(value = ["caseId"]),
+        Index(value = ["caseId", "eventId", "version"], unique = true),
+    ],
+)
+data class CaseEventRevisionEntity(
+    @androidx.room.PrimaryKey
+    val id: String,
+    val caseId: String,
+    val eventId: String,
+    val version: Int,
+    val changeType: String,
+    val revisionJson: String,
+    val changedAtEpochMillis: Long,
     val sortOrder: Int,
 )
 
@@ -249,7 +306,9 @@ internal data class RoomDataSnapshot(
     val cases: List<CaseEntity>,
     val calculationSnapshots: List<CalculationSnapshotEntity>,
     val textRecords: List<TextRecordEntity>,
+    val textRecordRevisions: List<TextRecordRevisionEntity>,
     val events: List<CaseEventEntity>,
+    val eventRevisions: List<CaseEventRevisionEntity>,
     val attachments: List<SourceAttachmentEntity>,
     val fieldEvidence: List<FieldEvidenceEntity>,
     val groups: List<CaseGroupEntity>,

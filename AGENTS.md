@@ -12,9 +12,9 @@
 
 ## 当前边界
 
-- 当前阶段已完成 Stage 3A 前三个增量：Stage 2 闭环加命例编辑重算、文本记录、
+- 当前阶段已完成 Stage 3A 前四个增量：Stage 2 闭环加命例编辑重算、文本记录、
   关键事件、分类、收藏/置顶、最近查看、搜索筛选与排序，以及可恢复删除、命例复制
-  和重复候选提示。
+  和重复候选提示，并已落地记录/事件版本历史与统一分析分类。
 - 唯一计算入口是 `BaziEngine.calculate()`；界面层不得直接调用历法库。
 - Tyme4j 的全局 `ChildLimit.provider` 只能由 `engine-tyme` 适配器访问。
 - 命例写入只能通过 `CaseRepository`；完整恢复只能通过 `CaseBackupService`。

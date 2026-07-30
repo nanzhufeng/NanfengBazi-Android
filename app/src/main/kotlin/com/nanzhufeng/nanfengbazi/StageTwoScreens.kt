@@ -52,6 +52,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -60,6 +61,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 
 @Composable
@@ -1030,6 +1032,7 @@ private fun CaseDetailContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
+                            .testTag("record_card")
                             .clickable(enabled = case.deletedAt == null) {
                                 onEditRecord(record.id)
                             },
@@ -1039,7 +1042,18 @@ private fun CaseDetailContent(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                record.type.displayName(),
+                                buildString {
+                                    append(record.type.displayName())
+                                    if (record.type == CaseTextRecordType.ANALYSIS) {
+                                        append(" · ")
+                                        append(
+                                            (
+                                                record.analysisCategory
+                                                    ?: AnalysisCategory.GENERAL
+                                                ).displayName(),
+                                        )
+                                    }
+                                },
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -1089,6 +1103,79 @@ private fun CaseDetailContent(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
+                        }
+                    }
+                }
+            }
+            if (
+                case.textRecordRevisions.isNotEmpty() ||
+                case.eventRevisions.isNotEmpty()
+            ) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
+                Text(
+                    "版本历史（记录 ${case.textRecordRevisions.size} / " +
+                        "事件 ${case.eventRevisions.size}）",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                case.textRecordRevisions.asReversed().forEach { revision ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                "记录 · ${revision.changeType.displayName()} · " +
+                                    "v${revision.version} · " +
+                                    revision.snapshot.type.displayName(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            if (revision.snapshot.type == CaseTextRecordType.ANALYSIS) {
+                                Text(
+                                    "分类：${
+                                        (
+                                            revision.snapshot.analysisCategory
+                                                ?: AnalysisCategory.GENERAL
+                                            ).displayName()
+                                    }",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Text(
+                                revision.snapshot.content,
+                                modifier = Modifier.padding(top = 3.dp),
+                                maxLines = 6,
+                            )
+                        }
+                    }
+                }
+                case.eventRevisions.asReversed().forEach { revision ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                "事件 · ${revision.changeType.displayName()} · " +
+                                    "v${revision.version} · " +
+                                    revision.snapshot.displayDate(),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                revision.snapshot.rawText,
+                                modifier = Modifier.padding(top = 3.dp),
+                                maxLines = 6,
+                            )
                         }
                     }
                 }
@@ -1207,6 +1294,24 @@ internal fun CaseTextRecordType.displayName(): String = when (this) {
     CaseTextRecordType.OWNER_FEEDBACK -> "命主反馈"
     CaseTextRecordType.MASTER_COMMENTARY -> "师傅点评"
     CaseTextRecordType.ANALYSIS -> "分析记录"
+}
+
+internal fun AnalysisCategory.displayName(): String = when (this) {
+    AnalysisCategory.GENERAL -> "综合"
+    AnalysisCategory.PERSONALITY -> "性格"
+    AnalysisCategory.CAREER -> "事业"
+    AnalysisCategory.WEALTH -> "财运"
+    AnalysisCategory.RELATIONSHIP -> "感情"
+    AnalysisCategory.HEALTH -> "健康"
+    AnalysisCategory.EDUCATION -> "学业"
+    AnalysisCategory.FAMILY -> "家庭"
+    AnalysisCategory.OTHER -> "其他"
+}
+
+private fun RecordChangeType.displayName(): String = when (this) {
+    RecordChangeType.CREATED -> "新增"
+    RecordChangeType.UPDATED -> "修改"
+    RecordChangeType.DELETED -> "删除"
 }
 
 private fun CaseEvent.displayDate(): String = when {

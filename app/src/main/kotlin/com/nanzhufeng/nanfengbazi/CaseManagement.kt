@@ -6,17 +6,21 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.time.Clock
 import java.time.DateTimeException
 import java.time.LocalDate
@@ -187,7 +191,9 @@ class CaseLifecycleUseCase(
             alias = nextCopyAlias(existing.alias, aliases),
             sourceType = com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType.CASE_COPY,
             textRecords = emptyList(),
+            textRecordRevisions = emptyList(),
             events = emptyList(),
+            eventRevisions = emptyList(),
             calculationSnapshots = existing.calculationSnapshots.map {
                 it.copy(id = idGenerator.nextId(), createdAt = now)
             },
@@ -358,6 +364,7 @@ private fun String.normalizedMetadataName(): String = lowercase()
 data class TextRecordDraft(
     val type: CaseTextRecordType = CaseTextRecordType.NOTE,
     val content: String = "",
+    val analysisCategory: AnalysisCategory = AnalysisCategory.GENERAL,
 )
 
 class TextRecordUseCase(
@@ -393,6 +400,9 @@ class TextRecordUseCase(
                 id = idGenerator.nextId(),
                 type = draft.type,
                 content = content,
+                analysisCategory = draft.analysisCategory.takeIf {
+                    draft.type == CaseTextRecordType.ANALYSIS
+                },
                 createdAt = now,
                 updatedAt = now,
             )
@@ -400,9 +410,23 @@ class TextRecordUseCase(
             currentRecord.copy(
                 type = draft.type,
                 content = content,
+                analysisCategory = draft.analysisCategory.takeIf {
+                    draft.type == CaseTextRecordType.ANALYSIS
+                },
                 updatedAt = now,
             )
         }
+        val history = existing.textRecordRevisions
+            .ensureRecordBaseline(currentRecord)
+            .appendRecordRevision(
+                snapshot = nextRecord,
+                changeType = if (currentRecord == null) {
+                    RecordChangeType.CREATED
+                } else {
+                    RecordChangeType.UPDATED
+                },
+                changedAt = now,
+            )
         val updated = existing.copy(
             textRecords = if (currentRecord == null) {
                 existing.textRecords + nextRecord
@@ -411,6 +435,7 @@ class TextRecordUseCase(
                     if (it.id == currentRecord.id) nextRecord else it
                 }
             },
+            textRecordRevisions = history,
             updatedAt = now,
         )
         return persistCase(caseRepository, updated, expectedRevision)
@@ -429,14 +454,22 @@ class TextRecordUseCase(
         if (existing.revision != expectedRevision) {
             return CaseMutationResult.RevisionConflict(existing.revision)
         }
-        if (existing.textRecords.none { it.id == recordId }) {
-            return CaseMutationResult.NotFound
-        }
+        val currentRecord = existing.textRecords.firstOrNull { it.id == recordId }
+            ?: return CaseMutationResult.NotFound
+        val now = clock.instant()
+        val history = existing.textRecordRevisions
+            .ensureRecordBaseline(currentRecord)
+            .appendRecordRevision(
+                snapshot = currentRecord,
+                changeType = RecordChangeType.DELETED,
+                changedAt = now,
+            )
         return persistCase(
             caseRepository = caseRepository,
             case = existing.copy(
                 textRecords = existing.textRecords.filterNot { it.id == recordId },
-                updatedAt = clock.instant(),
+                textRecordRevisions = history,
+                updatedAt = now,
             ),
             expectedRevision = expectedRevision,
         )
@@ -488,6 +521,7 @@ class CaseEventUseCase(
             existing.events.firstOrNull { it.id == id }
                 ?: return CaseMutationResult.NotFound
         }
+        val now = clock.instant()
         val nextEvent = if (currentEvent == null) {
             CaseEvent(
                 id = idGenerator.nextId(),
@@ -497,7 +531,7 @@ class CaseEventUseCase(
                 datePrecision = valid.precision,
                 status = valid.status,
                 rawText = valid.rawText,
-                createdAt = clock.instant(),
+                createdAt = now,
             )
         } else {
             currentEvent.copy(
@@ -509,6 +543,17 @@ class CaseEventUseCase(
                 rawText = valid.rawText,
             )
         }
+        val history = existing.eventRevisions
+            .ensureEventBaseline(currentEvent)
+            .appendEventRevision(
+                snapshot = nextEvent,
+                changeType = if (currentEvent == null) {
+                    RecordChangeType.CREATED
+                } else {
+                    RecordChangeType.UPDATED
+                },
+                changedAt = now,
+            )
         val updated = existing.copy(
             events = if (currentEvent == null) {
                 existing.events + nextEvent
@@ -517,7 +562,8 @@ class CaseEventUseCase(
                     if (it.id == currentEvent.id) nextEvent else it
                 }
             },
-            updatedAt = clock.instant(),
+            eventRevisions = history,
+            updatedAt = now,
         )
         return persistCase(caseRepository, updated, expectedRevision)
     }
@@ -535,14 +581,22 @@ class CaseEventUseCase(
         if (existing.revision != expectedRevision) {
             return CaseMutationResult.RevisionConflict(existing.revision)
         }
-        if (existing.events.none { it.id == eventId }) {
-            return CaseMutationResult.NotFound
-        }
+        val currentEvent = existing.events.firstOrNull { it.id == eventId }
+            ?: return CaseMutationResult.NotFound
+        val now = clock.instant()
+        val history = existing.eventRevisions
+            .ensureEventBaseline(currentEvent)
+            .appendEventRevision(
+                snapshot = currentEvent,
+                changeType = RecordChangeType.DELETED,
+                changedAt = now,
+            )
         return persistCase(
             caseRepository = caseRepository,
             case = existing.copy(
                 events = existing.events.filterNot { it.id == eventId },
-                updatedAt = clock.instant(),
+                eventRevisions = history,
+                updatedAt = now,
             ),
             expectedRevision = expectedRevision,
         )
@@ -603,6 +657,66 @@ class CaseEventUseCase(
             ),
         )
     }
+}
+
+private fun List<CaseTextRecordRevision>.ensureRecordBaseline(
+    current: CaseTextRecord?,
+): List<CaseTextRecordRevision> {
+    if (current == null || any { it.recordId == current.id }) return this
+    return appendRecordRevision(
+        snapshot = current,
+        changeType = RecordChangeType.CREATED,
+        changedAt = current.createdAt,
+    )
+}
+
+private fun List<CaseTextRecordRevision>.appendRecordRevision(
+    snapshot: CaseTextRecord,
+    changeType: RecordChangeType,
+    changedAt: java.time.Instant,
+): List<CaseTextRecordRevision> {
+    val version = filter { it.recordId == snapshot.id }
+        .maxOfOrNull { it.version }
+        ?.plus(1)
+        ?: 1
+    return this + CaseTextRecordRevision(
+        id = "${snapshot.id}:revision:$version",
+        recordId = snapshot.id,
+        version = version,
+        changeType = changeType,
+        snapshot = snapshot,
+        changedAt = changedAt,
+    )
+}
+
+private fun List<CaseEventRevision>.ensureEventBaseline(
+    current: CaseEvent?,
+): List<CaseEventRevision> {
+    if (current == null || any { it.eventId == current.id }) return this
+    return appendEventRevision(
+        snapshot = current,
+        changeType = RecordChangeType.CREATED,
+        changedAt = current.createdAt,
+    )
+}
+
+private fun List<CaseEventRevision>.appendEventRevision(
+    snapshot: CaseEvent,
+    changeType: RecordChangeType,
+    changedAt: java.time.Instant,
+): List<CaseEventRevision> {
+    val version = filter { it.eventId == snapshot.id }
+        .maxOfOrNull { it.version }
+        ?.plus(1)
+        ?: 1
+    return this + CaseEventRevision(
+        id = "${snapshot.id}:revision:$version",
+        eventId = snapshot.id,
+        version = version,
+        changeType = changeType,
+        snapshot = snapshot,
+        changedAt = changedAt,
+    )
 }
 
 private sealed interface CaseLoadResult {
