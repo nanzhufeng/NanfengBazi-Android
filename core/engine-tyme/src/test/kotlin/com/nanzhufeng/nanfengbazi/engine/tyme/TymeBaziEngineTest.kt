@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
@@ -198,17 +199,116 @@ class TymeBaziEngineTest {
     }
 
     @Test
-    fun `真太阳时请求必须明确失败`() {
-        val input = solarInput(1986, 5, 29, 13, 37, 0).copy(useTrueSolarTime = true)
-        val profile = CalculationProfile.tymeDefault().copy(
-            solarTimeMode = SolarTimeMode.TRUE_SOLAR_TIME,
+    fun `真太阳时按民用时年月至校正后当地日时组合四柱`() = runTest {
+        val input = solarInput(1992, 8, 24, 13, 4, 0).copy(
+            locationName = "江苏省宿迁市泗阳县",
+            longitude = 118.68,
+            latitude = 33.73,
+            useTrueSolarTime = true,
+        )
+        val profile = CalculationProfile.tymeDefault(SolarTimeMode.TRUE_SOLAR_TIME)
+
+        val civil = engine.calculate(
+            input.copy(useTrueSolarTime = false),
+            CalculationProfile.tymeDefault(),
+        )
+        val correctedCivil = engine.calculate(
+            solarInput(1992, 8, 24, 12, 56, 23),
+            CalculationProfile.tymeDefault(),
+        )
+        val result = engine.calculate(input, profile)
+
+        assertEquals(civil.fourPillars.year, result.fourPillars.year)
+        assertEquals(civil.fourPillars.month, result.fourPillars.month)
+        assertEquals(correctedCivil.fourPillars.day, result.fourPillars.day)
+        assertEquals(correctedCivil.fourPillars.hour, result.fourPillars.hour)
+        assertEquals(FourPillars("壬申", "戊申", "壬申", "丙午"), result.fourPillars)
+        assertNotEquals(civil.fourPillars.hour, result.fourPillars.hour)
+        assertTrue(result.trueSolarTimeEvidence?.crossesDoubleHour == true)
+        assertEquals("tyme-true-solar-provisional-v1", result.profile.id)
+        assertTrue(result.warnings.any { it.code == "TRUE_SOLAR_BOUNDARY_RULE_PROVISIONAL" })
+        assertTrue(result.warnings.any { it.code == "TRUE_SOLAR_CROSSES_DOUBLE_HOUR" })
+    }
+
+    @Test
+    fun `问真截图样本四柱一致且真太阳时分钟差不超过一分钟`() = runTest {
+        val result = engine.calculate(
+            solarInput(1992, 8, 24, 12, 0, 0).copy(
+                locationName = "江苏省宿迁市泗阳县",
+                longitude = 118.68,
+                latitude = 33.73,
+                useTrueSolarTime = true,
+            ),
+            CalculationProfile.tymeDefault(SolarTimeMode.TRUE_SOLAR_TIME),
         )
 
-        assertThrows(IllegalArgumentException::class.java) {
+        assertEquals(FourPillars("壬申", "戊申", "壬申", "丙午"), result.fourPillars)
+        val trueSolar = requireNotNull(result.trueSolarTimeEvidence).trueSolarDateTime
+        assertEquals(CivilDateTime(1992, 8, 24, 11, 52, 23), trueSolar)
+        val actual = java.time.LocalDateTime.of(
+            trueSolar.year,
+            trueSolar.month,
+            trueSolar.day,
+            trueSolar.hour,
+            trueSolar.minute,
+            trueSolar.second,
+        )
+        assertTrue(
+            kotlin.math.abs(
+                java.time.Duration.between(
+                    java.time.LocalDateTime.of(1992, 8, 24, 11, 53, 0),
+                    actual,
+                ).seconds,
+            ) <= 60,
+        )
+    }
+
+    @Test
+    fun `真太阳时跨日仍保留民用时间年柱月柱`() = runTest {
+        val input = solarInput(2023, 1, 22, 2, 0, 0).copy(
+            locationName = "新疆乌鲁木齐",
+            longitude = 87.6,
+            latitude = 43.8,
+            useTrueSolarTime = true,
+        )
+
+        val civil = engine.calculate(
+            input.copy(useTrueSolarTime = false),
+            CalculationProfile.tymeDefault(),
+        )
+        val correctedCivil = engine.calculate(
+            solarInput(2023, 1, 21, 23, 38, 59),
+            CalculationProfile.tymeDefault(),
+        )
+        val result = engine.calculate(
+            input,
+            CalculationProfile.tymeDefault(SolarTimeMode.TRUE_SOLAR_TIME),
+        )
+
+        assertEquals(civil.fourPillars.year, result.fourPillars.year)
+        assertEquals(civil.fourPillars.month, result.fourPillars.month)
+        assertEquals(correctedCivil.fourPillars.day, result.fourPillars.day)
+        assertEquals(correctedCivil.fourPillars.hour, result.fourPillars.hour)
+        assertTrue(result.trueSolarTimeEvidence?.crossesDate == true)
+        assertTrue(result.warnings.any { it.code == "TRUE_SOLAR_CROSSES_DATE" })
+    }
+
+    @Test
+    fun `真太阳时缺少经纬度必须明确失败`() {
+        val input = solarInput(1986, 5, 29, 13, 37, 0).copy(
+            useTrueSolarTime = true,
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
             kotlinx.coroutines.runBlocking {
-                engine.calculate(input, profile)
+                engine.calculate(
+                    input,
+                    CalculationProfile.tymeDefault(SolarTimeMode.TRUE_SOLAR_TIME),
+                )
             }
         }
+
+        assertTrue(error.message.orEmpty().contains("经度和纬度"))
     }
 
     @Test

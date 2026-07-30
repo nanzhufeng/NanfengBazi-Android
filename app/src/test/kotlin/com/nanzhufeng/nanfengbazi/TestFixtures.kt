@@ -70,6 +70,7 @@ internal fun calculationResult(input: BirthInput): CalculationResult = Calculati
 internal class RecordingEngine : BaziEngine {
     var calls = 0
     var lastInput: BirthInput? = null
+    var lastProfile: CalculationProfile? = null
 
     override suspend fun calculate(
         input: BirthInput,
@@ -77,6 +78,7 @@ internal class RecordingEngine : BaziEngine {
     ): CalculationResult {
         calls += 1
         lastInput = input
+        lastProfile = profile
         return calculationResult(input)
     }
 }

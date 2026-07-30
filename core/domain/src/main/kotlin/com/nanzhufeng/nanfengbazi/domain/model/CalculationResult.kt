@@ -67,6 +67,23 @@ data class CalendarConversionResult(
 )
 
 @Serializable
+data class TrueSolarTimeEvidence(
+    val originalCivilDateTime: CivilDateTime,
+    val timeZoneId: String,
+    val resolvedUtcOffsetSeconds: Int,
+    val longitude: Double,
+    val latitude: Double,
+    val meanSolarCorrectionSeconds: Int,
+    val equationOfTimeCorrectionSeconds: Int,
+    val totalCorrectionSeconds: Int,
+    val trueSolarDateTime: CivilDateTime,
+    val crossesDate: Boolean,
+    val crossesDoubleHour: Boolean,
+    val algorithmVersion: String,
+    val applicationRule: TrueSolarTimeApplicationRule,
+)
+
+@Serializable
 data class CalculationResult(
     val normalizedInput: BirthInput,
     val profile: CalculationProfile,
@@ -80,4 +97,5 @@ data class CalculationResult(
     val evidence: CalculationEvidence,
     val warnings: List<CalculationWarning> = emptyList(),
     val calendarConversion: CalendarConversionResult? = null,
+    val trueSolarTimeEvidence: TrueSolarTimeEvidence? = null,
 )

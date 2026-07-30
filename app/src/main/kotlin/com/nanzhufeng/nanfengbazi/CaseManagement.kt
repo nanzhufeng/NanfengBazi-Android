@@ -23,6 +23,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import java.time.Clock
 import java.time.DateTimeException
 import java.time.LocalDate
@@ -75,7 +76,13 @@ class EditCaseUseCase(
         if (existing.revision != expectedRevision) {
             return CaseMutationResult.RevisionConflict(existing.revision)
         }
-        val profile = CalculationProfile.tymeDefault()
+        val profile = CalculationProfile.tymeDefault(
+            solarTimeMode = if (valid.birthInput.useTrueSolarTime) {
+                SolarTimeMode.TRUE_SOLAR_TIME
+            } else {
+                SolarTimeMode.CIVIL_TIME
+            },
+        )
         val calculation = try {
             baziEngine.calculate(valid.birthInput, profile)
         } catch (cancelled: CancellationException) {

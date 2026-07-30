@@ -23,6 +23,7 @@
 | `CalculationProfile` | `core:domain` | 引擎适配器 | 隐式更改换年或起运口径 |
 | `CalculationResult` | `core:domain` | 测试；后续仓储 | 只保存展示文本、不保存版本 |
 | `BaziEngine` | `core:domain` | 后续用例层 | 多套平行计算入口 |
+| 真太阳时校正 | `TrueSolarTimeCalculator` + `core:solar-time` | `TymeBaziEngine` | 页面自行加分钟、覆盖原始民用时或把 Tyme 类型名当算法 |
 | Tyme4j 状态隔离 | `core:engine-tyme` | `TymeBaziEngine` | 其他模块访问全局 provider |
 | `BaziCase` 与字段空值语义 | `core:domain` | 仓储、备份 | 页面或 OCR 用空串改写真值 |
 | 命例增量写入 | `CaseRepository` | 手动录入；未来 OCR | DAO、解析器或页面直接写库 |
@@ -38,6 +39,7 @@
 - `app`：组合 `core:data` 与 `core:engine-tyme`，承载手动录入用例、ViewModel、
   手机单列导航和展示；不得复制计算或持久化规则。
 - `core:domain`：纯 Kotlin 领域模型和端口，不依赖 Android 或第三方历法库。
+- `core:solar-time`：NREL SPA 真太阳时适配器，只输出领域证据，不计算四柱。
 - `core:engine-tyme`：Tyme4j 适配器及状态隔离。
 - `core:data`：Room、仓储实现、JSON/ZIP 协议、恢复校验和附件提交。
 - 后续 OCR 模块必须在进入对应阶段后新增，不能提前塞入 `app`。

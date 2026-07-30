@@ -36,7 +36,60 @@
         "yearPillarBefore": "甲辰",
         "yearPillarAt": "乙巳"
       }
+    },
+    {
+      "id": "wenzhen-screenshot-siyang-19920824",
+      "source": "User-provided Wenzhen screenshot; location coordinate is an explicit test approximation",
+      "engineVersion": "1.5.1",
+      "ruleVersion": "stage0-v1",
+      "trueSolarAlgorithmVersion": "nrel-spa-2008+solarpositioning-2.0.12-v1",
+      "input": {
+        "calendar": "solar",
+        "dateTime": "1992-08-24T12:00:00",
+        "timeZoneId": "Asia/Shanghai",
+        "utcOffsetSeconds": 28800,
+        "location": "江苏省宿迁市泗阳县",
+        "longitude": 118.68,
+        "latitude": 33.73,
+        "useTrueSolarTime": true
+      },
+      "profile": "tyme-true-solar-provisional-v1",
+      "expected": {
+        "trueSolarDateTime": "1992-08-24T11:52:23",
+        "wenzhenDisplayedMinute": "1992-08-24T11:53",
+        "minuteTolerance": 1,
+        "yearPillar": "壬申",
+        "monthPillar": "戊申",
+        "dayPillar": "壬申",
+        "hourPillar": "丙午",
+        "crossesDate": false,
+        "crossesDoubleHour": false
+      }
+    },
+    {
+      "id": "true-solar-double-hour-boundary-19920824",
+      "source": "Synthetic boundary derived from the Wenzhen screenshot location",
+      "engineVersion": "1.5.1",
+      "ruleVersion": "stage0-v1",
+      "trueSolarAlgorithmVersion": "nrel-spa-2008+solarpositioning-2.0.12-v1",
+      "input": {
+        "dateTime": "1992-08-24T13:04:00",
+        "timeZoneId": "Asia/Shanghai",
+        "utcOffsetSeconds": 28800,
+        "longitude": 118.68,
+        "latitude": 33.73,
+        "useTrueSolarTime": true
+      },
+      "profile": "tyme-true-solar-provisional-v1",
+      "expected": {
+        "trueSolarDateTime": "1992-08-24T12:56:23",
+        "yearPillar": "壬申",
+        "monthPillar": "戊申",
+        "dayPillar": "壬申",
+        "hourPillar": "丙午",
+        "crossesDate": false,
+        "crossesDoubleHour": true
+      }
     }
   ]
 }
-

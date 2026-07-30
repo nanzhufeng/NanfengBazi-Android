@@ -1,18 +1,20 @@
-# 当前交接：Stage 4A 地区与历史时区第二增量
+# 当前交接：Stage 4A 真太阳时第三增量
 
 更新日期：2026-07-30
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2、Stage 3A、Stage 3B 均已完成当前实现与自动化证据。
-- Stage 4A 前两项增量已完成：公历、农历、闰月、出生地区、手工经纬度与 IANA 时区
-  可以在新建和编辑中录入；唯一计算链会固化标准历法转换、历史 UTC offset 和 tzdb 版本。
+- Stage 4A 前三项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
+  真太阳时可以在新建和编辑中录入；唯一计算链会固化标准历法转换、历史 UTC offset、
+  tzdb 版本与完整真太阳时校正证据。
 - 夏令时回拨重叠时刻必须由用户在两个有效 offset 中明确选择；跳时产生的不存在时刻
   明确失败且零写入。
-- 下一安全增量是独立版本化真太阳时组件，随后扩展更多基础排盘字段。
+- 下一安全增量是扩展生肖、节气、十神、藏干、纳音、长生和空亡等基础排盘字段。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
-- 未使用真实问真资料、真实姓名或用户截图；未安装或操作 OPPO，未 push、未发布。
+- 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
+  其他案例资料提交到仓库；未安装或操作 OPPO，未 push、未发布。
 
 ## 本增量实现
 
@@ -45,7 +47,7 @@
 - 计算结果区显示“换算公历”和“换算农历”，便于后续问真截图迁移逐项核对。
 - 年份不存在所选闰月、日期超出农历当月天数等情况统一返回中文错误，计算失败时不会
   写入命例。
-- 真太阳时仍明确拒绝，不随农历支持静默开启。
+- 真太阳时使用显式开关；开启后经纬度变为必填，缺失时中文拒绝且零写入。
 
 ### 地区、坐标与历史时区
 
@@ -62,10 +64,27 @@
 - 新增字段带兼容默认值；旧 Room JSON、单命例交换和完整备份仍可读取，缺失证据显示为
   “旧数据未记录”，不伪造历史结果。
 
+### 独立真太阳时与排盘边界
+
+- 新增纯 JVM `core:solar-time`，唯一入口为 `TrueSolarTimeCalculator`；生产实现使用
+  MIT 的 `solarpositioning 2.0.12`，算法版本固定为
+  `nrel-spa-2008+solarpositioning-2.0.12-v1`。
+- 组件以 NREL SPA 计算当地太阳中天，保存原始民用时、经度平太阳时校正、均时差校正、
+  总校正、最终真太阳时、跨日/跨时辰、经纬度、时区、offset 和算法版本。
+- 排盘口径暂定为 `CIVIL_YEAR_MONTH_TRUE_SOLAR_DAY_HOUR_PROVISIONAL_V1`：年/月柱
+  保留原始民用时 Tyme 口径，日/时柱按真太阳时当地边界；起运仍按原始民用时计算。
+  当前配置和详情始终提示问真跨界样本尚未验收；开关与配置不一致、缺坐标或超出
+  SPA 1..6000 年范围时不得降级。
+- 详情页显示真太阳时全部审计字段及跨界提醒；旧快照缺少证据时继续按 `null` 读取。
+- 用户问真截图的泗阳 1992-08-24 12:00 样例显示 11:53、四柱
+  `壬申 戊申 壬申 丙午`。县域坐标近似值下本实现为 11:52:23，显示分钟相差 37 秒且
+  四柱一致；这不是跨界样本，不能替代后续问真边界验收。
+
 ## 所有者与边界
 
 - 唯一计算入口：`BaziEngine.calculate()`。
 - 唯一历史时区解析入口：`BirthTimeZoneResolver.resolve()`。
+- 唯一真太阳时入口：`TrueSolarTimeCalculator.calculate()`。
 - Tyme4j 类型与负闰月约定只存在于 `core:engine-tyme`。
 - 唯一命例写入口：`CaseRepository`。
 - 页面不直接调用 Tyme4j、不自行换算历法、不解析交换协议。
@@ -80,7 +99,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 118 条唯一单元契约；Debug/Release 变体合计 212 次执行，0 失败、0 跳过。
+- 128 条唯一单元契约；Debug/Release 变体合计 224 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -93,12 +112,15 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - `America/New_York` 2024-03-10 02:30 跳时不存在并拒绝；
   - 普通时刻自动解析 offset、无效 IANA 时区和不匹配 offset 拒绝；
   - 新建/编辑保存规范化时区证据，旧数据缺少坐标来源和时区证据仍可读取；
-  - 地区必填、经纬度成对与范围校验、手工坐标来源。
+  - 地区必填、经纬度成对与范围校验、手工坐标来源；
+  - NREL SPA 校正拆分、问真截图样例、跨日、跨时辰、缺坐标和算法年份范围；
+  - 暂定年/月民用时与日/时真太阳时的四柱组合规则及 provisional 警告；
+  - 真太阳时表单验证、版本化配置选择和旧 JSON 默认值兼容。
 - App 与 `core:data` Lint 均 0 错误；仅有 9 + 5 条依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - API 35 模拟器 `ExpenseCapture_API35`：
-  - Stage 4A 页面链 4/4 通过：历法切换、农历保存与换算、DST 重叠选择与证据落库、
-    既有新建/搜索/详情/编辑长流程；
+  - Stage 4A 页面链 5/5 通过：历法切换、农历保存与换算、DST 重叠选择与证据落库、
+    真太阳时跨时辰与完整审计详情、既有新建/搜索/详情/编辑长流程；
   - DST 详情真实显示 `America/New_York`、`UTC-05:00` 与 tzdb 版本字段；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
@@ -107,22 +129,22 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha24-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha25-debug.apk`
 
-- 大小：10,011,501 bytes
-- SHA-256：`8a486caec67666b3f38469068bc423a0e722cfc9b56075065a81e4853e5caeb5`
+- 大小：10,392,238 bytes
+- SHA-256：`716b3077480ac416ba9f338c22c7d71ffffc1ca1db45aa3cd0ac4c1968418edd`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha24-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha25-release-unsigned.apk`
 
-- 大小：6,820,377 bytes
-- SHA-256：`6208d311f3b5dc2cf4d07e218753a9b8d477923dfb06c74b4fd808e1bf5bb645`
+- 大小：6,847,427 bytes
+- SHA-256：`8eb566d3bb7569d69ca930cf77511220cd2cd3b960e278a109fe72cf06cbcf35`
 
 ## 当前限制与风险
 
-- 自动地点搜索、行政区到坐标/时区映射与真太阳时尚未接通；当前地区、坐标和 IANA 时区
-  均为人工输入。
+- 自动地点搜索、行政区到坐标/时区映射尚未接通；当前地区、坐标和 IANA 时区均为人工
+  输入。县域中心坐标与问真实际取点可能造成几十秒差异。
 - 生肖、节气、十神、藏干、纳音、十二长生、空亡等基础排盘字段尚未完整输出。
 - 问真截图导入、离线 OCR、页面分类、多图归组与可恢复导入会话尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
@@ -133,10 +155,10 @@ Debug 验收构建：
 
 继续 Stage 4A，优先顺序：
 
-1. 实现独立版本化真太阳时组件，覆盖经度、均时差、跨日和跨时辰边界；
-2. 保存民用时、校正明细、真太阳时与组件版本，且不把 Tyme4j `SolarTime` 误称真太阳时；
-3. 扩展生肖、节气、十神、藏干、纳音、长生、空亡等基础排盘结果；
-4. 扩大黄金边界集，再进入 Stage 4B 的 50+ 样本门禁。
+1. 扩展生肖、节气、十神、藏干、纳音、长生、空亡等基础排盘结果；
+2. 在详情中按问真信息层级展示四柱基础字段，但保持字段真值来自唯一引擎；
+3. 扩大黄金边界集，再进入 Stage 4B 的 50+ 样本门禁；
+4. Stage 5B 前继续把问真跨日、跨时辰和节气边界保留为真实样本验收项。
 
-`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 4A 第二增量完成不等于
+`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 4A 第三增量完成不等于
 整个产品已经落地。

@@ -33,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -1817,7 +1818,7 @@ internal fun CaseFormScreen(
 
             SectionHeading(
                 "出生时间",
-                "支持公历与农历（含闰月），按所选 IANA 时区解析民用时；暂不做真太阳时校正。",
+                "支持公历与农历（含闰月），按所选 IANA 时区解析原始民用时。",
             )
             Text(
                 "历法 *",
@@ -1952,7 +1953,9 @@ internal fun CaseFormScreen(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("birth_longitude"),
-                    label = { Text("经度（可选）") },
+                    label = {
+                        Text(if (form.useTrueSolarTime) "经度 *" else "经度（可选）")
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     enabled = !saving,
@@ -1965,9 +1968,39 @@ internal fun CaseFormScreen(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("birth_latitude"),
-                    label = { Text("纬度（可选）") },
+                    label = {
+                        Text(if (form.useTrueSolarTime) "纬度 *" else "纬度（可选）")
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
+                    enabled = !saving,
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "启用真太阳时",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        "使用经纬度、历史时区与天文均时差校正；年/月暂按原始民用时，" +
+                            "日/时按校正后当地时间，边界口径待问真样本验收。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = form.useTrueSolarTime,
+                    onCheckedChange = { checked ->
+                        onFormChange { it.copy(useTrueSolarTime = checked) }
+                    },
+                    modifier = Modifier.testTag("birth_true_solar_time"),
                     enabled = !saving,
                 )
             }
@@ -2353,6 +2386,10 @@ private fun CaseDetailContent(
                 case.birthInput.timeZoneDataVersion ?: "旧数据未记录",
             )
             DetailRow("时间精度", case.birthInput.timePrecision.name)
+            DetailRow(
+                "真太阳时",
+                if (case.birthInput.useTrueSolarTime) "已启用" else "未启用",
+            )
             DetailRow("来源", case.sourceType.displayName())
             case.copiedFromCaseId?.let { sourceId ->
                 DetailRow("复制来源", sourceId)
@@ -2380,6 +2417,37 @@ private fun CaseDetailContent(
                                 lunar.second,
                             ),
                     )
+                }
+                adopted.result.trueSolarTimeEvidence?.let { evidence ->
+                    DetailRow("原始民用时间", evidence.originalCivilDateTime.display())
+                    DetailRow("真太阳时", evidence.trueSolarDateTime.display())
+                    DetailRow(
+                        "经度平太阳时校正",
+                        formatSignedDuration(evidence.meanSolarCorrectionSeconds),
+                    )
+                    DetailRow(
+                        "均时差校正",
+                        formatSignedDuration(evidence.equationOfTimeCorrectionSeconds),
+                    )
+                    DetailRow(
+                        "总校正量",
+                        formatSignedDuration(evidence.totalCorrectionSeconds),
+                    )
+                    DetailRow(
+                        "边界变化",
+                        buildList {
+                            if (evidence.crossesDate) add("跨日")
+                            if (evidence.crossesDoubleHour) add("跨时辰")
+                        }.joinToString("、").ifEmpty { "未跨日、未跨时辰" },
+                    )
+                    DetailRow(
+                        "真太阳时作用规则",
+                        "暂定：年/月按民用时，日/时按真太阳时",
+                    )
+                    DetailRow("真太阳时算法", evidence.algorithmVersion)
+                }
+                adopted.result.warnings.forEach { warning ->
+                    DetailRow("计算提醒", warning.message)
                 }
                 DetailRow(
                     "起运方向",
@@ -2782,6 +2850,12 @@ private fun formatUtcOffset(totalSeconds: Int): String {
     } else {
         "UTC$sign%02d:%02d:%02d".format(hours, minutes, seconds)
     }
+}
+
+private fun formatSignedDuration(totalSeconds: Int): String {
+    val sign = if (totalSeconds >= 0) "+" else "-"
+    val absolute = kotlin.math.abs(totalSeconds)
+    return "$sign${absolute / 60}分${absolute % 60}秒"
 }
 
 private fun FourPillars.display(): String = "$year $month $day $hour"

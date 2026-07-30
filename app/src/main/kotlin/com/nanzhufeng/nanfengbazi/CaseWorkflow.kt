@@ -17,6 +17,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.Clock
 import java.time.DateTimeException
@@ -42,6 +43,7 @@ data class CaseFormState(
     val timeZoneId: String = "Asia/Shanghai",
     val resolvedUtcOffsetSeconds: Int? = null,
     val availableUtcOffsetSeconds: List<Int> = emptyList(),
+    val useTrueSolarTime: Boolean = false,
 )
 
 internal fun CaseFormState.clearTimeZoneResolution(): CaseFormState = copy(
@@ -103,6 +105,9 @@ object CaseFormValidator {
         }
         if (latitude != null && latitude !in -90.0..90.0) {
             return CaseFormValidation.Invalid("纬度必须在 -90 到 90 之间。")
+        }
+        if (form.useTrueSolarTime && (longitude == null || latitude == null)) {
+            return CaseFormValidation.Invalid("启用真太阳时必须填写出生地经度和纬度。")
         }
         val values = listOf(
             "年份" to form.year,
@@ -172,6 +177,7 @@ object CaseFormValidator {
                 } else {
                     null
                 },
+                useTrueSolarTime = form.useTrueSolarTime,
             )
         } catch (_: DateTimeException) {
             return CaseFormValidation.Invalid("出生日期或时间无效，请检查年月日和时分秒。")
@@ -230,7 +236,13 @@ class CreateCaseUseCase(
             }
             is CaseFormValidation.Valid -> validation
         }
-        val profile = CalculationProfile.tymeDefault()
+        val profile = CalculationProfile.tymeDefault(
+            solarTimeMode = if (valid.birthInput.useTrueSolarTime) {
+                SolarTimeMode.TRUE_SOLAR_TIME
+            } else {
+                SolarTimeMode.CIVIL_TIME
+            },
+        )
         val calculation = try {
             baziEngine.calculate(valid.birthInput, profile)
         } catch (cancelled: CancellationException) {

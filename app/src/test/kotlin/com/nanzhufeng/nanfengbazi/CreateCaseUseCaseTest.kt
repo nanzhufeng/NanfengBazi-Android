@@ -4,6 +4,7 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import java.time.Clock
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
@@ -62,6 +63,25 @@ class CreateCaseUseCaseTest {
         assertEquals(28_800, saved.birthInput.resolvedUtcOffsetSeconds)
         assertEquals("tzdb:test", saved.birthInput.timeZoneDataVersion)
         assertEquals(saved.birthInput, saved.calculationSnapshots.single().result.normalizedInput)
+    }
+
+    @Test
+    fun `真太阳时表单选择对应版本化计算配置`() = runTest {
+        val engine = RecordingEngine()
+        val repository = FakeCaseRepository()
+
+        val result = CreateCaseUseCase(engine, repository)(
+            validForm().copy(
+                longitude = "118.68",
+                latitude = "33.73",
+                useTrueSolarTime = true,
+            ),
+        )
+
+        assertTrue(result is CreateCaseResult.Created)
+        assertTrue(engine.lastInput?.useTrueSolarTime == true)
+        assertEquals(SolarTimeMode.TRUE_SOLAR_TIME, engine.lastProfile?.solarTimeMode)
+        assertEquals("tyme-true-solar-provisional-v1", engine.lastProfile?.id)
     }
 
     @Test

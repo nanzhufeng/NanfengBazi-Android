@@ -2363,5 +2363,6 @@ private fun BaziCase.toEditableForm(): CaseFormState {
         latitude = birthInput.latitude?.toString().orEmpty(),
         timeZoneId = birthInput.timeZoneId,
         resolvedUtcOffsetSeconds = birthInput.resolvedUtcOffsetSeconds,
+        useTrueSolarTime = birthInput.useTrueSolarTime,
     )
 }

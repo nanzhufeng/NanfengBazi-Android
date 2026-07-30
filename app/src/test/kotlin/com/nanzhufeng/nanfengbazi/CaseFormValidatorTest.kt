@@ -84,6 +84,24 @@ class CaseFormValidatorTest {
     }
 
     @Test
+    fun `启用真太阳时要求经纬度并写入结构化开关`() {
+        assertEquals(
+            CaseFormValidation.Invalid("启用真太阳时必须填写出生地经度和纬度。"),
+            CaseFormValidator.validate(validForm().copy(useTrueSolarTime = true)),
+        )
+
+        val valid = CaseFormValidator.validate(
+            validForm().copy(
+                longitude = "118.68",
+                latitude = "33.73",
+                useTrueSolarTime = true,
+            ),
+        ) as CaseFormValidation.Valid
+
+        assertTrue(valid.birthInput.useTrueSolarTime)
+    }
+
+    @Test
     fun `有效农历表单保留闰月语义`() {
         val result = CaseFormValidator.validate(
             validForm().copy(

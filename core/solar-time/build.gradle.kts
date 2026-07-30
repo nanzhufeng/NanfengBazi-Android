@@ -15,11 +15,9 @@ java {
 
 dependencies {
     implementation(project(":core:domain"))
-    implementation(project(":core:solar-time"))
-    implementation("cn.6tail:tyme4j:1.5.1")
+    implementation("net.e175.klaus:solarpositioning:2.0.12")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
 
 tasks.test {

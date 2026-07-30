@@ -4,6 +4,8 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolution
 import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolver
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
+import com.nanzhufeng.nanfengbazi.domain.TrueSolarTimeCalculator
+import com.nanzhufeng.nanfengbazi.domain.TrueSolarTimeRequest
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
@@ -11,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
+import com.nanzhufeng.nanfengbazi.domain.model.CalculationWarning
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
@@ -20,21 +23,26 @@ import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
+import com.nanzhufeng.nanfengbazi.domain.model.TrueSolarTimeApplicationRule
 import com.nanzhufeng.nanfengbazi.domain.model.YearBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.MonthBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.tyme.eightchar.ChildLimit
+import com.tyme.eightchar.EightChar
 import com.tyme.eightchar.provider.impl.China95ChildLimitProvider
 import com.tyme.eightchar.provider.impl.DefaultChildLimitProvider
 import com.tyme.enums.Gender
 import com.tyme.lunar.LunarHour
 import com.tyme.solar.SolarTime
+import com.nanzhufeng.nanfengbazi.solar.SpaTrueSolarTimeCalculator
 import java.time.Clock
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 class TymeBaziEngine(
     private val clock: Clock = Clock.systemUTC(),
+    private val trueSolarTimeCalculator: TrueSolarTimeCalculator =
+        SpaTrueSolarTimeCalculator(),
 ) : BaziEngine {
     override suspend fun calculate(
         input: BirthInput,
@@ -43,11 +51,25 @@ class TymeBaziEngine(
         validateSupported(input, profile)
         val resolved = resolveCalendar(input.calendarInput)
         val normalizedInput = resolveTimeZone(input, resolved.solar.toDomain())
+        val trueSolarEvidence = calculateTrueSolarTimeIfNeeded(
+            input = normalizedInput,
+            civilSolarDateTime = resolved.solar.toDomain(),
+            profile = profile,
+        )
 
         return ChildLimitProviderGuard.withProvider(profile.luckStartRule) {
             val solar = resolved.solar
             val lunarHour = resolved.lunarHour
-            val eightChar = lunarHour.eightChar
+            val civilEightChar = lunarHour.eightChar
+            val eightChar = trueSolarEvidence?.let { evidence ->
+                val correctedEightChar = evidence.trueSolarDateTime.toTyme().lunarHour.eightChar
+                EightChar(
+                    civilEightChar.year,
+                    civilEightChar.month,
+                    correctedEightChar.day,
+                    correctedEightChar.hour,
+                )
+            } ?: civilEightChar
             val childLimit = ChildLimit.fromSolarTime(
                 solar,
                 when (input.sexForFortuneDirection) {
@@ -108,8 +130,67 @@ class TymeBaziEngine(
                     solarDateTime = solar.toDomain(),
                     lunarDateTime = lunarHour.toDomain(),
                 ),
+                trueSolarTimeEvidence = trueSolarEvidence,
+                warnings = buildList {
+                    if (trueSolarEvidence != null) {
+                        add(
+                            CalculationWarning(
+                                code = "TRUE_SOLAR_BOUNDARY_RULE_PROVISIONAL",
+                                message = "真太阳时边界暂按公开参考口径计算；问真跨界样本" +
+                                    "尚未验收，边界命盘请保留复核。",
+                            ),
+                        )
+                    }
+                    if (trueSolarEvidence?.crossesDate == true) {
+                        add(
+                            CalculationWarning(
+                                code = "TRUE_SOLAR_CROSSES_DATE",
+                                message = "真太阳时校正跨越当地日期，日柱和时柱已按校正后时间计算。",
+                            ),
+                        )
+                    }
+                    if (trueSolarEvidence?.crossesDoubleHour == true) {
+                        add(
+                            CalculationWarning(
+                                code = "TRUE_SOLAR_CROSSES_DOUBLE_HOUR",
+                                message = "真太阳时校正跨越时辰边界，时柱已按校正后时间计算。",
+                            ),
+                        )
+                    }
+                },
             )
         }
+    }
+
+    private fun calculateTrueSolarTimeIfNeeded(
+        input: BirthInput,
+        civilSolarDateTime: CivilDateTime,
+        profile: CalculationProfile,
+    ) = if (profile.solarTimeMode == SolarTimeMode.TRUE_SOLAR_TIME) {
+        val longitude = requireNotNull(input.longitude) {
+            "启用真太阳时必须提供出生地经度和纬度。"
+        }
+        val latitude = requireNotNull(input.latitude) {
+            "启用真太阳时必须提供出生地经度和纬度。"
+        }
+        val resolvedOffset = requireNotNull(input.resolvedUtcOffsetSeconds) {
+            "启用真太阳时前必须先解析出生时区的 UTC offset。"
+        }
+        trueSolarTimeCalculator.calculate(
+            TrueSolarTimeRequest(
+                civilDateTime = civilSolarDateTime,
+                timeZoneId = input.timeZoneId,
+                resolvedUtcOffsetSeconds = resolvedOffset,
+                longitude = longitude,
+                latitude = latitude,
+            ),
+        ).also {
+            require(it.applicationRule == profile.trueSolarTimeApplicationRule) {
+                "真太阳时计算器与计算配置的作用规则不一致。"
+            }
+        }
+    } else {
+        null
     }
 
     private fun resolveTimeZone(
@@ -148,8 +229,11 @@ class TymeBaziEngine(
         input: BirthInput,
         profile: CalculationProfile,
     ) {
-        require(!input.useTrueSolarTime && profile.solarTimeMode == SolarTimeMode.CIVIL_TIME) {
-            "当前版本尚未实现真太阳时校正"
+        require(
+            input.useTrueSolarTime ==
+                (profile.solarTimeMode == SolarTimeMode.TRUE_SOLAR_TIME),
+        ) {
+            "出生资料与计算配置的真太阳时选项不一致。"
         }
         require(profile.engineVersion == CalculationProfile.TYME_ENGINE_VERSION) {
             "配置要求的引擎版本与当前 Tyme4j 适配器不一致"
@@ -157,6 +241,11 @@ class TymeBaziEngine(
         require(profile.yearBoundaryRule == YearBoundaryRule.SPRING_EXACT)
         require(profile.monthBoundaryRule == MonthBoundaryRule.SOLAR_TERM_EXACT)
         require(profile.ratHourRule == RatHourRule.TYME_DEFAULT)
+        require(
+            profile.trueSolarTimeApplicationRule ==
+                TrueSolarTimeApplicationRule
+                    .CIVIL_YEAR_MONTH_TRUE_SOLAR_DAY_HOUR_PROVISIONAL_V1,
+        )
     }
 
     private fun resolveCalendar(calendarInput: BirthCalendarInput): ResolvedCalendar =

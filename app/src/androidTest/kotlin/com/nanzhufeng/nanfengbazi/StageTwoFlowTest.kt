@@ -155,6 +155,67 @@ class StageTwoFlowTest {
     }
 
     @Test
+    fun trueSolarTimeCrossesDoubleHourAndShowsAuditEvidence() {
+        val alias = "Stage4真太阳时-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("1992")
+        composeRule.onNodeWithTag("birth_month").performTextInput("8")
+        composeRule.onNodeWithTag("birth_day").performTextInput("24")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("13")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("4")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省宿迁市泗阳县")
+        composeRule.onNodeWithTag("birth_longitude")
+            .performScrollTo()
+            .performTextInput("118.68")
+        composeRule.onNodeWithTag("birth_latitude")
+            .performScrollTo()
+            .performTextInput("33.73")
+        composeRule.onNodeWithTag("birth_true_solar_time")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("别名：$alias").performClick()
+
+        composeRule.onNodeWithText("已启用").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("tyme-true-solar-provisional-v1")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("1992-08-24 12:56:23")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("跨时辰")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("nrel-spa-2008+solarpositioning-2.0.12-v1")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun createSaveSearchAndOpenDetail() {
         val alias = "Stage2合成样例-${System.currentTimeMillis()}"
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
