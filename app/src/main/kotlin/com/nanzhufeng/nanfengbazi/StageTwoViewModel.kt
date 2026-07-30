@@ -6,6 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparation
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparationResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
@@ -151,6 +157,11 @@ data class StageTwoUiState(
     val fullBackupPasswordError: String? = null,
     val fullBackupBusy: Boolean = false,
     val fullBackupPreview: RestorePreview? = null,
+    val fullBackupDecisions: Map<String, BackupCaseRestoreDecision> = emptyMap(),
+    val fullBackupMergePreparation: BackupCaseMergePreparation? = null,
+    val fullBackupMergeModules: Set<SingleCaseMergeModule> = emptySet(),
+    val fullBackupMergeFieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
+    val fullBackupRestorePlan: BackupRestorePlan? = null,
     val fullBackupError: String? = null,
     val message: String? = null,
 )
@@ -462,6 +473,11 @@ class StageTwoViewModel(
                     is BackupPreviewResult.Success -> it.copy(
                         fullBackupBusy = false,
                         fullBackupPreview = result.preview,
+                        fullBackupDecisions = emptyMap(),
+                        fullBackupMergePreparation = null,
+                        fullBackupMergeModules = emptySet(),
+                        fullBackupMergeFieldChoices = emptyMap(),
+                        fullBackupRestorePlan = null,
                         fullBackupPasswordImportVisible = false,
                         fullBackupPasswordError = null,
                     )
@@ -506,7 +522,168 @@ class StageTwoViewModel(
 
     fun dismissFullBackupPreview() {
         if (mutableState.value.fullBackupBusy) return
-        mutableState.update { it.copy(fullBackupPreview = null) }
+        mutableState.update {
+            it.copy(
+                fullBackupPreview = null,
+                fullBackupDecisions = emptyMap(),
+                fullBackupMergePreparation = null,
+                fullBackupMergeModules = emptySet(),
+                fullBackupMergeFieldChoices = emptyMap(),
+                fullBackupRestorePlan = null,
+            )
+        }
+    }
+
+    fun chooseFullBackupDecision(
+        sourceCaseId: String,
+        action: BackupCaseRestoreAction,
+    ) {
+        if (mutableState.value.fullBackupBusy) return
+        val source = mutableState.value.fullBackupPreview
+            ?.cases
+            ?.singleOrNull { it.sourceCaseId == sourceCaseId }
+            ?: return
+        val allowed = when (action) {
+            BackupCaseRestoreAction.IMPORT_AS_IS -> source.conflicts.isEmpty()
+            BackupCaseRestoreAction.SKIP -> true
+            BackupCaseRestoreAction.KEEP_BOTH -> source.conflicts.isNotEmpty()
+            BackupCaseRestoreAction.MERGE -> false
+        }
+        if (!allowed) return
+        val decision = BackupCaseRestoreDecision(sourceCaseId, action)
+        mutableState.update {
+            it.copy(
+                fullBackupDecisions = it.fullBackupDecisions + (sourceCaseId to decision),
+                fullBackupRestorePlan = null,
+                fullBackupError = null,
+            )
+        }
+    }
+
+    fun prepareFullBackupRestorePlan() {
+        val service = caseBackupService ?: return
+        val preview = mutableState.value.fullBackupPreview ?: return
+        if (mutableState.value.fullBackupBusy) return
+        val decisions = preview.cases.mapNotNull {
+            mutableState.value.fullBackupDecisions[it.sourceCaseId]
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(fullBackupBusy = true, fullBackupError = null) }
+            val result = try {
+                withContext(ioDispatcher) { service.prepareRestorePlan(preview, decisions) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                BackupRestorePlanResult.Rejected(
+                    code = "PLAN_PREPARATION_FAILED",
+                    message = "无法生成完整备份恢复方案。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is BackupRestorePlanResult.Success -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupRestorePlan = result.plan,
+                        message = "恢复方案已通过过期与范围检查；尚未执行写入。",
+                    )
+                    is BackupRestorePlanResult.Rejected -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupRestorePlan = null,
+                        fullBackupError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun prepareFullBackupCaseMerge(sourceCaseId: String, targetCaseId: String) {
+        val service = caseBackupService ?: return
+        val preview = mutableState.value.fullBackupPreview ?: return
+        if (mutableState.value.fullBackupBusy) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(fullBackupBusy = true, fullBackupError = null) }
+            val result = try {
+                withContext(ioDispatcher) {
+                    service.prepareCaseMerge(preview, sourceCaseId, targetCaseId)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                BackupCaseMergePreparationResult.Rejected(
+                    "MERGE_PREPARATION_FAILED",
+                    "无法生成该命例的合并差异。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is BackupCaseMergePreparationResult.Success -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupMergePreparation = result.preparation,
+                        fullBackupMergeModules = emptySet(),
+                        fullBackupMergeFieldChoices = emptyMap(),
+                        fullBackupRestorePlan = null,
+                    )
+                    is BackupCaseMergePreparationResult.Rejected -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleFullBackupMergeModule(module: SingleCaseMergeModule) {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update {
+            val selected = it.fullBackupMergeModules
+            it.copy(
+                fullBackupMergeModules = if (module in selected) selected - module else selected + module,
+                fullBackupRestorePlan = null,
+            )
+        }
+    }
+
+    fun chooseFullBackupMergeField(key: SingleCaseFieldKey, choice: SingleCaseValueChoice) {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update {
+            it.copy(
+                fullBackupMergeFieldChoices = it.fullBackupMergeFieldChoices + (key to choice),
+                fullBackupRestorePlan = null,
+            )
+        }
+    }
+
+    fun confirmFullBackupMergeDecision() {
+        val preparation = mutableState.value.fullBackupMergePreparation ?: return
+        if (mutableState.value.fullBackupBusy) return
+        val decision = BackupCaseRestoreDecision(
+            sourceCaseId = preparation.sourceCaseId,
+            action = BackupCaseRestoreAction.MERGE,
+            targetCaseId = preparation.targetCaseId,
+            modules = mutableState.value.fullBackupMergeModules,
+            fieldChoices = mutableState.value.fullBackupMergeFieldChoices,
+        )
+        mutableState.update {
+            it.copy(
+                fullBackupDecisions = it.fullBackupDecisions +
+                    (preparation.sourceCaseId to decision),
+                fullBackupMergePreparation = null,
+                fullBackupMergeModules = emptySet(),
+                fullBackupMergeFieldChoices = emptyMap(),
+                fullBackupRestorePlan = null,
+            )
+        }
+    }
+
+    fun cancelFullBackupCaseMerge() {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update {
+            it.copy(
+                fullBackupMergePreparation = null,
+                fullBackupMergeModules = emptySet(),
+                fullBackupMergeFieldChoices = emptyMap(),
+            )
+        }
     }
 
     fun dismissFullBackupError() {

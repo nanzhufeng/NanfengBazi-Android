@@ -6,7 +6,13 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparationResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparation
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestorePreview
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictCandidate
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
@@ -14,7 +20,11 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.data.exchange.CaseMergeAnalysis
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseCounts
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldDifference
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -513,6 +523,36 @@ class StageTwoViewModelTest {
         assertTrue(viewModel.state.value.fullBackupPreview?.manifest?.encrypted == true)
     }
 
+    @Test
+    fun `完整备份逐例决策与合并范围生成零写入计划`() = runTest {
+        val backup = RecordingBackupOperations()
+        val root = Files.createTempDirectory("nanfeng-viewmodel-restore-plan-")
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            backupOperations = backup,
+            backupRoot = root,
+        )
+        viewModel.previewFullBackup { ByteArrayInputStream("zip".encodeToByteArray()) }
+        viewModel.chooseFullBackupDecision("backup-new", BackupCaseRestoreAction.IMPORT_AS_IS)
+        viewModel.prepareFullBackupCaseMerge("backup-conflict", "local-target")
+        assertEquals("local-target", viewModel.state.value.fullBackupMergePreparation?.targetCaseId)
+        viewModel.toggleFullBackupMergeModule(SingleCaseMergeModule.TEXT_RECORDS)
+        viewModel.chooseFullBackupMergeField(
+            SingleCaseFieldKey.ALIAS,
+            SingleCaseValueChoice.IMPORTED,
+        )
+        viewModel.confirmFullBackupMergeDecision()
+        viewModel.prepareFullBackupRestorePlan()
+
+        assertEquals(2, viewModel.state.value.fullBackupDecisions.size)
+        assertEquals(
+            BackupCaseRestoreAction.MERGE,
+            viewModel.state.value.fullBackupDecisions["backup-conflict"]?.action,
+        )
+        assertNotNull(viewModel.state.value.fullBackupRestorePlan)
+        assertTrue(viewModel.state.value.message?.contains("尚未执行写入") == true)
+    }
+
     private fun createViewModel(
         repository: FakeCaseRepository,
         backupOperations: CaseBackupOperations? = null,
@@ -633,6 +673,7 @@ class StageTwoViewModelTest {
                         files = emptyList(),
                     ),
                     sourceFileCount = 10,
+                    cases = backupCases(),
                 ),
             )
         }
@@ -640,18 +681,58 @@ class StageTwoViewModelTest {
         override suspend fun prepareRestorePlan(
             preview: RestorePreview,
             decisions: List<BackupCaseRestoreDecision>,
-        ): BackupRestorePlanResult = BackupRestorePlanResult.Rejected(
-            code = "NOT_USED_IN_VIEW_MODEL_TEST",
-            message = "测试替身未启用恢复方案。",
-        )
+        ): BackupRestorePlanResult = if (decisions.size == preview.cases.size) {
+            BackupRestorePlanResult.Success(BackupRestorePlan(preview, decisions))
+        } else {
+            BackupRestorePlanResult.Rejected("DECISIONS_INCOMPLETE", "决策不完整")
+        }
 
         override suspend fun prepareCaseMerge(
             preview: RestorePreview,
             sourceCaseId: String,
             targetCaseId: String,
-        ): BackupCaseMergePreparationResult = BackupCaseMergePreparationResult.Rejected(
-            code = "NOT_USED_IN_VIEW_MODEL_TEST",
-            message = "测试替身未启用完整备份合并分析。",
+        ): BackupCaseMergePreparationResult = BackupCaseMergePreparationResult.Success(
+            BackupCaseMergePreparation(
+                sourceCaseId = sourceCaseId,
+                targetCaseId = targetCaseId,
+                targetAlias = "本地目标",
+                targetRevision = 1,
+                analysis = CaseMergeAnalysis(
+                    fieldDifferences = listOf(
+                        SingleCaseFieldDifference(
+                            SingleCaseFieldKey.ALIAS,
+                            "别名",
+                            "本地目标",
+                            "来源冲突",
+                        ),
+                    ),
+                    addableCounts = SingleCaseCounts(
+                        calculationSnapshots = 0,
+                        textRecords = 1,
+                        textRecordRevisions = 0,
+                        events = 0,
+                        eventRevisions = 0,
+                        attachmentReferences = 0,
+                        fieldEvidence = 0,
+                    ),
+                ),
+            ),
+        )
+
+        private fun backupCases() = listOf(
+            BackupCaseRestorePreview(sampleStoredCase("backup-new"), emptyList()),
+            BackupCaseRestorePreview(
+                sourceCase = sampleStoredCase("backup-conflict").copy(alias = "来源冲突"),
+                conflicts = listOf(
+                    BackupCaseConflictCandidate(
+                        localCaseId = "local-target",
+                        localAlias = "本地目标",
+                        localRevision = 1,
+                        isTrashed = false,
+                        reasons = setOf(BackupCaseConflictReason.SAME_BIRTH_INPUT),
+                    ),
+                ),
+            ),
         )
 
         private fun counts() = BackupCounts(
