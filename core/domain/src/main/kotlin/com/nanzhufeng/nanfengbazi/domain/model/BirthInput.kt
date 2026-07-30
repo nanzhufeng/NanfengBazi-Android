@@ -60,8 +60,19 @@ enum class SexForFortuneDirection {
 enum class TimePrecision {
     EXACT_TO_SECOND,
     EXACT_TO_MINUTE,
+    APPROXIMATE,
     HOUR_ONLY,
     DOUBLE_HOUR_ONLY,
+    UNKNOWN,
+}
+
+@Serializable
+enum class TimeSourceType {
+    SELF_REPORTED,
+    FAMILY_REPORTED,
+    OFFICIAL_RECORD,
+    WENZHEN_SCREENSHOT,
+    OTHER_RECORD,
     UNKNOWN,
 }
 
@@ -83,6 +94,7 @@ data class BirthInput(
     val latitude: Double? = null,
     val coordinateSource: CoordinateSource? = null,
     val useTrueSolarTime: Boolean = false,
+    val timeSourceType: TimeSourceType = TimeSourceType.UNKNOWN,
     val sourceNote: String? = null,
 ) {
     init {

@@ -2434,5 +2434,8 @@ private fun BaziCase.toEditableForm(): CaseFormState {
         timeZoneId = birthInput.timeZoneId,
         resolvedUtcOffsetSeconds = birthInput.resolvedUtcOffsetSeconds,
         useTrueSolarTime = birthInput.useTrueSolarTime,
+        timePrecision = birthInput.timePrecision,
+        timeSourceType = birthInput.timeSourceType,
+        sourceNote = birthInput.sourceNote.orEmpty(),
     )
 }

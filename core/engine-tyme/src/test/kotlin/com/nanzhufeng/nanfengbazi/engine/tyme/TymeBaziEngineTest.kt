@@ -353,6 +353,22 @@ class TymeBaziEngineTest {
     }
 
     @Test
+    fun `时辰未知不能伪造唯一命盘`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                engine.calculate(
+                    solarInput(1986, 5, 29, 13, 0, 0).copy(
+                        timePrecision = TimePrecision.UNKNOWN,
+                    ),
+                    CalculationProfile.tymeDefault(),
+                )
+            }
+        }
+
+        assertTrue(error.message.orEmpty().contains("候选时间"))
+    }
+
+    @Test
     fun `黄金样本资源包含版本和期望字段`() {
         val json = requireNotNull(
             javaClass.classLoader.getResource("golden-cases-v1.json"),

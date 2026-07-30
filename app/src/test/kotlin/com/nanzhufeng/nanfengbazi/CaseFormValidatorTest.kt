@@ -3,6 +3,8 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -81,6 +83,40 @@ class CaseFormValidatorTest {
         assertEquals(31.2989, result.birthInput.latitude)
         assertEquals(CoordinateSource.USER_ENTERED, result.birthInput.coordinateSource)
         assertEquals(28_800, result.birthInput.resolvedUtcOffsetSeconds)
+    }
+
+    @Test
+    fun `时间精度和来源由用户选择而不是按秒数猜测`() {
+        val valid = CaseFormValidator.validate(
+            validForm().copy(
+                second = "15",
+                timePrecision = TimePrecision.EXACT_TO_SECOND,
+                timeSourceType = TimeSourceType.OFFICIAL_RECORD,
+                sourceNote = "  出生证明  ",
+            ),
+        ) as CaseFormValidation.Valid
+
+        assertEquals(TimePrecision.EXACT_TO_SECOND, valid.birthInput.timePrecision)
+        assertEquals(TimeSourceType.OFFICIAL_RECORD, valid.birthInput.timeSourceType)
+        assertEquals("出生证明", valid.birthInput.sourceNote)
+        assertEquals(
+            CaseFormValidation.Invalid("当前时间精度要求秒数为 0。"),
+            CaseFormValidator.validate(
+                validForm().copy(second = "15", timePrecision = TimePrecision.APPROXIMATE),
+            ),
+        )
+    }
+
+    @Test
+    fun `时辰未知不伪造唯一命盘`() {
+        assertEquals(
+            CaseFormValidation.Invalid(
+                "时辰未知不能生成唯一命盘，请先录入一个可计算的候选时间。",
+            ),
+            CaseFormValidator.validate(
+                validForm().copy(timePrecision = TimePrecision.UNKNOWN),
+            ),
+        )
     }
 
     @Test

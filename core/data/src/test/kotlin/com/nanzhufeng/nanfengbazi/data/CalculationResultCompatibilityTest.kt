@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi.data
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertFalse
@@ -33,6 +34,7 @@ class CalculationResultCompatibilityTest {
             .replace(",\"coordinateSource\":\"USER_ENTERED\"", "")
             .replace(",\"resolvedUtcOffsetSeconds\":32400", "")
             .replace(",\"timeZoneDataVersion\":\"tzdb:fixture\"", "")
+            .replace(",\"timeSourceType\":\"OFFICIAL_RECORD\"", "")
 
         val decoded = DomainJson.decodeFromString<BirthInput>(legacyJson)
 
@@ -41,5 +43,6 @@ class CalculationResultCompatibilityTest {
         assertNull(decoded.coordinateSource)
         assertNull(decoded.resolvedUtcOffsetSeconds)
         assertNull(decoded.timeZoneDataVersion)
+        assertEquals(TimeSourceType.UNKNOWN, decoded.timeSourceType)
     }
 }

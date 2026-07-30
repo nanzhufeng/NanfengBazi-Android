@@ -58,6 +58,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -234,6 +236,9 @@ class StageTwoViewModelTest {
             calendarInput = BirthCalendarInput.Lunar(
                 LunarDateTime(2023, 2, 1, 10, 30, 0, isLeapMonth = true),
             ),
+            timePrecision = TimePrecision.APPROXIMATE,
+            timeSourceType = TimeSourceType.FAMILY_REPORTED,
+            sourceNote = "家人回忆",
         )
         val lunarCase = base.copy(
             birthInput = lunarInput,
@@ -253,6 +258,12 @@ class StageTwoViewModelTest {
         assertEquals(CalendarSystem.LUNAR, viewModel.state.value.editForm.calendarSystem)
         assertTrue(viewModel.state.value.editForm.isLeapMonth)
         assertEquals("2", viewModel.state.value.editForm.month)
+        assertEquals(TimePrecision.APPROXIMATE, viewModel.state.value.editForm.timePrecision)
+        assertEquals(
+            TimeSourceType.FAMILY_REPORTED,
+            viewModel.state.value.editForm.timeSourceType,
+        )
+        assertEquals("家人回忆", viewModel.state.value.editForm.sourceNote)
     }
 
     @Test

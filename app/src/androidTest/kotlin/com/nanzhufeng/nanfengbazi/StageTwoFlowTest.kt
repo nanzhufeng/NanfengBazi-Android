@@ -42,6 +42,15 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("birth_day").performTextInput("24")
         composeRule.onNodeWithTag("birth_hour").performTextInput("12")
         composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("birth_time_precision_EXACT_TO_SECOND")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("birth_time_source_SELF_REPORTED")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("birth_time_source_note")
+            .performScrollTo()
+            .performTextInput("本人确认到秒")
         composeRule.onNodeWithTag("birth_location")
             .performScrollTo()
             .performTextInput("江苏省宿迁市泗阳县")
@@ -59,6 +68,12 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty(),
         ) {
             "即时排盘预览应明确标注未保存"
+        }
+        check(
+            composeRule.onAllNodes(hasText("本人确认到秒"))
+                .fetchSemanticsNodes().isNotEmpty(),
+        ) {
+            "即时排盘应保留时间来源说明"
         }
         composeRule.onNodeWithText("返回").performClick()
         composeRule.onNodeWithTag("case_search").performTextInput(alias)

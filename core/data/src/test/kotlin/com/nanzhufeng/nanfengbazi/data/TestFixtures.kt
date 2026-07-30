@@ -32,6 +32,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import java.security.MessageDigest
 import java.time.Instant
@@ -47,6 +48,8 @@ internal fun sampleCase(
         ),
         sexForFortuneDirection = SexForFortuneDirection.MAN,
         timePrecision = TimePrecision.EXACT_TO_SECOND,
+        timeSourceType = TimeSourceType.OFFICIAL_RECORD,
+        sourceNote = "脱敏出生记录",
         locationName = "脱敏测试地区",
         longitude = 120.5853,
         latitude = 31.2989,

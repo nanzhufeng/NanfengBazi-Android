@@ -26,6 +26,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TrueSolarTimeApplicationRule
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.YearBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.MonthBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
@@ -266,6 +267,28 @@ class TymeBaziEngine(
         input: BirthInput,
         profile: CalculationProfile,
     ) {
+        val minuteAndSecond = when (val calendar = input.calendarInput) {
+            is BirthCalendarInput.Solar ->
+                calendar.dateTime.minute to calendar.dateTime.second
+            is BirthCalendarInput.Lunar ->
+                calendar.dateTime.minute to calendar.dateTime.second
+        }
+        when (input.timePrecision) {
+            TimePrecision.EXACT_TO_SECOND -> Unit
+            TimePrecision.EXACT_TO_MINUTE,
+            TimePrecision.APPROXIMATE,
+            -> require(minuteAndSecond.second == 0) {
+                "当前时间精度要求秒数为 0。"
+            }
+            TimePrecision.HOUR_ONLY,
+            TimePrecision.DOUBLE_HOUR_ONLY,
+            -> require(minuteAndSecond.first == 0 && minuteAndSecond.second == 0) {
+                "当前时间精度要求分钟和秒数都为 0。"
+            }
+            TimePrecision.UNKNOWN -> throw IllegalArgumentException(
+                "时辰未知不能生成唯一命盘，请先提供可计算的候选时间。",
+            )
+        }
         require(
             input.useTrueSolarTime ==
                 (profile.solarTimeMode == SolarTimeMode.TRUE_SOLAR_TIME),

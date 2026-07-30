@@ -20,6 +20,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import java.time.Clock
 import java.time.DateTimeException
 import java.time.LocalDateTime
@@ -45,6 +46,9 @@ data class CaseFormState(
     val resolvedUtcOffsetSeconds: Int? = null,
     val availableUtcOffsetSeconds: List<Int> = emptyList(),
     val useTrueSolarTime: Boolean = false,
+    val timePrecision: TimePrecision = TimePrecision.EXACT_TO_MINUTE,
+    val timeSourceType: TimeSourceType = TimeSourceType.UNKNOWN,
+    val sourceNote: String = "",
 )
 
 internal fun CaseFormState.clearTimeZoneResolution(): CaseFormState = copy(
@@ -129,6 +133,28 @@ object CaseFormValidator {
             raw.toIntOrNull()
                 ?: return CaseFormValidation.Invalid("${label}必须是数字。")
         }
+        when (form.timePrecision) {
+            TimePrecision.EXACT_TO_SECOND -> Unit
+            TimePrecision.EXACT_TO_MINUTE,
+            TimePrecision.APPROXIMATE,
+            -> if (numbers[5] != 0) {
+                return CaseFormValidation.Invalid("当前时间精度要求秒数为 0。")
+            }
+            TimePrecision.HOUR_ONLY,
+            TimePrecision.DOUBLE_HOUR_ONLY,
+            -> if (numbers[4] != 0 || numbers[5] != 0) {
+                return CaseFormValidation.Invalid("当前时间精度要求分钟和秒数都为 0。")
+            }
+            TimePrecision.UNKNOWN -> {
+                return CaseFormValidation.Invalid(
+                    "时辰未知不能生成唯一命盘，请先录入一个可计算的候选时间。",
+                )
+            }
+        }
+        val sourceNote = form.sourceNote.trim()
+        if (sourceNote.length > 500) {
+            return CaseFormValidation.Invalid("时间来源说明不能超过 500 个字符。")
+        }
         val birthInput = try {
             val calendarInput = when (form.calendarSystem) {
                 CalendarSystem.SOLAR -> {
@@ -166,11 +192,7 @@ object CaseFormValidator {
             BirthInput(
                 calendarInput = calendarInput,
                 sexForFortuneDirection = sex,
-                timePrecision = if (numbers[5] == 0) {
-                    TimePrecision.EXACT_TO_MINUTE
-                } else {
-                    TimePrecision.EXACT_TO_SECOND
-                },
+                timePrecision = form.timePrecision,
                 timeZoneId = timeZoneId,
                 resolvedUtcOffsetSeconds = form.resolvedUtcOffsetSeconds,
                 locationName = locationName,
@@ -182,6 +204,8 @@ object CaseFormValidator {
                     null
                 },
                 useTrueSolarTime = form.useTrueSolarTime,
+                timeSourceType = form.timeSourceType,
+                sourceNote = sourceNote.takeIf { it.isNotEmpty() },
             )
         } catch (_: DateTimeException) {
             return CaseFormValidation.Invalid("出生日期或时间无效，请检查年月日和时分秒。")

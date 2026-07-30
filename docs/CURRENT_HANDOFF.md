@@ -1,17 +1,17 @@
-# 当前交接：Stage 4A 即时排盘第六增量
+# 当前交接：Stage 4A 时间证据第七增量
 
 更新日期：2026-07-31
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2、Stage 3A、Stage 3B 均已完成当前实现与自动化证据。
-- Stage 4A 前六项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
+- Stage 4A 前七项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
   真太阳时可以在新建和编辑中录入；唯一计算链会固化标准历法转换、历史 UTC offset、
   tzdb 版本、完整真太阳时校正证据、四柱基础排盘及岁运明细，并支持零写入即时排盘。
 - 夏令时回拨重叠时刻必须由用户在两个有效 offset 中明确选择；跳时产生的不存在时刻
   明确失败且零写入。
-- 下一安全增量是补齐时间候选、精度与来源的显式输入语义，再进入 Stage 4B 的
-  50+ 黄金样本门禁。
+- 下一安全增量是建立同一命例下的多个出生时间候选、对应快照与显式采用状态，再进入
+  Stage 4B 的 50+ 黄金样本门禁。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -111,6 +111,16 @@
 - 页面明确显示“未保存”；修改任一输入立即清除旧结果。协程返回时还会复核页面与完整
   表单身份，防止慢结果覆盖新输入或离开页面后的状态。
 
+### 时间精度与来源
+
+- 新建、即时排盘和编辑统一提供精确到秒、精确到分钟、大约时间、只知小时、只知时辰、
+  时辰未知六类精度；不再按“秒是否为 0”自动猜测。
+- 时间来源可选本人、家人、出生证明、问真截图、其他资料或未说明，并可保存 500 字以内
+  说明；该事实随 `BirthInput`、计算快照、Room、交换文件和完整备份自然往返。
+- 引擎同时校验精度约束：分钟/大约要求秒为 0，小时/时辰要求分秒为 0。时辰未知明确拒绝
+  生成唯一命盘，等待下一增量的多候选时间链，不能用默认中午伪造时柱。
+- `timeSourceType` 带 `UNKNOWN` 兼容默认值，旧 JSON 和 Room 行仍可读取，不反推来源。
+
 ## 所有者与边界
 
 - 唯一计算入口：`BaziEngine.calculate()`。
@@ -130,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 131 条唯一单元契约；Debug/Release 变体合计 229 次执行，0 失败、0 跳过。
+- 134 条唯一单元契约；Debug/Release 变体合计 234 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -152,6 +162,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - 已采用快照的生肖经 Room 往返进入命例摘要。
   - 空别名可即时排盘且不检查重复、不写仓储；
   - 即时结果在任一输入变化后清除，慢结果不得回填新表单或已离开的页面。
+  - 时间精度与来源显式选择、来源说明去空白和精度对应的分秒约束；
+  - 时辰未知在表单与引擎两层拒绝唯一命盘，旧输入缺来源类型按未说明读取；
+  - 农历命例编辑时原样回显时间精度、来源和说明。
 - App 与 `core:data` Lint 均 0 错误；仅有 9 + 5 条依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - API 35 模拟器 `ExpenseCapture_API35`：
@@ -166,17 +179,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha28-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha29-debug.apk`
 
-- 大小：10,444,281 bytes
-- SHA-256：`086b28d4614668af7c33a79c073faf07f0fba85665fc1fb9b8acddf799c1844e`
+- 大小：10,074,389 bytes
+- SHA-256：`f34bfdfdd9d9600360968bea8c4bcf55499a1c756d0302b78a43d2581f130cab`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha28-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha29-release-unsigned.apk`
 
-- 大小：6,867,155 bytes
-- SHA-256：`42b9381be611e0f895f6b7370123469edef5463c08b8ebde418c90f8ffdbff9f`
+- 大小：6,871,575 bytes
+- SHA-256：`257edc2dc4d4b75a05dba7a773c3cb44b4c95934c7580105a0e88a2711832c4e`
 
 ## 当前限制与风险
 
@@ -193,9 +206,9 @@ Debug 验收构建：
 
 继续 Stage 4A，优先顺序：
 
-1. 接通时间候选、精度和来源的显式输入语义；
+1. 接通同一命例下的多个出生时间候选、对应计算快照和显式采用状态；
 2. 进入 Stage 4B，扩充至少 50 个公开/合成黄金样本及独立差分证据；
 3. Stage 5B 前继续把问真跨日、跨时辰和节气边界保留为真实样本验收项。
 
-`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 4A 第六增量完成不等于
+`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 4A 第七增量完成不等于
 整个产品已经落地。

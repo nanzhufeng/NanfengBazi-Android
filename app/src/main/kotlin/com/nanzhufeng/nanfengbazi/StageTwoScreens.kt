@@ -77,6 +77,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
 import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
@@ -1922,6 +1924,77 @@ internal fun CaseFormScreen(
                 ),
                 enabled = !saving,
             )
+            Text(
+                "时间精度 *",
+                modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TimePrecision.entries.forEach { precision ->
+                    SexButton(
+                        text = precision.displayName(),
+                        selected = form.timePrecision == precision,
+                        enabled = !saving,
+                        tag = "birth_time_precision_${precision.name}",
+                        onClick = {
+                            onFormChange { current ->
+                                current.copy(
+                                    timePrecision = precision,
+                                    minute = when (precision) {
+                                        TimePrecision.HOUR_ONLY,
+                                        TimePrecision.DOUBLE_HOUR_ONLY,
+                                        TimePrecision.UNKNOWN,
+                                        -> "0"
+                                        else -> current.minute
+                                    },
+                                    second = when (precision) {
+                                        TimePrecision.EXACT_TO_SECOND -> current.second
+                                        else -> "0"
+                                    },
+                                ).clearTimeZoneResolution()
+                            }
+                        },
+                    )
+                }
+            }
+            Text(
+                "时间来源",
+                modifier = Modifier.padding(top = 14.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TimeSourceType.entries.forEach { source ->
+                    SexButton(
+                        text = source.displayName(),
+                        selected = form.timeSourceType == source,
+                        enabled = !saving,
+                        tag = "birth_time_source_${source.name}",
+                        onClick = {
+                            onFormChange { it.copy(timeSourceType = source) }
+                        },
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = form.sourceNote,
+                onValueChange = { value ->
+                    onFormChange { it.copy(sourceNote = value) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .testTag("birth_time_source_note"),
+                label = { Text("时间来源说明（可选）") },
+                supportingText = { Text("可记录出生证、家人回忆或截图出处，不要填写账号密码。") },
+                minLines = 2,
+                enabled = !saving,
+            )
             SectionHeading(
                 "出生地区与时区",
                 "地区必填；经纬度可稍后补录。时区使用 IANA 标识，例如 Asia/Shanghai。",
@@ -2166,6 +2239,17 @@ private fun InstantCalculationPreviewCard(
             }
             calculation.trueSolarTimeEvidence?.let {
                 DetailRow("真太阳时", it.trueSolarDateTime.display())
+            }
+            DetailRow(
+                "时间精度",
+                calculation.normalizedInput.timePrecision.displayName(),
+            )
+            DetailRow(
+                "时间来源",
+                calculation.normalizedInput.timeSourceType.displayName(),
+            )
+            calculation.normalizedInput.sourceNote?.let {
+                DetailRow("时间来源说明", it)
             }
             DetailRow("胎元", calculation.fetalOrigin)
             DetailRow("胎息", calculation.fetalBreath)
@@ -2500,7 +2584,9 @@ private fun CaseDetailContent(
                 "时区数据版本",
                 case.birthInput.timeZoneDataVersion ?: "旧数据未记录",
             )
-            DetailRow("时间精度", case.birthInput.timePrecision.name)
+            DetailRow("时间精度", case.birthInput.timePrecision.displayName())
+            DetailRow("时间来源", case.birthInput.timeSourceType.displayName())
+            case.birthInput.sourceNote?.let { DetailRow("时间来源说明", it) }
             DetailRow(
                 "真太阳时",
                 if (case.birthInput.useTrueSolarTime) "已启用" else "未启用",
@@ -3068,6 +3154,24 @@ private fun ErrorBox(
 private fun SexForFortuneDirection.displayName(): String = when (this) {
     SexForFortuneDirection.MAN -> "男"
     SexForFortuneDirection.WOMAN -> "女"
+}
+
+private fun TimePrecision.displayName(): String = when (this) {
+    TimePrecision.EXACT_TO_SECOND -> "精确到秒"
+    TimePrecision.EXACT_TO_MINUTE -> "精确到分钟"
+    TimePrecision.APPROXIMATE -> "大约时间"
+    TimePrecision.HOUR_ONLY -> "只知小时"
+    TimePrecision.DOUBLE_HOUR_ONLY -> "只知时辰"
+    TimePrecision.UNKNOWN -> "时辰未知"
+}
+
+private fun TimeSourceType.displayName(): String = when (this) {
+    TimeSourceType.SELF_REPORTED -> "本人提供"
+    TimeSourceType.FAMILY_REPORTED -> "家人提供"
+    TimeSourceType.OFFICIAL_RECORD -> "出生证明"
+    TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
+    TimeSourceType.OTHER_RECORD -> "其他资料"
+    TimeSourceType.UNKNOWN -> "未说明"
 }
 
 private fun CaseSourceType.displayName(): String = when (this) {
