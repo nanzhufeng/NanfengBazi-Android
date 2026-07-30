@@ -257,6 +257,18 @@ class ScreenshotShareFlowTest {
             }
         }
         assertTrue("确认删除后私有原图应移除", !java.nio.file.Files.exists(storedImagePath))
+        composeRule.onAllNodesWithText("案例甲").onFirst().performClick()
+        composeRule
+            .onNodeWithText("导入证据对照", useUnmergedTree = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithText(
+                "来源原文不会被人工修正覆盖；规范值、采用值与本机计算结果分别留存。",
+                useUnmergedTree = true,
+            )
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     private fun createSyntheticWenzhenListImage(): Uri {

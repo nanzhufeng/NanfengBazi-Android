@@ -80,6 +80,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
@@ -2826,6 +2827,34 @@ private fun DuplicateCandidatesCard(
     }
 }
 
+private fun String.evidenceFieldLabel(): String = when (this) {
+    "identity.alias" -> "命例名称"
+    "identity.sex" -> "性别"
+    "birth.solar_date" -> "公历生日"
+    "chart.four_pillars" -> "四柱"
+    else -> this
+}
+
+private fun TypedFieldValue.evidenceDisplayValue(): String = when (this) {
+    is TypedFieldValue.Text -> value
+    is TypedFieldValue.IntegerNumber -> value.toString()
+    is TypedFieldValue.DecimalNumber -> canonicalValue
+    is TypedFieldValue.BooleanValue -> if (value) "是" else "否"
+    is TypedFieldValue.DateTimeValue -> value.run {
+        "%04d-%02d-%02d %02d:%02d:%02d".format(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        )
+    }
+
+    is TypedFieldValue.FourPillarsValue ->
+        "${value.year} ${value.month} ${value.day} ${value.hour}"
+}
+
 private data class NumericField(
     val label: String,
     val value: String,
@@ -3305,6 +3334,42 @@ private fun CaseDetailContent(
                     tag = "fortune_transfer_time",
                 )
                 DecadeFortuneDetailsView(adopted.result.decadeFortunes)
+            }
+        }
+        if (case.fieldEvidence.isNotEmpty()) {
+            DetailSection("导入证据对照") {
+                Text(
+                    "来源原文不会被人工修正覆盖；规范值、采用值与本机计算结果分别留存。",
+                    modifier = Modifier.padding(bottom = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                case.fieldEvidence.forEach { evidence ->
+                    Text(
+                        evidence.fieldKey.evidenceFieldLabel(),
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    DetailRow("来源值", evidence.rawText)
+                    DetailRow(
+                        "规范值",
+                        evidence.normalizedValue?.evidenceDisplayValue() ?: "未识别",
+                    )
+                    DetailRow(
+                        "采用值",
+                        evidence.adoptedValue?.evidenceDisplayValue() ?: "未采用",
+                    )
+                    DetailRow(
+                        "计算值",
+                        if (evidence.fieldKey == "chart.four_pillars") {
+                            adopted?.result?.fourPillars?.display() ?: "无已采用计算快照"
+                        } else {
+                            "不参与命盘计算"
+                        },
+                    )
+                    DetailRow("人工修正", if (evidence.userEdited) "是" else "否")
+                    HorizontalDivider(modifier = Modifier.padding(bottom = 10.dp))
+                }
             }
         }
         DetailSection("分析与记录") {
