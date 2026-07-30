@@ -39,6 +39,7 @@ data class ExplicitText(
 @Serializable
 enum class CaseSourceType {
     MANUAL,
+    CASE_COPY,
     WENZHEN_SCREENSHOT,
     BACKUP_RESTORE,
 }
@@ -248,8 +249,11 @@ data class BaziCase(
     val tags: List<CaseTag> = emptyList(),
     val isFavorite: Boolean = false,
     val isPinned: Boolean = false,
+    val copiedFromCaseId: String? = null,
     @Serializable(with = InstantIsoSerializer::class)
     val lastViewedAt: Instant? = null,
+    @Serializable(with = InstantIsoSerializer::class)
+    val deletedAt: Instant? = null,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
     @Serializable(with = InstantIsoSerializer::class)
@@ -259,6 +263,10 @@ data class BaziCase(
     init {
         require(id.isNotBlank()) { "命例 id 不能为空" }
         require(alias.isNotBlank()) { "命例别名不能为空" }
+        require(copiedFromCaseId == null || copiedFromCaseId.isNotBlank()) {
+            "复制来源命例 id 不能为空"
+        }
+        require(copiedFromCaseId != id) { "命例不能复制自自身" }
         require(revision >= 0) { "命例修订号不能为负数" }
         require(createdAt <= updatedAt) { "更新时间不能早于创建时间" }
         require(textRecords.map { it.id }.distinct().size == textRecords.size)
@@ -292,11 +300,14 @@ data class CaseSummary(
     val tags: List<CaseTag>,
     val isFavorite: Boolean,
     val isPinned: Boolean,
+    val copiedFromCaseId: String?,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
     @Serializable(with = InstantIsoSerializer::class)
     val updatedAt: Instant,
     @Serializable(with = InstantIsoSerializer::class)
     val lastViewedAt: Instant?,
+    @Serializable(with = InstantIsoSerializer::class)
+    val deletedAt: Instant?,
     val revision: Long,
 )

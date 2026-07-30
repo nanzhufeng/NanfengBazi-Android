@@ -232,7 +232,7 @@ class CaseBackupServiceTest {
     }
 
     @Test
-    fun `Schema v2 备份缺少管理字段时仍可恢复到v3默认值`() = runTest {
+    fun `Schema v2 备份缺少管理字段时仍可恢复到v4默认值`() = runTest {
         val root = Files.createTempDirectory("nanfeng-backup-v2-")
         val sourceAttachments = root.resolve("source")
         val attachmentBytes = "脱敏截图夹具".encodeToByteArray()
@@ -265,6 +265,8 @@ class CaseBackupServiceTest {
             assertFalse(restored!!.isFavorite)
             assertFalse(restored.isPinned)
             assertNull(restored.lastViewedAt)
+            assertNull(restored.copiedFromCaseId)
+            assertNull(restored.deletedAt)
         }
     }
 
@@ -321,7 +323,8 @@ class CaseBackupServiceTest {
         }
         val currentCases = entries.getValue("cases.json").decodeToString()
         val schemaTwoCases = currentCases.replace(
-            ",\"isFavorite\":false,\"isPinned\":false,\"lastViewedAtEpochMillis\":null",
+            ",\"isFavorite\":false,\"isPinned\":false,\"copiedFromCaseId\":null," +
+                "\"lastViewedAtEpochMillis\":null,\"deletedAtEpochMillis\":null",
             "",
         ).encodeToByteArray()
         check(!schemaTwoCases.decodeToString().contains("\"isFavorite\"")) {

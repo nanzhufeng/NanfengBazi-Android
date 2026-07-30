@@ -17,7 +17,12 @@ internal interface CaseDao {
     @Update
     suspend fun updateCase(entity: CaseEntity)
 
-    @Query("UPDATE cases SET lastViewedAtEpochMillis = :viewedAtEpochMillis WHERE id = :caseId")
+    @Query(
+        """
+        UPDATE cases SET lastViewedAtEpochMillis = :viewedAtEpochMillis
+        WHERE id = :caseId AND deletedAtEpochMillis IS NULL
+        """,
+    )
     suspend fun markViewed(caseId: String, viewedAtEpochMillis: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)

@@ -26,6 +26,8 @@
 | Tyme4j 状态隔离 | `core:engine-tyme` | `TymeBaziEngine` | 其他模块访问全局 provider |
 | `BaziCase` 与字段空值语义 | `core:domain` | 仓储、备份 | 页面或 OCR 用空串改写真值 |
 | 命例增量写入 | `CaseRepository` | 手动录入；未来 OCR | DAO、解析器或页面直接写库 |
+| 命例生命周期 | `CaseLifecycleUseCase` + `CaseRepository` | 详情、回收站、复制 | 页面直接删行或复制附件引用 |
+| 重复候选 | `CaseRepository.findDuplicateCandidates` | 新建、编辑 | 只按姓名自动合并或静默覆盖 |
 | 完整备份与空库恢复 | `CaseBackupService` | 后续设置页 | 无范围覆盖、忽略哈希或静默降级明文 |
 | Room Schema 与迁移 | `core:data` | 仓储、恢复 | 破坏性迁移或省略 Schema 证据 |
 
@@ -68,8 +70,17 @@
 | 编辑身份与出生资料 | 已接通，保存前按期望修订号读取并重新计算 | `EditCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 旧修订在重算前拒绝；旧快照保留、新快照采用 |
 | 文本记录增改删 | 已支持笔记、反馈、师傅点评和分析 | `TextRecordUseCase` → `CaseRepository.save` | 身份、创建时间、顺序和修订回归 |
 | 关键事件增改删 | 已支持未知/年/月/日精度与状态 | `CaseEventUseCase` → `CaseRepository.save` | 日期校验、精度和顺序回归 |
-| 整例删除 | 不存在 | 待附件删除与恢复策略确认 | 禁止无恢复边界直接删除 |
+| 整例删除 | 已由后续生命周期增量补齐软删除与恢复 | `CaseLifecycleUseCase` | 禁止 DAO 物理删除 |
 | 备份/恢复 | 精确保真通道 | `CaseBackupService` | 新增记录和事件仍由 Stage 1 全量回归覆盖 |
+
+## Stage 3A 生命周期增量入口矩阵
+
+| 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
+|---|---|---|---|
+| 整例删除与恢复 | 软删除进入回收站，完整聚合和附件引用保留 | `CaseLifecycleUseCase` → `CaseRepository.save` | 主列表隐藏、回收站可见、恢复后事实不变 |
+| 命例复制 | 生成新稳定 ID，只复制出生资料、分类与计算快照 | `CaseLifecycleUseCase.duplicate` | 来源 ID、新快照 ID、空记录/附件和别名去重 |
+| 重复命例提示 | 新建与编辑在保存前按出生身份和四柱生成候选 | `CaseRepository.findDuplicateCandidates` | 活动/回收站位置、理由、确认前零写入 |
+| 完整备份与旧版恢复 | Schema v4 精确保真软删除和复制来源 | `CaseBackupService` | v2 备份默认值、v1→v4 迁移和往返 |
 
 ## 变更门禁
 

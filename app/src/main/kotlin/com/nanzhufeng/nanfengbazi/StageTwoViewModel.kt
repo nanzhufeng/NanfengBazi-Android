@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
@@ -88,6 +90,7 @@ data class StageTwoUiState(
     val selectedGroupId: String? = null,
     val selectedTagId: String? = null,
     val sortOrder: CaseSortOrder = CaseSortOrder.UPDATED_DESC,
+    val visibility: CaseVisibility = CaseVisibility.ACTIVE,
     val availableGroups: List<CaseGroup> = emptyList(),
     val availableTags: List<CaseTag> = emptyList(),
     val cases: List<CaseSummary> = emptyList(),
@@ -96,6 +99,7 @@ data class StageTwoUiState(
     val form: CaseFormState = CaseFormState(),
     val formError: String? = null,
     val saving: Boolean = false,
+    val duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     val detail: BaziCase? = null,
     val detailLoading: Boolean = false,
     val detailError: String? = null,
@@ -105,6 +109,7 @@ data class StageTwoUiState(
     val eventDraft: EventDraft = EventDraft(),
     val mutationSaving: Boolean = false,
     val mutationError: String? = null,
+    val deleteConfirmationVisible: Boolean = false,
     val message: String? = null,
 )
 
@@ -115,6 +120,7 @@ class StageTwoViewModel(
     private val caseMetadata: CaseMetadataUseCase = CaseMetadataUseCase(caseRepository),
     private val textRecords: TextRecordUseCase,
     private val caseEvents: CaseEventUseCase,
+    private val caseLifecycle: CaseLifecycleUseCase = CaseLifecycleUseCase(caseRepository),
     private val navigator: StageTwoNavigator = StageTwoNavigator(),
     private val clock: Clock = Clock.systemUTC(),
 ) : ViewModel() {
@@ -134,12 +140,14 @@ class StageTwoViewModel(
             groupId = current.selectedGroupId,
             tagId = current.selectedTagId,
             sortOrder = current.sortOrder,
+            visibility = current.visibility,
         )
         searchJob = viewModelScope.launch {
             mutableState.update { it.copy(listLoading = true, listError = null) }
             try {
-                val allCases = caseRepository.search()
-                val cases = if (request == CaseSearchRequest()) {
+                val catalogRequest = CaseSearchRequest(visibility = current.visibility)
+                val allCases = caseRepository.search(catalogRequest)
+                val cases = if (request == catalogRequest) {
                     allCases
                 } else {
                     caseRepository.search(request)
@@ -196,11 +204,24 @@ class StageTwoViewModel(
         refreshCases()
     }
 
+    fun selectVisibility(visibility: CaseVisibility) {
+        mutableState.update {
+            it.copy(
+                visibility = visibility,
+                selectedGroupId = null,
+                selectedTagId = null,
+                listError = null,
+            )
+        }
+        refreshCases()
+    }
+
     fun openCreate() {
         mutableState.update {
             it.copy(
                 destination = navigator.openCreate(),
                 formError = null,
+                duplicateCandidates = emptyList(),
                 message = null,
             )
         }
@@ -208,16 +229,20 @@ class StageTwoViewModel(
 
     fun updateForm(transform: (CaseFormState) -> CaseFormState) {
         mutableState.update {
-            it.copy(form = transform(it.form), formError = null)
+            it.copy(
+                form = transform(it.form),
+                formError = null,
+                duplicateCandidates = emptyList(),
+            )
         }
     }
 
-    fun submitCase() {
+    fun submitCase(allowDuplicate: Boolean = false) {
         if (mutableState.value.saving) return
         val form = mutableState.value.form
         viewModelScope.launch {
             mutableState.update { it.copy(saving = true, formError = null) }
-            when (val result = createCase(form)) {
+            when (val result = createCase(form, allowDuplicate)) {
                 is CreateCaseResult.Created -> {
                     mutableState.update {
                         it.copy(
@@ -225,6 +250,7 @@ class StageTwoViewModel(
                             query = "",
                             form = CaseFormState(),
                             saving = false,
+                            duplicateCandidates = emptyList(),
                             message = "命例已完成排盘并保存。",
                         )
                     }
@@ -237,6 +263,13 @@ class StageTwoViewModel(
                     it.copy(
                         saving = false,
                         formError = "排盘失败：${result.message} 输入内容已保留，可修改后重试。",
+                    )
+                }
+                is CreateCaseResult.DuplicateCandidates -> mutableState.update {
+                    it.copy(
+                        saving = false,
+                        duplicateCandidates = result.candidates,
+                        formError = "发现疑似重复命例。请先核对；确认仍需保留两份时可继续保存。",
                     )
                 }
                 is CreateCaseResult.AlreadyExists -> mutableState.update {
@@ -269,19 +302,24 @@ class StageTwoViewModel(
             )
         }
         viewModelScope.launch {
-            val viewWarning = try {
-                if (caseRepository.markViewed(caseId, clock.instant())) {
-                    null
-                } else {
-                    "详情已打开，但最近查看时间未能记录。"
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                "详情已打开，但数据库未能记录最近查看时间。"
-            }
             try {
-                val detail = caseRepository.findById(caseId)
+                var detail = caseRepository.findById(caseId)
+                val viewWarning = if (detail?.deletedAt == null) {
+                    try {
+                        if (caseRepository.markViewed(caseId, clock.instant())) {
+                            detail = caseRepository.findById(caseId)
+                            null
+                        } else {
+                            "详情已打开，但最近查看时间未能记录。"
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        "详情已打开，但数据库未能记录最近查看时间。"
+                    }
+                } else {
+                    null
+                }
                 mutableState.update {
                     if (detail == null) {
                         it.copy(
@@ -311,6 +349,7 @@ class StageTwoViewModel(
 
     fun openEditCase() {
         val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
         val form = detail.toEditableForm()
         if (form == null) {
             mutableState.update {
@@ -323,12 +362,14 @@ class StageTwoViewModel(
                 destination = navigator.openEditCase(detail.id),
                 editForm = form,
                 mutationError = null,
+                duplicateCandidates = emptyList(),
             )
         }
     }
 
     fun openMetadata() {
         val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
         mutableState.update {
             it.copy(
                 destination = navigator.openMetadata(detail.id),
@@ -367,17 +408,21 @@ class StageTwoViewModel(
 
     fun updateEditForm(transform: (CaseFormState) -> CaseFormState) {
         mutableState.update {
-            it.copy(editForm = transform(it.editForm), mutationError = null)
+            it.copy(
+                editForm = transform(it.editForm),
+                mutationError = null,
+                duplicateCandidates = emptyList(),
+            )
         }
     }
 
-    fun saveEditedCase() {
+    fun saveEditedCase(allowDuplicate: Boolean = false) {
         val detail = mutableState.value.detail ?: return
         if (mutableState.value.mutationSaving) return
         val form = mutableState.value.editForm
         viewModelScope.launch {
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            val result = editCase(detail.id, detail.revision, form)
+            val result = editCase(detail.id, detail.revision, form, allowDuplicate)
             finishMutation(
                 result = result,
                 caseId = detail.id,
@@ -388,6 +433,7 @@ class StageTwoViewModel(
 
     fun openTextRecord(recordId: String? = null) {
         val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
         val record = recordId?.let { id ->
             detail.textRecords.firstOrNull { it.id == id } ?: return
         }
@@ -433,6 +479,7 @@ class StageTwoViewModel(
 
     fun openEvent(eventId: String? = null) {
         val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
         val event = eventId?.let { id ->
             detail.events.firstOrNull { it.id == id } ?: return
         }
@@ -479,6 +526,94 @@ class StageTwoViewModel(
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
             val result = caseEvents.delete(detail.id, detail.revision, eventId)
             finishMutation(result, detail.id, "关键事件已删除。")
+        }
+    }
+
+    fun requestMoveToTrash() {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
+        mutableState.update {
+            it.copy(deleteConfirmationVisible = true, mutationError = null)
+        }
+    }
+
+    fun cancelMoveToTrash() {
+        mutableState.update { it.copy(deleteConfirmationVisible = false) }
+    }
+
+    fun confirmMoveToTrash() {
+        val detail = mutableState.value.detail ?: return
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    mutationSaving = true,
+                    mutationError = null,
+                    deleteConfirmationVisible = false,
+                )
+            }
+            when (val result = caseLifecycle.moveToTrash(detail.id, detail.revision)) {
+                is CaseMutationResult.Saved -> {
+                    mutableState.update {
+                        it.copy(
+                            destination = navigator.backToList(),
+                            detail = null,
+                            mutationSaving = false,
+                            message = "命例已移入回收站，附件和历史仍完整保留。",
+                        )
+                    }
+                    refreshCases()
+                }
+                else -> finishMutation(result, detail.id, "")
+            }
+        }
+    }
+
+    fun restoreCase() {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt == null || mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            when (val result = caseLifecycle.restore(detail.id, detail.revision)) {
+                is CaseMutationResult.Saved -> {
+                    mutableState.update {
+                        it.copy(
+                            destination = navigator.backToList(),
+                            visibility = CaseVisibility.ACTIVE,
+                            detail = null,
+                            mutationSaving = false,
+                            message = "命例已从回收站恢复。",
+                        )
+                    }
+                    refreshCases()
+                }
+                else -> finishMutation(result, detail.id, "")
+            }
+        }
+    }
+
+    fun duplicateCase() {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null || mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            when (val result = caseLifecycle.duplicate(detail.id, detail.revision)) {
+                is CaseMutationResult.Saved -> {
+                    mutableState.update {
+                        it.copy(
+                            mutationSaving = false,
+                            visibility = CaseVisibility.ACTIVE,
+                        )
+                    }
+                    navigator.backToList()
+                    openDetail(result.caseId)
+                    mutableState.update {
+                        it.copy(message = "副本已创建；记录、事件和来源附件未复制。")
+                    }
+                    refreshCases()
+                }
+                else -> finishMutation(result, detail.id, "")
+            }
         }
     }
 
@@ -540,6 +675,13 @@ class StageTwoViewModel(
             is CaseMutationResult.ValidationFailed -> mutableState.update {
                 it.copy(mutationSaving = false, mutationError = result.message)
             }
+            is CaseMutationResult.DuplicateCandidates -> mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    duplicateCandidates = result.candidates,
+                    mutationError = "发现疑似重复命例。请核对后决定是否仍保存。",
+                )
+            }
             CaseMutationResult.NotFound -> mutableState.update {
                 it.copy(
                     mutationSaving = false,
@@ -588,6 +730,7 @@ class StageTwoViewModel(
                 caseMetadata = CaseMetadataUseCase(container.caseRepository),
                 textRecords = TextRecordUseCase(container.caseRepository),
                 caseEvents = CaseEventUseCase(container.caseRepository),
+                caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
             ) as T
         }
     }

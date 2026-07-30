@@ -71,4 +71,29 @@ class CreateCaseUseCaseTest {
         repository.saveFailure = IllegalStateException("database closed")
         assertTrue(useCase(validForm()) is CreateCaseResult.StorageFailed)
     }
+
+    @Test
+    fun `发现重复候选时不会写入且明确确认后可保存`() = runTest {
+        val engine = RecordingEngine()
+        val repository = FakeCaseRepository().apply {
+            stored["existing"] = sampleStoredCase("existing")
+        }
+        val ids = ArrayDeque(listOf("copy", "snapshot-copy"))
+        val useCase = CreateCaseUseCase(
+            baziEngine = engine,
+            caseRepository = repository,
+            clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )
+
+        val warning = useCase(validForm())
+
+        assertTrue(warning is CreateCaseResult.DuplicateCandidates)
+        assertEquals(setOf("existing"), repository.stored.keys)
+
+        val saved = useCase(validForm(), allowDuplicate = true)
+
+        assertEquals(CreateCaseResult.Created("copy"), saved)
+        assertEquals(setOf("existing", "copy"), repository.stored.keys)
+    }
 }

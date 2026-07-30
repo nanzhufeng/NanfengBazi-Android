@@ -7,7 +7,9 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
@@ -155,5 +157,41 @@ class RoomCaseRepositoryTest {
         assertEquals(viewedAt, repository.findById("case-1")?.lastViewedAt)
         assertEquals(1L, repository.findById("case-1")?.revision)
         assertTrue(!repository.markViewed("missing", viewedAt))
+    }
+
+    @Test
+    fun `软删除命例只在回收站查询且不能更新最近查看`() = runTest {
+        val deletedAt = FixtureInstant.plusSeconds(90)
+        repository.save(sampleCase().copy(deletedAt = deletedAt), null)
+
+        assertTrue(repository.search().isEmpty())
+        val trashed = repository.search(
+            CaseSearchRequest(visibility = CaseVisibility.TRASHED),
+        )
+        assertEquals(listOf("case-1"), trashed.map { it.id })
+        assertEquals(deletedAt, trashed.single().deletedAt)
+        assertTrue(!repository.markViewed("case-1", FixtureInstant.plusSeconds(120)))
+        assertNull(repository.findById("case-1")?.lastViewedAt)
+    }
+
+    @Test
+    fun `重复候选同时报告出生身份和四柱且包含回收站位置`() = runTest {
+        val source = sampleCase().copy(deletedAt = FixtureInstant.plusSeconds(90))
+        repository.save(source, null)
+
+        val candidates = repository.findDuplicateCandidates(
+            birthInput = source.birthInput,
+            fourPillars = source.calculationSnapshots.single().result.fourPillars,
+        )
+
+        assertEquals(1, candidates.size)
+        assertEquals(
+            setOf(
+                DuplicateReason.SAME_BIRTH_INPUT,
+                DuplicateReason.SAME_FOUR_PILLARS,
+            ),
+            candidates.single().reasons,
+        )
+        assertEquals(source.deletedAt, candidates.single().summary.deletedAt)
     }
 }

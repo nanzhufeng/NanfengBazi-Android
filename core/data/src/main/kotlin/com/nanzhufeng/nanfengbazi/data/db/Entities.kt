@@ -13,6 +13,7 @@ import kotlinx.serialization.Serializable
         Index(value = ["nameValue"]),
         Index(value = ["updatedAtEpochMillis"]),
         Index(value = ["lastViewedAtEpochMillis"]),
+        Index(value = ["deletedAtEpochMillis"]),
     ],
 )
 data class CaseEntity(
@@ -27,7 +28,9 @@ data class CaseEntity(
     val profileJson: String,
     val isFavorite: Boolean = false,
     val isPinned: Boolean = false,
+    val copiedFromCaseId: String? = null,
     val lastViewedAtEpochMillis: Long? = null,
+    val deletedAtEpochMillis: Long? = null,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
     val revision: Long,

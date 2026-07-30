@@ -32,6 +32,20 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("birth_hour").performTextInput("10")
         composeRule.onNodeWithTag("birth_minute").performTextInput("30")
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(
@@ -50,6 +64,20 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("edit_case_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("case_alias").performTextReplacement(editedAlias)
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -118,5 +146,31 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("Stage3 合成关键事件")
             .performScrollTo()
             .assertIsDisplayed()
+
+        composeRule.onNodeWithTag("duplicate_case_button").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("复制来源")).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("复制来源").performScrollTo().assertIsDisplayed()
+
+        composeRule.onNodeWithTag("trash_case_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("confirm_trash_button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("visibility_trashed").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$editedAlias（副本）"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("别名：$editedAlias（副本）").performClick()
+        composeRule.onNodeWithTag("restore_case_button").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("visibility_active").assertIsDisplayed()
+        composeRule.onNodeWithText("别名：$editedAlias（副本）").assertIsDisplayed()
     }
 }

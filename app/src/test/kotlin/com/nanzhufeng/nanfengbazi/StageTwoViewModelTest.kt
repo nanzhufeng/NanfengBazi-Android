@@ -4,6 +4,7 @@ import java.time.Clock
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
@@ -212,6 +213,67 @@ class StageTwoViewModelTest {
         assertEquals(true, viewModel.state.value.detail?.isFavorite)
     }
 
+    @Test
+    fun `重复候选原位提示且明确确认后才保存`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["existing"] = sampleStoredCase("existing")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openCreate()
+        viewModel.updateForm { validForm() }
+
+        viewModel.submitCase()
+
+        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals(1, viewModel.state.value.duplicateCandidates.size)
+        assertEquals(setOf("existing"), repository.stored.keys)
+
+        viewModel.submitCase(allowDuplicate = true)
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(2, repository.stored.size)
+    }
+
+    @Test
+    fun `命例移入回收站后主列表隐藏并可恢复`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-trash"] = sampleStoredCase("case-trash")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-trash")
+        viewModel.requestMoveToTrash()
+
+        assertEquals(true, viewModel.state.value.deleteConfirmationVisible)
+        viewModel.confirmMoveToTrash()
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(emptyList<String>(), viewModel.state.value.cases.map { it.id })
+
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+        assertEquals(listOf("case-trash"), viewModel.state.value.cases.map { it.id })
+        viewModel.openDetail("case-trash")
+        viewModel.restoreCase()
+
+        assertEquals(CaseVisibility.ACTIVE, viewModel.state.value.visibility)
+        assertEquals(listOf("case-trash"), viewModel.state.value.cases.map { it.id })
+        assertNull(repository.stored.getValue("case-trash").deletedAt)
+    }
+
+    @Test
+    fun `复制命例后打开新副本详情且保留来源`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-source"] = sampleStoredCase("case-source")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-source")
+
+        viewModel.duplicateCase()
+
+        val copied = repository.stored.values.single { it.id != "case-source" }
+        assertEquals(AppDestination.CaseDetail(copied.id), viewModel.state.value.destination)
+        assertEquals("case-source", viewModel.state.value.detail?.copiedFromCaseId)
+    }
+
     private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
         val engine = RecordingEngine()
         val ids = generateSequence(1) { it + 1 }
@@ -242,6 +304,11 @@ class StageTwoViewModelTest {
                 idGenerator = IdGenerator { ids.next() },
             ),
             caseEvents = CaseEventUseCase(
+                caseRepository = repository,
+                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                idGenerator = IdGenerator { ids.next() },
+            ),
+            caseLifecycle = CaseLifecycleUseCase(
                 caseRepository = repository,
                 clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
                 idGenerator = IdGenerator { ids.next() },

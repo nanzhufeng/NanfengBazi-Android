@@ -3,6 +3,8 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
+import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
@@ -244,5 +246,62 @@ class CaseManagementTest {
             useCase.save("case-meta", 1, CaseMetadataDraft(groupNames = tooMany)),
         )
         assertEquals(1L, repository.stored.getValue("case-meta").revision)
+    }
+
+    @Test
+    fun `软删除完整保留聚合并可恢复`() = runTest {
+        val record = CaseTextRecord(
+            id = "record-preserved",
+            type = CaseTextRecordType.NOTE,
+            content = "必须保留的合成记录",
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-trash"] = sampleStoredCase("case-trash").copy(
+                textRecords = listOf(record),
+            )
+        }
+        val useCase = CaseLifecycleUseCase(repository, fixedClock)
+
+        assertEquals(
+            CaseMutationResult.Saved("case-trash", 2),
+            useCase.moveToTrash("case-trash", 1),
+        )
+        val trashed = repository.stored.getValue("case-trash")
+        assertTrue(trashed.deletedAt != null)
+        assertEquals(listOf(record), trashed.textRecords)
+
+        assertEquals(
+            CaseMutationResult.Saved("case-trash", 3),
+            useCase.restore("case-trash", 2),
+        )
+        assertEquals(null, repository.stored.getValue("case-trash").deletedAt)
+        assertEquals(listOf(record), repository.stored.getValue("case-trash").textRecords)
+    }
+
+    @Test
+    fun `复制生成新身份并只复制出生资料与计算快照`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-source"] = sampleStoredCase("case-source")
+        }
+        val ids = ArrayDeque(listOf("case-copy", "snapshot-copy"))
+        val useCase = CaseLifecycleUseCase(
+            caseRepository = repository,
+            clock = fixedClock,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )
+
+        val result = useCase.duplicate("case-source", 1)
+
+        assertEquals(CaseMutationResult.Saved("case-copy", 1), result)
+        val copied = repository.stored.getValue("case-copy")
+        assertEquals("case-source", copied.copiedFromCaseId)
+        assertEquals(CaseSourceType.CASE_COPY, copied.sourceType)
+        assertEquals("snapshot-copy", copied.calculationSnapshots.single().id)
+        assertTrue(copied.textRecords.isEmpty())
+        assertTrue(copied.events.isEmpty())
+        assertTrue(copied.attachments.isEmpty())
+        assertTrue(copied.fieldEvidence.isEmpty())
     }
 }

@@ -15,7 +15,10 @@ import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -31,6 +34,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import java.time.Instant
@@ -118,6 +122,13 @@ class RoomCaseRepository(
             }
                 .asSequence()
                 .filter { summary ->
+                    when (request.visibility) {
+                        CaseVisibility.ACTIVE -> summary.deletedAt == null
+                        CaseVisibility.TRASHED -> summary.deletedAt != null
+                        CaseVisibility.ALL -> true
+                    }
+                }
+                .filter { summary ->
                     request.groupId == null || summary.groups.any { it.id == request.groupId }
                 }
                 .filter { summary ->
@@ -127,6 +138,29 @@ class RoomCaseRepository(
                 .sortedWith(request.sortOrder.summaryComparator())
                 .toList()
         }
+
+    override suspend fun findDuplicateCandidates(
+        birthInput: BirthInput,
+        fourPillars: FourPillars?,
+        excludeCaseId: String?,
+    ): List<DuplicateCaseCandidate> =
+        search(CaseSearchRequest(visibility = CaseVisibility.ALL))
+            .asSequence()
+            .filterNot { it.id == excludeCaseId }
+            .mapNotNull { summary ->
+                val reasons = buildSet {
+                    if (summary.birthInput.hasSameBirthIdentity(birthInput)) {
+                        add(DuplicateReason.SAME_BIRTH_INPUT)
+                    }
+                    if (fourPillars != null && summary.fourPillars == fourPillars) {
+                        add(DuplicateReason.SAME_FOUR_PILLARS)
+                    }
+                }
+                reasons.takeIf { it.isNotEmpty() }?.let {
+                    DuplicateCaseCandidate(summary, it)
+                }
+            }
+            .toList()
 
     override suspend fun markViewed(caseId: String, viewedAt: Instant): Boolean =
         dao.markViewed(caseId, viewedAt.toEpochMilli()) == 1
@@ -194,7 +228,9 @@ private fun BaziCase.toCaseEntity(): CaseEntity = CaseEntity(
     profileJson = DomainJson.encodeToString(CaseProfile.serializer(), profile),
     isFavorite = isFavorite,
     isPinned = isPinned,
+    copiedFromCaseId = copiedFromCaseId,
     lastViewedAtEpochMillis = lastViewedAt?.toEpochMilli(),
+    deletedAtEpochMillis = deletedAt?.toEpochMilli(),
     createdAtEpochMillis = createdAt.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
     revision = revision,
@@ -308,7 +344,9 @@ private fun CaseEntity.toDomain(
     tags = tags.map { CaseTag(it.id, it.name) },
     isFavorite = isFavorite,
     isPinned = isPinned,
+    copiedFromCaseId = copiedFromCaseId,
     lastViewedAt = lastViewedAtEpochMillis?.let(Instant::ofEpochMilli),
+    deletedAt = deletedAtEpochMillis?.let(Instant::ofEpochMilli),
     createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
     revision = revision,
@@ -330,11 +368,17 @@ private fun CaseEntity.toSummary(
     tags = tags,
     isFavorite = isFavorite,
     isPinned = isPinned,
+    copiedFromCaseId = copiedFromCaseId,
     createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
     lastViewedAt = lastViewedAtEpochMillis?.let(Instant::ofEpochMilli),
+    deletedAt = deletedAtEpochMillis?.let(Instant::ofEpochMilli),
     revision = revision,
 )
+
+private fun BirthInput.hasSameBirthIdentity(other: BirthInput): Boolean =
+    calendarInput == other.calendarInput &&
+        sexForFortuneDirection == other.sexForFortuneDirection
 
 private fun CaseSummary.matches(query: String): Boolean {
     if (alias.contains(query, ignoreCase = true)) return true

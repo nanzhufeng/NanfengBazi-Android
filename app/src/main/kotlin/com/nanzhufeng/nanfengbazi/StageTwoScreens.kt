@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -84,6 +88,7 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         onSelectGroup = viewModel::selectGroup,
                         onSelectTag = viewModel::selectTag,
                         onSelectSort = viewModel::selectSortOrder,
+                        onSelectVisibility = viewModel::selectVisibility,
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
                         onOpenCase = viewModel::openDetail,
@@ -93,7 +98,8 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         state = state,
                         onBack = viewModel::backToList,
                         onFormChange = viewModel::updateForm,
-                        onSubmit = viewModel::submitCase,
+                        onSubmit = { viewModel.submitCase() },
+                        onConfirmDuplicate = { viewModel.submitCase(allowDuplicate = true) },
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.CaseDetail -> CaseDetailScreen(
@@ -105,6 +111,9 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         onEditRecord = viewModel::openTextRecord,
                         onAddEvent = { viewModel.openEvent() },
                         onEditEvent = viewModel::openEvent,
+                        onDuplicate = viewModel::duplicateCase,
+                        onMoveToTrash = viewModel::requestMoveToTrash,
+                        onRestore = viewModel::restoreCase,
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.EditCase -> CaseFormScreen(
@@ -116,7 +125,11 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         submitLabel = "重新排盘并保存",
                         onBack = viewModel::navigateBack,
                         onFormChange = viewModel::updateEditForm,
-                        onSubmit = viewModel::saveEditedCase,
+                        onSubmit = { viewModel.saveEditedCase() },
+                        duplicateCandidates = state.duplicateCandidates,
+                        onConfirmDuplicate = {
+                            viewModel.saveEditedCase(allowDuplicate = true)
+                        },
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.EditMetadata -> CaseMetadataEditorScreen(
@@ -146,6 +159,31 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                     )
                 }
             }
+            if (state.deleteConfirmationVisible) {
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelMoveToTrash,
+                    title = { Text("移入回收站？") },
+                    text = {
+                        Text(
+                            "命例会从主列表隐藏，但附件、记录、事件和计算历史都会保留，" +
+                                "可随时从回收站恢复。",
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = viewModel::confirmMoveToTrash,
+                            modifier = Modifier.testTag("confirm_trash_button"),
+                        ) {
+                            Text("移入回收站")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = viewModel::cancelMoveToTrash) {
+                            Text("取消")
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -158,6 +196,7 @@ private fun CaseListScreen(
     onSelectGroup: (String?) -> Unit,
     onSelectTag: (String?) -> Unit,
     onSelectSort: (CaseSortOrder) -> Unit,
+    onSelectVisibility: (CaseVisibility) -> Unit,
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
     onOpenCase: (String) -> Unit,
@@ -180,16 +219,37 @@ private fun CaseListScreen(
                 }
             },
             actions = {
-                Button(
-                    onClick = onCreate,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .testTag("new_case_button"),
-                ) {
-                    Text("新建命例")
+                if (state.visibility == CaseVisibility.ACTIVE) {
+                    Button(
+                        onClick = onCreate,
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .testTag("new_case_button"),
+                    ) {
+                        Text("新建命例")
+                    }
                 }
             },
         )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SelectionButton(
+                text = "命例",
+                selected = state.visibility == CaseVisibility.ACTIVE,
+                onClick = { onSelectVisibility(CaseVisibility.ACTIVE) },
+                tag = "visibility_active",
+            )
+            SelectionButton(
+                text = "回收站",
+                selected = state.visibility == CaseVisibility.TRASHED,
+                onClick = { onSelectVisibility(CaseVisibility.TRASHED) },
+                tag = "visibility_trashed",
+            )
+        }
         OutlinedTextField(
             value = state.query,
             onValueChange = onQueryChange,
@@ -213,7 +273,7 @@ private fun CaseListScreen(
                 actionLabel = "重试",
                 onAction = onRefresh,
             )
-            state.cases.isEmpty() -> EmptyCaseList(onCreate)
+            state.cases.isEmpty() -> EmptyCaseList(state.visibility, onCreate)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -330,7 +390,10 @@ private fun SelectionButton(
 }
 
 @Composable
-private fun EmptyCaseList(onCreate: () -> Unit) {
+private fun EmptyCaseList(
+    visibility: CaseVisibility,
+    onCreate: () -> Unit,
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -340,20 +403,26 @@ private fun EmptyCaseList(onCreate: () -> Unit) {
             modifier = Modifier.padding(32.dp),
         ) {
             Text(
-                "还没有命例",
+                if (visibility == CaseVisibility.TRASHED) "回收站为空" else "还没有命例",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "先手动录入出生资料，应用会完成排盘并保存到本机。",
+                if (visibility == CaseVisibility.TRASHED) {
+                    "移入回收站的命例会保留完整数据，并可从这里恢复。"
+                } else {
+                    "先手动录入出生资料，应用会完成排盘并保存到本机。"
+                },
                 modifier = Modifier.padding(top = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(
-                onClick = onCreate,
-                modifier = Modifier.padding(top = 20.dp),
-            ) {
-                Text("新建第一个命例")
+            if (visibility == CaseVisibility.ACTIVE) {
+                Button(
+                    onClick = onCreate,
+                    modifier = Modifier.padding(top = 20.dp),
+                ) {
+                    Text("新建第一个命例")
+                }
             }
         }
     }
@@ -428,6 +497,7 @@ private fun CreateCaseScreen(
     onBack: () -> Unit,
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
     onSubmit: () -> Unit,
+    onConfirmDuplicate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     CaseFormScreen(
@@ -440,6 +510,8 @@ private fun CreateCaseScreen(
         onBack = onBack,
         onFormChange = onFormChange,
         onSubmit = onSubmit,
+        duplicateCandidates = state.duplicateCandidates,
+        onConfirmDuplicate = onConfirmDuplicate,
         modifier = modifier,
     )
 }
@@ -457,6 +529,8 @@ internal fun CaseFormScreen(
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
+    duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
+    onConfirmDuplicate: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -574,6 +648,13 @@ internal fun CaseFormScreen(
                     )
                 }
             }
+            if (duplicateCandidates.isNotEmpty() && onConfirmDuplicate != null) {
+                DuplicateCandidatesCard(
+                    candidates = duplicateCandidates,
+                    saving = saving,
+                    onConfirm = onConfirmDuplicate,
+                )
+            }
             Button(
                 onClick = onSubmit,
                 enabled = !saving,
@@ -593,6 +674,64 @@ internal fun CaseFormScreen(
                 } else {
                     Text(submitLabel)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DuplicateCandidatesCard(
+    candidates: List<DuplicateCaseCandidate>,
+    saving: Boolean,
+    onConfirm: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .testTag("duplicate_candidates"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                "发现 ${candidates.size} 个疑似重复命例",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            candidates.take(5).forEach { candidate ->
+                val location = if (candidate.summary.deletedAt == null) {
+                    "命例列表"
+                } else {
+                    "回收站"
+                }
+                val reasons = candidate.reasons.joinToString("、") {
+                    when (it) {
+                        DuplicateReason.SAME_BIRTH_INPUT -> "出生时间与性别相同"
+                        DuplicateReason.SAME_FOUR_PILLARS -> "四柱相同"
+                    }
+                }
+                Text(
+                    "• ${candidate.summary.alias}（$location；$reasons）",
+                    modifier = Modifier.padding(top = 6.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                "系统不会自动合并或覆盖。只有确认确需保留两份时才继续。",
+                modifier = Modifier.padding(top = 10.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(
+                onClick = onConfirm,
+                enabled = !saving,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .testTag("confirm_duplicate_save"),
+            ) {
+                Text("确认仍然保存")
             }
         }
     }
@@ -670,6 +809,9 @@ private fun CaseDetailScreen(
     onEditRecord: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
+    onDuplicate: () -> Unit,
+    onMoveToTrash: () -> Unit,
+    onRestore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -700,6 +842,9 @@ private fun CaseDetailScreen(
                 onEditRecord = onEditRecord,
                 onAddEvent = onAddEvent,
                 onEditEvent = onEditEvent,
+                onDuplicate = onDuplicate,
+                onMoveToTrash = onMoveToTrash,
+                onRestore = onRestore,
             )
         }
     }
@@ -714,6 +859,9 @@ private fun CaseDetailContent(
     onEditRecord: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
+    onDuplicate: () -> Unit,
+    onMoveToTrash: () -> Unit,
+    onRestore: () -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     Column(
@@ -722,32 +870,68 @@ private fun CaseDetailContent(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Button(
-                onClick = onEditCase,
+        if (case.deletedAt == null) {
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .testTag("edit_case_button"),
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("编辑资料")
+                Button(
+                    onClick = onEditCase,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("edit_case_button"),
+                ) {
+                    Text("编辑资料")
+                }
+                OutlinedButton(
+                    onClick = onEditMetadata,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("edit_metadata_button"),
+                ) {
+                    Text("管理分类")
+                }
             }
-            OutlinedButton(
-                onClick = onEditMetadata,
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .testTag("edit_metadata_button"),
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("管理分类")
+                OutlinedButton(
+                    onClick = onDuplicate,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("duplicate_case_button"),
+                ) {
+                    Text("复制命例")
+                }
+                OutlinedButton(
+                    onClick = onMoveToTrash,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("trash_case_button"),
+                ) {
+                    Text("移入回收站")
+                }
+            }
+        } else {
+            Button(
+                onClick = onRestore,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp)
+                    .testTag("restore_case_button"),
+            ) {
+                Text("恢复命例")
             }
         }
         DetailSection("命例管理") {
             DetailRow("收藏", if (case.isFavorite) "是" else "否")
             DetailRow("置顶", if (case.isPinned) "是" else "否")
+            DetailRow("状态", if (case.deletedAt == null) "正常" else "回收站")
             DetailRow(
                 "分组",
                 case.groups.joinToString("、") { it.name }.ifEmpty { "未设置" },
@@ -772,6 +956,9 @@ private fun CaseDetailContent(
             DetailRow("时区", case.birthInput.timeZoneId)
             DetailRow("时间精度", case.birthInput.timePrecision.name)
             DetailRow("来源", case.sourceType.displayName())
+            case.copiedFromCaseId?.let { sourceId ->
+                DetailRow("复制来源", sourceId)
+            }
         }
         DetailSection("计算结果") {
             if (adopted == null) {
@@ -803,26 +990,33 @@ private fun CaseDetailContent(
             }
         }
         DetailSection("分析与记录") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onAddRecord,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("add_record_button"),
+            if (case.deletedAt == null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text("新增记录")
+                    OutlinedButton(
+                        onClick = onAddRecord,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("add_record_button"),
+                    ) {
+                        Text("新增记录")
+                    }
+                    OutlinedButton(
+                        onClick = onAddEvent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("add_event_button"),
+                    ) {
+                        Text("新增事件")
+                    }
                 }
-                OutlinedButton(
-                    onClick = onAddEvent,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("add_event_button"),
-                ) {
-                    Text("新增事件")
-                }
+            } else {
+                Text(
+                    "回收站中的记录为只读；恢复命例后可继续编辑。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (case.textRecords.isEmpty()) {
                 Text(
@@ -836,7 +1030,9 @@ private fun CaseDetailContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
-                            .clickable { onEditRecord(record.id) },
+                            .clickable(enabled = case.deletedAt == null) {
+                                onEditRecord(record.id)
+                            },
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                         ),
@@ -868,7 +1064,9 @@ private fun CaseDetailContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
-                            .clickable { onEditEvent(event.id) },
+                            .clickable(enabled = case.deletedAt == null) {
+                                onEditEvent(event.id)
+                            },
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                         ),
@@ -999,6 +1197,7 @@ private fun SexForFortuneDirection.displayName(): String = when (this) {
 
 private fun CaseSourceType.displayName(): String = when (this) {
     CaseSourceType.MANUAL -> "手动录入"
+    CaseSourceType.CASE_COPY -> "命例复制"
     CaseSourceType.WENZHEN_SCREENSHOT -> "问真截图迁移"
     CaseSourceType.BACKUP_RESTORE -> "备份恢复"
 }

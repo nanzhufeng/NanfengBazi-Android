@@ -3,7 +3,9 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
@@ -28,6 +30,9 @@ sealed interface CaseMutationResult {
     ) : CaseMutationResult
 
     data class ValidationFailed(val message: String) : CaseMutationResult
+    data class DuplicateCandidates(
+        val candidates: List<DuplicateCaseCandidate>,
+    ) : CaseMutationResult
     data object NotFound : CaseMutationResult
     data class RevisionConflict(val actualRevision: Long) : CaseMutationResult
     data class CalculationFailed(val message: String) : CaseMutationResult
@@ -44,6 +49,7 @@ class EditCaseUseCase(
         caseId: String,
         expectedRevision: Long,
         form: CaseFormState,
+        allowDuplicate: Boolean = false,
     ): CaseMutationResult {
         val valid = when (val validation = CaseFormValidator.validate(form)) {
             is CaseFormValidation.Invalid ->
@@ -72,6 +78,22 @@ class EditCaseUseCase(
             }
             return CaseMutationResult.CalculationFailed(message)
         }
+        if (!allowDuplicate) {
+            val candidates = try {
+                caseRepository.findDuplicateCandidates(
+                    birthInput = valid.birthInput,
+                    fourPillars = calculation.fourPillars,
+                    excludeCaseId = caseId,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return caseReadFailure("无法完成重复命例检查，未保存任何更改。")
+            }
+            if (candidates.isNotEmpty()) {
+                return CaseMutationResult.DuplicateCandidates(candidates)
+            }
+        }
         val now = clock.instant()
         val updated = existing.copy(
             alias = valid.alias,
@@ -94,6 +116,148 @@ class EditCaseUseCase(
             updatedAt = now,
         )
         return persistCase(caseRepository, updated, expectedRevision)
+    }
+}
+
+class CaseLifecycleUseCase(
+    private val caseRepository: CaseRepository,
+    private val clock: Clock = Clock.systemUTC(),
+    private val idGenerator: IdGenerator = UuidGenerator(),
+) {
+    suspend fun moveToTrash(
+        caseId: String,
+        expectedRevision: Long,
+    ): CaseMutationResult {
+        val existing = loadMutableCase(caseId, expectedRevision)
+            ?: return lifecycleLoadFailure(caseId, expectedRevision)
+        if (existing.deletedAt != null) {
+            return CaseMutationResult.ValidationFailed("该命例已经在回收站中。")
+        }
+        return persistCase(
+            caseRepository = caseRepository,
+            case = existing.copy(
+                isPinned = false,
+                deletedAt = clock.instant(),
+                updatedAt = clock.instant(),
+            ),
+            expectedRevision = expectedRevision,
+        )
+    }
+
+    suspend fun restore(
+        caseId: String,
+        expectedRevision: Long,
+    ): CaseMutationResult {
+        val existing = loadMutableCase(caseId, expectedRevision)
+            ?: return lifecycleLoadFailure(caseId, expectedRevision)
+        if (existing.deletedAt == null) {
+            return CaseMutationResult.ValidationFailed("该命例不在回收站中。")
+        }
+        return persistCase(
+            caseRepository = caseRepository,
+            case = existing.copy(
+                deletedAt = null,
+                updatedAt = clock.instant(),
+            ),
+            expectedRevision = expectedRevision,
+        )
+    }
+
+    suspend fun duplicate(
+        caseId: String,
+        expectedRevision: Long,
+    ): CaseMutationResult {
+        val existing = loadMutableCase(caseId, expectedRevision)
+            ?: return lifecycleLoadFailure(caseId, expectedRevision)
+        if (existing.deletedAt != null) {
+            return CaseMutationResult.ValidationFailed("请先恢复回收站中的命例，再进行复制。")
+        }
+        val aliases = try {
+            caseRepository.search(
+                CaseSearchRequest(visibility = CaseVisibility.ALL),
+            ).mapTo(mutableSetOf()) { it.alias }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return caseReadFailure("无法检查命例别名，未创建副本。")
+        }
+        val now = clock.instant()
+        val copy = existing.copy(
+            id = idGenerator.nextId(),
+            alias = nextCopyAlias(existing.alias, aliases),
+            sourceType = com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType.CASE_COPY,
+            textRecords = emptyList(),
+            events = emptyList(),
+            calculationSnapshots = existing.calculationSnapshots.map {
+                it.copy(id = idGenerator.nextId(), createdAt = now)
+            },
+            attachments = emptyList(),
+            fieldEvidence = emptyList(),
+            copiedFromCaseId = existing.id,
+            isFavorite = false,
+            isPinned = false,
+            lastViewedAt = null,
+            deletedAt = null,
+            createdAt = now,
+            updatedAt = now,
+            revision = 0,
+        )
+        return try {
+            when (val result = caseRepository.save(copy, expectedRevision = null)) {
+                is CaseWriteResult.Created ->
+                    CaseMutationResult.Saved(result.caseId, result.revision)
+                is CaseWriteResult.Updated ->
+                    CaseMutationResult.Saved(result.caseId, result.revision)
+                is CaseWriteResult.AlreadyExists ->
+                    CaseMutationResult.StorageFailed("副本 ID 冲突，未创建命例，请重试。")
+                is CaseWriteResult.RevisionConflict ->
+                    CaseMutationResult.StorageFailed("副本未创建，请刷新命例后重试。")
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            CaseMutationResult.StorageFailed("副本未创建，数据库暂时不可用。")
+        }
+    }
+
+    private suspend fun loadMutableCase(
+        caseId: String,
+        expectedRevision: Long,
+    ): BaziCase? {
+        val existing = try {
+            caseRepository.findById(caseId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        return existing.takeIf { it.revision == expectedRevision }
+    }
+
+    private suspend fun lifecycleLoadFailure(
+        caseId: String,
+        expectedRevision: Long,
+    ): CaseMutationResult {
+        val current = try {
+            caseRepository.findById(caseId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return caseReadFailure()
+        } ?: return CaseMutationResult.NotFound
+        return if (current.revision != expectedRevision) {
+            CaseMutationResult.RevisionConflict(current.revision)
+        } else {
+            caseReadFailure()
+        }
+    }
+
+    private fun nextCopyAlias(baseAlias: String, existingAliases: Set<String>): String {
+        val first = "$baseAlias（副本）"
+        if (first !in existingAliases) return first
+        var index = 2
+        while ("$baseAlias（副本 $index）" in existingAliases) index += 1
+        return "$baseAlias（副本 $index）"
     }
 }
 
@@ -459,9 +623,11 @@ private suspend fun loadCase(
     CaseLoadResult.Failed
 }
 
-private fun caseReadFailure(): CaseMutationResult.StorageFailed =
+private fun caseReadFailure(
+    message: String = "无法读取最新命例，未保存任何更改。请返回详情后重试。",
+): CaseMutationResult.StorageFailed =
     CaseMutationResult.StorageFailed(
-        "无法读取最新命例，未保存任何更改。请返回详情后重试。",
+        message,
     )
 
 private suspend fun persistCase(

@@ -25,7 +25,7 @@ abstract class NanfengBaziDatabase : RoomDatabase() {
     internal abstract fun caseDao(): CaseDao
 
     companion object {
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
     }
 }
 
@@ -67,6 +67,21 @@ object DatabaseMigrations {
             db.execSQL(
                 "CREATE INDEX IF NOT EXISTS index_cases_lastViewedAtEpochMillis " +
                     "ON cases(lastViewedAtEpochMillis)",
+            )
+        }
+    }
+
+    val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE cases ADD COLUMN copiedFromCaseId TEXT",
+            )
+            db.execSQL(
+                "ALTER TABLE cases ADD COLUMN deletedAtEpochMillis INTEGER",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_cases_deletedAtEpochMillis " +
+                    "ON cases(deletedAtEpochMillis)",
             )
         }
     }

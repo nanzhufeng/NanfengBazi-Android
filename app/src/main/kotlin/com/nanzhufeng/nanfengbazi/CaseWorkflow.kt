@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -112,6 +113,9 @@ object CaseFormValidator {
 
 sealed interface CreateCaseResult {
     data class Created(val caseId: String) : CreateCaseResult
+    data class DuplicateCandidates(
+        val candidates: List<DuplicateCaseCandidate>,
+    ) : CreateCaseResult
     data class ValidationFailed(val message: String) : CreateCaseResult
     data class CalculationFailed(val message: String) : CreateCaseResult
     data class AlreadyExists(val caseId: String) : CreateCaseResult
@@ -133,7 +137,10 @@ class CreateCaseUseCase(
     private val clock: Clock = Clock.systemUTC(),
     private val idGenerator: IdGenerator = UuidGenerator(),
 ) {
-    suspend operator fun invoke(form: CaseFormState): CreateCaseResult {
+    suspend operator fun invoke(
+        form: CaseFormState,
+        allowDuplicate: Boolean = false,
+    ): CreateCaseResult {
         val valid = when (val validation = CaseFormValidator.validate(form)) {
             is CaseFormValidation.Invalid -> {
                 return CreateCaseResult.ValidationFailed(validation.message)
@@ -154,6 +161,23 @@ class CreateCaseUseCase(
                     "计算引擎暂时无法完成排盘，请稍后重试。"
                 },
             )
+        }
+        if (!allowDuplicate) {
+            val candidates = try {
+                caseRepository.findDuplicateCandidates(
+                    birthInput = valid.birthInput,
+                    fourPillars = calculation.fourPillars,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return CreateCaseResult.StorageFailed(
+                    "无法完成重复命例检查，未保存任何内容。输入仍保留，可稍后重试。",
+                )
+            }
+            if (candidates.isNotEmpty()) {
+                return CreateCaseResult.DuplicateCandidates(candidates)
+            }
         }
         val now = clock.instant()
         val caseId = idGenerator.nextId()

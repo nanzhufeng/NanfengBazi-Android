@@ -3,7 +3,10 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -116,6 +119,13 @@ internal class FakeCaseRepository : CaseRepository {
         searchRequests += request
         return stored.values
             .filter {
+                when (request.visibility) {
+                    CaseVisibility.ACTIVE -> it.deletedAt == null
+                    CaseVisibility.TRASHED -> it.deletedAt != null
+                    CaseVisibility.ALL -> true
+                }
+            }
+            .filter {
                 query.isBlank() ||
                     it.alias.contains(query) ||
                     it.name.value?.contains(query) == true ||
@@ -148,17 +158,56 @@ internal class FakeCaseRepository : CaseRepository {
                     tags = case.tags,
                     isFavorite = case.isFavorite,
                     isPinned = case.isPinned,
+                    copiedFromCaseId = case.copiedFromCaseId,
                     createdAt = case.createdAt,
                     updatedAt = case.updatedAt,
                     lastViewedAt = case.lastViewedAt,
+                    deletedAt = case.deletedAt,
                     revision = case.revision,
                 )
+            }
+    }
+
+    override suspend fun findDuplicateCandidates(
+        birthInput: BirthInput,
+        fourPillars: FourPillars?,
+        excludeCaseId: String?,
+    ): List<DuplicateCaseCandidate> {
+        readFailure?.let { throw it }
+        return stored.values
+            .filterNot { it.id == excludeCaseId }
+            .mapNotNull { candidate ->
+                val reasons = buildSet {
+                    if (
+                        candidate.birthInput.calendarInput == birthInput.calendarInput &&
+                        candidate.sexForFortuneDirection == birthInput.sexForFortuneDirection
+                    ) {
+                        add(DuplicateReason.SAME_BIRTH_INPUT)
+                    }
+                    val adopted = candidate.calculationSnapshots
+                        .asReversed()
+                        .firstOrNull { it.adopted }
+                        ?.result
+                        ?.fourPillars
+                    if (fourPillars != null && adopted == fourPillars) {
+                        add(DuplicateReason.SAME_FOUR_PILLARS)
+                    }
+                }
+                if (reasons.isEmpty()) {
+                    null
+                } else {
+                    val summary = search(
+                        CaseSearchRequest(visibility = CaseVisibility.ALL),
+                    ).first { it.id == candidate.id }
+                    DuplicateCaseCandidate(summary, reasons)
+                }
             }
     }
 
     override suspend fun markViewed(caseId: String, viewedAt: Instant): Boolean {
         readFailure?.let { throw it }
         val current = stored[caseId] ?: return false
+        if (current.deletedAt != null) return false
         stored[caseId] = current.copy(lastViewedAt = viewedAt)
         return true
     }
