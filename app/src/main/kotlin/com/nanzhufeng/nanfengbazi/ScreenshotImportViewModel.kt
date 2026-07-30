@@ -40,6 +40,8 @@ data class ScreenshotImportUiState(
     val exactDuplicatePairCount: Int = 0,
     val similarDuplicatePairCount: Int = 0,
     val failedImageCount: Int = 0,
+    val caseCandidateCount: Int = 0,
+    val multiImageCandidateCount: Int = 0,
     val needsReview: Boolean = false,
     val canRetry: Boolean = false,
     val recoverableSessionCount: Int = 0,
@@ -249,6 +251,10 @@ class ScreenshotImportViewModel(
                     exactDuplicatePairCount = duplicateCounts.first,
                     similarDuplicatePairCount = duplicateCounts.second,
                     failedImageCount = result.session.imageFailures.size,
+                    caseCandidateCount = result.session.caseCandidates.size,
+                    multiImageCandidateCount = result.session.caseCandidates.count {
+                        candidate -> candidate.imageIds.size > 1
+                    },
                     needsReview = true,
                     canRetry = result.session.imageFailures.any { failure -> failure.retryable },
                     message = if (result.session.imageFailures.isEmpty()) {
@@ -332,6 +338,10 @@ class ScreenshotImportViewModel(
                         exactDuplicatePairCount = duplicateCounts.first,
                         similarDuplicatePairCount = duplicateCounts.second,
                         failedImageCount = recent.imageFailures.size,
+                        caseCandidateCount = recent.caseCandidates.size,
+                        multiImageCandidateCount = recent.caseCandidates.count {
+                            candidate -> candidate.imageIds.size > 1
+                        },
                         needsReview = recent.status == ImportStatus.NEEDS_REVIEW,
                         canRetry = when (recent.status) {
                             ImportStatus.CLASSIFYING,

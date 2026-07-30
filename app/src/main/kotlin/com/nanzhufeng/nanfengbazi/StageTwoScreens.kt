@@ -1627,6 +1627,12 @@ private fun ScreenshotImportSummary(
                 if (state.failedImageCount > 0) {
                     add("待重试 ${state.failedImageCount} 张")
                 }
+                if (state.caseCandidateCount > 0) {
+                    add("待核对候选 ${state.caseCandidateCount} 个")
+                }
+                if (state.multiImageCandidateCount > 0) {
+                    add("多图归组 ${state.multiImageCandidateCount} 个")
+                }
                 if (state.recoverableSessionCount > 0) {
                     add("可恢复 ${state.recoverableSessionCount} 个")
                 }

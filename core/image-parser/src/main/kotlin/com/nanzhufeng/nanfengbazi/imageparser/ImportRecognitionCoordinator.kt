@@ -27,6 +27,7 @@ class ImportRecognitionCoordinator(
     private val ocrEngine: OcrEngine,
     private val pageClassifier: WenzhenPageClassifier,
     private val fingerprintEngine: ImageFingerprintEngine? = null,
+    private val imageGrouper: WenzhenImageGrouper = WenzhenImageGrouper(),
     private val clock: Clock = Clock.systemUTC(),
     private val diagnosticIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -153,6 +154,7 @@ class ImportRecognitionCoordinator(
                 images = mergedImages,
                 ocrDocuments = mergedDocuments,
                 imageFailures = mergedFailures,
+                caseCandidates = imageGrouper.group(mergedImages, mergedDocuments),
                 updatedAt = nowNotBefore(session.updatedAt),
             )
             session = persist(grouped, session.revision)

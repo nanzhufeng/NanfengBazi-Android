@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 160 条唯一单元契约；Debug/Release 变体合计 287 次执行，0 失败、0 跳过。
+- 165 条唯一单元契约；Debug/Release 变体合计 297 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -183,6 +183,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - 批次逐图片失败持久化，成功图片不被失败项阻塞，局部重试不重复 OCR 成功图片。
   - OCR 通过会话 ID 对应的唯一 WorkManager 任务执行；确认删除会同时移除 Room 会话
     和私有原图，正式命例不受影响。
+  - 多图候选只接受相同四柱或“显式姓名+公历生日”双信号，且全组两两一致；仅同名、
+    身份冲突或用户列表与详情组合均保持分开。
 - App、`core:data` 与 `core:image-parser` Lint 均 0 错误；仅有依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - Debug/Release 最终打包 Manifest 均不含 `INTERNET`、`ACCESS_NETWORK_STATE` 或
@@ -198,6 +200,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - Photo Picker/系统分享统一入口、私有复制、WorkManager、bundled 中文 OCR、页面
     分类、dHash、长图分段/原坐标回映及确认删除真实设备管线通过，测试图片由程序合成，
     不含用户资料；
+  - alpha35 系统分享图生成单个待核对候选并完成删除的目标设备流程 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -205,17 +208,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha34-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha35-debug.apk`
 
-- 大小：55,565,299 bytes
-- SHA-256：`7b573d864cb6b267d2b649d6ab546a170ba516d2d11f6e0e1ed3f9c1894c661b`
+- 大小：55,565,295 bytes
+- SHA-256：`1ad49a54006d9dc9a53584234a0079a289ae580ef0ab5d85d04858075b69d6e8`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha34-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha35-release-unsigned.apk`
 
-- 大小：51,892,266 bytes
-- SHA-256：`5bb908fa9f6f402e8e2e4461d2cf0a4041ed563f68c6ac5d849ce954f12120b5`
+- 大小：51,908,650 bytes
+- SHA-256：`d7e18738b704b1e5afb992d1832aa4b9d09bbd5d98aa1fd490d4d4029ee08271`
 
 ## 当前限制与风险
 
@@ -224,8 +227,8 @@ Debug 验收构建：
 - 神煞、流年/流月/流日/流时与子时多口径尚未实现；基础排盘确定性字段已经输出，但仍需
   Stage 4B 扩大边界黄金集和后续问真真实样本对照。
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
-  长图分段、感知哈希、相似提示和逐图片失败隔离已实现；多图归组、逐命例候选失败结果、
-  超 10 分钟前台任务模式和问真字段解析尚未实现。
+  长图分段、感知哈希、相似提示、逐图片失败隔离和保守多图归组已实现；逐命例候选失败
+  结果、超 10 分钟前台任务模式和问真字段解析尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
 - App 仍是手机单列工作台，OPPO Find N5 展开双栏、无障碍和大字体尚未验收。
 - 当前 Debug APK 不是正式签名 Release；OPPO 数据保留安装与发布需要用户明确授权。
@@ -234,8 +237,8 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 实现不能只按姓名合并的多图归组证据；
-2. 进入问真 P0 用户列表、反馈和点评字段解析；
+1. 实现问真 P0 用户列表的一图多命例行解析；
+2. 实现反馈与点评完整原文、基本资料字段解析；
 3. 建立来源值/计算值/采用值确认 UI 和正式写入门禁。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

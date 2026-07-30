@@ -74,6 +74,7 @@ class ScreenshotShareFlowTest {
         var fingerprint: String? = null
         var dimensions: Pair<Int?, Int?>? = null
         var privateImagePath: Path? = null
+        var candidateCount = -1
         composeRule.activityRule.scenario.onActivity { activity ->
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
@@ -84,6 +85,7 @@ class ScreenshotShareFlowTest {
                 pageType = image.pageType
                 fingerprint = image.perceptualHash
                 dimensions = image.widthPx to image.heightPx
+                candidateCount = session.caseCandidates.size
                 privateImagePath = activity.filesDir.toPath()
                     .resolve("import-images")
                     .resolve(image.relativePath)
@@ -94,6 +96,7 @@ class ScreenshotShareFlowTest {
         assertEquals(syntheticOcrText, WenzhenPageType.USER_LIST, pageType)
         assertTrue("私有图片必须保存 64 位感知哈希", fingerprint?.length == 16)
         assertEquals(1080 to 1600, dimensions)
+        assertEquals("用户列表在字段解析前应保留一个待核对候选", 1, candidateCount)
         assertTrue("截图识别不得直接写入正式命例", formalCaseCount == 0)
         val storedImagePath = requireNotNull(privateImagePath)
         assertTrue("识别完成后私有原图必须存在", java.nio.file.Files.exists(storedImagePath))
