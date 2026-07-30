@@ -57,7 +57,7 @@
 
 | 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
 |---|---|---|---|
-| 手动新建 | 已接通公历民用时最小表单 | `CreateCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 表单、计算、冲突和异常契约 |
+| 手动新建 | 已接通公历/农历/闰月民用时表单 | `CreateCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 表单、双向转换、计算、冲突和异常契约 |
 | 命例列表与搜索 | 已显示姓名/别名、性别、出生时间和四柱 | `CaseRepository.search` | Room 查询与 ViewModel 搜索 |
 | 命例详情 | 已区分原始录入和计算结果 | `CaseRepository.findById` | 导航与详情读取 |
 | 编辑、删除、复制 | 不存在 | 后续仍须经过 `CaseRepository` | 本阶段不验收 |

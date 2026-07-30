@@ -105,6 +105,12 @@ data class BackupCaseRestorePreview(
         .firstOrNull { it.adopted }
         ?.result
         ?.fourPillars
+    val sourceCanonicalSolarDateTime get() = sourceCase.calculationSnapshots
+        .asReversed()
+        .firstOrNull { it.adopted }
+        ?.result
+        ?.calendarConversion
+        ?.solarDateTime
 }
 
 enum class BackupCaseRestoreAction {

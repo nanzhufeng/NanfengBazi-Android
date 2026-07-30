@@ -415,4 +415,5 @@ data class CaseSummary(
     @Serializable(with = InstantIsoSerializer::class)
     val deletedAt: Instant?,
     val revision: Long,
+    val canonicalSolarDateTime: CivilDateTime? = null,
 )

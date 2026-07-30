@@ -38,6 +38,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
@@ -165,6 +166,7 @@ class RoomCaseRepository(
     override suspend fun findDuplicateCandidates(
         birthInput: BirthInput,
         fourPillars: FourPillars?,
+        canonicalSolarDateTime: CivilDateTime?,
         excludeCaseId: String?,
     ): List<DuplicateCaseCandidate> =
         search(CaseSearchRequest(visibility = CaseVisibility.ALL))
@@ -172,7 +174,12 @@ class RoomCaseRepository(
             .filterNot { it.id == excludeCaseId }
             .mapNotNull { summary ->
                 val reasons = buildSet {
-                    if (summary.birthInput.hasSameBirthIdentity(birthInput)) {
+                    if (
+                        summary.hasSameBirthIdentity(
+                            other = birthInput,
+                            otherCanonicalSolarDateTime = canonicalSolarDateTime,
+                        )
+                    ) {
                         add(DuplicateReason.SAME_BIRTH_INPUT)
                     }
                     if (fourPillars != null && summary.fourPillars == fourPillars) {
@@ -472,11 +479,32 @@ private fun CaseEntity.toSummary(
     lastViewedAt = lastViewedAtEpochMillis?.let(Instant::ofEpochMilli),
     deletedAt = deletedAtEpochMillis?.let(Instant::ofEpochMilli),
     revision = revision,
+    canonicalSolarDateTime = adoptedSnapshot
+        ?.result
+        ?.calendarConversion
+        ?.solarDateTime,
 )
 
-internal fun BirthInput.hasSameBirthIdentity(other: BirthInput): Boolean =
-    calendarInput == other.calendarInput &&
-        sexForFortuneDirection == other.sexForFortuneDirection
+private fun CaseSummary.hasSameBirthIdentity(
+    other: BirthInput,
+    otherCanonicalSolarDateTime: CivilDateTime?,
+): Boolean = birthInput.hasSameBirthIdentity(
+    other = other,
+    canonicalSolarDateTime = canonicalSolarDateTime,
+    otherCanonicalSolarDateTime = otherCanonicalSolarDateTime,
+)
+
+internal fun BirthInput.hasSameBirthIdentity(
+    other: BirthInput,
+    canonicalSolarDateTime: CivilDateTime? = null,
+    otherCanonicalSolarDateTime: CivilDateTime? = null,
+): Boolean =
+    sexForFortuneDirection == other.sexForFortuneDirection &&
+        if (canonicalSolarDateTime != null && otherCanonicalSolarDateTime != null) {
+            canonicalSolarDateTime == otherCanonicalSolarDateTime
+        } else {
+            calendarInput == other.calendarInput
+        }
 
 private fun CaseSummary.matches(query: String): Boolean {
     if (alias.contains(query, ignoreCase = true)) return true
@@ -499,15 +527,18 @@ private fun CaseSortOrder.summaryComparator(): Comparator<CaseSummary> {
             compareByDescending { it.createdAt }
 
         CaseSortOrder.BIRTH_ASC ->
-            compareBy { it.birthInput.birthSortKey() }
+            compareBy { it.birthSortKey() }
     }
     return compareByDescending<CaseSummary> { it.isPinned }
         .then(selected)
         .thenBy { it.id }
 }
 
-private fun BirthInput.birthSortKey(): String {
-    val prefix: String
+private fun CaseSummary.birthSortKey(): String =
+    canonicalSolarDateTime?.toSortKey()
+        ?: birthInput.rawDateTimeSortKey()
+
+private fun BirthInput.rawDateTimeSortKey(): String {
     val year: Int
     val month: Int
     val day: Int
@@ -516,7 +547,6 @@ private fun BirthInput.birthSortKey(): String {
     val second: Int
     when (val input = calendarInput) {
         is BirthCalendarInput.Solar -> {
-            prefix = "0"
             year = input.dateTime.year
             month = input.dateTime.month
             day = input.dateTime.day
@@ -526,7 +556,6 @@ private fun BirthInput.birthSortKey(): String {
         }
 
         is BirthCalendarInput.Lunar -> {
-            prefix = if (input.dateTime.isLeapMonth) "2" else "1"
             year = input.dateTime.year
             month = input.dateTime.month
             day = input.dateTime.day
@@ -535,13 +564,8 @@ private fun BirthInput.birthSortKey(): String {
             second = input.dateTime.second
         }
     }
-    return "%s%04d%02d%02d%02d%02d%02d".format(
-        prefix,
-        year,
-        month,
-        day,
-        hour,
-        minute,
-        second,
-    )
+    return CivilDateTime(year, month, day, hour, minute, second).toSortKey()
 }
+
+private fun CivilDateTime.toSortKey(): String =
+    "%04d%02d%02d%02d%02d%02d".format(year, month, day, hour, minute, second)

@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi.domain
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import java.time.Instant
 
@@ -50,6 +51,7 @@ interface CaseRepository {
     suspend fun findDuplicateCandidates(
         birthInput: BirthInput,
         fourPillars: FourPillars?,
+        canonicalSolarDateTime: CivilDateTime? = null,
         excludeCaseId: String? = null,
     ): List<DuplicateCaseCandidate>
 

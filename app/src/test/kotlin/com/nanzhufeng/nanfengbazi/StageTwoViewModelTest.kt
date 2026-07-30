@@ -52,6 +52,9 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -153,6 +156,34 @@ class StageTwoViewModelTest {
         assertEquals("合成命例已编辑", viewModel.state.value.detail?.alias)
         assertEquals(2L, viewModel.state.value.detail?.revision)
         assertEquals(2, viewModel.state.value.detail?.calculationSnapshots?.size)
+    }
+
+    @Test
+    fun `农历命例进入编辑器时保留历法与闰月`() = runTest {
+        val base = sampleStoredCase("case-lunar")
+        val lunarInput = base.birthInput.copy(
+            calendarInput = BirthCalendarInput.Lunar(
+                LunarDateTime(2023, 2, 1, 10, 30, 0, isLeapMonth = true),
+            ),
+        )
+        val lunarCase = base.copy(
+            birthInput = lunarInput,
+            calculationSnapshots = base.calculationSnapshots.map {
+                it.copy(result = it.result.copy(normalizedInput = lunarInput))
+            },
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[lunarCase.id] = lunarCase
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(lunarCase.id)
+        viewModel.openEditCase()
+
+        assertEquals(AppDestination.EditCase(lunarCase.id), viewModel.state.value.destination)
+        assertEquals(CalendarSystem.LUNAR, viewModel.state.value.editForm.calendarSystem)
+        assertTrue(viewModel.state.value.editForm.isLeapMonth)
+        assertEquals("2", viewModel.state.value.editForm.month)
     }
 
     @Test

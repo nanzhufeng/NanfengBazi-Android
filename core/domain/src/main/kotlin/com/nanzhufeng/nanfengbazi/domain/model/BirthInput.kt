@@ -30,7 +30,16 @@ data class LunarDateTime(
     val minute: Int,
     val second: Int,
     val isLeapMonth: Boolean,
-)
+) {
+    init {
+        require(year in 1..9999) { "农历年份必须在 1..9999" }
+        require(month in 1..12) { "农历月份必须在 1..12" }
+        require(day in 1..30) { "农历日期必须在 1..30" }
+        require(hour in 0..23) { "小时必须在 0..23" }
+        require(minute in 0..59) { "分钟必须在 0..59" }
+        require(second in 0..59) { "秒必须在 0..59" }
+    }
+}
 
 @Serializable
 sealed interface BirthCalendarInput {

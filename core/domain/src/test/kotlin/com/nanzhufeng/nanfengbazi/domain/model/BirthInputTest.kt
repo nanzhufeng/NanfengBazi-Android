@@ -6,6 +6,19 @@ import org.junit.Test
 
 class BirthInputTest {
     @Test
+    fun `农历日期只接受基础字段范围`() {
+        val valid = LunarDateTime(2023, 2, 30, 23, 59, 59, isLeapMonth = true)
+
+        assertEquals(2, valid.month)
+        assertThrows(IllegalArgumentException::class.java) {
+            LunarDateTime(2023, 13, 1, 0, 0, 0, isLeapMonth = false)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            LunarDateTime(2023, 2, 31, 0, 0, 0, isLeapMonth = false)
+        }
+    }
+
+    @Test
     fun `经纬度必须成对出现`() {
         assertThrows(IllegalArgumentException::class.java) {
             BirthInput(
@@ -27,4 +40,3 @@ class BirthInputTest {
         assertEquals("stage0-v1", profile.ruleVersion)
     }
 }
-

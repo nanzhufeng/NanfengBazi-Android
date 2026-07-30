@@ -4,6 +4,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
@@ -19,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TymeBaziEngineTest {
@@ -46,6 +49,56 @@ class TymeBaziEngineTest {
         assertEquals(8, result.decadeFortunes.size)
         assertEquals("1.5.1", result.evidence.engineVersion)
         assertEquals(Instant.parse("2026-01-01T00:00:00Z"), result.evidence.calculatedAt)
+        assertEquals(CalendarSystem.SOLAR, result.calendarConversion?.inputCalendarSystem)
+    }
+
+    @Test
+    fun `同一时刻的公历与农历输入得到相同命盘`() = runTest {
+        val solar = engine.calculate(
+            solarInput(2023, 1, 22, 13, 0, 0),
+            CalculationProfile.tymeDefault(),
+        )
+        val lunar = engine.calculate(
+            lunarInput(2023, 1, 1, 13, 0, 0),
+            CalculationProfile.tymeDefault(),
+        )
+
+        assertEquals(solar.fourPillars, lunar.fourPillars)
+        assertEquals(solar.fortuneStart, lunar.fortuneStart)
+        assertEquals(
+            CivilDateTime(2023, 1, 22, 13, 0, 0),
+            lunar.calendarConversion?.solarDateTime,
+        )
+        assertEquals(CalendarSystem.LUNAR, lunar.calendarConversion?.inputCalendarSystem)
+    }
+
+    @Test
+    fun `闰月输入可转换并保留闰月证据`() = runTest {
+        val result = engine.calculate(
+            lunarInput(2023, 2, 1, 10, 30, 0, isLeapMonth = true),
+            CalculationProfile.tymeDefault(),
+        )
+
+        assertEquals(
+            CivilDateTime(2023, 3, 22, 10, 30, 0),
+            result.calendarConversion?.solarDateTime,
+        )
+        assertEquals(2, result.calendarConversion?.lunarDateTime?.month)
+        assertTrue(result.calendarConversion?.lunarDateTime?.isLeapMonth == true)
+    }
+
+    @Test
+    fun `不存在的闰月必须以中文明确失败`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                engine.calculate(
+                    lunarInput(2022, 2, 1, 10, 30, 0, isLeapMonth = true),
+                    CalculationProfile.tymeDefault(),
+                )
+            }
+        }
+
+        assertTrue(error.message.orEmpty().contains("农历日期无效"))
     }
 
     @Test
@@ -131,6 +184,22 @@ class TymeBaziEngineTest {
     ): BirthInput = BirthInput(
         calendarInput = BirthCalendarInput.Solar(
             CivilDateTime(year, month, day, hour, minute, second),
+        ),
+        sexForFortuneDirection = SexForFortuneDirection.MAN,
+        timePrecision = TimePrecision.EXACT_TO_SECOND,
+    )
+
+    private fun lunarInput(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int,
+        minute: Int,
+        second: Int,
+        isLeapMonth: Boolean = false,
+    ): BirthInput = BirthInput(
+        calendarInput = BirthCalendarInput.Lunar(
+            LunarDateTime(year, month, day, hour, minute, second, isLeapMonth),
         ),
         sexForFortuneDirection = SexForFortuneDirection.MAN,
         timePrecision = TimePrecision.EXACT_TO_SECOND,

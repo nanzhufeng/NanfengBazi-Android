@@ -5,7 +5,10 @@
 ### 6tail/tyme4j
 
 - 地址：https://github.com/6tail/tyme4j
-- 用途：Stage 0 的八字、节气、起运和大运计算适配器；公开测试用作首批黄金样本。
+- 官方文档：https://6tail.cn/tyme.html
+- 用途：Stage 0 的八字、节气、起运和大运计算适配器；Stage 4A 依据官方
+  `LunarHour.fromYmdHms`、闰月负月份约定和 `getSolarTime` 接通农历转换；公开测试
+  用作首批黄金样本。
 - 采用边界：第三方类型不进入 `core:domain`；全局起运 provider 必须加锁、临时切换并恢复。
 
 ### android/nowinandroid
@@ -33,4 +36,3 @@
 - 不复制开源“算命 App”的业务结论、断语或案例模型；
 - 不以单个库的默认值替代本项目显式计算口径；
 - 不把 GitHub 示例通过测试等同于“问真输出已经一致”。
-

@@ -8,6 +8,8 @@
 - 定义出生输入、计算口径和版本化结果；
 - 通过唯一入口 `BaziEngine.calculate()` 调用计算引擎；
 - 使用 Tyme4j 1.5.1 作为首个适配器；
+- 支持公历、农历与闰月手动录入；计算快照同时保存标准公历和标准农历转换证据，
+  编辑时保留原始历法语义；
 - 以公开样本建立可回归的黄金用例；
 - 建立 Room Schema v5、兼容迁移、统一命例仓储和修订冲突保护；
 - 建立版本化 ZIP 备份、附件哈希校验和空库恢复回滚；
@@ -45,8 +47,9 @@
 - 完整恢复采用全屏惰性列表工作台，持续显示已决策数量、逐例冲突与底部阶段动作；批量
   跳过是明确用户动作，只设置逐例决策，不会直接提交。
 
-当前 UI 已覆盖最小真实闭环、命例生命周期和 Stage 3B 数据交换主链路。农历、
-地区/真太阳时与问真截图迁移尚未实现；OPPO 真机仍需最终授权验收。详细范围见
+当前 UI 已覆盖最小真实闭环、命例生命周期、Stage 3B 数据交换主链路，以及
+Stage 4A 的公历/农历/闰月输入。地区/DST/真太阳时与问真截图迁移尚未实现；
+OPPO 真机仍需最终授权验收。详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
 [`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。

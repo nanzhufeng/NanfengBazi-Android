@@ -1161,7 +1161,7 @@ class CaseBackupService(
         val (localCases, localSnapshots) = database.withTransaction {
             dao.allCases() to dao.allCalculationSnapshots()
         }
-        val localPillars = adoptedPillarsByCase(localSnapshots)
+        val localResults = adoptedResultsByCase(localSnapshots)
         val localBirthInputs = localCases.associate { entity ->
             entity.id to DomainJson.decodeFromString<BirthInput>(entity.birthInputJson)
         }
@@ -1174,13 +1174,17 @@ class CaseBackupService(
                     if (
                         sourceCase.sourceBirthInput.hasSameBirthIdentity(
                             localBirthInputs.getValue(localCase.id),
+                            sourceCase.sourceCanonicalSolarDateTime,
+                            localResults[localCase.id]
+                                ?.calendarConversion
+                                ?.solarDateTime,
                         )
                     ) {
                         add(BackupCaseConflictReason.SAME_BIRTH_INPUT)
                     }
                     if (
                         sourceCase.sourceFourPillars != null &&
-                        sourceCase.sourceFourPillars == localPillars[localCase.id]
+                        sourceCase.sourceFourPillars == localResults[localCase.id]?.fourPillars
                     ) {
                         add(BackupCaseConflictReason.SAME_FOUR_PILLARS)
                     }
@@ -1205,7 +1209,7 @@ class CaseBackupService(
     private fun rejectedCaseMerge(code: String, message: String) =
         BackupCaseMergePreparationResult.Rejected(code, message)
 
-    private fun adoptedPillarsByCase(
+    private fun adoptedResultsByCase(
         snapshots: List<CalculationSnapshotEntity>,
     ) = snapshots
         .asSequence()
@@ -1215,7 +1219,6 @@ class CaseBackupService(
             values.maxByOrNull { it.sortOrder }
                 ?.let { DomainJson.decodeFromString<CaseCalculationSnapshot>(it.resultJson) }
                 ?.result
-                ?.fourPillars
         }
 
     private fun preparePreviewInput(

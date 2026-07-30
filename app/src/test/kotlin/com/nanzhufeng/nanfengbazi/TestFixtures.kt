@@ -164,6 +164,12 @@ internal class FakeCaseRepository : CaseRepository {
                     lastViewedAt = case.lastViewedAt,
                     deletedAt = case.deletedAt,
                     revision = case.revision,
+                    canonicalSolarDateTime = case.calculationSnapshots
+                        .asReversed()
+                        .firstOrNull { it.adopted }
+                        ?.result
+                        ?.calendarConversion
+                        ?.solarDateTime,
                 )
             }
     }
@@ -171,6 +177,7 @@ internal class FakeCaseRepository : CaseRepository {
     override suspend fun findDuplicateCandidates(
         birthInput: BirthInput,
         fourPillars: FourPillars?,
+        canonicalSolarDateTime: CivilDateTime?,
         excludeCaseId: String?,
     ): List<DuplicateCaseCandidate> {
         readFailure?.let { throw it }
@@ -179,8 +186,18 @@ internal class FakeCaseRepository : CaseRepository {
             .mapNotNull { candidate ->
                 val reasons = buildSet {
                     if (
-                        candidate.birthInput.calendarInput == birthInput.calendarInput &&
-                        candidate.sexForFortuneDirection == birthInput.sexForFortuneDirection
+                        candidate.sexForFortuneDirection == birthInput.sexForFortuneDirection &&
+                        candidate.calculationSnapshots
+                            .asReversed()
+                            .firstOrNull { it.adopted }
+                            ?.result
+                            ?.calendarConversion
+                            ?.solarDateTime
+                            ?.let { existing ->
+                                canonicalSolarDateTime != null &&
+                                    existing == canonicalSolarDateTime
+                            }
+                            ?: (candidate.birthInput.calendarInput == birthInput.calendarInput)
                     ) {
                         add(DuplicateReason.SAME_BIRTH_INPUT)
                     }

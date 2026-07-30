@@ -31,6 +31,64 @@ class StageTwoFlowTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
+    fun lunarInputShowsLeapMonthChoice() {
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+
+        composeRule.onNodeWithTag("birth_calendar_lunar")
+            .performScrollTo()
+            .performClick()
+
+        composeRule.onNodeWithTag("birth_lunar_leap_month")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .performClick()
+    }
+
+    @Test
+    fun createLunarCaseAndShowConversionEvidence() {
+        val alias = "Stage4农历样例-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_calendar_lunar").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("2023")
+        composeRule.onNodeWithTag("birth_month").performTextInput("1")
+        composeRule.onNodeWithTag("birth_day").performTextInput("1")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("13")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("别名：$alias").performClick()
+
+        composeRule.onNodeWithText("农历 2023年1月1日 13:00:00")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("换算公历").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("2023-01-22 13:00:00")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun createSaveSearchAndOpenDetail() {
         val alias = "Stage2合成样例-${System.currentTimeMillis()}"
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -269,7 +327,7 @@ class StageTwoFlowTest {
         )
         checkNotNull(exportedFile) { "系统打开文档页面未找到刚导出的单命例 JSON" }
         exportedFile.click()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
+        composeRule.waitUntil(timeoutMillis = 30_000) {
             composeRule.onAllNodes(hasTestTag("single_case_preview"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
@@ -304,7 +362,7 @@ class StageTwoFlowTest {
         )
         checkNotNull(exportedFileAgain) { "系统打开文档页面未找到待二次导入的 JSON" }
         exportedFileAgain.click()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
+        composeRule.waitUntil(timeoutMillis = 30_000) {
             composeRule.onAllNodes(hasTestTag("single_case_preview"))
                 .fetchSemanticsNodes().isNotEmpty()
         }

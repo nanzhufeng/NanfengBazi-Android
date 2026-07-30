@@ -765,11 +765,10 @@ class SingleCaseExchangeService(
         SingleCaseMergePreparationResult.Rejected(code, message)
 
     private suspend fun loadConflicts(case: BaziCase): List<SingleCaseConflictCandidate> {
-        val adoptedFourPillars = case.calculationSnapshots
+        val adoptedResult = case.calculationSnapshots
             .asReversed()
             .firstOrNull { it.adopted }
             ?.result
-            ?.fourPillars
         val conflicts = linkedMapOf<String, MutableConflict>()
         repository.findById(case.id)?.let { existing ->
             conflicts.getOrPut(existing.id) {
@@ -778,7 +777,10 @@ class SingleCaseExchangeService(
         }
         repository.findDuplicateCandidates(
             birthInput = case.birthInput,
-            fourPillars = adoptedFourPillars,
+            fourPillars = adoptedResult?.fourPillars,
+            canonicalSolarDateTime = adoptedResult
+                ?.calendarConversion
+                ?.solarDateTime,
         ).forEach { candidate ->
             val conflict = conflicts.getOrPut(candidate.summary.id) {
                 MutableConflict(

@@ -11,12 +11,17 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
@@ -230,5 +235,96 @@ class RoomCaseRepositoryTest {
             candidates.single().reasons,
         )
         assertEquals(source.deletedAt, candidates.single().summary.deletedAt)
+    }
+
+    @Test
+    fun `农历命例按换算公历排序且跨历法识别同一出生时刻`() = runTest {
+        val base = sampleCase()
+        val solarDateTime = CivilDateTime(2024, 1, 1, 10, 30, 0)
+        val solarInput = base.birthInput.copy(
+            calendarInput = BirthCalendarInput.Solar(solarDateTime),
+        )
+        val solarCase = base.copy(
+            id = "case-solar",
+            birthInput = solarInput,
+            textRecords = emptyList(),
+            textRecordRevisions = emptyList(),
+            events = emptyList(),
+            eventRevisions = emptyList(),
+            attachments = emptyList(),
+            fieldEvidence = emptyList(),
+            calculationSnapshots = base.calculationSnapshots.map {
+                it.copy(
+                    id = "snapshot-solar",
+                    result = it.result.copy(
+                        normalizedInput = solarInput,
+                        calendarConversion = CalendarConversionResult(
+                            inputCalendarSystem = CalendarSystem.SOLAR,
+                            solarDateTime = solarDateTime,
+                            lunarDateTime = LunarDateTime(
+                                2023,
+                                11,
+                                20,
+                                10,
+                                30,
+                                0,
+                                isLeapMonth = false,
+                            ),
+                        ),
+                    ),
+                )
+            },
+            groups = emptyList(),
+            tags = emptyList(),
+        )
+        val lunarInput = base.birthInput.copy(
+            calendarInput = BirthCalendarInput.Lunar(
+                LunarDateTime(2023, 1, 1, 13, 0, 0, isLeapMonth = false),
+            ),
+        )
+        val lunarCanonical = CivilDateTime(2023, 1, 22, 13, 0, 0)
+        val lunarCase = solarCase.copy(
+            id = "case-lunar",
+            alias = "农历合成案例",
+            birthInput = lunarInput,
+            calculationSnapshots = solarCase.calculationSnapshots.map {
+                it.copy(
+                    id = "snapshot-lunar",
+                    result = it.result.copy(
+                        normalizedInput = lunarInput,
+                        calendarConversion = CalendarConversionResult(
+                            inputCalendarSystem = CalendarSystem.LUNAR,
+                            solarDateTime = lunarCanonical,
+                            lunarDateTime = (lunarInput.calendarInput as BirthCalendarInput.Lunar)
+                                .dateTime,
+                        ),
+                    ),
+                )
+            },
+        )
+        repository.save(solarCase, null)
+        repository.save(lunarCase, null)
+
+        assertEquals(
+            listOf("case-lunar", "case-solar"),
+            repository.search(
+                CaseSearchRequest(sortOrder = CaseSortOrder.BIRTH_ASC),
+            ).map { it.id },
+        )
+
+        val equivalentLunarInput = lunarInput.copy(
+            calendarInput = BirthCalendarInput.Lunar(
+                LunarDateTime(2023, 11, 20, 10, 30, 0, isLeapMonth = false),
+            ),
+        )
+        val candidates = repository.findDuplicateCandidates(
+            birthInput = equivalentLunarInput,
+            fourPillars = null,
+            canonicalSolarDateTime = solarDateTime,
+        )
+        assertEquals(
+            setOf(DuplicateReason.SAME_BIRTH_INPUT),
+            candidates.single { it.summary.id == "case-solar" }.reasons,
+        )
     }
 }

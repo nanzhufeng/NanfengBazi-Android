@@ -8,10 +8,12 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.Clock
@@ -30,6 +32,8 @@ data class CaseFormState(
     val hour: String = "",
     val minute: String = "",
     val second: String = "0",
+    val calendarSystem: CalendarSystem = CalendarSystem.SOLAR,
+    val isLeapMonth: Boolean = false,
 )
 
 sealed interface CaseFormValidation {
@@ -69,39 +73,56 @@ object CaseFormValidator {
             raw.toIntOrNull()
                 ?: return CaseFormValidation.Invalid("${label}必须是数字。")
         }
-        val dateTime = try {
-            LocalDateTime.of(
-                numbers[0],
-                numbers[1],
-                numbers[2],
-                numbers[3],
-                numbers[4],
-                numbers[5],
-            )
-        } catch (_: DateTimeException) {
-            return CaseFormValidation.Invalid("出生日期或时间无效，请检查年月日和时分秒。")
-        }
         val birthInput = try {
-            BirthInput(
-                calendarInput = BirthCalendarInput.Solar(
-                    CivilDateTime(
-                        year = dateTime.year,
-                        month = dateTime.monthValue,
-                        day = dateTime.dayOfMonth,
-                        hour = dateTime.hour,
-                        minute = dateTime.minute,
-                        second = dateTime.second,
+            val calendarInput = when (form.calendarSystem) {
+                CalendarSystem.SOLAR -> {
+                    val dateTime = LocalDateTime.of(
+                        numbers[0],
+                        numbers[1],
+                        numbers[2],
+                        numbers[3],
+                        numbers[4],
+                        numbers[5],
+                    )
+                    BirthCalendarInput.Solar(
+                        CivilDateTime(
+                            year = dateTime.year,
+                            month = dateTime.monthValue,
+                            day = dateTime.dayOfMonth,
+                            hour = dateTime.hour,
+                            minute = dateTime.minute,
+                            second = dateTime.second,
+                        ),
+                    )
+                }
+                CalendarSystem.LUNAR -> BirthCalendarInput.Lunar(
+                    LunarDateTime(
+                        year = numbers[0],
+                        month = numbers[1],
+                        day = numbers[2],
+                        hour = numbers[3],
+                        minute = numbers[4],
+                        second = numbers[5],
+                        isLeapMonth = form.isLeapMonth,
                     ),
-                ),
+                )
+            }
+            BirthInput(
+                calendarInput = calendarInput,
                 sexForFortuneDirection = sex,
-                timePrecision = if (dateTime.second == 0) {
+                timePrecision = if (numbers[5] == 0) {
                     TimePrecision.EXACT_TO_MINUTE
                 } else {
                     TimePrecision.EXACT_TO_SECOND
                 },
             )
-        } catch (_: IllegalArgumentException) {
-            return CaseFormValidation.Invalid("出生资料超出支持范围，请检查输入。")
+        } catch (_: DateTimeException) {
+            return CaseFormValidation.Invalid("出生日期或时间无效，请检查年月日和时分秒。")
+        } catch (error: IllegalArgumentException) {
+            return CaseFormValidation.Invalid(
+                error.message?.takeIf { it.isNotBlank() }
+                    ?: "出生资料超出支持范围，请检查输入。",
+            )
         }
         return CaseFormValidation.Valid(
             alias = alias,
@@ -167,6 +188,7 @@ class CreateCaseUseCase(
                 caseRepository.findDuplicateCandidates(
                     birthInput = valid.birthInput,
                     fourPillars = calculation.fourPillars,
+                    canonicalSolarDateTime = calculation.calendarConversion?.solarDateTime,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled

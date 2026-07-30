@@ -3,6 +3,8 @@ package com.nanzhufeng.nanfengbazi.engine.tyme
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
@@ -11,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneStart
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
@@ -21,6 +24,7 @@ import com.tyme.eightchar.ChildLimit
 import com.tyme.eightchar.provider.impl.China95ChildLimitProvider
 import com.tyme.eightchar.provider.impl.DefaultChildLimitProvider
 import com.tyme.enums.Gender
+import com.tyme.lunar.LunarHour
 import com.tyme.solar.SolarTime
 import java.time.Clock
 import java.util.concurrent.locks.ReentrantLock
@@ -34,11 +38,11 @@ class TymeBaziEngine(
         profile: CalculationProfile,
     ): CalculationResult {
         validateSupported(input, profile)
-        val solarInput = input.calendarInput as BirthCalendarInput.Solar
+        val resolved = resolveCalendar(input.calendarInput)
 
         return ChildLimitProviderGuard.withProvider(profile.luckStartRule) {
-            val solar = solarInput.dateTime.toTyme()
-            val lunarHour = solar.lunarHour
+            val solar = resolved.solar
+            val lunarHour = resolved.lunarHour
             val eightChar = lunarHour.eightChar
             val childLimit = ChildLimit.fromSolarTime(
                 solar,
@@ -95,6 +99,11 @@ class TymeBaziEngine(
                     ruleVersion = profile.ruleVersion,
                     calculatedAt = clock.instant(),
                 ),
+                calendarConversion = CalendarConversionResult(
+                    inputCalendarSystem = resolved.inputCalendarSystem,
+                    solarDateTime = solar.toDomain(),
+                    lunarDateTime = lunarHour.toDomain(),
+                ),
             )
         }
     }
@@ -103,11 +112,8 @@ class TymeBaziEngine(
         input: BirthInput,
         profile: CalculationProfile,
     ) {
-        require(input.calendarInput is BirthCalendarInput.Solar) {
-            "Stage 0 仅支持公历输入，不能静默把农历当作公历"
-        }
         require(!input.useTrueSolarTime && profile.solarTimeMode == SolarTimeMode.CIVIL_TIME) {
-            "Stage 0 尚未实现真太阳时校正"
+            "当前版本尚未实现真太阳时校正"
         }
         require(profile.engineVersion == CalculationProfile.TYME_ENGINE_VERSION) {
             "配置要求的引擎版本与当前 Tyme4j 适配器不一致"
@@ -116,7 +122,40 @@ class TymeBaziEngine(
         require(profile.monthBoundaryRule == MonthBoundaryRule.SOLAR_TERM_EXACT)
         require(profile.ratHourRule == RatHourRule.TYME_DEFAULT)
     }
+
+    private fun resolveCalendar(calendarInput: BirthCalendarInput): ResolvedCalendar =
+        when (calendarInput) {
+            is BirthCalendarInput.Solar -> {
+                val solar = calendarInput.dateTime.toTyme()
+                ResolvedCalendar(CalendarSystem.SOLAR, solar, solar.lunarHour)
+            }
+            is BirthCalendarInput.Lunar -> {
+                val dateTime = calendarInput.dateTime
+                val lunarHour = try {
+                    LunarHour.fromYmdHms(
+                        dateTime.year,
+                        if (dateTime.isLeapMonth) -dateTime.month else dateTime.month,
+                        dateTime.day,
+                        dateTime.hour,
+                        dateTime.minute,
+                        dateTime.second,
+                    )
+                } catch (error: IllegalArgumentException) {
+                    throw IllegalArgumentException(
+                        "农历日期无效：该年份可能没有所选闰月，或日期超出当月天数。",
+                        error,
+                    )
+                }
+                ResolvedCalendar(CalendarSystem.LUNAR, lunarHour.solarTime, lunarHour)
+            }
+        }
 }
+
+private data class ResolvedCalendar(
+    val inputCalendarSystem: CalendarSystem,
+    val solar: SolarTime,
+    val lunarHour: LunarHour,
+)
 
 /**
  * Tyme4j 的起运 provider 是进程级可变状态，只能在此保护器内切换。
@@ -152,3 +191,16 @@ private fun SolarTime.toDomain(): CivilDateTime = CivilDateTime(
     minute = minute,
     second = second,
 )
+
+private fun LunarHour.toDomain(): LunarDateTime {
+    val month = lunarDay.lunarMonth
+    return LunarDateTime(
+        year = month.lunarYear.year,
+        month = kotlin.math.abs(month.monthWithLeap),
+        day = day,
+        hour = hour,
+        minute = minute,
+        second = second,
+        isLeapMonth = month.isLeap,
+    )
+}

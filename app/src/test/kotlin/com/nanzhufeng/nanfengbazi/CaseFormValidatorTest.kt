@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,5 +44,41 @@ class CaseFormValidatorTest {
         assertEquals(2000, solar.dateTime.year)
         assertEquals(29, solar.dateTime.day)
         assertEquals("合成命例甲", valid.alias)
+    }
+
+    @Test
+    fun `有效农历表单保留闰月语义`() {
+        val result = CaseFormValidator.validate(
+            validForm().copy(
+                calendarSystem = CalendarSystem.LUNAR,
+                year = "2023",
+                month = "2",
+                day = "1",
+                isLeapMonth = true,
+            ),
+        )
+
+        assertTrue(result is CaseFormValidation.Valid)
+        val lunar = (result as CaseFormValidation.Valid)
+            .birthInput.calendarInput as BirthCalendarInput.Lunar
+        assertEquals(2023, lunar.dateTime.year)
+        assertEquals(2, lunar.dateTime.month)
+        assertTrue(lunar.dateTime.isLeapMonth)
+    }
+
+    @Test
+    fun `农历基础字段越界会给出明确反馈`() {
+        val result = CaseFormValidator.validate(
+            validForm().copy(
+                calendarSystem = CalendarSystem.LUNAR,
+                month = "2",
+                day = "31",
+            ),
+        )
+
+        assertEquals(
+            CaseFormValidation.Invalid("农历日期必须在 1..30"),
+            result,
+        )
     }
 }

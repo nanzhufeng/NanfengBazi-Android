@@ -88,6 +88,7 @@ class EditCaseUseCase(
                 caseRepository.findDuplicateCandidates(
                     birthInput = valid.birthInput,
                     fourPillars = calculation.fourPillars,
+                    canonicalSolarDateTime = calculation.calendarConversion?.solarDateTime,
                     excludeCaseId = caseId,
                 )
             } catch (cancelled: CancellationException) {

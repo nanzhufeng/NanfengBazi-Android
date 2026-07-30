@@ -54,6 +54,19 @@ data class CalculationWarning(
 )
 
 @Serializable
+enum class CalendarSystem {
+    SOLAR,
+    LUNAR,
+}
+
+@Serializable
+data class CalendarConversionResult(
+    val inputCalendarSystem: CalendarSystem,
+    val solarDateTime: CivilDateTime,
+    val lunarDateTime: LunarDateTime,
+)
+
+@Serializable
 data class CalculationResult(
     val normalizedInput: BirthInput,
     val profile: CalculationProfile,
@@ -66,4 +79,5 @@ data class CalculationResult(
     val decadeFortunes: List<DecadeFortune>,
     val evidence: CalculationEvidence,
     val warnings: List<CalculationWarning> = emptyList(),
+    val calendarConversion: CalendarConversionResult? = null,
 )

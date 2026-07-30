@@ -59,6 +59,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -1816,8 +1817,49 @@ internal fun CaseFormScreen(
 
             SectionHeading(
                 "出生时间",
-                "当前阶段支持公历、北京时间民用时；不静默转换农历或真太阳时。",
+                "支持公历与农历（含闰月），统一按北京时间民用时计算；暂不做真太阳时校正。",
             )
+            Text(
+                "历法 *",
+                modifier = Modifier.padding(bottom = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SexButton(
+                    text = "公历",
+                    selected = form.calendarSystem == CalendarSystem.SOLAR,
+                    enabled = !saving,
+                    tag = "birth_calendar_solar",
+                    onClick = {
+                        onFormChange {
+                            it.copy(
+                                calendarSystem = CalendarSystem.SOLAR,
+                                isLeapMonth = false,
+                            )
+                        }
+                    },
+                )
+                SexButton(
+                    text = "农历",
+                    selected = form.calendarSystem == CalendarSystem.LUNAR,
+                    enabled = !saving,
+                    tag = "birth_calendar_lunar",
+                    onClick = {
+                        onFormChange { it.copy(calendarSystem = CalendarSystem.LUNAR) }
+                    },
+                )
+                if (form.calendarSystem == CalendarSystem.LUNAR) {
+                    SexButton(
+                        text = "闰月",
+                        selected = form.isLeapMonth,
+                        enabled = !saving,
+                        tag = "birth_lunar_leap_month",
+                        onClick = {
+                            onFormChange { it.copy(isLeapMonth = !it.isLeapMonth) }
+                        },
+                    )
+                }
+            }
             NumericFieldRow(
                 values = listOf(
                     NumericField("年", form.year, "birth_year") {
@@ -2199,6 +2241,20 @@ private fun CaseDetailContent(
                 DetailRow("引擎", adopted.result.evidence.engineName)
                 DetailRow("引擎版本", adopted.result.evidence.engineVersion)
                 DetailRow("规则版本", adopted.result.evidence.ruleVersion)
+                adopted.result.calendarConversion?.let { conversion ->
+                    DetailRow("换算公历", conversion.solarDateTime.display())
+                    val lunar = conversion.lunarDateTime
+                    DetailRow(
+                        "换算农历",
+                        "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}" +
+                            "${lunar.month}月${lunar.day}日 " +
+                            "%02d:%02d:%02d".format(
+                                lunar.hour,
+                                lunar.minute,
+                                lunar.second,
+                            ),
+                    )
+                }
                 DetailRow(
                     "起运方向",
                     if (adopted.result.fortuneStart.direction.name == "FORWARD") {
@@ -2580,7 +2636,8 @@ private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateTime()
         is BirthCalendarInput.Solar -> "公历 ${calendar.dateTime.display()}"
         is BirthCalendarInput.Lunar -> {
             val date = calendar.dateTime
-            "农历 ${date.year}年${date.month}月${date.day}日 " +
+            "农历 ${date.year}年${if (date.isLeapMonth) "闰" else ""}" +
+                "${date.month}月${date.day}日 " +
                 "%02d:%02d:%02d".format(date.hour, date.minute, date.second)
         }
     }

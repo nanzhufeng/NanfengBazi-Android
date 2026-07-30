@@ -39,6 +39,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
@@ -1902,12 +1903,6 @@ class StageTwoViewModel(
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
         val form = detail.toEditableForm()
-        if (form == null) {
-            mutableState.update {
-                it.copy(message = "当前编辑器暂不支持农历命例，请等待农历能力阶段。")
-            }
-            return
-        }
         mutableState.update {
             it.copy(
                 destination = navigator.openEditCase(detail.id),
@@ -2316,18 +2311,30 @@ class StageTwoViewModel(
     }
 }
 
-private fun BaziCase.toEditableForm(): CaseFormState? {
-    val dateTime = (birthInput.calendarInput as? BirthCalendarInput.Solar)?.dateTime
-        ?: return null
+private fun BaziCase.toEditableForm(): CaseFormState {
+    val calendar = birthInput.calendarInput
+    val dateTimeParts = when (calendar) {
+        is BirthCalendarInput.Solar -> with(calendar.dateTime) {
+            listOf(year, month, day, hour, minute, second)
+        }
+        is BirthCalendarInput.Lunar -> with(calendar.dateTime) {
+            listOf(year, month, day, hour, minute, second)
+        }
+    }
     return CaseFormState(
         alias = alias,
         name = name.value.orEmpty(),
         sex = sexForFortuneDirection,
-        year = dateTime.year.toString(),
-        month = dateTime.month.toString(),
-        day = dateTime.day.toString(),
-        hour = dateTime.hour.toString(),
-        minute = dateTime.minute.toString(),
-        second = dateTime.second.toString(),
+        year = dateTimeParts[0].toString(),
+        month = dateTimeParts[1].toString(),
+        day = dateTimeParts[2].toString(),
+        hour = dateTimeParts[3].toString(),
+        minute = dateTimeParts[4].toString(),
+        second = dateTimeParts[5].toString(),
+        calendarSystem = when (calendar) {
+            is BirthCalendarInput.Solar -> CalendarSystem.SOLAR
+            is BirthCalendarInput.Lunar -> CalendarSystem.LUNAR
+        },
+        isLeapMonth = (calendar as? BirthCalendarInput.Lunar)?.dateTime?.isLeapMonth == true,
     )
 }
