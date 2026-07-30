@@ -9,6 +9,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -260,6 +261,46 @@ class TymeBaziEngineTest {
                     actual,
                 ).seconds,
             ) <= 60,
+        )
+
+        val basic = requireNotNull(result.basicChartDetails)
+        assertEquals("猴", basic.zodiac)
+        assertEquals("处女", basic.westernZodiac)
+        assertEquals("壬", basic.dayMaster)
+        assertEquals("处暑", basic.previousSolarTerm.name)
+        assertEquals("白露", basic.nextSolarTerm.name)
+        val pillars = basic.pillars.associateBy { it.position }
+        assertEquals(
+            listOf("比肩", "七杀", "比肩", "偏财"),
+            PillarPosition.entries.map { requireNotNull(pillars[it]).primaryTenGod },
+        )
+        assertEquals(
+            listOf("剑锋金", "大驿土", "剑锋金", "天河水"),
+            PillarPosition.entries.map { requireNotNull(pillars[it]).naYin },
+        )
+        assertEquals(
+            listOf("长生", "长生", "长生", "胎"),
+            PillarPosition.entries.map { requireNotNull(pillars[it]).terrain },
+        )
+        assertEquals(
+            listOf("长生", "病", "长生", "帝旺"),
+            PillarPosition.entries.map { requireNotNull(pillars[it]).selfSittingTerrain },
+        )
+        assertEquals(
+            listOf("庚", "壬", "戊"),
+            requireNotNull(pillars[PillarPosition.YEAR]).hiddenStems.map { it.heavenStem },
+        )
+        assertEquals(
+            listOf("偏印", "比肩", "七杀"),
+            requireNotNull(pillars[PillarPosition.YEAR]).hiddenStems.map { it.tenGod },
+        )
+        assertEquals(
+            listOf("戌", "亥"),
+            requireNotNull(pillars[PillarPosition.YEAR]).voidEarthBranches,
+        )
+        assertEquals(
+            listOf("寅", "卯"),
+            requireNotNull(pillars[PillarPosition.MONTH]).voidEarthBranches,
         )
     }
 

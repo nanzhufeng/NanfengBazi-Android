@@ -8,6 +8,7 @@ import com.nanzhufeng.nanfengbazi.domain.TrueSolarTimeCalculator
 import com.nanzhufeng.nanfengbazi.domain.TrueSolarTimeRequest
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
@@ -19,6 +20,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneStart
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.HiddenStemDetail
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
@@ -27,12 +29,17 @@ import com.nanzhufeng.nanfengbazi.domain.model.TrueSolarTimeApplicationRule
 import com.nanzhufeng.nanfengbazi.domain.model.YearBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.MonthBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
+import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
 import com.tyme.eightchar.ChildLimit
 import com.tyme.eightchar.EightChar
 import com.tyme.eightchar.provider.impl.China95ChildLimitProvider
 import com.tyme.eightchar.provider.impl.DefaultChildLimitProvider
 import com.tyme.enums.Gender
 import com.tyme.lunar.LunarHour
+import com.tyme.sixtycycle.SixtyCycle
 import com.tyme.solar.SolarTime
 import com.nanzhufeng.nanfengbazi.solar.SpaTrueSolarTimeCalculator
 import java.time.Clock
@@ -131,6 +138,10 @@ class TymeBaziEngine(
                     lunarDateTime = lunarHour.toDomain(),
                 ),
                 trueSolarTimeEvidence = trueSolarEvidence,
+                basicChartDetails = buildBasicChartDetails(
+                    civilSolarTime = solar,
+                    eightChar = eightChar,
+                ),
                 warnings = buildList {
                     if (trueSolarEvidence != null) {
                         add(
@@ -160,6 +171,32 @@ class TymeBaziEngine(
                 },
             )
         }
+    }
+
+    private fun buildBasicChartDetails(
+        civilSolarTime: SolarTime,
+        eightChar: EightChar,
+    ): BasicChartDetails {
+        val dayMaster = eightChar.day.heavenStem
+        val pillars = listOf(
+            PillarPosition.YEAR to eightChar.year,
+            PillarPosition.MONTH to eightChar.month,
+            PillarPosition.DAY to eightChar.day,
+            PillarPosition.HOUR to eightChar.hour,
+        ).map { (position, pillar) ->
+            pillar.toDetail(position, dayMaster)
+        }
+        val previousTerm = civilSolarTime.term
+        val nextTerm = previousTerm.next(1)
+
+        return BasicChartDetails(
+            zodiac = eightChar.year.earthBranch.zodiac.name,
+            westernZodiac = civilSolarTime.solarDay.constellation.name,
+            dayMaster = dayMaster.name,
+            pillars = pillars,
+            previousSolarTerm = previousTerm.toDomainPoint(),
+            nextSolarTerm = nextTerm.toDomainPoint(),
+        )
     }
 
     private fun calculateTrueSolarTimeIfNeeded(
@@ -319,6 +356,38 @@ private fun SolarTime.toDomain(): CivilDateTime = CivilDateTime(
 
 private fun CivilDateTime.display(): String =
     "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
+
+private fun SixtyCycle.toDetail(
+    position: PillarPosition,
+    dayMaster: com.tyme.sixtycycle.HeavenStem,
+): PillarDetail = PillarDetail(
+    position = position,
+    name = name,
+    heavenStem = heavenStem.name,
+    earthBranch = earthBranch.name,
+    heavenStemElement = heavenStem.element.name,
+    earthBranchElement = earthBranch.element.name,
+    primaryTenGod = dayMaster.getTenStar(heavenStem).name,
+    hiddenStems = earthBranch.hideHeavenStems.map { hidden ->
+        HiddenStemDetail(
+            heavenStem = hidden.heavenStem.name,
+            type = hidden.type.toString(),
+            tenGod = dayMaster.getTenStar(hidden.heavenStem).name,
+            element = hidden.heavenStem.element.name,
+        )
+    },
+    terrain = dayMaster.getTerrain(earthBranch).name,
+    selfSittingTerrain = heavenStem.getTerrain(earthBranch).name,
+    voidEarthBranches = extraEarthBranches.map { it.name },
+    naYin = sound.name,
+)
+
+private fun com.tyme.solar.SolarTerm.toDomainPoint(): SolarTermPoint =
+    SolarTermPoint(
+        name = name,
+        type = if (isJie) SolarTermType.JIE else SolarTermType.QI,
+        at = julianDay.solarTime.toDomain(),
+    )
 
 private fun LunarHour.toDomain(): LunarDateTime {
     val month = lunarDay.lunarMonth

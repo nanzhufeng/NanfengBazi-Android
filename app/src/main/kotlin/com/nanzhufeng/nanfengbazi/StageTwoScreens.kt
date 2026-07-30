@@ -51,9 +51,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
@@ -69,6 +71,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
@@ -1677,7 +1681,8 @@ private fun CaseSummaryCard(
             )
             Text(
                 "${summary.sexForFortuneDirection.displayName()} · " +
-                    summary.birthInput.displayDateTime(),
+                    summary.birthInput.displayDateTime() +
+                    summary.zodiac?.let { " · 生肖$it" }.orEmpty(),
                 modifier = Modifier.padding(top = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
@@ -2400,6 +2405,16 @@ private fun CaseDetailContent(
                 Text("当前命例没有已采用的计算快照。")
             } else {
                 DetailRow("四柱", adopted.result.fourPillars.display())
+                adopted.result.basicChartDetails?.let { basic ->
+                    BasicChartDetailsView(
+                        details = basic,
+                        sex = case.sexForFortuneDirection,
+                    )
+                }
+                DetailRow("胎元", adopted.result.fetalOrigin)
+                DetailRow("胎息", adopted.result.fetalBreath)
+                DetailRow("命宫", adopted.result.ownSign)
+                DetailRow("身宫", adopted.result.bodySign)
                 DetailRow("计算配置", adopted.result.profile.id)
                 DetailRow("引擎", adopted.result.evidence.engineName)
                 DetailRow("引擎版本", adopted.result.evidence.engineVersion)
@@ -2713,6 +2728,110 @@ private fun DetailRow(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(value, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun BasicChartDetailsView(
+    details: BasicChartDetails,
+    sex: SexForFortuneDirection,
+) {
+    val pillars = details.pillars.associateBy { it.position }
+    val ordered = PillarPosition.entries.map { requireNotNull(pillars[it]) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .testTag("basic_chart_details"),
+    ) {
+        Text(
+            "基础排盘明细",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "生肖 ${details.zodiac} · ${details.westernZodiac}座 · 日主 ${details.dayMaster}",
+            modifier = Modifier.padding(top = 4.dp),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            "前节气 ${details.previousSolarTerm.name} " +
+                details.previousSolarTerm.at.display(),
+            modifier = Modifier.padding(top = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "后节气 ${details.nextSolarTerm.name} ${details.nextSolarTerm.at.display()}",
+            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        BasicChartTableRow(
+            label = "",
+            values = listOf("年柱", "月柱", "日柱", "时柱"),
+        )
+        BasicChartTableRow(
+            label = "主星",
+            values = ordered.map { pillar ->
+                if (pillar.position == PillarPosition.DAY) {
+                    if (sex == SexForFortuneDirection.MAN) "元男" else "元女"
+                } else {
+                    pillar.primaryTenGod
+                }
+            },
+            tag = "basic_chart_primary",
+        )
+        BasicChartTableRow("天干", ordered.map(PillarDetail::heavenStem))
+        BasicChartTableRow("地支", ordered.map(PillarDetail::earthBranch))
+        BasicChartTableRow(
+            "藏干",
+            ordered.map { it.hiddenStems.joinToString("\n") { hidden -> hidden.heavenStem } },
+        )
+        BasicChartTableRow(
+            "副星",
+            ordered.map { it.hiddenStems.joinToString("\n") { hidden -> hidden.tenGod } },
+            tag = "basic_chart_secondary",
+        )
+        BasicChartTableRow("星运", ordered.map(PillarDetail::terrain))
+        BasicChartTableRow("自坐", ordered.map(PillarDetail::selfSittingTerrain))
+        BasicChartTableRow(
+            "空亡",
+            ordered.map { it.voidEarthBranches.joinToString("") },
+        )
+        BasicChartTableRow("纳音", ordered.map(PillarDetail::naYin))
+    }
+}
+
+@Composable
+private fun BasicChartTableRow(
+    label: String,
+    values: List<String>,
+    tag: String? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (tag == null) Modifier else Modifier.testTag(tag))
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.width(44.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        values.forEach { value ->
+            Text(
+                value,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodySmall,
+                lineHeight = MaterialTheme.typography.bodySmall.lineHeight,
+            )
+        }
     }
 }
 

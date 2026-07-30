@@ -416,4 +416,5 @@ data class CaseSummary(
     val deletedAt: Instant?,
     val revision: Long,
     val canonicalSolarDateTime: CivilDateTime? = null,
+    val zodiac: String? = null,
 )

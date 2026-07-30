@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.data
 
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
@@ -24,8 +25,12 @@ import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneStart
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import java.security.MessageDigest
@@ -79,6 +84,37 @@ internal fun sampleCase(
         ),
         warnings = listOf(
             CalculationWarning("FIXTURE", "仅用于脱敏测试"),
+        ),
+        basicChartDetails = BasicChartDetails(
+            zodiac = "虎",
+            westernZodiac = "双子",
+            dayMaster = "癸",
+            pillars = listOf("丙寅", "癸巳", "癸酉", "己未").mapIndexed { index, name ->
+                PillarDetail(
+                    position = PillarPosition.entries[index],
+                    name = name,
+                    heavenStem = name.take(1),
+                    earthBranch = name.takeLast(1),
+                    heavenStemElement = "测试",
+                    earthBranchElement = "测试",
+                    primaryTenGod = "测试",
+                    hiddenStems = emptyList(),
+                    terrain = "测试",
+                    selfSittingTerrain = "测试",
+                    voidEarthBranches = emptyList(),
+                    naYin = "测试",
+                )
+            },
+            previousSolarTerm = SolarTermPoint(
+                name = "小满",
+                type = SolarTermType.QI,
+                at = CivilDateTime(1986, 5, 21, 0, 0, 0),
+            ),
+            nextSolarTerm = SolarTermPoint(
+                name = "芒种",
+                type = SolarTermType.JIE,
+                at = CivilDateTime(1986, 6, 6, 0, 0, 0),
+            ),
         ),
     )
     val attachment = SourceAttachment(

@@ -84,6 +84,70 @@ data class TrueSolarTimeEvidence(
 )
 
 @Serializable
+enum class PillarPosition {
+    YEAR,
+    MONTH,
+    DAY,
+    HOUR,
+}
+
+@Serializable
+data class HiddenStemDetail(
+    val heavenStem: String,
+    val type: String,
+    val tenGod: String,
+    val element: String,
+)
+
+@Serializable
+data class PillarDetail(
+    val position: PillarPosition,
+    val name: String,
+    val heavenStem: String,
+    val earthBranch: String,
+    val heavenStemElement: String,
+    val earthBranchElement: String,
+    val primaryTenGod: String,
+    val hiddenStems: List<HiddenStemDetail>,
+    val terrain: String,
+    val selfSittingTerrain: String,
+    val voidEarthBranches: List<String>,
+    val naYin: String,
+)
+
+@Serializable
+enum class SolarTermType {
+    JIE,
+    QI,
+}
+
+@Serializable
+data class SolarTermPoint(
+    val name: String,
+    val type: SolarTermType,
+    val at: CivilDateTime,
+)
+
+@Serializable
+data class BasicChartDetails(
+    val zodiac: String,
+    val westernZodiac: String,
+    val dayMaster: String,
+    val pillars: List<PillarDetail>,
+    val previousSolarTerm: SolarTermPoint,
+    val nextSolarTerm: SolarTermPoint,
+) {
+    init {
+        require(
+            pillars.size == PillarPosition.entries.size &&
+                pillars.map { it.position }.toSet() == PillarPosition.entries.toSet(),
+        ) {
+            "基础排盘必须且只能包含年、月、日、时四柱明细"
+        }
+    }
+}
+
+@Serializable
 data class CalculationResult(
     val normalizedInput: BirthInput,
     val profile: CalculationProfile,
@@ -98,4 +162,5 @@ data class CalculationResult(
     val warnings: List<CalculationWarning> = emptyList(),
     val calendarConversion: CalendarConversionResult? = null,
     val trueSolarTimeEvidence: TrueSolarTimeEvidence? = null,
+    val basicChartDetails: BasicChartDetails? = null,
 )

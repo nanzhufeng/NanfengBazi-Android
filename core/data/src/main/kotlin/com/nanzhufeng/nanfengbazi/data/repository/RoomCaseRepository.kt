@@ -483,6 +483,10 @@ private fun CaseEntity.toSummary(
         ?.result
         ?.calendarConversion
         ?.solarDateTime,
+    zodiac = adoptedSnapshot
+        ?.result
+        ?.basicChartDetails
+        ?.zodiac,
 )
 
 private fun CaseSummary.hasSameBirthIdentity(

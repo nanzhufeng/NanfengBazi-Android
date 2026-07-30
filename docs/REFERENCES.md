@@ -7,7 +7,8 @@
 - 地址：https://github.com/6tail/tyme4j
 - 官方文档：https://6tail.cn/tyme.html
 - 用途：Stage 0 的八字、节气、起运和大运计算适配器；Stage 4A 依据官方
-  `LunarHour.fromYmdHms`、闰月负月份约定和 `getSolarTime` 接通农历转换；公开测试
+  `LunarHour.fromYmdHms`、闰月负月份约定和 `getSolarTime` 接通农历转换，并从最终
+  `EightChar` 固化十神、藏干、十二长生、旬空、纳音、生肖、星座与相邻节气；公开测试
   用作首批黄金样本。
 - 采用边界：第三方类型不进入 `core:domain`；全局起运 provider 必须加锁、临时切换并恢复。
 
