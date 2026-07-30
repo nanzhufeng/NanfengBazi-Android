@@ -45,6 +45,9 @@ class WenzhenP0Parser(
                 if (image.pageType == WenzhenPageType.BASIC_INFO) {
                     fields += parseBasicInfoFields(image, document)
                 }
+                if (image.pageType == WenzhenPageType.FEEDBACK) {
+                    fields += parseFeedbackEventFields(image, document)
+                }
             }
             parseLongText(image, document)?.let(longTexts::add)
         }
@@ -440,6 +443,57 @@ class WenzhenP0Parser(
         }
     }
 
+    private fun parseFeedbackEventFields(
+        image: ImportImageRef,
+        document: OcrDocument,
+    ): List<CaseFieldEvidence> {
+        val orderedBlocks = document.blocks.sortedWith(
+            compareBy<OcrTextBlock> { it.boundingBox?.top ?: Int.MAX_VALUE }
+                .thenBy { it.boundingBox?.left ?: Int.MAX_VALUE },
+        )
+        val anchors = orderedBlocks.mapIndexedNotNull { blockIndex, block ->
+            val match = EVENT_HEADING_PATTERN.find(block.text)
+                ?: return@mapIndexedNotNull null
+            FeedbackEventAnchor(
+                blockIndex = blockIndex,
+                year = match.groupValues[1].toInt(),
+                stemBranch = match.groupValues[2].ifBlank { null },
+                inlineText = block.text.substring(match.range.last + 1).trim(),
+            )
+        }
+        return anchors.mapIndexedNotNull { eventIndex, anchor ->
+            val nextBlockIndex = anchors.getOrNull(eventIndex + 1)?.blockIndex
+                ?: orderedBlocks.size
+            val eventBlocks = orderedBlocks.subList(anchor.blockIndex, nextBlockIndex)
+            val normalizedText = buildList {
+                anchor.inlineText.takeIf(String::isNotBlank)?.let(::add)
+                addAll(eventBlocks.drop(1).map(OcrTextBlock::text))
+            }.joinToString("\n").trim()
+            if (normalizedText.isEmpty()) return@mapIndexedNotNull null
+            val rawText = buildString {
+                append(anchor.year)
+                append('年')
+                anchor.stemBranch?.let {
+                    append(' ')
+                    append(it)
+                }
+                append('\n')
+                append(normalizedText)
+            }
+            field(
+                image = image,
+                document = document,
+                rowKey = "feedback-event-$eventIndex",
+                fieldKey = "$FIELD_EVENT_PREFIX${anchor.year}.$eventIndex",
+                rawText = rawText,
+                value = TypedFieldValue.Text(normalizedText),
+                confidence = eventBlocks.mapNotNull(OcrTextBlock::confidence).averageOrNull(),
+                boundingBox = eventBlocks.unionBoundingBox(),
+                parserConfidence = 0.86f,
+            )
+        }
+    }
+
     private fun field(
         image: ImportImageRef,
         document: OcrDocument,
@@ -632,10 +686,17 @@ class WenzhenP0Parser(
         val longitude: Double,
     )
 
+    private data class FeedbackEventAnchor(
+        val blockIndex: Int,
+        val year: Int,
+        val stemBranch: String?,
+        val inlineText: String,
+    )
+
     private companion object {
         private const val STEMS = "甲乙丙丁戊己庚辛壬癸"
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
-        const val PARSER_RULE_ID = "wenzhen-basic-info-parser-v2"
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v3"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -649,6 +710,7 @@ class WenzhenP0Parser(
         const val FIELD_CONSTELLATION = "identity.constellation"
         const val FIELD_ZODIAC = "identity.zodiac"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
+        const val FIELD_EVENT_PREFIX = "event.candidate."
         const val MAX_NAME_DATE_DISTANCE_PX = 240
         const val ROW_VERTICAL_TOLERANCE_PX = 24
         const val LAST_ROW_TAIL_PX = 140
@@ -681,6 +743,10 @@ class WenzhenP0Parser(
         )
         val ZODIAC_PATTERN = Regex(
             "(?:属相|屬相|生肖)\\s*[:：]\\s*([^\\s（(]{1,8})",
+        )
+        val EVENT_HEADING_PATTERN = Regex(
+            "^\\s*((?:19|20)\\d{2})\\s*年\\s*" +
+                "([甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥])?(?=\\s|$)",
         )
         val STEM_SEQUENCE = Regex(
             "([$STEMS])\\s*([$STEMS])\\s*([$STEMS])\\s*([$STEMS])",

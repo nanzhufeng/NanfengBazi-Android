@@ -796,7 +796,11 @@ class ScreenshotImportViewModel(
         "birth.latitude" -> "纬度"
         "birth.longitude" -> "经度"
         "chart.four_pillars" -> "四柱"
-        else -> this
+        else -> EVENT_FIELD_PATTERN.matchEntire(this)
+            ?.groupValues
+            ?.get(1)
+            ?.let { "关键事件候选 · ${it}年" }
+            ?: this
     }
 
     private fun TypedFieldValue.displayValue(): String = when (this) {
@@ -905,7 +909,7 @@ class ScreenshotImportViewModel(
     }
 
     private companion object {
-        const val PARSER_VERSION = "wenzhen-basic-info-v2"
+        const val PARSER_VERSION = "wenzhen-p0-v3"
         val REQUIRED_COMMIT_FIELD_KEYS = listOf(
             "identity.alias",
             "identity.sex",
@@ -914,6 +918,9 @@ class ScreenshotImportViewModel(
         )
         val FOUR_PILLAR_PATTERN = Regex(
             "[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]",
+        )
+        val EVENT_FIELD_PATTERN = Regex(
+            "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",
         )
     }
 }

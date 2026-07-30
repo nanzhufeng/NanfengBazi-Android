@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 176 条唯一单元契约；Debug/Release 变体合计 319 次执行，0 失败、0 跳过。
+- 178 条唯一单元契约；Debug/Release 变体合计 323 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -234,6 +234,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     出生地区、经纬度、星座、属相和四柱均成为逐字段证据；采用的精确时间、姓名、地区
     和成对坐标进入正式命例，日期或四柱不一致继续硬拦截。bundled ML Kit 合成基本资料
     页分类与关键字段提取设备专项 1/1 通过；
+  - alpha45 在命主反馈完整原文之外，以行首年份标题生成逐条事件候选；候选默认不采用，
+    可复用修正、原图定位和逐项采用，只有人工采用项才按年份精度进入正式事件。出生日期
+    不会被误切为事件，bundled ML Kit 合成反馈页分类与事件拆分设备专项 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -241,17 +244,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha44-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha45-debug.apk`
 
-- 大小：55,696,371 bytes
-- SHA-256：`9380e09c2c13c2fd878bea2d46d3826699cf17d145b437bbc4d9aace8beb18a5`
+- 大小：55,712,755 bytes
+- SHA-256：`e6f351a538e2bee3568226d923d0ff8a51a9440f7e7d777d65b37a77b425a2a3`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha44-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha45-release-unsigned.apk`
 
 - 大小：51,990,570 bytes
-- SHA-256：`7e1a63a4527a7142f0cfe92d41d8a45ea700cbcbb0bba0b8b38e2227c5b7d225`
+- SHA-256：`72c3b697fe65c9a15c2fda12b8cb878928f7f0f36f60bb9e926f865ea63716fd`
 
 ## 当前限制与风险
 
@@ -262,8 +265,8 @@ Debug 验收构建：
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
   及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
-  逐命例候选失败结果、反馈事件候选、超 10 分钟前台任务模式、基本资料非核心衍生字段
-  和 P1 基本排盘页解析尚未实现。
+  反馈年份事件候选也已接入逐条确认；逐命例候选失败结果、超 10 分钟前台任务模式、
+  基本资料非核心衍生字段和 P1 基本排盘页解析尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
 - 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；1.5 倍字体的四主入口
   与关键触控目标已验证，但 OPPO Find N5 实机展开/折叠、TalkBack 全页遍历和 2.0 倍
@@ -274,8 +277,8 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 从命主反馈完整原文生成逐条事件候选，并保持人工确认门禁；
-2. 实现 P1 基本排盘页的结构化字段解析；
+1. 实现 P1 基本排盘页的结构化字段解析；
+2. 增加逐命例候选失败摘要，避免批次错误只停留在字段层；
 3. 继续 TalkBack、2.0 倍字体与真实目标视口 QA。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

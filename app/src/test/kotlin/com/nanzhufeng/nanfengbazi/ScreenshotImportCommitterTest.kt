@@ -188,11 +188,37 @@ class ScreenshotImportCommitterTest {
         assertEquals(9, case.fieldEvidence.size)
     }
 
+    @Test
+    fun `只有人工采用的反馈事件候选才写入正式事件`() = runTest {
+        val fixture = fixture(
+            pillars = FourPillars("壬申", "戊申", "壬申", "丙午"),
+            adoptAll = true,
+            extraFields = listOf(
+                "event.candidate.2001.0" to TypedFieldValue.Text("进入大学学习"),
+                "event.candidate.2005.1" to TypedFieldValue.Text("进入新的工作单位"),
+                "event.candidate.2008.2" to TypedFieldValue.Text("这一条尚未人工确认"),
+            ),
+            unadoptedExtraKeys = setOf("event.candidate.2008.2"),
+        )
+
+        val result = fixture.committer.commitCandidate("session-1", "candidate-1")
+
+        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        val events = fixture.caseRepository.cases.values.single().events
+        assertEquals(listOf(2001, 2005), events.map { it.year })
+        assertEquals(
+            listOf("EDUCATION", "CAREER"),
+            events.map { it.category.name },
+        )
+        assertTrue(events.all { it.normalizedText.value != null })
+    }
+
     private suspend fun fixture(
         pillars: FourPillars,
         adoptAll: Boolean,
         folderSuffix: String = "",
         extraFields: List<Pair<String, TypedFieldValue>> = emptyList(),
+        unadoptedExtraKeys: Set<String> = emptySet(),
     ): Fixture {
         val now = Instant.parse("2026-01-01T00:00:00Z")
         val importRoot =
@@ -212,13 +238,14 @@ class ScreenshotImportCommitterTest {
             id: String,
             key: String,
             value: TypedFieldValue,
+            adopted: Boolean = adoptAll,
         ) = CaseFieldEvidence(
             id = id,
             attachmentId = image.id,
             fieldKey = key,
             rawText = value.toString(),
             normalizedValue = value,
-            adoptedValue = value.takeIf { adoptAll },
+            adoptedValue = value.takeIf { adopted },
             parserConfidence = 0.95f,
             parserRuleId = "fixture",
             userEdited = false,
@@ -234,7 +261,12 @@ class ScreenshotImportCommitterTest {
                 TypedFieldValue.FourPillarsValue(pillars),
             ),
         ) + extraFields.mapIndexed { index, (key, value) ->
-            field("extra-$index", key, value)
+            field(
+                id = "extra-$index",
+                key = key,
+                value = value,
+                adopted = adoptAll && key !in unadoptedExtraKeys,
+            )
         }
         val longText = ImportedLongTextEvidence(
             id = "feedback",

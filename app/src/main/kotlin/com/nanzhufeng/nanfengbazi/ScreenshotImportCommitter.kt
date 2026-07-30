@@ -13,12 +13,16 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
@@ -287,6 +291,9 @@ class ScreenshotImportCommitter(
         val adoptedLongTexts = candidate.longTextEvidenceIds.mapNotNull { id ->
             session.extractedLongTexts.singleOrNull { it.id == id }?.takeIf { it.adopted }
         }
+        val adoptedEvents = fields.mapNotNull { field ->
+            field.toCaseEvent(caseId, now)
+        }
         val case = BaziCase(
             id = caseId,
             alias = alias,
@@ -310,6 +317,7 @@ class ScreenshotImportCommitter(
                 ),
             ),
             textRecords = adoptedLongTexts.map { it.toCaseTextRecord(caseId, now) },
+            events = adoptedEvents,
             calculationSnapshots = listOf(
                 CaseCalculationSnapshot(
                     id = snapshotId,
@@ -467,6 +475,55 @@ class ScreenshotImportCommitter(
         updatedAt = now,
     )
 
+    private fun CaseFieldEvidence.toCaseEvent(
+        caseId: String,
+        now: java.time.Instant,
+    ): CaseEvent? {
+        if (!fieldKey.startsWith(FIELD_EVENT_PREFIX)) return null
+        val adoptedText = (adoptedValue as? TypedFieldValue.Text)
+            ?.value
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: return null
+        val year = EVENT_FIELD_PATTERN.matchEntire(fieldKey)
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
+            ?: return null
+        val stemBranch = EVENT_STEM_BRANCH_PATTERN.find(rawText)?.groupValues?.get(1)
+        return CaseEvent(
+            id = "$caseId-event-${id.takeLast(16)}",
+            title = adoptedText.lineSequence().first().take(40),
+            category = adoptedText.inferredEventCategory(),
+            year = year,
+            datePrecision = EventDatePrecision.YEAR,
+            stemBranch = stemBranch,
+            rawText = rawText,
+            normalizedText = ExplicitText.present(adoptedText),
+            sourceAttachmentId = attachmentId,
+            createdAt = now,
+        )
+    }
+
+    private fun String.inferredEventCategory(): CaseEventCategory = when {
+        containsAny("学校", "大学", "考试", "学习", "毕业", "入学") ->
+            CaseEventCategory.EDUCATION
+        containsAny("工作", "单位", "职业", "公司", "入职", "离职", "创业") ->
+            CaseEventCategory.CAREER
+        containsAny("结婚", "婚姻", "恋爱", "对象", "离婚", "感情") ->
+            CaseEventCategory.RELATIONSHIP
+        containsAny("疾病", "住院", "手术", "健康", "受伤") ->
+            CaseEventCategory.HEALTH
+        containsAny("收入", "财务", "亏损", "赚钱", "投资", "买房") ->
+            CaseEventCategory.WEALTH
+        containsAny("父亲", "母亲", "父母", "子女", "孩子", "家庭") ->
+            CaseEventCategory.FAMILY
+        else -> CaseEventCategory.GENERAL
+    }
+
+    private fun String.containsAny(vararg keywords: String): Boolean =
+        keywords.any(::contains)
+
     private fun resolveAttachment(relativePath: String): Path {
         require(!relativePath.startsWith("/") && '\\' !in relativePath && ':' !in relativePath)
         require(relativePath.split('/').none { it.isBlank() || it == "." || it == ".." })
@@ -538,6 +595,7 @@ class ScreenshotImportCommitter(
         const val FIELD_LATITUDE = "birth.latitude"
         const val FIELD_LONGITUDE = "birth.longitude"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
+        const val FIELD_EVENT_PREFIX = "event.candidate."
         const val TIME_ZONE_EVIDENCE_VERSION = "Asia-Shanghai-fixed-UTC+08-import-v1"
         val HOUR_BY_BRANCH = mapOf(
             '子' to 0,
@@ -552,6 +610,12 @@ class ScreenshotImportCommitter(
             '酉' to 18,
             '戌' to 20,
             '亥' to 22,
+        )
+        val EVENT_FIELD_PATTERN = Regex(
+            "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",
+        )
+        val EVENT_STEM_BRANCH_PATTERN = Regex(
+            "(?:19|20)\\d{2}年\\s*([甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥])",
         )
     }
 }

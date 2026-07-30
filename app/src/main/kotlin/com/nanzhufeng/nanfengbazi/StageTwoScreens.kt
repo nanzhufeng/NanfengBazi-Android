@@ -3392,6 +3392,10 @@ private fun DuplicateCandidatesCard(
     }
 }
 
+private val EVENT_EVIDENCE_FIELD_PATTERN = Regex(
+    "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",
+)
+
 private fun String.evidenceFieldLabel(): String = when (this) {
     "identity.alias" -> "命例名称"
     "identity.name" -> "姓名"
@@ -3406,7 +3410,11 @@ private fun String.evidenceFieldLabel(): String = when (this) {
     "birth.latitude" -> "纬度"
     "birth.longitude" -> "经度"
     "chart.four_pillars" -> "四柱"
-    else -> this
+    else -> EVENT_EVIDENCE_FIELD_PATTERN.matchEntire(this)
+        ?.groupValues
+        ?.get(1)
+        ?.let { "关键事件候选 · ${it}年" }
+        ?: this
 }
 
 private fun TypedFieldValue.evidenceDisplayValue(): String = when (this) {

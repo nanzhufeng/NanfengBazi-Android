@@ -23,6 +23,53 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MlKitLongScreenshotTest {
     @Test
+    fun 命主反馈合成图经真实离线OCR后生成事件候选() = runBlocking {
+        val bytes = createFeedbackSyntheticImage()
+        val sourceImage = ImportImageRef(
+            id = "feedback-image",
+            originalFileName = "synthetic-feedback.png",
+            mimeType = "image/png",
+            relativePath = "session-1/feedback-image.png",
+            sha256 = "c".repeat(64),
+            byteSize = bytes.size.toLong(),
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+        )
+        val engine = MlKitChineseOcrEngine()
+        try {
+            val document = engine.recognize(OcrImageInput(sourceImage, bytes))
+            val classification = AnchorBasedWenzhenPageClassifier().classify(document)
+            assertTrue(
+                "合成反馈页应被识别；OCR=${document.rawText}",
+                classification.pageType == WenzhenPageType.FEEDBACK,
+            )
+            val image = sourceImage.copy(
+                pageType = classification.pageType,
+                pageConfidence = classification.confidence,
+                classifierVersion = classification.classifierVersion,
+            )
+            val result = WenzhenP0Parser().parse(
+                images = listOf(image),
+                documents = listOf(document),
+                groupedCandidates = WenzhenImageGrouper().group(
+                    listOf(image),
+                    listOf(document),
+                ),
+            )
+            val eventFields = result.fields.filter {
+                it.fieldKey.startsWith("event.candidate.")
+            }
+            assertTrue(
+                "应从年份标题生成至少两个事件候选；OCR=${document.rawText}",
+                eventFields.size >= 2,
+            )
+            assertTrue(eventFields.all { it.adoptedValue == null && it.boundingBox != null })
+            assertTrue(result.longTexts.single().rawText == document.rawText)
+        } finally {
+            engine.close()
+        }
+    }
+
+    @Test
     fun 基本资料合成图经真实离线OCR后提取关键出生字段() = runBlocking {
         val bytes = createBasicInfoSyntheticImage()
         val sourceImage = ImportImageRef(
@@ -146,6 +193,35 @@ class MlKitLongScreenshotTest {
             "壬申 戊申 壬申 丙午",
         ).forEachIndexed { index, line ->
             canvas.drawText(line, 56f, 150f + index * 145f, paint)
+        }
+        return try {
+            ByteArrayOutputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun createFeedbackSyntheticImage(): ByteArray {
+        val bitmap = Bitmap.createBitmap(1080, 1300, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 64f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        listOf(
+            "问真八字 命主反馈",
+            "关键事件反馈记录",
+            "1999年 己卯",
+            "进入大学学习",
+            "2005年 乙酉",
+            "进入新的工作单位",
+        ).forEachIndexed { index, line ->
+            canvas.drawText(line, 64f, 150f + index * 170f, paint)
         }
         return try {
             ByteArrayOutputStream().use { output ->

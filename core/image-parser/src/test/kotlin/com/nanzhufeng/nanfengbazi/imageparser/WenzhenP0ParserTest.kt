@@ -180,6 +180,55 @@ class WenzhenP0ParserTest {
     }
 
     @Test
+    fun `命主反馈按年份拆成默认不采用的事件候选`() {
+        val image = image("feedback-events", WenzhenPageType.FEEDBACK)
+        val document = document(
+            imageId = image.id,
+            blocks = listOf(
+                block("name", "姓名：案例甲", 24, 60, 280, 100),
+                block("date", "阳历：1992年8月24日", 24, 110, 380, 150),
+                block("event-1999", "1999年 己卯", 24, 220, 260, 260),
+                block("event-1999-body", "请嫁入，后续待核对。", 48, 270, 620, 320),
+                block("event-2001", "2001年 辛巳 已经进入三级单位", 24, 360, 720, 410),
+                block("event-2001-body", "这是第二行完整反馈。", 48, 420, 620, 470),
+            ),
+        )
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        val eventFields = result.fields.filter {
+            it.fieldKey.startsWith("event.candidate.")
+        }
+        assertEquals(2, eventFields.size)
+        assertEquals(
+            listOf("event.candidate.1999.0", "event.candidate.2001.1"),
+            eventFields.map { it.fieldKey },
+        )
+        assertEquals(
+            "请嫁入，后续待核对。",
+            (eventFields.first().normalizedValue as TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "已经进入三级单位\n这是第二行完整反馈。",
+            (eventFields.last().normalizedValue as TypedFieldValue.Text).value,
+        )
+        assertTrue(eventFields.all { it.adoptedValue == null && it.boundingBox != null })
+        assertTrue(
+            result.candidates.single().fieldEvidenceIds.containsAll(
+                eventFields.map { it.id },
+            ),
+        )
+        assertEquals(
+            document.rawText,
+            result.longTexts.single().rawText,
+        )
+    }
+
+    @Test
     fun `无法识别用户列表行时保留原待核对候选而不制造空命例`() {
         val image = image("unreadable-list", WenzhenPageType.USER_LIST)
         val original = candidate(image.id)
