@@ -146,6 +146,9 @@ data class StageTwoUiState(
     val singleCaseFieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
     val singleCaseExchangeError: String? = null,
     val fullBackupExportConfirmationVisible: Boolean = false,
+    val fullBackupPasswordExportVisible: Boolean = false,
+    val fullBackupPasswordImportVisible: Boolean = false,
+    val fullBackupPasswordError: String? = null,
     val fullBackupBusy: Boolean = false,
     val fullBackupPreview: RestorePreview? = null,
     val fullBackupError: String? = null,
@@ -173,6 +176,7 @@ class StageTwoViewModel(
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
     private var pendingExportPassword: CharArray? = null
+    private var pendingFullBackupPassword: CharArray? = null
 
     init {
         refreshCases()
@@ -236,6 +240,8 @@ class StageTwoViewModel(
 
     fun cancelFullBackupExport() {
         if (mutableState.value.fullBackupBusy) return
+        pendingFullBackupPassword?.fill('\u0000')
+        pendingFullBackupPassword = null
         mutableState.update { it.copy(fullBackupExportConfirmationVisible = false) }
     }
 
@@ -250,6 +256,8 @@ class StageTwoViewModel(
             }
             return null
         }
+        pendingFullBackupPassword?.fill('\u0000')
+        pendingFullBackupPassword = null
         mutableState.update {
             it.copy(
                 fullBackupExportConfirmationVisible = false,
@@ -259,31 +267,106 @@ class StageTwoViewModel(
         return service.suggestedFileName()
     }
 
+    fun requestPasswordFullBackupExport() {
+        if (mutableState.value.fullBackupBusy || caseBackupService == null) return
+        mutableState.update {
+            it.copy(
+                fullBackupExportConfirmationVisible = false,
+                fullBackupPasswordExportVisible = true,
+                fullBackupPasswordError = null,
+            )
+        }
+    }
+
+    fun cancelPasswordFullBackupExport() {
+        pendingFullBackupPassword?.fill('\u0000')
+        pendingFullBackupPassword = null
+        mutableState.update {
+            it.copy(
+                fullBackupPasswordExportVisible = false,
+                fullBackupPasswordError = null,
+            )
+        }
+    }
+
+    fun confirmPasswordFullBackupExport(
+        password: CharArray,
+        confirmation: CharArray,
+    ): String? {
+        val service = caseBackupService
+        if (service == null || backupAttachmentRoot == null) {
+            password.fill('\u0000')
+            confirmation.fill('\u0000')
+            mutableState.update {
+                it.copy(fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。")
+            }
+            return null
+        }
+        val error = validateExportPassword(password, confirmation)
+        confirmation.fill('\u0000')
+        if (error != null) {
+            password.fill('\u0000')
+            mutableState.update { it.copy(fullBackupPasswordError = error) }
+            return null
+        }
+        pendingFullBackupPassword?.fill('\u0000')
+        pendingFullBackupPassword = password.copyOf()
+        password.fill('\u0000')
+        mutableState.update {
+            it.copy(
+                fullBackupPasswordExportVisible = false,
+                fullBackupPasswordError = null,
+                fullBackupError = null,
+            )
+        }
+        return service.suggestedEncryptedFileName()
+    }
+
+    fun clearPendingFullBackupExport() {
+        pendingFullBackupPassword?.fill('\u0000')
+        pendingFullBackupPassword = null
+    }
+
     fun exportFullBackup(openOutput: () -> OutputStream?) {
-        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) return
+        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) {
+            clearPendingFullBackupExport()
+            return
+        }
         val service = caseBackupService
         val attachmentRoot = backupAttachmentRoot
         if (service == null || attachmentRoot == null) {
+            clearPendingFullBackupExport()
             mutableState.update {
                 it.copy(fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。")
             }
             return
         }
+        val exportPassword = pendingFullBackupPassword
+        pendingFullBackupPassword = null
+        val passwordProtected = exportPassword != null
         viewModelScope.launch {
             mutableState.update { it.copy(fullBackupBusy = true, fullBackupError = null) }
             val result = try {
                 withContext(ioDispatcher) {
-                    val output = openOutput()
-                        ?: return@withContext BackupExportResult.Rejected(
-                            code = "OUTPUT_OPEN_FAILED",
-                            message = "无法创建完整备份文件。",
+                    try {
+                        val output = openOutput()
+                            ?: return@withContext BackupExportResult.Rejected(
+                                code = "OUTPUT_OPEN_FAILED",
+                                message = "无法创建完整备份文件。",
+                            )
+                        service.export(
+                            output = output,
+                            attachmentRoot = attachmentRoot,
+                            appVersion = BuildConfig.VERSION_NAME,
+                            protection = if (exportPassword == null) {
+                                BackupProtection.UnencryptedSensitiveDataConfirmed
+                            } else {
+                                BackupProtection.PasswordProtected(exportPassword)
+                            },
                         )
-                    service.export(
-                        output = output,
-                        attachmentRoot = attachmentRoot,
-                        appVersion = BuildConfig.VERSION_NAME,
-                        protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
-                    )
+                    } finally {
+                        exportPassword?.fill('\u0000')
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -297,8 +380,13 @@ class StageTwoViewModel(
                 when (result) {
                     is BackupExportResult.Success -> it.copy(
                         fullBackupBusy = false,
-                        message = "完整未加密备份已导出：${result.counts.cases} 个命例、" +
-                            "${result.counts.attachments} 个附件。",
+                        message = if (passwordProtected) {
+                            "密码加密完整备份已导出：${result.counts.cases} 个命例、" +
+                                "${result.counts.attachments} 个附件；请另行保管密码。"
+                        } else {
+                            "完整未加密备份已导出：${result.counts.cases} 个命例、" +
+                                "${result.counts.attachments} 个附件。"
+                        },
                     )
                     is BackupExportResult.Rejected -> it.copy(
                         fullBackupBusy = false,
@@ -310,10 +398,33 @@ class StageTwoViewModel(
     }
 
     fun previewFullBackup(openInput: () -> InputStream?) {
-        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) return
+        previewFullBackup(openInput, password = null)
+    }
+
+    fun previewFullBackupWithPassword(
+        password: CharArray,
+        openInput: () -> InputStream?,
+    ) {
+        if (password.isEmpty()) {
+            password.fill('\u0000')
+            mutableState.update { it.copy(fullBackupPasswordError = "请输入解密密码。") }
+            return
+        }
+        previewFullBackup(openInput, password)
+    }
+
+    private fun previewFullBackup(
+        openInput: () -> InputStream?,
+        password: CharArray?,
+    ) {
+        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) {
+            password?.fill('\u0000')
+            return
+        }
         val service = caseBackupService
         val workRoot = backupWorkRoot
         if (service == null || workRoot == null) {
+            password?.fill('\u0000')
             mutableState.update {
                 it.copy(fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。")
             }
@@ -334,7 +445,7 @@ class StageTwoViewModel(
                             code = "INPUT_OPEN_FAILED",
                             message = "无法打开所选完整备份文件。",
                         )
-                    input.use { service.preview(it, workRoot) }
+                    input.use { service.preview(it, workRoot, password) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -343,19 +454,53 @@ class StageTwoViewModel(
                     code = "INPUT_OPEN_FAILED",
                     message = "无法读取所选完整备份文件。",
                 )
+            } finally {
+                password?.fill('\u0000')
             }
             mutableState.update {
                 when (result) {
                     is BackupPreviewResult.Success -> it.copy(
                         fullBackupBusy = false,
                         fullBackupPreview = result.preview,
+                        fullBackupPasswordImportVisible = false,
+                        fullBackupPasswordError = null,
                     )
-                    is BackupPreviewResult.Rejected -> it.copy(
-                        fullBackupBusy = false,
-                        fullBackupError = "${result.message}（${result.code}）",
-                    )
+                    is BackupPreviewResult.Rejected -> {
+                        if (
+                            result.code == "PASSWORD_REQUIRED" ||
+                            result.code == "DECRYPTION_FAILED"
+                        ) {
+                            it.copy(
+                                fullBackupBusy = false,
+                                fullBackupPasswordImportVisible = true,
+                                fullBackupPasswordError =
+                                    if (result.code == "PASSWORD_REQUIRED") {
+                                        null
+                                    } else {
+                                        "${result.message}（${result.code}）"
+                                    },
+                            )
+                        } else {
+                            it.copy(
+                                fullBackupBusy = false,
+                                fullBackupPasswordImportVisible = false,
+                                fullBackupPasswordError = null,
+                                fullBackupError = "${result.message}（${result.code}）",
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    fun cancelPasswordFullBackupImport() {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update {
+            it.copy(
+                fullBackupPasswordImportVisible = false,
+                fullBackupPasswordError = null,
+            )
         }
     }
 
@@ -1385,6 +1530,18 @@ class StageTwoViewModel(
     private companion object {
         const val MIN_EXPORT_PASSWORD_LENGTH = 8
         const val MAX_EXPORT_PASSWORD_LENGTH = 256
+    }
+
+    private fun validateExportPassword(
+        password: CharArray,
+        confirmation: CharArray,
+    ): String? = when {
+        password.size < MIN_EXPORT_PASSWORD_LENGTH ->
+            "密码至少需要 $MIN_EXPORT_PASSWORD_LENGTH 个字符。"
+        password.size > MAX_EXPORT_PASSWORD_LENGTH ->
+            "密码不能超过 $MAX_EXPORT_PASSWORD_LENGTH 个字符。"
+        !password.contentEquals(confirmation) -> "两次输入的密码不一致。"
+        else -> null
     }
 }
 

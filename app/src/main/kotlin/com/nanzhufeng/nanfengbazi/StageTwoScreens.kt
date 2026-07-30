@@ -45,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -84,7 +86,9 @@ fun NanfengBaziApp(
     onOpenSingleCaseDocument: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
     onCreateFullBackupDocument: (String) -> Unit = {},
+    onCreateEncryptedFullBackupDocument: (String) -> Unit = {},
     onOpenFullBackupDocument: () -> Unit = {},
+    onRetryPasswordFullBackupDocument: (CharArray) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -234,10 +238,52 @@ fun NanfengBaziApp(
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = viewModel::cancelFullBackupExport) {
-                            Text("取消")
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(
+                                onClick = viewModel::requestPasswordFullBackupExport,
+                                modifier = Modifier.testTag("choose_password_full_backup_export"),
+                            ) {
+                                Text("改用密码加密")
+                            }
+                            TextButton(onClick = viewModel::cancelFullBackupExport) {
+                                Text("取消")
+                            }
                         }
                     },
+                )
+            }
+            if (state.fullBackupPasswordExportVisible) {
+                SingleCasePasswordDialog(
+                    title = "设置完整备份加密密码",
+                    description = "密码不会写入备份，也无法找回。请至少输入 8 个字符并另行保管。",
+                    error = state.fullBackupPasswordError,
+                    requireConfirmation = true,
+                    confirmLabel = "选择保存位置",
+                    confirmTag = "confirm_password_full_backup_export",
+                    passwordTag = "full_backup_password",
+                    confirmationTag = "full_backup_password_confirmation",
+                    onConfirm = { password, confirmation ->
+                        viewModel.confirmPasswordFullBackupExport(
+                            password,
+                            checkNotNull(confirmation),
+                        )?.let(onCreateEncryptedFullBackupDocument)
+                    },
+                    onDismiss = viewModel::cancelPasswordFullBackupExport,
+                )
+            }
+            if (state.fullBackupPasswordImportVisible) {
+                SingleCasePasswordDialog(
+                    title = "输入完整备份解密密码",
+                    description = "密码只用于本次只读校验，不会保存。错误密码与损坏文件使用相同错误。",
+                    error = state.fullBackupPasswordError,
+                    requireConfirmation = false,
+                    confirmLabel = "解密并检查",
+                    confirmTag = "confirm_password_full_backup_import",
+                    passwordTag = "full_backup_password",
+                    onConfirm = { password, _ ->
+                        onRetryPasswordFullBackupDocument(password)
+                    },
+                    onDismiss = viewModel::cancelPasswordFullBackupImport,
                 )
             }
             if (state.singleCaseExportConfirmationVisible) {
@@ -549,6 +595,8 @@ private fun SingleCasePasswordDialog(
     requireConfirmation: Boolean,
     confirmLabel: String,
     confirmTag: String,
+    passwordTag: String = "single_case_password",
+    confirmationTag: String = "single_case_password_confirmation",
     onConfirm: (CharArray, CharArray?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -569,7 +617,7 @@ private fun SingleCasePasswordDialog(
                     isError = error != null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("single_case_password"),
+                        .testTag(passwordTag),
                 )
                 if (requireConfirmation) {
                     OutlinedTextField(
@@ -581,7 +629,7 @@ private fun SingleCasePasswordDialog(
                         isError = error != null,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("single_case_password_confirmation"),
+                            .testTag(confirmationTag),
                     )
                 }
                 error?.let {
@@ -1045,6 +1093,7 @@ private fun CaseSummaryCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .semantics { contentDescription = "打开命例：${summary.alias}" }
             .testTag("case_${summary.id}"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),

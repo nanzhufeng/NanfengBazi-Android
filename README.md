@@ -24,12 +24,13 @@
   无附件命例的跳过、保留两份、按模块追加和逐字段采用。
 - 单命例可选择明文风险确认或密码保护；密码容器采用版本化
   PBKDF2-HMAC-SHA256 + AES-256-GCM，并在解密后继续执行原协议全部校验。
-- 完整 ZIP 已接通未加密风险确认、Android 系统文件保存和零写入只读预览；预览会校验
-  路径、大小、SHA-256、数量、数据引用与附件一致性，但尚不开放非空库恢复。
+- 完整备份已接通未加密风险确认、独立密码容器、Android 系统文件保存和零写入只读
+  预览；预览会认证密文并校验 ZIP 路径、大小、SHA-256、数量、数据引用与附件一致性，
+  但尚不开放密码备份恢复或非空库恢复。
 
 当前 UI 已覆盖最小真实闭环和命例生命周期主链路。农历、地区/真太阳时、
 问真截图迁移、
-单命例附件事务、完整 ZIP 密码加密与非空库恢复尚未实现。详细范围见
+单命例附件事务、密码完整备份恢复与非空库恢复尚未实现。详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
 [`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。

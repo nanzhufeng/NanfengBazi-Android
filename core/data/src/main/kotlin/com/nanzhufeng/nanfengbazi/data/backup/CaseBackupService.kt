@@ -3,18 +3,22 @@ package com.nanzhufeng.nanfengbazi.data.backup
 import androidx.room.withTransaction
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
+import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.ByteArrayInputStream
+import java.io.SequenceInputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.Clock
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -33,17 +37,23 @@ interface CaseBackupOperations {
 
     fun suggestedFileName(): String
 
+    fun suggestedEncryptedFileName(): String
+
     suspend fun preview(
         input: InputStream,
         workRoot: Path,
+        password: CharArray? = null,
     ): BackupPreviewResult
 }
 
 class CaseBackupService(
     private val database: NanfengBaziDatabase,
     private val clock: Clock = Clock.systemUTC(),
+    secureRandom: SecureRandom = SecureRandom(),
+    passwordKdfIterations: Int = PasswordCrypto.DEFAULT_KDF_ITERATIONS,
 ) : CaseBackupOperations {
     private val dao = database.caseDao()
+    private val encryption = BackupEncryption(secureRandom, passwordKdfIterations)
 
     override suspend fun export(
         output: OutputStream,
@@ -51,12 +61,6 @@ class CaseBackupService(
         appVersion: String,
         protection: BackupProtection,
     ): BackupExportResult {
-        if (protection is BackupProtection.PasswordProtected) {
-            return BackupExportResult.Rejected(
-                code = "PASSWORD_ENCRYPTION_NOT_IMPLEMENTED",
-                message = "当前阶段尚未实现密码加密备份，不能静默降级为未加密文件。",
-            )
-        }
         if (appVersion.isBlank()) {
             return BackupExportResult.Rejected(
                 code = "APP_VERSION_REQUIRED",
@@ -71,10 +75,21 @@ class CaseBackupService(
                     code = "ATTACHMENT_MISMATCH",
                     message = "附件文件缺失，或大小、SHA-256 与数据库记录不一致。",
                 )
-            val manifest = buildManifest(snapshot, sources, appVersion)
+            if (protection is BackupProtection.PasswordProtected && protection.password.isEmpty()) {
+                return BackupExportResult.Rejected(
+                    code = "PASSWORD_REQUIRED",
+                    message = "密码加密完整备份必须提供密码。",
+                )
+            }
+            val encrypted = protection is BackupProtection.PasswordProtected
+            val manifest = buildManifest(snapshot, sources, appVersion, encrypted)
             val manifestBytes = DomainJson.encodeToString(manifest).encodeToByteArray()
-
-            ZipOutputStream(output.buffered()).use { zip ->
+            val protectedOutput = when (protection) {
+                BackupProtection.UnencryptedSensitiveDataConfirmed -> output
+                is BackupProtection.PasswordProtected ->
+                    encryption.encryptingStream(output, protection.password)
+            }
+            ZipOutputStream(protectedOutput.buffered()).use { zip ->
                 zip.putNextEntry(stableZipEntry(MANIFEST_PATH))
                 zip.write(manifestBytes)
                 zip.closeEntry()
@@ -100,15 +115,27 @@ class CaseBackupService(
     override fun suggestedFileName(): String =
         "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(ZoneId.systemDefault()))}.zip"
 
+    override fun suggestedEncryptedFileName(): String =
+        "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(ZoneId.systemDefault()))}_加密.nfbak"
+
     override suspend fun preview(
         input: InputStream,
         workRoot: Path,
+        password: CharArray?,
     ): BackupPreviewResult {
         return try {
             Files.createDirectories(workRoot)
             val stagingRoot = Files.createTempDirectory(workRoot, "nanfeng-bazi-preview-")
             try {
-                inspectBackup(input, stagingRoot)
+                when (val prepared = preparePreviewInput(input, password, stagingRoot)) {
+                    is PreparedBackupInput.Rejected -> BackupPreviewResult.Rejected(
+                        prepared.code,
+                        prepared.message,
+                    )
+                    is PreparedBackupInput.Success -> prepared.input.use {
+                        inspectBackup(it, stagingRoot, prepared.encrypted)
+                    }
+                }
             } finally {
                 deleteRecursively(stagingRoot)
             }
@@ -229,6 +256,7 @@ class CaseBackupService(
     private fun inspectBackup(
         input: InputStream,
         stagingRoot: Path,
+        encrypted: Boolean,
     ): BackupPreviewResult {
         val extracted = extractSafely(input, stagingRoot)
             ?: return BackupPreviewResult.Rejected(
@@ -241,7 +269,7 @@ class CaseBackupService(
                 message = "备份缺少 manifest.json。",
             )
         val manifest = DomainJson.decodeFromString<BackupManifest>(readUtf8(manifestPath))
-        validateExtracted(manifest, extracted)?.let { error ->
+        validateExtracted(manifest, extracted, encrypted)?.let { error ->
             return BackupPreviewResult.Rejected(error.first, error.second)
         }
         val snapshot = parseSnapshot(extracted)
@@ -253,6 +281,48 @@ class CaseBackupService(
                 manifest = manifest,
                 sourceFileCount = extracted.size,
             ),
+        )
+    }
+
+    private fun preparePreviewInput(
+        input: InputStream,
+        password: CharArray?,
+        stagingRoot: Path,
+    ): PreparedBackupInput {
+        val prefix = ByteArray(BackupEncryption.MAGIC_BYTES.size)
+        var count = 0
+        while (count < prefix.size) {
+            val read = input.read(prefix, count, prefix.size - count)
+            if (read < 0) break
+            count += read
+        }
+        if (
+            count == BackupEncryption.MAGIC_BYTES.size &&
+            prefix.contentEquals(BackupEncryption.MAGIC_BYTES)
+        ) {
+            if (password == null || password.isEmpty()) {
+                return PreparedBackupInput.Rejected(
+                    "PASSWORD_REQUIRED",
+                    "该完整备份已加密，请输入密码。",
+                )
+            }
+            val target = stagingRoot.resolve("decrypted-backup.zip")
+            return try {
+                encryption.decryptAfterMagic(input, password, target)
+                PreparedBackupInput.Success(
+                    input = Files.newInputStream(target),
+                    encrypted = true,
+                )
+            } catch (_: Exception) {
+                PreparedBackupInput.Rejected(
+                    "DECRYPTION_FAILED",
+                    "密码错误、文件已损坏或加密参数不受支持。",
+                )
+            }
+        }
+        return PreparedBackupInput.Success(
+            input = SequenceInputStream(ByteArrayInputStream(prefix, 0, count), input),
+            encrypted = false,
         )
     }
 
@@ -316,6 +386,7 @@ class CaseBackupService(
         snapshot: RoomDataSnapshot,
         sources: List<EntrySource>,
         appVersion: String,
+        encrypted: Boolean,
     ): BackupManifest {
         val calculationSnapshots = snapshot.calculationSnapshots.map {
             DomainJson.decodeFromString(CaseCalculationSnapshot.serializer(), it.resultJson)
@@ -325,7 +396,12 @@ class CaseBackupService(
             appVersion = appVersion,
             databaseSchemaVersion = NanfengBaziDatabase.SCHEMA_VERSION,
             createdAt = clock.instant().toString(),
-            encrypted = false,
+            encrypted = encrypted,
+            encryptionParametersVersion = if (encrypted) {
+                BackupEncryption.PROTECTION_VERSION
+            } else {
+                null
+            },
             engineVersions = calculationSnapshots
                 .map { it.result.evidence.engineVersion }
                 .distinct()
@@ -392,12 +468,20 @@ class CaseBackupService(
     private fun validateExtracted(
         manifest: BackupManifest,
         extracted: Map<String, Path>,
+        encryptedContainer: Boolean = false,
     ): Pair<String, String>? {
         if (manifest.formatVersion != BACKUP_FORMAT_VERSION) {
             return "UNSUPPORTED_FORMAT" to "不支持该备份格式版本。"
         }
-        if (manifest.encrypted) {
-            return "ENCRYPTION_NOT_SUPPORTED" to "当前阶段尚未实现加密备份恢复。"
+        if (
+            manifest.encrypted != encryptedContainer ||
+            manifest.encryptionParametersVersion != if (encryptedContainer) {
+                BackupEncryption.PROTECTION_VERSION
+            } else {
+                null
+            }
+        ) {
+            return "FILE_PROTECTION_MISMATCH" to "备份清单与文件保护状态不一致。"
         }
         if (manifest.databaseSchemaVersion !in
             MIN_SUPPORTED_BACKUP_SCHEMA..NanfengBaziDatabase.SCHEMA_VERSION
@@ -631,6 +715,18 @@ class CaseBackupService(
                 },
             )
         }
+    }
+
+    private sealed interface PreparedBackupInput {
+        data class Success(
+            val input: InputStream,
+            val encrypted: Boolean,
+        ) : PreparedBackupInput
+
+        data class Rejected(
+            val code: String,
+            val message: String,
+        ) : PreparedBackupInput
     }
 
     companion object {

@@ -312,7 +312,12 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().size >= 2
         }
 
-        composeRule.onAllNodes(hasText("别名：$editedAlias"))[0].performClick()
+        val encryptedExportAlias = "$editedAlias（副本）"
+        composeRule.onNodeWithText("别名：$encryptedExportAlias").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("export_single_case_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("choose_password_single_case_export").performClick()
         val encryptedPassword = "Stage3B-Pass123"
@@ -339,7 +344,7 @@ class StageTwoFlowTest {
         }
 
         composeRule.onNodeWithTag("import_single_case_button").performClick()
-        val encryptedFileName = "${editedAlias.take(48)}_南枫八字命例_加密.json"
+        val encryptedFileName = "${encryptedExportAlias.take(48)}_南枫八字命例_加密.json"
         val encryptedFile = device.wait(
             Until.findObject(By.text(encryptedFileName)),
             10_000,
@@ -388,6 +393,49 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("文件保护：未加密")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("close_full_backup_preview").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("export_full_backup_button").performClick()
+        composeRule.onNodeWithTag("choose_password_full_backup_export").performClick()
+        val fullBackupPassword = "FullBackup-Pass123"
+        composeRule.onNodeWithTag("full_backup_password")
+            .performTextInput(fullBackupPassword)
+        composeRule.onNodeWithTag("full_backup_password_confirmation")
+            .performTextInput(fullBackupPassword)
+        composeRule.onNodeWithTag("confirm_password_full_backup_export").performClick()
+        val encryptedBackupSaveButton = device.wait(
+            Until.findObject(By.text(Pattern.compile("(?i)save|保存"))),
+            10_000,
+        )
+        checkNotNull(encryptedBackupSaveButton) { "加密完整备份未进入系统创建文档页面" }
+        encryptedBackupSaveButton.click()
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodes(hasText("密码加密完整备份已导出", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("preview_full_backup_button").performClick()
+        val encryptedBackupFile = device.wait(
+            Until.findObject(By.text(Pattern.compile("南枫八字备份_.*_加密\\.nfbak"))),
+            10_000,
+        )
+        checkNotNull(encryptedBackupFile) { "系统打开文档页面未找到加密完整备份" }
+        encryptedBackupFile.click()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("输入完整备份解密密码"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("full_backup_password")
+            .performTextInput(fullBackupPassword)
+        composeRule.onNodeWithTag("confirm_password_full_backup_import").performClick()
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodes(hasTestTag("full_backup_preview"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("文件保护：密码加密")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("close_full_backup_preview").performClick()

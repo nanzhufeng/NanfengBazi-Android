@@ -61,7 +61,7 @@
 | 编辑、删除、复制 | 不存在 | 后续仍须经过 `CaseRepository` | 本阶段不验收 |
 | 问真截图导入 | 不存在 | 未来输入适配器提交标准草稿 | 本阶段不验收 |
 | 完整备份与空库恢复 | 精确保真，不受 UI 接线影响 | `CaseBackupService` | Stage 1 回归测试 |
-| 非空库恢复与密码加密 | 不存在 | 待设计 | 禁止静默降级 |
+| 非空库恢复与密码备份恢复 | 不存在 | 待设计 | 禁止静默降级 |
 
 ## Stage 3A 增量入口矩阵
 
@@ -98,8 +98,9 @@
 | 单命例 JSON 导出 | v1 严格封套、明文风险确认或密码保护、载荷/文件哈希和系统创建文档 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.export` | 聚合往返、真实明文/加密文件、密码不落库且不降级 |
 | 单命例只读预览 | 系统打开文档、明文 16 MiB/容器 24 MiB 上限、解密后格式/Schema/哈希/领域校验和预览弹窗 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.preview` | 同一真实加密文件输错/输对密码、冲突显示且数据库零写入 |
 | 单命例密码容器 | 保护版本 1；PBKDF2-HMAC-SHA256 600,000 次导出；AES-256-GCM、16 字节盐、12 字节 nonce、128 位 tag 与参数 AAD | `SingleCaseEncryption`，只由 `SingleCaseExchangeService` 调用 | 无密码、错密码、篡改和越界 KDF 参数统一安全拒绝；正确密码恢复原严格封套 |
-| 完整 ZIP 导出 | 明文风险确认后通过系统创建文档写出全部数据库事实和附件 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP、manifest/文件哈希与导出计数 |
-| 完整 ZIP 只读预览 | 系统打开文档后在私有临时区安全展开，校验路径/大小/哈希/引用/附件并清理 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 非空当前库仍零写入；真实系统文件读回并显示计数 |
+| 完整备份导出 | 明文风险确认后写出 ZIP，或把 ZIP 流式写入独立 v1 密码容器 `.nfbak` | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP/密码容器、manifest/文件哈希与导出计数 |
+| 完整备份只读预览 | 系统打开文档；密码文件先认证解密到私有临时 ZIP，再校验路径/大小/哈希/引用/附件并清理 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 无密码/错密码/篡改安全拒绝；非空当前库仍零写入并显示计数 |
+| 完整备份密码容器 | 独立保护版本 1；PBKDF2-HMAC-SHA256 600,000 次、AES-256-GCM 与参数 AAD；不整包入内存 | `BackupEncryption`，只由 `CaseBackupService` 调用 | 参数边界、认证失败、明文不可见及 Android `.nfbak` 往返 |
 | 本地冲突候选 | 稳定 ID、出生输入、四柱和回收站位置 | `CaseRepository` 查询，由预览服务合并 | 同一候选理由合并且不修改本地命例 |
 | 无附件命例提交 | 跳过零写入；保留两份重建全部聚合 ID，提交前复查冲突 | `StageTwoViewModel` → `SingleCaseExchangeService.commitImport` → `CaseRepository.save` | 过期预览拒绝、事务失败不覆盖、系统文件 E2E 后列表读回第二份 |
 | 范围化合并 | 模块仅追加独有内容；标量差异逐字段采用，默认本地 | `prepareMerge` 固定目标 revision/载荷 → `commitMerge` 复查 → `CaseRepository.save` | 内容去重、子项重建 ID、目标变化拒绝、模拟器记录/事件合并 |

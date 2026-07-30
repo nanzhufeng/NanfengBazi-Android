@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             var lastSingleCaseUri by remember { mutableStateOf<Uri?>(null) }
+            var lastFullBackupUri by remember { mutableStateOf<Uri?>(null) }
             val createSingleCaseDocument = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.CreateDocument("application/json"),
             ) { uri ->
@@ -50,12 +51,26 @@ class MainActivity : ComponentActivity() {
                     viewModel.exportFullBackup {
                         contentResolver.openOutputStream(uri, "w")
                     }
+                } else {
+                    viewModel.clearPendingFullBackupExport()
+                }
+            }
+            val createEncryptedFullBackupDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+            ) { uri ->
+                if (uri != null) {
+                    viewModel.exportFullBackup {
+                        contentResolver.openOutputStream(uri, "w")
+                    }
+                } else {
+                    viewModel.clearPendingFullBackupExport()
                 }
             }
             val openFullBackupDocument = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocument(),
             ) { uri ->
                 if (uri != null) {
+                    lastFullBackupUri = uri
                     viewModel.previewFullBackup {
                         contentResolver.openInputStream(uri)
                     }
@@ -80,10 +95,18 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onCreateFullBackupDocument = createFullBackupDocument::launch,
+                onCreateEncryptedFullBackupDocument =
+                    createEncryptedFullBackupDocument::launch,
                 onOpenFullBackupDocument = {
                     openFullBackupDocument.launch(
                         arrayOf("application/zip", "application/octet-stream"),
                     )
+                },
+                onRetryPasswordFullBackupDocument = { password ->
+                    val uri = lastFullBackupUri
+                    viewModel.previewFullBackupWithPassword(password) {
+                        uri?.let(contentResolver::openInputStream)
+                    }
                 },
             )
         }

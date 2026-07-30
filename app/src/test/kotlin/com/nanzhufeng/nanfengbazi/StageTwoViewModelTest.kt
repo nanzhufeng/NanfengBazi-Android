@@ -475,6 +475,41 @@ class StageTwoViewModelTest {
         assertNull(viewModel.state.value.fullBackupError)
     }
 
+    @Test
+    fun `完整备份密码导出后错误密码可重试且正确密码进入预览`() = runTest {
+        val backup = RecordingBackupOperations()
+        val root = Files.createTempDirectory("nanfeng-viewmodel-encrypted-backup-")
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            backupOperations = backup,
+            backupRoot = root,
+        )
+        val password = "完整备份密码123".toCharArray()
+
+        viewModel.requestFullBackupExport()
+        viewModel.requestPasswordFullBackupExport()
+        assertEquals(
+            "南枫八字备份_测试_加密.nfbak",
+            viewModel.confirmPasswordFullBackupExport(password.copyOf(), password.copyOf()),
+        )
+        val output = ByteArrayOutputStream()
+        viewModel.exportFullBackup { output }
+        assertEquals("encrypted", output.toByteArray().decodeToString())
+        assertTrue(viewModel.state.value.message?.contains("密码加密完整备份已导出") == true)
+
+        viewModel.previewFullBackup { ByteArrayInputStream(output.toByteArray()) }
+        assertTrue(viewModel.state.value.fullBackupPasswordImportVisible)
+        viewModel.previewFullBackupWithPassword("错误密码".toCharArray()) {
+            ByteArrayInputStream(output.toByteArray())
+        }
+        assertTrue(viewModel.state.value.fullBackupPasswordError?.contains("DECRYPTION_FAILED") == true)
+        viewModel.previewFullBackupWithPassword(password.copyOf()) {
+            ByteArrayInputStream(output.toByteArray())
+        }
+        assertFalse(viewModel.state.value.fullBackupPasswordImportVisible)
+        assertTrue(viewModel.state.value.fullBackupPreview?.manifest?.encrypted == true)
+    }
+
     private fun createViewModel(
         repository: FakeCaseRepository,
         backupOperations: CaseBackupOperations? = null,
@@ -536,6 +571,7 @@ class StageTwoViewModelTest {
     private class RecordingBackupOperations : CaseBackupOperations {
         var exportCalled = false
         var previewCalled = false
+        private var encryptedExport = false
 
         override suspend fun export(
             output: OutputStream,
@@ -544,7 +580,12 @@ class StageTwoViewModelTest {
             protection: BackupProtection,
         ): BackupExportResult {
             exportCalled = true
-            output.write("zip".encodeToByteArray())
+            encryptedExport = protection is BackupProtection.PasswordProtected
+            output.write(if (encryptedExport) {
+                "encrypted".encodeToByteArray()
+            } else {
+                "zip".encodeToByteArray()
+            })
             return BackupExportResult.Success(
                 counts = counts(),
                 fileCount = 10,
@@ -553,12 +594,27 @@ class StageTwoViewModelTest {
 
         override fun suggestedFileName(): String = "南枫八字备份_测试.zip"
 
+        override fun suggestedEncryptedFileName(): String = "南枫八字备份_测试_加密.nfbak"
+
         override suspend fun preview(
             input: InputStream,
             workRoot: Path,
+            password: CharArray?,
         ): BackupPreviewResult {
             previewCalled = true
             input.readBytes()
+            if (encryptedExport && password == null) {
+                return BackupPreviewResult.Rejected(
+                    code = "PASSWORD_REQUIRED",
+                    message = "需要密码",
+                )
+            }
+            if (encryptedExport && password?.concatToString() != "完整备份密码123") {
+                return BackupPreviewResult.Rejected(
+                    code = "DECRYPTION_FAILED",
+                    message = "解密失败",
+                )
+            }
             return BackupPreviewResult.Success(
                 RestorePreview(
                     manifest = BackupManifest(
@@ -566,7 +622,8 @@ class StageTwoViewModelTest {
                         appVersion = "0.3.0-test",
                         databaseSchemaVersion = 5,
                         createdAt = FixedInstant.toString(),
-                        encrypted = false,
+                        encrypted = encryptedExport,
+                        encryptionParametersVersion = if (encryptedExport) 1 else null,
                         engineVersions = emptyList(),
                         ruleVersions = emptyList(),
                         counts = counts(),

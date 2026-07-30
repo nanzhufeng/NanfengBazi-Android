@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryption
+import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryptionHeader
 import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
@@ -20,6 +22,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.nio.file.Files
 import java.time.Clock
 import java.time.ZoneOffset
@@ -296,22 +300,83 @@ class CaseBackupServiceTest {
     }
 
     @Test
-    fun `密码加密尚未实现时不得降级导出明文`() = runTest {
+    fun `完整备份密码容器不含明文且仅正确密码可预览`() = runTest {
         val output = ByteArrayOutputStream()
         withDatabase { database ->
-            val result = CaseBackupService(database, fixedClock).export(
+            val attachmentBytes = "脱敏截图夹具".encodeToByteArray()
+            val attachmentRoot = Files.createTempDirectory("nanfeng-encrypted-attachments-")
+            val attachmentFile = attachmentRoot.resolve("case-1/source/screen.png")
+            Files.createDirectories(attachmentFile.parent)
+            Files.write(attachmentFile, attachmentBytes)
+            RoomCaseRepository(database).save(sampleCase(attachmentBytes), null)
+            val password = "完整备份测试密码123".toCharArray()
+            val service = CaseBackupService(
+                database = database,
+                clock = fixedClock,
+                passwordKdfIterations = 100_000,
+            )
+            val result = service.export(
                 output,
-                Files.createTempDirectory("nanfeng-empty-attachments-"),
+                attachmentRoot,
                 "0.2.0-test",
-                BackupProtection.PasswordProtected("test-only".toCharArray()),
+                BackupProtection.PasswordProtected(password),
             )
 
-            assertTrue(result is BackupExportResult.Rejected)
-            assertEquals(
-                "PASSWORD_ENCRYPTION_NOT_IMPLEMENTED",
-                (result as BackupExportResult.Rejected).code,
+            assertTrue(result is BackupExportResult.Success)
+            val encrypted = output.toByteArray()
+            assertTrue(
+                encrypted.copyOfRange(0, BackupEncryption.MAGIC_BYTES.size)
+                    .contentEquals(BackupEncryption.MAGIC_BYTES),
             )
-            assertEquals(0, output.size())
+            assertFalse(encrypted.decodeToString().contains("脱敏案例一"))
+            assertEquals(
+                "PASSWORD_REQUIRED",
+                (service.preview(
+                    ByteArrayInputStream(encrypted),
+                    Files.createTempDirectory("nanfeng-encrypted-preview-required-"),
+                ) as BackupPreviewResult.Rejected).code,
+            )
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (service.preview(
+                    ByteArrayInputStream(encrypted),
+                    Files.createTempDirectory("nanfeng-encrypted-preview-wrong-"),
+                    "错误密码".toCharArray(),
+                ) as BackupPreviewResult.Rejected).code,
+            )
+            val correct = service.preview(
+                ByteArrayInputStream(encrypted),
+                Files.createTempDirectory("nanfeng-encrypted-preview-correct-"),
+                password,
+            )
+            assertTrue(correct is BackupPreviewResult.Success)
+            correct as BackupPreviewResult.Success
+            assertTrue(correct.preview.manifest.encrypted)
+            assertEquals(1, correct.preview.manifest.encryptionParametersVersion)
+            assertEquals(1, correct.preview.manifest.counts.cases)
+
+            val tampered = encrypted.copyOf().also {
+                it[it.lastIndex] = (it.last().toInt() xor 1).toByte()
+            }
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (service.preview(
+                    ByteArrayInputStream(tampered),
+                    Files.createTempDirectory("nanfeng-encrypted-preview-tampered-"),
+                    password,
+                ) as BackupPreviewResult.Rejected).code,
+            )
+            val downgraded = rewriteEncryptionHeader(encrypted) {
+                it.copy(kdfIterations = 1)
+            }
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (service.preview(
+                    ByteArrayInputStream(downgraded),
+                    Files.createTempDirectory("nanfeng-encrypted-preview-downgraded-"),
+                    password,
+                ) as BackupPreviewResult.Rejected).code,
+            )
         }
     }
 
@@ -394,6 +459,33 @@ class CaseBackupServiceTest {
             }
         }
         return output.toByteArray()
+    }
+
+    private fun rewriteEncryptionHeader(
+        bytes: ByteArray,
+        transform: (BackupEncryptionHeader) -> BackupEncryptionHeader,
+    ): ByteArray {
+        val input = DataInputStream(ByteArrayInputStream(bytes))
+        val magic = ByteArray(BackupEncryption.MAGIC_BYTES.size)
+        input.readFully(magic)
+        check(magic.contentEquals(BackupEncryption.MAGIC_BYTES))
+        val oldHeader = ByteArray(input.readInt())
+        input.readFully(oldHeader)
+        val header = DomainJson.decodeFromString<BackupEncryptionHeader>(
+            oldHeader.decodeToString(),
+        )
+        val newHeader = DomainJson.encodeToString(
+            BackupEncryptionHeader.serializer(),
+            transform(header),
+        ).encodeToByteArray()
+        return ByteArrayOutputStream().also { output ->
+            DataOutputStream(output).use { data ->
+                data.write(magic)
+                data.writeInt(newHeader.size)
+                data.write(newHeader)
+                input.copyTo(data)
+            }
+        }.toByteArray()
     }
 
     private fun downgradeToSchemaTwo(source: ByteArray): ByteArray {
