@@ -20,10 +20,11 @@
 - 支持记录与事件不可覆盖的版本历史、统一分析分类，以及关键事件结构化标题和类别。
 - 支持分组、标签、收藏、置顶、最近查看、四柱搜索、筛选和多种排序。
 - 支持可恢复软删除与回收站、命例复制，以及新建/编辑前的重复候选提示。
+- 已建立单命例 JSON v1 严格封套、载荷哈希、大小/版本校验和零写入冲突预览服务。
 
 当前 UI 已覆盖最小真实闭环和命例生命周期主链路。农历、地区/真太阳时、
 问真截图迁移、
-非空库冲突合并和密码加密尚未实现。详细范围见
+单命例系统文件入口、非空库冲突提交和密码加密尚未实现。详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
 [`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。
