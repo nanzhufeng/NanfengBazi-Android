@@ -1612,6 +1612,15 @@ private fun ScreenshotImportSummary(
                             .joinToString("、") { (name, count) -> "$name $count 张" },
                     )
                 }
+                if (state.exactDuplicatePairCount > 0) {
+                    add("完全重复 ${state.exactDuplicatePairCount} 对")
+                }
+                if (state.similarDuplicatePairCount > 0) {
+                    add("疑似相似 ${state.similarDuplicatePairCount} 对")
+                }
+                if (state.failedImageCount > 0) {
+                    add("待重试 ${state.failedImageCount} 张")
+                }
                 if (state.recoverableSessionCount > 0) {
                     add("可恢复 ${state.recoverableSessionCount} 个")
                 }

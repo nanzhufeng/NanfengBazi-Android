@@ -35,7 +35,7 @@
 | Room Schema 与迁移 | `core:data` | 仓储、恢复 | 破坏性迁移或省略 Schema 证据 |
 | 图片导入会话 | `ImportSessionRepository` | 图片入口、后台识别协调器 | OCR、页面或 Worker 直接写 Room |
 | 私有导入图片 | `PrivateImportImageStore` | Photo Picker、系统分享入口 | 后台任务长期持有外部 URI 或传递 Bitmap |
-| OCR 与页面分类 | `core:image-parser` | `ImportRecognitionCoordinator` | 在线引擎进入主链、单关键词猜测页面或直接写正式命例 |
+| OCR、长图与重复提示 | `core:image-parser` | `ImportRecognitionCoordinator` | 在线引擎进入主链、整张展开超大图、按相似哈希自动合并、单关键词猜测页面或直接写正式命例 |
 
 ## 模块边界
 

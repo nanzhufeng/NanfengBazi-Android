@@ -16,6 +16,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
 import com.nanzhufeng.nanfengbazi.imageparser.AnchorBasedWenzhenPageClassifier
+import com.nanzhufeng.nanfengbazi.imageparser.DHashImageFingerprintEngine
 import com.nanzhufeng.nanfengbazi.imageparser.ImportImageContentReader
 import com.nanzhufeng.nanfengbazi.imageparser.ImportRecognitionCoordinator
 import com.nanzhufeng.nanfengbazi.imageparser.MlKitChineseOcrEngine
@@ -66,6 +67,7 @@ class DefaultAppContainer(
             contentReader = ImportImageContentReader(importImageStore::readBytes),
             ocrEngine = MlKitChineseOcrEngine(),
             pageClassifier = AnchorBasedWenzhenPageClassifier(),
+            fingerprintEngine = DHashImageFingerprintEngine(),
         )
     override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
     override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")

@@ -68,20 +68,25 @@ class ScreenshotShareFlowTest {
         var pageType: WenzhenPageType? = null
         var syntheticOcrText = ""
         var formalCaseCount = -1
+        var fingerprint: String? = null
+        var dimensions: Pair<Int?, Int?>? = null
         composeRule.activityRule.scenario.onActivity { activity ->
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
                 val session = container.importSessionRepository
                     .list()
                     .first()
-                pageType = session.images
-                    .single()
-                    .pageType
+                val image = session.images.single()
+                pageType = image.pageType
+                fingerprint = image.perceptualHash
+                dimensions = image.widthPx to image.heightPx
                 syntheticOcrText = session.ocrDocuments.single().rawText
                 formalCaseCount = container.caseRepository.search().size
             }
         }
         assertEquals(syntheticOcrText, WenzhenPageType.USER_LIST, pageType)
+        assertTrue("私有图片必须保存 64 位感知哈希", fingerprint?.length == 16)
+        assertEquals(1080 to 1600, dimensions)
         assertTrue("截图识别不得直接写入正式命例", formalCaseCount == 0)
     }
 

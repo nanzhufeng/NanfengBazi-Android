@@ -94,6 +94,49 @@ class ImportRecognitionCoordinatorTest {
         )
     }
 
+    @Test
+    fun `批次中单张失败不阻塞其余图片且重试只处理失败图片`() = runTest {
+        val bytes = byteArrayOf(4, 5, 6)
+        val first = fixture(bytes.size.toLong())
+        val secondImage = first.images.single().copy(
+            id = "image-2",
+            originalFileName = "synthetic-2.png",
+            relativePath = "session-1/image-2.png",
+            sha256 = "b".repeat(64),
+        )
+        val repository = InMemoryImportSessionRepository(
+            first.copy(images = first.images + secondImage),
+        )
+        val engine = SelectiveFailureOcrEngine(failingImageId = "image-2")
+        val coordinator = ImportRecognitionCoordinator(
+            repository = repository,
+            contentReader = ImportImageContentReader { bytes },
+            ocrEngine = engine,
+            pageClassifier = AnchorBasedWenzhenPageClassifier(),
+            clock = Clock.fixed(Instant.parse("2026-01-01T00:01:00Z"), ZoneOffset.UTC),
+            diagnosticIdFactory = { "diagnostic-${engine.totalCalls}" },
+        )
+
+        val partial = coordinator.recognize("session-1")
+
+        assertTrue(partial is RecognitionRunResult.NeedsReview)
+        val partialSession = (partial as RecognitionRunResult.NeedsReview).session
+        assertEquals(listOf("image-1"), partialSession.ocrDocuments.map { it.imageId })
+        assertEquals(listOf("image-2"), partialSession.imageFailures.map { it.imageId })
+        assertEquals(1, engine.callsByImage.getValue("image-1"))
+        assertEquals(1, engine.callsByImage.getValue("image-2"))
+
+        engine.failingImageId = null
+        val recovered = coordinator.recognize("session-1")
+
+        assertTrue(recovered is RecognitionRunResult.NeedsReview)
+        val recoveredSession = (recovered as RecognitionRunResult.NeedsReview).session
+        assertTrue(recoveredSession.imageFailures.isEmpty())
+        assertEquals(setOf("image-1", "image-2"), recoveredSession.ocrDocuments.map { it.imageId }.toSet())
+        assertEquals("成功图片不应在局部重试时重复 OCR", 1, engine.callsByImage.getValue("image-1"))
+        assertEquals(2, engine.callsByImage.getValue("image-2"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `在线 OCR 引擎不能接入图片导入主链路`() {
         val bytes = byteArrayOf(1)
@@ -156,6 +199,31 @@ private open class FixtureOcrEngine(
     override suspend fun recognize(input: OcrImageInput): OcrDocument {
         calls += 1
         if (failFirst && calls == 1) error("synthetic failure")
+        return OcrDocument(
+            imageId = input.image.id,
+            rawText = "问真八字 用户列表 筛选 阳历1992年8月24日",
+            blocks = emptyList(),
+            engineId = engineId,
+            engineVersion = engineVersion,
+            recognizedAt = Instant.parse("2026-01-01T00:01:00Z"),
+        )
+    }
+}
+
+private class SelectiveFailureOcrEngine(
+    var failingImageId: String?,
+) : OcrEngine {
+    val callsByImage = mutableMapOf<String, Int>()
+    val totalCalls: Int
+        get() = callsByImage.values.sum()
+
+    override val engineId: String = "fixture-offline"
+    override val engineVersion: String = "1"
+    override val executionMode: OcrExecutionMode = OcrExecutionMode.OFFLINE
+
+    override suspend fun recognize(input: OcrImageInput): OcrDocument {
+        callsByImage[input.image.id] = callsByImage.getOrDefault(input.image.id, 0) + 1
+        if (input.image.id == failingImageId) error("synthetic selected image failure")
         return OcrDocument(
             imageId = input.image.id,
             rawText = "问真八字 用户列表 筛选 阳历1992年8月24日",

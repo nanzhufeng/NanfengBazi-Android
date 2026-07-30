@@ -12,6 +12,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.imageparser.RecognitionRunResult
+import com.nanzhufeng.nanfengbazi.imageparser.DuplicateImageKind
+import com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetector
 import com.nanzhufeng.nanfengbazi.imageparser.ImportRecognitionCoordinator
 import java.io.InputStream
 import java.time.Clock
@@ -35,6 +37,9 @@ data class ScreenshotImportUiState(
     val activeSessionId: String? = null,
     val completedImageCount: Int = 0,
     val classifiedPageTypes: List<WenzhenPageType> = emptyList(),
+    val exactDuplicatePairCount: Int = 0,
+    val similarDuplicatePairCount: Int = 0,
+    val failedImageCount: Int = 0,
     val needsReview: Boolean = false,
     val canRetry: Boolean = false,
     val recoverableSessionCount: Int = 0,
@@ -188,15 +193,23 @@ class ScreenshotImportViewModel(
     private suspend fun applyRecognitionResult(result: RecognitionRunResult) {
         when (result) {
             is RecognitionRunResult.NeedsReview -> mutableState.update {
+                val duplicateCounts = duplicateCounts(result.session)
                 it.copy(
                     busy = false,
                     progressText = null,
                     activeSessionId = result.session.id,
                     completedImageCount = result.session.images.size,
                     classifiedPageTypes = result.session.images.map { image -> image.pageType },
+                    exactDuplicatePairCount = duplicateCounts.first,
+                    similarDuplicatePairCount = duplicateCounts.second,
+                    failedImageCount = result.session.imageFailures.size,
                     needsReview = true,
-                    canRetry = false,
-                    message = "离线识别已完成，结果保存在待核对会话中，尚未写入正式命例。",
+                    canRetry = result.session.imageFailures.any { failure -> failure.retryable },
+                    message = if (result.session.imageFailures.isEmpty()) {
+                        "离线识别已完成，结果保存在待核对会话中，尚未写入正式命例。"
+                    } else {
+                        "其余图片已完成识别，失败图片可单独重试；尚未写入正式命例。"
+                    },
                 )
             }
 
@@ -206,6 +219,7 @@ class ScreenshotImportViewModel(
                     progressText = null,
                     activeSessionId = result.session.id,
                     completedImageCount = result.session.images.size,
+                    failedImageCount = result.session.imageFailures.size,
                     needsReview = false,
                     canRetry = result.session.failure?.retryable == true,
                     message = result.session.failure?.userMessage,
@@ -264,10 +278,14 @@ class ScreenshotImportViewModel(
                 if (recent == null || current.busy || current.activeSessionId != null) {
                     current.copy(recoverableSessionCount = sessions.size)
                 } else {
+                    val duplicateCounts = duplicateCounts(recent)
                     current.copy(
                         activeSessionId = recent.id,
                         completedImageCount = recent.images.size,
                         classifiedPageTypes = recent.images.map { it.pageType },
+                        exactDuplicatePairCount = duplicateCounts.first,
+                        similarDuplicatePairCount = duplicateCounts.second,
+                        failedImageCount = recent.imageFailures.size,
                         needsReview = recent.status == ImportStatus.NEEDS_REVIEW,
                         canRetry = when (recent.status) {
                             ImportStatus.CLASSIFYING,
@@ -276,6 +294,8 @@ class ScreenshotImportViewModel(
                             -> true
 
                             ImportStatus.FAILED -> recent.failure?.retryable == true
+                            ImportStatus.NEEDS_REVIEW ->
+                                recent.imageFailures.any { failure -> failure.retryable }
                             else -> false
                         },
                         recoverableSessionCount = sessions.size,
@@ -283,6 +303,12 @@ class ScreenshotImportViewModel(
                 }
             }
         }
+    }
+
+    private fun duplicateCounts(session: ImportSession): Pair<Int, Int> {
+        val matches = ImportImageDuplicateDetector().findMatches(session.images)
+        return matches.count { it.kind == DuplicateImageKind.EXACT } to
+            matches.count { it.kind == DuplicateImageKind.VISUALLY_SIMILAR }
     }
 
     class Factory(

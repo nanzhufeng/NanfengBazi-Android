@@ -7,6 +7,8 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.ImportImageFailure
+import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
@@ -94,6 +96,42 @@ class RoomImportSessionRepositoryTest {
             repository.delete("session-1", expectedRevision = 1),
         )
         assertNull(repository.findById("session-1"))
+    }
+
+    @Test
+    fun `逐图片失败结果跨仓储实例保留`() = runTest {
+        val now = Instant.parse("2026-01-01T00:00:00Z")
+        val image = ImportImageRef(
+            id = "image-1",
+            originalFileName = "synthetic.png",
+            mimeType = "image/png",
+            relativePath = "session-1/image-1.png",
+            sha256 = "a".repeat(64),
+            perceptualHash = "0000000000000000",
+            byteSize = 10,
+            widthPx = 1080,
+            heightPx = 2400,
+            createdAt = now,
+        )
+        val session = fixture().copy(
+            status = ImportStatus.NEEDS_REVIEW,
+            images = listOf(image),
+            imageFailures = listOf(
+                ImportImageFailure(
+                    imageId = image.id,
+                    code = "IMAGE_RECOGNITION_FAILED",
+                    userMessage = "这张图片未能识别，可单独重试。",
+                    retryable = true,
+                    diagnosticId = "diagnostic-1",
+                ),
+            ),
+        )
+        repository.save(session, expectedRevision = 0)
+
+        val restored = requireNotNull(RoomImportSessionRepository(database).findById(session.id))
+
+        assertEquals(image, restored.images.single())
+        assertEquals(session.imageFailures, restored.imageFailures)
     }
 
     private fun fixture(): ImportSession {

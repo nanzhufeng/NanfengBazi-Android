@@ -3,8 +3,11 @@ package com.nanzhufeng.nanfengbazi.imageparser
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
+import com.nanzhufeng.nanfengbazi.domain.model.ImportImageFailure
+import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
+import com.nanzhufeng.nanfengbazi.domain.model.OcrDocument
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -23,6 +26,7 @@ class ImportRecognitionCoordinator(
     private val contentReader: ImportImageContentReader,
     private val ocrEngine: OcrEngine,
     private val pageClassifier: WenzhenPageClassifier,
+    private val fingerprintEngine: ImageFingerprintEngine? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val diagnosticIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -48,6 +52,7 @@ class ImportRecognitionCoordinator(
                 ImportStatus.CLASSIFYING,
                 ImportStatus.RECOGNIZING,
                 ImportStatus.FAILED,
+                ImportStatus.NEEDS_REVIEW,
             )
         ) {
             return RecognitionRunResult.Rejected(session.status)
@@ -55,7 +60,19 @@ class ImportRecognitionCoordinator(
         if (session.status == ImportStatus.FAILED && session.failure?.retryable != true) {
             return RecognitionRunResult.Rejected(session.status)
         }
+        if (
+            session.status == ImportStatus.NEEDS_REVIEW &&
+            session.imageFailures.none(ImportImageFailure::retryable)
+        ) {
+            return RecognitionRunResult.Rejected(session.status)
+        }
 
+        val targetImageIds = when (session.status) {
+            ImportStatus.NEEDS_REVIEW -> session.imageFailures
+                .filter(ImportImageFailure::retryable)
+                .mapTo(mutableSetOf(), ImportImageFailure::imageId)
+            else -> session.images.mapTo(mutableSetOf(), ImportImageRef::id)
+        }
         val started = session.copy(
             status = ImportStatus.RECOGNIZING,
             failure = null,
@@ -67,31 +84,75 @@ class ImportRecognitionCoordinator(
 
         try {
             require(session.images.isNotEmpty()) { "导入会话没有可识别图片" }
-            val documents = session.images.map { image ->
-                val input = OcrImageInput(
-                    image = image,
-                    bytes = contentReader.readBytes(image),
-                )
-                val document = ocrEngine.recognize(input)
-                require(document.imageId == image.id) { "OCR 文档与输入图片身份不一致" }
-                require(document.engineId == ocrEngine.engineId) { "OCR 引擎身份不一致" }
-                require(document.engineVersion == ocrEngine.engineVersion) { "OCR 引擎版本不一致" }
-                document
+            val processedImages = mutableMapOf<String, ImportImageRef>()
+            val recognizedDocuments = mutableListOf<OcrDocument>()
+            val imageFailures = mutableListOf<ImportImageFailure>()
+            session.images.filter { it.id in targetImageIds }.forEach { originalImage ->
+                var image = originalImage
+                try {
+                    val bytes = contentReader.readBytes(image)
+                    fingerprintEngine?.fingerprint(bytes)?.let { fingerprint ->
+                        image = image.copy(
+                            perceptualHash = fingerprint.perceptualHash,
+                            widthPx = fingerprint.widthPx,
+                            heightPx = fingerprint.heightPx,
+                        )
+                    }
+                    val document = ocrEngine.recognize(OcrImageInput(image, bytes))
+                    require(document.imageId == image.id) { "OCR 文档与输入图片身份不一致" }
+                    require(document.engineId == ocrEngine.engineId) { "OCR 引擎身份不一致" }
+                    require(document.engineVersion == ocrEngine.engineVersion) {
+                        "OCR 引擎版本不一致"
+                    }
+                    val classification = pageClassifier.classify(document)
+                    processedImages[image.id] = image.copy(
+                        pageType = classification.pageType,
+                        pageConfidence = classification.confidence,
+                        classifierVersion = classification.classifierVersion,
+                    )
+                    recognizedDocuments += document
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    processedImages[image.id] = image
+                    imageFailures += ImportImageFailure(
+                        imageId = image.id,
+                        code = "IMAGE_RECOGNITION_FAILED",
+                        userMessage = "这张图片未能识别，可单独重试。",
+                        retryable = true,
+                        diagnosticId = diagnosticIdFactory(),
+                    )
+                }
             }
-            val classifiedImages = session.images.map { image ->
-                val classification = pageClassifier.classify(
-                    documents.single { it.imageId == image.id },
+            val mergedImages = session.images.map { processedImages[it.id] ?: it }
+            val mergedDocuments = session.ocrDocuments
+                .filterNot { it.imageId in targetImageIds } + recognizedDocuments
+            val mergedFailures = session.imageFailures
+                .filterNot { it.imageId in targetImageIds } + imageFailures
+            if (mergedDocuments.isEmpty()) {
+                val failed = session.copy(
+                    status = ImportStatus.FAILED,
+                    images = mergedImages,
+                    ocrDocuments = emptyList(),
+                    imageFailures = mergedFailures,
+                    failure = ImportFailure(
+                        code = "ALL_IMAGES_RECOGNITION_FAILED",
+                        userMessage = "所选图片均未能识别，可稍后复用原图重试。",
+                        retryable = true,
+                        failedStage = ImportStatus.RECOGNIZING,
+                        diagnosticId = diagnosticIdFactory(),
+                    ),
+                    updatedAt = nowNotBefore(session.updatedAt),
                 )
-                image.copy(
-                    pageType = classification.pageType,
-                    pageConfidence = classification.confidence,
-                    classifierVersion = classification.classifierVersion,
-                )
+                val persisted = persist(failed, session.revision)
+                    ?: return RecognitionRunResult.RevisionConflict
+                return RecognitionRunResult.Failed(persisted)
             }
             val grouped = session.copy(
                 status = ImportStatus.GROUPING_CASES,
-                images = classifiedImages,
-                ocrDocuments = documents,
+                images = mergedImages,
+                ocrDocuments = mergedDocuments,
+                imageFailures = mergedFailures,
                 updatedAt = nowNotBefore(session.updatedAt),
             )
             session = persist(grouped, session.revision)

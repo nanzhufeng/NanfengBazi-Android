@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 156 条唯一单元契约；Debug/Release 变体合计 279 次执行，0 失败、0 跳过。
+- 160 条唯一单元契约；Debug/Release 变体合计 287 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -178,6 +178,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - bundled ML Kit 中文识别器真实读取合成图片，保留 OCR 原文、行边界框和置信度；
   - OCR 常见繁简锚点归一化后仍保留原文，系统分享的合成问真用户列表图被分类为
     `USER_LIST`，且不会自动写入正式命例。
+  - 超阈值长图按纵向重叠区解码，OCR 边界框回映原图坐标并去除重叠行；
+  - 图片宽高、64 位 dHash、SHA-256 完全重复与低距离视觉相似分级提示；
+  - 批次逐图片失败持久化，成功图片不被失败项阻塞，局部重试不重复 OCR 成功图片。
 - App、`core:data` 与 `core:image-parser` Lint 均 0 错误；仅有依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - Debug/Release 最终打包 Manifest 均不含 `INTERNET`、`ACCESS_NETWORK_STATE` 或
@@ -188,10 +191,10 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     新建/搜索/详情/编辑长流程；
   - alpha27 精确交运与前八步大运详情目标流程 1/1 通过；
   - DST 详情真实显示 `America/New_York`、`UTC-05:00` 与 tzdb 版本字段；
-  - alpha32 全量设备套件 12 项：10 项通过、2 项需要宿主强杀的恢复测试按设计跳过；
+  - alpha33 全量设备套件 13 项：11 项通过、2 项需要宿主强杀的恢复测试按设计跳过；
     另已单独验证两项恢复测试的既有宿主编排；
-  - Photo Picker/系统分享统一入口、私有复制、bundled 中文 OCR 与页面分类真实设备管线
-    通过，测试图片由程序合成，不含用户资料；
+  - Photo Picker/系统分享统一入口、私有复制、bundled 中文 OCR、页面分类、dHash 与
+    长图分段/原坐标回映真实设备管线通过，测试图片由程序合成，不含用户资料；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -199,17 +202,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha32-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha33-debug.apk`
 
-- 大小：55,251,999 bytes
-- SHA-256：`f6d068711422499083999ef6d93e91d63c96a1d95f75366054386f34a26ba43b`
+- 大小：55,268,383 bytes
+- SHA-256：`b7204c5d0d01aace1aae3af6e7125ec0e9a4a5fccc68bd1c23a3a4fc6190b533`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha32-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha33-release-unsigned.apk`
 
-- 大小：51,677,282 bytes
-- SHA-256：`19a075497172959168281afd85f211dfb86d43fba9c12aaf8d8727195fcfa8b4`
+- 大小：51,693,666 bytes
+- SHA-256：`41bb99cc7f210afb1da49b0e0d79c4e5ab3067e4f4f9a86d2ade27f5485a9d07`
 
 ## 当前限制与风险
 
@@ -217,8 +220,8 @@ Debug 验收构建：
   输入。县域中心坐标与问真实际取点可能造成几十秒差异。
 - 神煞、流年/流月/流日/流时与子时多口径尚未实现；基础排盘确定性字段已经输出，但仍需
   Stage 4B 扩大边界黄金集和后续问真真实样本对照。
-- 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR
-  和合成页面分类已实现；长图分段、感知哈希、相似图提示、多图归组、逐候选失败结果、
+- 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
+  长图分段、感知哈希、相似提示和逐图片失败隔离已实现；多图归组、逐命例候选失败结果、
   WorkManager/用户删除入口和问真字段解析尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
 - App 仍是手机单列工作台，OPPO Find N5 展开双栏、无障碍和大字体尚未验收。
@@ -228,9 +231,9 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 增加长图检测/重叠分段，确保 OCR 证据能映射回原图坐标；
-2. 增加感知哈希、精确/相似重复提示和逐候选独立失败结果；
-3. 完成长任务后台生命周期与用户可控的失败会话删除，再进入问真 P0 字段解析和确认 UI。
+1. 完成长任务后台生命周期与用户可控的失败会话删除；
+2. 实现不能只按姓名合并的多图归组证据；
+3. 进入问真 P0 用户列表、反馈和点评字段解析及确认 UI。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于
 整个产品已经落地。

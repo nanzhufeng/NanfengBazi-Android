@@ -259,6 +259,22 @@ data class ImportFailure(
 }
 
 @Serializable
+data class ImportImageFailure(
+    val imageId: String,
+    val code: String,
+    val userMessage: String,
+    val retryable: Boolean,
+    val diagnosticId: String,
+) {
+    init {
+        require(imageId.isNotBlank()) { "失败结果必须关联导入图片" }
+        require(code.isNotBlank()) { "图片失败错误码不能为空" }
+        require(userMessage.isNotBlank()) { "图片失败提示不能为空" }
+        require(diagnosticId.isNotBlank()) { "图片失败诊断 id 不能为空" }
+    }
+}
+
+@Serializable
 data class ImportSession(
     val id: String,
     val sourceApp: ImportSourceApp,
@@ -272,6 +288,7 @@ data class ImportSession(
     val targetCaseId: String? = null,
     val parserVersion: String,
     val failure: ImportFailure? = null,
+    val imageFailures: List<ImportImageFailure> = emptyList(),
     val attemptCount: Int = 0,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
@@ -301,6 +318,9 @@ data class ImportSession(
         require(caseCandidates.map { it.id }.distinct().size == caseCandidates.size) {
             "导入命例候选 id 不能重复"
         }
+        require(imageFailures.map { it.imageId }.distinct().size == imageFailures.size) {
+            "每张图片只能保留一份当前失败结果"
+        }
         val imageIds = images.mapTo(mutableSetOf()) { it.id }
         require(ocrDocuments.all { it.imageId in imageIds }) {
             "OCR 文档必须关联当前导入会话图片"
@@ -310,6 +330,9 @@ data class ImportSession(
         }
         require(extractedLongTexts.all { it.imageId in imageIds }) {
             "长文本证据必须关联当前导入会话图片"
+        }
+        require(imageFailures.all { it.imageId in imageIds }) {
+            "图片失败结果必须关联当前导入会话图片"
         }
         val fieldIds = extractedFields.mapTo(mutableSetOf()) { it.id }
         val longTextIds = extractedLongTexts.mapTo(mutableSetOf()) { it.id }
