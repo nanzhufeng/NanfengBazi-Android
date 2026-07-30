@@ -2,9 +2,11 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -13,6 +15,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
@@ -313,7 +317,9 @@ class StageTwoFlowTest {
         }
 
         val encryptedExportAlias = "$editedAlias（副本）"
-        composeRule.onNodeWithText("别名：$encryptedExportAlias").performClick()
+        composeRule.onNodeWithText("别名：$encryptedExportAlias")
+            .performScrollTo()
+            .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -398,6 +404,31 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("full_backup_conflict_summary")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("full_backup_merge_candidate"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodes(hasTestTag("full_backup_merge_candidate"))
+            .onFirst()
+            .assertIsEnabled()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasText("选择完整备份合并范围"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("full_backup_error"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        val mergeErrors = composeRule.onAllNodes(hasTestTag("full_backup_error"))
+            .fetchSemanticsNodes()
+        check(mergeErrors.isEmpty()) {
+            mergeErrors.first().config.getOrNull(SemanticsProperties.Text)
+                ?.joinToString(separator = "") { it.text }
+                ?: "完整备份合并准备返回未知错误"
+        }
+        composeRule.onNodeWithText("选择完整备份合并范围").assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm_full_backup_merge").assertIsNotEnabled()
+        composeRule.onNodeWithTag("cancel_full_backup_merge").performClick()
+        composeRule.onNodeWithTag("full_backup_preview").assertIsDisplayed()
         composeRule.onNodeWithTag("close_full_backup_preview").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 

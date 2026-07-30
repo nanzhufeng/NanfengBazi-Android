@@ -101,9 +101,10 @@
 | 完整备份导出 | 明文风险确认后写出 ZIP，或把 ZIP 流式写入独立 v1 密码容器 `.nfbak` | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP/密码容器、manifest/文件哈希与导出计数 |
 | 完整备份只读预览 | 系统打开文档；密码文件先认证解密，再校验 ZIP，并逐命例对照当前库稳定 ID/出生输入/四柱 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 普通/密码文件显示候选原因、本地 revision 与回收站状态；非空库零写入 |
 | 完整备份密码容器 | 独立保护版本 1；PBKDF2-HMAC-SHA256 600,000 次、AES-256-GCM 与参数 AAD；不整包入内存 | `BackupEncryption`，只由 `CaseBackupService` 调用 | 参数边界、认证失败、明文不可见及 Android `.nfbak` 往返 |
-| 完整备份恢复计划 | 每个来源显式选择按原 ID/跳过/保留两份/范围合并；重新读取当前冲突并绑定 manifest | `CaseBackupService.prepareRestorePlan` | 决策完备性、目标/范围约束、回收站拒绝和 `PREVIEW_STALE`；零写入 |
+| 完整备份恢复计划 | Android 逐例选择按原 ID/跳过/保留两份/范围合并；全部覆盖后重新读取当前冲突并绑定 manifest | `FullBackupPreviewDialog` → `StageTwoViewModel` → `CaseBackupService.prepareRestorePlan` | 决策完备性、目标/范围约束、回收站拒绝和 `PREVIEW_STALE`；计划通过仍零写入 |
 | 完整来源聚合 | 从备份 Room 实体、交叉引用与 sortOrder 重建完整领域命例，供冲突、差异和提交共用 | `RoomDataSnapshot.toDomainCases` → `BackupCaseRestorePreview.sourceCase` | 与原仓储聚合完全相等并执行 `BaziCase` 引用约束 |
 | 共享合并分析 | 完整备份目标分析调用单命例同一内容去重与逐字段差异实现 | `CaseBackupService.prepareCaseMerge` → `SingleCaseExchangeService.analyzeMerge` | 候选复查、字段键和可追加数量一致；零写入 |
+| 完整备份范围编辑 | 对具体活动候选显示模块数量和逐字段前后值；空范围不能确认，返回后保留其他逐例决策 | `FullBackupMergeDialog` → `StageTwoViewModel` | 模拟器从真实 ZIP 冲突候选进入、空范围禁用并返回预览 |
 | 本地冲突候选 | 稳定 ID、出生输入、四柱和回收站位置 | `CaseRepository` 查询，由预览服务合并 | 同一候选理由合并且不修改本地命例 |
 | 无附件命例提交 | 跳过零写入；保留两份重建全部聚合 ID，提交前复查冲突 | `StageTwoViewModel` → `SingleCaseExchangeService.commitImport` → `CaseRepository.save` | 过期预览拒绝、事务失败不覆盖、系统文件 E2E 后列表读回第二份 |
 | 范围化合并 | 模块仅追加独有内容；标量差异逐字段采用，默认本地 | `prepareMerge` 固定目标 revision/载荷 → `commitMerge` 复查 → `CaseRepository.save` | 内容去重、子项重建 ID、目标变化拒绝、模拟器记录/事件合并 |

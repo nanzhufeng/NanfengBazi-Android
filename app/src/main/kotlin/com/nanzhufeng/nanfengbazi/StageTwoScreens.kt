@@ -78,6 +78,10 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparation
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparation
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 
 @Composable
@@ -383,10 +387,30 @@ fun NanfengBaziApp(
                     onDismiss = viewModel::cancelSingleCaseMerge,
                 )
             }
-            state.fullBackupPreview?.let { preview ->
+            state.fullBackupPreview
+                ?.takeIf { state.fullBackupMergePreparation == null }
+                ?.let { preview ->
                 FullBackupPreviewDialog(
                     preview = preview,
+                    decisions = state.fullBackupDecisions,
+                    preparedPlan = state.fullBackupRestorePlan,
+                    busy = state.fullBackupBusy,
+                    onChooseDecision = viewModel::chooseFullBackupDecision,
+                    onPrepareMerge = viewModel::prepareFullBackupCaseMerge,
+                    onPreparePlan = viewModel::prepareFullBackupRestorePlan,
                     onDismiss = viewModel::dismissFullBackupPreview,
+                )
+            }
+            state.fullBackupMergePreparation?.let { preparation ->
+                FullBackupMergeDialog(
+                    preparation = preparation,
+                    selectedModules = state.fullBackupMergeModules,
+                    fieldChoices = state.fullBackupMergeFieldChoices,
+                    busy = state.fullBackupBusy,
+                    onToggleModule = viewModel::toggleFullBackupMergeModule,
+                    onChooseField = viewModel::chooseFullBackupMergeField,
+                    onConfirm = viewModel::confirmFullBackupMergeDecision,
+                    onDismiss = viewModel::cancelFullBackupCaseMerge,
                 )
             }
             state.singleCaseExchangeError?.let { error ->
@@ -420,6 +444,12 @@ fun NanfengBaziApp(
 @Composable
 private fun FullBackupPreviewDialog(
     preview: RestorePreview,
+    decisions: Map<String, BackupCaseRestoreDecision>,
+    preparedPlan: BackupRestorePlan?,
+    busy: Boolean,
+    onChooseDecision: (String, BackupCaseRestoreAction) -> Unit,
+    onPrepareMerge: (String, String) -> Unit,
+    onPreparePlan: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val manifest = preview.manifest
@@ -490,18 +520,260 @@ private fun FullBackupPreviewDialog(
                     }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text("逐例恢复决策", fontWeight = FontWeight.SemiBold)
+                preview.cases.forEach { sourceCase ->
+                    val selected = decisions[sourceCase.sourceCaseId]?.action
+                    Text("${sourceCase.sourceAlias}：${selected?.label ?: "尚未选择"}")
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (sourceCase.conflicts.isEmpty()) {
+                            OutlinedButton(
+                                onClick = {
+                                    onChooseDecision(
+                                        sourceCase.sourceCaseId,
+                                        BackupCaseRestoreAction.IMPORT_AS_IS,
+                                    )
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.testTag(
+                                    "full_backup_import_${sourceCase.sourceCaseId}",
+                                ),
+                            ) { Text("按原 ID 导入") }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    onChooseDecision(
+                                        sourceCase.sourceCaseId,
+                                        BackupCaseRestoreAction.KEEP_BOTH,
+                                    )
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.testTag(
+                                    "full_backup_keep_${sourceCase.sourceCaseId}",
+                                ),
+                            ) { Text("保留两份") }
+                            sourceCase.conflicts
+                                .filterNot { it.isTrashed }
+                                .forEach { conflict ->
+                                    OutlinedButton(
+                                        onClick = {
+                                            onPrepareMerge(
+                                                sourceCase.sourceCaseId,
+                                                conflict.localCaseId,
+                                            )
+                                        },
+                                        enabled = !busy,
+                                        modifier = Modifier
+                                            .testTag("full_backup_merge_candidate")
+                                            .semantics {
+                                                contentDescription =
+                                                    "来源 ${sourceCase.sourceCaseId} 合并到" +
+                                                        " ${conflict.localCaseId}"
+                                            },
+                                    ) {
+                                        Text("范围合并到 ${conflict.localAlias}")
+                                    }
+                                }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onChooseDecision(
+                                    sourceCase.sourceCaseId,
+                                    BackupCaseRestoreAction.SKIP,
+                                )
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.testTag(
+                                "full_backup_skip_${sourceCase.sourceCaseId}",
+                            ),
+                        ) { Text("跳过") }
+                    }
+                }
+                preparedPlan?.let {
+                    Text(
+                        "恢复方案已通过过期与范围检查，尚未写入数据。",
+                        modifier = Modifier.testTag("full_backup_plan_ready"),
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Text(
                     "本页面已验证文件保护、ZIP 路径、大小、哈希、数据引用、附件一致性和" +
-                        "当前库冲突候选；不会写入或覆盖数据库。恢复决策与提交仍未开放。",
+                        "当前库冲突候选；本页只生成恢复方案，不会写入或覆盖数据库。",
                 )
             }
         },
         confirmButton = {
             Button(
-                onClick = onDismiss,
-                modifier = Modifier.testTag("close_full_backup_preview"),
+                onClick = onPreparePlan,
+                enabled = !busy && decisions.size == preview.cases.size,
+                modifier = Modifier.testTag("prepare_full_backup_plan"),
             ) {
-                Text("关闭")
+                Text(if (preparedPlan == null) "检查恢复方案" else "重新检查方案")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !busy,
+                modifier = Modifier.testTag("close_full_backup_preview"),
+            ) { Text("关闭") }
+        },
+    )
+}
+
+private val BackupCaseRestoreAction.label: String
+    get() = when (this) {
+        BackupCaseRestoreAction.IMPORT_AS_IS -> "按原 ID 导入"
+        BackupCaseRestoreAction.SKIP -> "跳过"
+        BackupCaseRestoreAction.KEEP_BOTH -> "保留两份"
+        BackupCaseRestoreAction.MERGE -> "范围合并"
+    }
+
+@Composable
+private fun FullBackupMergeDialog(
+    preparation: BackupCaseMergePreparation,
+    selectedModules: Set<SingleCaseMergeModule>,
+    fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
+    busy: Boolean,
+    onToggleModule: (SingleCaseMergeModule) -> Unit,
+    onChooseField: (SingleCaseFieldKey, SingleCaseValueChoice) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val counts = preparation.analysis.addableCounts
+    val availableModules = buildList {
+        if (counts.calculationSnapshots > 0) {
+            add(
+                SingleCaseMergeModule.CALCULATION_SNAPSHOTS to
+                    "追加计算快照 ${counts.calculationSnapshots} 条（不改变当前采用盘）",
+            )
+        }
+        if (counts.textRecords + counts.textRecordRevisions > 0) {
+            add(
+                SingleCaseMergeModule.TEXT_RECORDS to
+                    "追加文本记录 ${counts.textRecords} 条、历史 ${counts.textRecordRevisions} 条",
+            )
+        }
+        if (counts.events + counts.eventRevisions > 0) {
+            add(
+                SingleCaseMergeModule.EVENTS to
+                    "追加事件 ${counts.events} 条、历史 ${counts.eventRevisions} 条",
+            )
+        }
+        if (counts.groups + counts.tags > 0) {
+            add(
+                SingleCaseMergeModule.ORGANIZATION to
+                    "追加分组 ${counts.groups} 个、标签 ${counts.tags} 个",
+            )
+        }
+    }
+    val hasSelection = selectedModules.any { module ->
+        availableModules.any { it.first == module }
+    } || fieldChoices.values.any { it == SingleCaseValueChoice.IMPORTED }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("选择完整备份合并范围") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .testTag("full_backup_merge_dialog"),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "目标：${preparation.targetAlias}（修订 ${preparation.targetRevision}）",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "只有明确选中的内容会进入该命例的恢复方案；未选本地字段不会被覆盖。",
+                    color = MaterialTheme.colorScheme.error,
+                )
+                if (availableModules.isNotEmpty()) {
+                    Text("按模块追加", fontWeight = FontWeight.SemiBold)
+                    availableModules.forEach { (module, label) ->
+                        if (module in selectedModules) {
+                            Button(
+                                onClick = { onToggleModule(module) },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("已选择 · $label")
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onToggleModule(module) },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
+                if (preparation.analysis.fieldDifferences.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("逐字段采用", fontWeight = FontWeight.SemiBold)
+                    preparation.analysis.fieldDifferences.forEach { difference ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(difference.label, fontWeight = FontWeight.SemiBold)
+                            Text("本地：${difference.localValue}")
+                            Text("来源：${difference.importedValue}")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SelectionButton(
+                                    text = "保留本地",
+                                    selected =
+                                        fieldChoices[difference.key] !=
+                                            SingleCaseValueChoice.IMPORTED,
+                                    onClick = {
+                                        onChooseField(
+                                            difference.key,
+                                            SingleCaseValueChoice.LOCAL,
+                                        )
+                                    },
+                                    tag = "full_merge_local_${difference.key.name}",
+                                )
+                                SelectionButton(
+                                    text = "采用来源",
+                                    selected =
+                                        fieldChoices[difference.key] ==
+                                            SingleCaseValueChoice.IMPORTED,
+                                    onClick = {
+                                        onChooseField(
+                                            difference.key,
+                                            SingleCaseValueChoice.IMPORTED,
+                                        )
+                                    },
+                                    tag = "full_merge_imported_${difference.key.name}",
+                                )
+                            }
+                        }
+                    }
+                }
+                if (availableModules.isEmpty() &&
+                    preparation.analysis.fieldDifferences.isEmpty()
+                ) {
+                    Text("该来源命例没有可追加模块或可替换字段。")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !busy && hasSelection,
+                modifier = Modifier.testTag("confirm_full_backup_merge"),
+            ) {
+                Text("确认所选范围")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !busy,
+                modifier = Modifier.testTag("cancel_full_backup_merge"),
+            ) {
+                Text("返回批量预览")
             }
         },
     )

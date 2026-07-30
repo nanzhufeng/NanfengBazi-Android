@@ -1,11 +1,11 @@
-# 当前交接：Stage 3B 共享合并分析第十一增量
+# 当前交接：Stage 3B 完整备份决策工作台第十二增量
 
 更新日期：2026-07-30
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2 与 Stage 3A 已有当前实现和证据，Stage 3B 正在进行。
-- 本增量让完整备份复用单命例的模块与字段合并分析；仍未开放恢复提交。
+- 本增量把完整备份逐例决策和范围合并分析接入 Android UI；仍未开放恢复提交。
 - v1.0 总方案仍未完成；附件事务、密码备份恢复、非空恢复和进程恢复仍待落地。
 - 未使用真实问真资料、真实姓名或用户截图；未安装或操作 OPPO 真机，未 push、未发布。
 
@@ -55,10 +55,16 @@
 - `prepareCaseMerge` 在分析前重新核对完整冲突预览，拒绝过期、非候选和回收站目标；
 - 合并分析直接调用单命例现有的内容去重与字段差异实现，输出可追加快照、记录/历史、
   事件/历史、组织数量以及别名、姓名、出生资料、五类资料、收藏和置顶前后值；
-- 预览不检查当前库是否为空、不写数据库且不提供恢复按钮；空库恢复服务仍保持原边界；
+- 完整备份预览为每个来源命例显示当前选择；无冲突可按原 ID 导入或跳过，有冲突可跳过、
+  保留两份或选择具体活动候选进入范围合并；
+- 范围合并 UI 显示目标 revision、可追加模块计数和逐字段本地/来源值；空范围时确认按钮
+  保持禁用，返回批量预览不会丢失其他逐例决策；
+- 全部来源都有显式决策后才能“检查恢复方案”；检查只调用 `prepareRestorePlan`，通过后
+  明确显示“尚未写入数据”，修改任一决策会使旧计划失效；
+- 预览不检查当前库是否为空，不写数据库且不提供提交按钮；空库恢复服务仍保持原边界；
 - 错误弹窗保留协议错误代码，导出成功明确图片仅保留引用；
 - 启用 App `BuildConfig.VERSION_NAME`，导出文件记录真实当前版本；
-- Debug 版本升级到 `0.3.0-alpha16`。
+- Debug 版本升级到 `0.3.0-alpha17`。
 
 ## 所有者与边界
 
@@ -78,10 +84,10 @@
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
-  ./gradlew test assembleDebug lintDebug --warning-mode all
+  ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 本地自动化：80 条唯一单元契约；Debug/Release 变体合计 147 次执行，0 失败；
+- 本地自动化：81 条唯一单元契约；Debug/Release 变体合计 149 次执行，0 失败；
 - 覆盖领域、引擎、Room v5 往返、v1→v5 迁移、旧 Schema v2 备份恢复、历史基线补建、
   删除保留历史、单命例往返/哈希/版本/大小/明文确认/冲突零写入、生命周期用例、
   重复确认、ViewModel 和导航；
@@ -97,6 +103,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     →Android 创建文档保存 ZIP→Android 打开同一 ZIP→只读校验计数→关闭零写入
     →选择完整备份密码保护→Android 创建文档保存 `.nfbak`→Android 打开同一文件
     →正确密码认证、解密和严格预览→普通/加密文件均显示当前库逐命例冲突摘要
+    →普通 ZIP 选择真实活动冲突候选进入范围合并→空范围确认禁用→返回批量预览
     →关闭零写入；
   - Compose + UiAutomator 1/1 通过，真实经过系统 DocumentsUI，不是内存流替代；
 - OPPO 设备虽然连接，但未安装、未操作；以上证据不能替代真机验收；
@@ -104,11 +111,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 ## APK
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha16-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha17-debug.apk`
 
-大小：9,822,202 bytes
+大小：10,148,381 bytes
 
-SHA-256：`01294fd13b51026e65f3ced85a506064a61c315da885c17bd8773d97e3bcfdf2`
+SHA-256：`fb5f4dbaeaba23e5b8b7d7999572282b188950166af436a8c7bd88427e40e924`
 
 该 APK 是 Debug 验收构建，不是正式签名 Release。
 
@@ -119,15 +126,16 @@ SHA-256：`01294fd13b51026e65f3ced85a506064a61c315da885c17bd8773d97e3bcfdf2`
 - 编辑器仍只支持公历民用时；农历、地区、时区确认和真太阳时未接通；
 - `REFERENCES_ONLY` 不携带附件二进制，当前带附件引用命例会拒绝提交；
 - 逐字段采用当前覆盖命例标量资料；附件、字段证据和采用盘切换仍需专门事务语义；
-- 逐例决策合同尚无 UI 编辑器和提交执行器；密码完整备份恢复、附件事务、非空库两阶段
-  提交和进程强杀恢复仍未实现；
+- 当前逐例编辑器仍位于长弹窗，尚未重构为适合大量案例的全屏/惰性列表工作台；
+- 逐例决策只有零写入计划检查，没有提交执行器；密码完整备份恢复、附件事务、非空库
+  两阶段提交和进程强杀恢复仍未实现；
 - 没有进程重启、OPPO Find N5、含附件 ZIP 恢复或真实问真样本证据。
 
 ## 下一安全增量
 
 继续 Stage 3B：
 
-1. 建立可逐例编辑跳过/按原 ID/保留两份/范围合并的恢复工作台；
+1. 把逐例决策从长弹窗重构为可扩展全屏/惰性列表工作台并保留当前安全合同；
 2. 实现来源聚合重映射、附件二进制复制、引用计数、原子提交和失败回滚；
 3. 接通明文/密码备份两阶段提交，并补进程重启恢复日志与设备证据。
 
