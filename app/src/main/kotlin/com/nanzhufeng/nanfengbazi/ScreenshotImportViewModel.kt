@@ -42,6 +42,8 @@ data class ScreenshotImportUiState(
     val failedImageCount: Int = 0,
     val caseCandidateCount: Int = 0,
     val multiImageCandidateCount: Int = 0,
+    val extractedFieldCount: Int = 0,
+    val extractedLongTextCount: Int = 0,
     val needsReview: Boolean = false,
     val canRetry: Boolean = false,
     val recoverableSessionCount: Int = 0,
@@ -255,6 +257,8 @@ class ScreenshotImportViewModel(
                     multiImageCandidateCount = result.session.caseCandidates.count {
                         candidate -> candidate.imageIds.size > 1
                     },
+                    extractedFieldCount = result.session.extractedFields.size,
+                    extractedLongTextCount = result.session.extractedLongTexts.size,
                     needsReview = true,
                     canRetry = result.session.imageFailures.any { failure -> failure.retryable },
                     message = if (result.session.imageFailures.isEmpty()) {
@@ -342,6 +346,8 @@ class ScreenshotImportViewModel(
                         multiImageCandidateCount = recent.caseCandidates.count {
                             candidate -> candidate.imageIds.size > 1
                         },
+                        extractedFieldCount = recent.extractedFields.size,
+                        extractedLongTextCount = recent.extractedLongTexts.size,
                         needsReview = recent.status == ImportStatus.NEEDS_REVIEW,
                         canRetry = when (recent.status) {
                             ImportStatus.CLASSIFYING,

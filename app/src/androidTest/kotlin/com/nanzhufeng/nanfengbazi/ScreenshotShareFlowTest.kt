@@ -75,6 +75,8 @@ class ScreenshotShareFlowTest {
         var dimensions: Pair<Int?, Int?>? = null
         var privateImagePath: Path? = null
         var candidateCount = -1
+        var extractedFieldCount = -1
+        var allFieldsUnadopted = false
         composeRule.activityRule.scenario.onActivity { activity ->
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
@@ -86,6 +88,8 @@ class ScreenshotShareFlowTest {
                 fingerprint = image.perceptualHash
                 dimensions = image.widthPx to image.heightPx
                 candidateCount = session.caseCandidates.size
+                extractedFieldCount = session.extractedFields.size
+                allFieldsUnadopted = session.extractedFields.all { it.adoptedValue == null }
                 privateImagePath = activity.filesDir.toPath()
                     .resolve("import-images")
                     .resolve(image.relativePath)
@@ -96,7 +100,9 @@ class ScreenshotShareFlowTest {
         assertEquals(syntheticOcrText, WenzhenPageType.USER_LIST, pageType)
         assertTrue("私有图片必须保存 64 位感知哈希", fingerprint?.length == 16)
         assertEquals(1080 to 1600, dimensions)
-        assertEquals("用户列表在字段解析前应保留一个待核对候选", 1, candidateCount)
+        assertEquals("用户列表一张图应拆成两个待核对候选", 2, candidateCount)
+        assertTrue("两个候选至少应提取姓名、性别和日期", extractedFieldCount >= 6)
+        assertTrue("OCR 字段未经确认不得产生采用值", allFieldsUnadopted)
         assertTrue("截图识别不得直接写入正式命例", formalCaseCount == 0)
         val storedImagePath = requireNotNull(privateImagePath)
         assertTrue("识别完成后私有原图必须存在", java.nio.file.Files.exists(storedImagePath))
@@ -135,20 +141,21 @@ class ScreenshotShareFlowTest {
         canvas.drawColor(Color.WHITE)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 92f
+            textSize = 62f
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
         }
-        listOf(
-            "问真八字",
-            "用户列表",
-            "用户列表",
-            "名人库",
-            "筛选",
-            "阳历",
-            "1992年8月24日",
-        ).forEachIndexed { index, line ->
-            canvas.drawText(line, 80f, 150f + index * 170f, paint)
-        }
+        canvas.drawText("问真八字", 80f, 130f, paint)
+        canvas.drawText("用户列表", 80f, 270f, paint)
+        canvas.drawText("名人库", 420f, 270f, paint)
+        canvas.drawText("筛选", 80f, 410f, paint)
+        canvas.drawText("案例甲 男", 80f, 650f, paint)
+        canvas.drawText("阳历1992年8月24日", 80f, 760f, paint)
+        canvas.drawText("壬 戊 壬 丙", 700f, 650f, paint)
+        canvas.drawText("申 申 申 午", 700f, 750f, paint)
+        canvas.drawText("案例乙 女", 80f, 1050f, paint)
+        canvas.drawText("阳历2000年8月5日", 80f, 1160f, paint)
+        canvas.drawText("庚 癸 乙 甲", 700f, 1050f, paint)
+        canvas.drawText("辰 未 未 申", 700f, 1150f, paint)
         requireNotNull(context.contentResolver.openOutputStream(uri, "w")).use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                 "合成测试图片写入失败"

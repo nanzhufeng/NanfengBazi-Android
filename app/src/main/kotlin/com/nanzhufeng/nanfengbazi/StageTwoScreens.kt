@@ -1633,6 +1633,12 @@ private fun ScreenshotImportSummary(
                 if (state.multiImageCandidateCount > 0) {
                     add("多图归组 ${state.multiImageCandidateCount} 个")
                 }
+                if (state.extractedFieldCount > 0) {
+                    add("待核对字段 ${state.extractedFieldCount} 项")
+                }
+                if (state.extractedLongTextCount > 0) {
+                    add("完整原文 ${state.extractedLongTextCount} 段")
+                }
                 if (state.recoverableSessionCount > 0) {
                     add("可恢复 ${state.recoverableSessionCount} 个")
                 }

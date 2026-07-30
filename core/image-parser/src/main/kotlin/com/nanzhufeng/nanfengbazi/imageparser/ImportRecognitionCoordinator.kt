@@ -28,6 +28,7 @@ class ImportRecognitionCoordinator(
     private val pageClassifier: WenzhenPageClassifier,
     private val fingerprintEngine: ImageFingerprintEngine? = null,
     private val imageGrouper: WenzhenImageGrouper = WenzhenImageGrouper(),
+    private val p0Parser: WenzhenP0Parser = WenzhenP0Parser(),
     private val clock: Clock = Clock.systemUTC(),
     private val diagnosticIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -149,12 +150,20 @@ class ImportRecognitionCoordinator(
                     ?: return RecognitionRunResult.RevisionConflict
                 return RecognitionRunResult.Failed(persisted)
             }
+            val groupedCandidates = imageGrouper.group(mergedImages, mergedDocuments)
+            val parsed = p0Parser.parse(
+                images = mergedImages,
+                documents = mergedDocuments,
+                groupedCandidates = groupedCandidates,
+            )
             val grouped = session.copy(
                 status = ImportStatus.GROUPING_CASES,
                 images = mergedImages,
                 ocrDocuments = mergedDocuments,
                 imageFailures = mergedFailures,
-                caseCandidates = imageGrouper.group(mergedImages, mergedDocuments),
+                extractedFields = parsed.fields,
+                extractedLongTexts = parsed.longTexts,
+                caseCandidates = parsed.candidates,
                 updatedAt = nowNotBefore(session.updatedAt),
             )
             session = persist(grouped, session.revision)
