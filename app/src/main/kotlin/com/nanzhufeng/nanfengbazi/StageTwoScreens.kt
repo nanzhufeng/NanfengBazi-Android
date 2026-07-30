@@ -90,6 +90,9 @@ fun NanfengBaziApp(
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
+    onCommitSingleCaseImport: ((SingleCaseImportDecision) -> Unit)? = null,
+    onCommitSingleCaseMerge: (() -> Unit)? = null,
+    onCommitPasswordSingleCaseDocument: (CharArray) -> Unit = {},
     onCreateFullBackupDocument: (String) -> Unit = {},
     onCreateEncryptedFullBackupDocument: (String) -> Unit = {},
     onOpenFullBackupDocument: () -> Unit = {},
@@ -99,6 +102,10 @@ fun NanfengBaziApp(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
+    val commitSingleCaseImport = onCommitSingleCaseImport
+        ?: { decision -> viewModel.commitSingleCaseImport(decision) }
+    val commitSingleCaseMerge = onCommitSingleCaseMerge
+        ?: { viewModel.commitSingleCaseMerge() }
     LaunchedEffect(message) {
         if (message != null) {
             snackbarHostState.showSnackbar(message)
@@ -371,12 +378,43 @@ fun NanfengBaziApp(
             if (state.singleCaseExportConfirmationVisible) {
                 AlertDialog(
                     onDismissRequest = viewModel::cancelSingleCaseExport,
-                    title = { Text("导出未加密单命例？") },
+                    title = { Text("选择单命例导出内容") },
                     text = {
-                        Text(
-                            "JSON 可能包含出生资料、健康、婚姻、财务、反馈和分析。" +
-                                "本文件只保存图片引用信息，不包含图片二进制。请妥善保管。",
-                        )
+                        val attachmentCount = state.detail?.attachments?.size ?: 0
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "文件可能包含出生资料、健康、婚姻、财务、反馈和分析，" +
+                                    "未加密导出请妥善保管。",
+                            )
+                            SelectionButton(
+                                text = "JSON（只保存图片引用，兼容轻量交换）",
+                                selected = !state.singleCaseExportIncludesAttachments,
+                                onClick = {
+                                    viewModel.chooseSingleCaseExportAttachments(false)
+                                },
+                                tag = "single_case_export_references_only",
+                            )
+                            if (attachmentCount > 0) {
+                                SelectionButton(
+                                    text = "命例包（包含 $attachmentCount 个图片附件）",
+                                    selected =
+                                        state.singleCaseExportIncludesAttachments,
+                                    onClick = {
+                                        viewModel.chooseSingleCaseExportAttachments(true)
+                                    },
+                                    tag = "single_case_export_with_attachments",
+                                )
+                                Text(
+                                    "命例包会逐个校验附件大小与 SHA-256，适合完整迁移问真截图证据。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            } else {
+                                Text(
+                                    "该命例当前没有图片附件，只需导出 JSON。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
                     },
                     confirmButton = {
                         Button(
@@ -438,15 +476,30 @@ fun NanfengBaziApp(
                     onDismiss = viewModel::cancelPasswordSingleCaseImport,
                 )
             }
+            if (state.singleCasePasswordCommitVisible) {
+                SingleCasePasswordDialog(
+                    title = "再次输入命例包密码",
+                    description = "密码只用于提交前重新认证同一命例包，不会保存。",
+                    error = state.singleCasePasswordError,
+                    requireConfirmation = false,
+                    confirmLabel = "认证并提交",
+                    confirmTag = "confirm_password_single_case_commit",
+                    passwordTag = "single_case_commit_password",
+                    onConfirm = { password, _ ->
+                        onCommitPasswordSingleCaseDocument(password)
+                    },
+                    onDismiss = viewModel::cancelPasswordSingleCaseCommit,
+                )
+            }
             state.singleCasePreview?.let { preview ->
                 SingleCasePreviewDialog(
                     preview = preview,
                     busy = state.singleCaseExchangeBusy,
                     onKeepBoth = {
-                        viewModel.commitSingleCaseImport(SingleCaseImportDecision.KEEP_BOTH)
+                        commitSingleCaseImport(SingleCaseImportDecision.KEEP_BOTH)
                     },
                     onSkip = {
-                        viewModel.commitSingleCaseImport(SingleCaseImportDecision.SKIP)
+                        commitSingleCaseImport(SingleCaseImportDecision.SKIP)
                     },
                     onMergeTarget = viewModel::prepareSingleCaseMerge,
                     onDismiss = viewModel::dismissSingleCasePreview,
@@ -460,7 +513,7 @@ fun NanfengBaziApp(
                     busy = state.singleCaseExchangeBusy,
                     onToggleModule = viewModel::toggleSingleCaseMergeModule,
                     onChooseField = viewModel::chooseSingleCaseMergeField,
-                    onConfirm = viewModel::commitSingleCaseMerge,
+                    onConfirm = commitSingleCaseMerge,
                     onDismiss = viewModel::cancelSingleCaseMerge,
                 )
             }
@@ -979,6 +1032,8 @@ private fun SingleCasePreviewDialog(
 ) {
     val sourceCase = preview.document.caseData
     val hasAttachmentReferences = preview.counts.attachmentReferences > 0
+    val missingAttachmentBinaries =
+        hasAttachmentReferences && !preview.containsAttachmentBinaries
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
         title = { Text("单命例导入预览") },
@@ -1018,9 +1073,12 @@ private fun SingleCasePreviewDialog(
                         "字段证据：${preview.counts.fieldEvidence}",
                 )
                 Text(
-                    if (hasAttachmentReferences) {
+                    if (missingAttachmentBinaries) {
                         "此 JSON 不包含图片二进制。该命例存在图片或字段证据，" +
-                            "当前禁止提交导入，以免证据引用失效。"
+                            "请改用命例附件包导入，以免证据引用失效。"
+                    } else if (preview.containsAttachmentBinaries) {
+                        "附件包已校验 ${preview.counts.attachmentReferences} 个图片附件的" +
+                            "大小与 SHA-256；提交时会重新认证文件并使用附件事务。"
                     } else {
                         "当前仍是零写入预览；确认导入时会再次核对本地冲突，" +
                             "并创建全新身份，不覆盖现有命例。"
@@ -1042,7 +1100,7 @@ private fun SingleCasePreviewDialog(
                             TextButton(
                                 onClick = { onMergeTarget(conflict.caseId) },
                                 enabled =
-                                    !busy && !hasAttachmentReferences && !conflict.isTrashed,
+                                    !busy && !missingAttachmentBinaries && !conflict.isTrashed,
                                 modifier = Modifier.testTag(
                                     "merge_single_case_${conflict.caseId}",
                                 ),
@@ -1063,7 +1121,7 @@ private fun SingleCasePreviewDialog(
         confirmButton = {
             Button(
                 onClick = onKeepBoth,
-                enabled = !busy && !hasAttachmentReferences,
+                enabled = !busy && !missingAttachmentBinaries,
                 modifier = Modifier.testTag("keep_both_single_case"),
             ) {
                 Text(
@@ -2087,7 +2145,7 @@ private fun CaseDetailContent(
                     .padding(bottom = 14.dp)
                     .testTag("export_single_case_button"),
             ) {
-                Text(if (singleCaseExchangeBusy) "正在导出…" else "导出单命例 JSON")
+                Text(if (singleCaseExchangeBusy) "正在导出…" else "导出单命例")
             }
         } else {
             Button(

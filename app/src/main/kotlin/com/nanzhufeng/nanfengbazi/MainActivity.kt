@@ -34,6 +34,31 @@ class MainActivity : ComponentActivity() {
                     viewModel.clearPendingSingleCaseExport()
                 }
             }
+            val createSingleCaseBundleDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.CreateDocument("application/zip"),
+            ) { uri ->
+                if (uri != null) {
+                    viewModel.exportCurrentCase {
+                        contentResolver.openOutputStream(uri, "w")
+                    }
+                } else {
+                    viewModel.clearPendingSingleCaseExport()
+                }
+            }
+            val createEncryptedSingleCaseBundleDocument =
+                rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.CreateDocument(
+                        "application/octet-stream",
+                    ),
+                ) { uri ->
+                    if (uri != null) {
+                        viewModel.exportCurrentCase {
+                            contentResolver.openOutputStream(uri, "w")
+                        }
+                    } else {
+                        viewModel.clearPendingSingleCaseExport()
+                    }
+                }
             val openSingleCaseDocument = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocument(),
             ) { uri ->
@@ -78,10 +103,23 @@ class MainActivity : ComponentActivity() {
             }
             NanfengBaziApp(
                 viewModel = viewModel,
-                onCreateSingleCaseDocument = createSingleCaseDocument::launch,
+                onCreateSingleCaseDocument = { fileName ->
+                    when {
+                        fileName.endsWith(".json") ->
+                            createSingleCaseDocument.launch(fileName)
+                        fileName.contains("_加密") ->
+                            createEncryptedSingleCaseBundleDocument.launch(fileName)
+                        else -> createSingleCaseBundleDocument.launch(fileName)
+                    }
+                },
                 onOpenSingleCaseDocument = {
                     openSingleCaseDocument.launch(
-                        arrayOf("application/json", "text/plain", "application/octet-stream"),
+                        arrayOf(
+                            "application/json",
+                            "text/plain",
+                            "application/zip",
+                            "application/octet-stream",
+                        ),
                     )
                 },
                 onRetryPasswordSingleCaseDocument = { password ->
@@ -92,6 +130,26 @@ class MainActivity : ComponentActivity() {
                         }
                     } else {
                         password.fill('\u0000')
+                    }
+                },
+                onCommitSingleCaseImport = { decision ->
+                    viewModel.commitSingleCaseImport(
+                        decision = decision,
+                        openInput = {
+                            lastSingleCaseUri?.let(contentResolver::openInputStream)
+                        },
+                    )
+                },
+                onCommitSingleCaseMerge = {
+                    viewModel.commitSingleCaseMerge(
+                        openInput = {
+                            lastSingleCaseUri?.let(contentResolver::openInputStream)
+                        },
+                    )
+                },
+                onCommitPasswordSingleCaseDocument = { password ->
+                    viewModel.commitPendingSingleCaseBundle(password) {
+                        lastSingleCaseUri?.let(contentResolver::openInputStream)
                     }
                 },
                 onCreateFullBackupDocument = createFullBackupDocument::launch,

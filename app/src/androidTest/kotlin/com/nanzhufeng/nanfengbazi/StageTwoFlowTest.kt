@@ -212,7 +212,7 @@ class StageTwoFlowTest {
             .assertIsDisplayed()
 
         composeRule.onNodeWithTag("export_single_case_button").performScrollTo().performClick()
-        composeRule.onNodeWithText("导出未加密单命例？").assertIsDisplayed()
+        composeRule.onNodeWithText("选择单命例导出内容").assertIsDisplayed()
         composeRule.onNodeWithTag("confirm_single_case_export").performClick()
         val saveButton = device.wait(
             Until.findObject(
@@ -257,7 +257,9 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("visibility_active").assertIsDisplayed()
-        composeRule.onNodeWithText("别名：$editedAlias（副本）").assertIsDisplayed()
+        composeRule.onNodeWithText("别名：$editedAlias（副本）")
+            .performScrollTo()
+            .assertIsDisplayed()
 
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         val exportedFileName = "${editedAlias.take(48)}_南枫八字命例.json"

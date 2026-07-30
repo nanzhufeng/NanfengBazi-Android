@@ -6,6 +6,8 @@ import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.DatabaseMigrations
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseBundleOperations
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseBundleService
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
@@ -16,6 +18,7 @@ interface AppContainer {
     val caseRepository: CaseRepository
     val baziEngine: BaziEngine
     val caseBackupService: CaseBackupOperations
+    val singleCaseBundleService: SingleCaseBundleOperations
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
 }
@@ -39,6 +42,8 @@ class DefaultAppContainer(
     override val caseRepository: CaseRepository = RoomCaseRepository(database)
     override val baziEngine: BaziEngine = TymeBaziEngine()
     override val caseBackupService: CaseBackupOperations = CaseBackupService(database)
+    override val singleCaseBundleService: SingleCaseBundleOperations =
+        SingleCaseBundleService(database)
     override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
     override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")
 

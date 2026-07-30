@@ -19,11 +19,20 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseAttachmentMode
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseBundleOperations
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocument
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePlan
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.CaseMergeAnalysis
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseCounts
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldDifference
@@ -42,6 +51,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
+import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -465,6 +476,57 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `带附件命例默认选择命例包并经专用入口预览提交`() = runTest {
+        val attachment = SourceAttachment(
+            id = "attachment-ui",
+            relativePath = "case-bundle/source/image.png",
+            originalFileName = "合成图片.png",
+            mimeType = "image/png",
+            sha256 = "0".repeat(64),
+            byteSize = 0,
+            createdAt = FixedInstant,
+        )
+        val caseData = sampleStoredCase("case-bundle").copy(
+            attachments = listOf(attachment),
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[caseData.id] = caseData
+        }
+        val bundle = RecordingSingleCaseBundleOperations(caseData)
+        val root = Files.createTempDirectory("nanfeng-viewmodel-bundle-")
+        val viewModel = createViewModel(
+            repository = repository,
+            bundleOperations = bundle,
+            backupRoot = root,
+        )
+        viewModel.openDetail(caseData.id)
+        viewModel.requestSingleCaseExport()
+
+        assertTrue(viewModel.state.value.singleCaseExportIncludesAttachments)
+        val fileName = viewModel.confirmSingleCaseExport()
+        assertEquals("合成命例甲_南枫八字命例包.nfbcase", fileName)
+        val output = ByteArrayOutputStream()
+        viewModel.exportCurrentCase { output }
+        assertTrue(bundle.exportCalled)
+        assertEquals(
+            "单命例附件包已导出，图片二进制和引用均已校验。",
+            viewModel.state.value.message,
+        )
+
+        viewModel.previewSingleCase {
+            ByteArrayInputStream(output.toByteArray())
+        }
+        assertTrue(bundle.previewCalled)
+        assertTrue(viewModel.state.value.singleCasePreview?.containsAttachmentBinaries == true)
+        viewModel.commitSingleCaseImport(
+            decision = SingleCaseImportDecision.KEEP_BOTH,
+            openInput = { ByteArrayInputStream(output.toByteArray()) },
+        )
+        assertTrue(bundle.commitImportCalled)
+        assertNull(viewModel.state.value.singleCasePreview)
+    }
+
+    @Test
     fun `完整备份确认导出与只读预览均通过备份唯一入口`() = runTest {
         val backup = RecordingBackupOperations()
         val root = Files.createTempDirectory("nanfeng-viewmodel-backup-")
@@ -576,6 +638,7 @@ class StageTwoViewModelTest {
 
     private fun createViewModel(
         repository: FakeCaseRepository,
+        bundleOperations: SingleCaseBundleOperations? = null,
         backupOperations: CaseBackupOperations? = null,
         backupRoot: Path? = null,
     ): StageTwoViewModel {
@@ -625,11 +688,99 @@ class StageTwoViewModelTest {
                 idGenerator = { ids.next() },
                 passwordKdfIterations = 100_000,
             ),
+            singleCaseBundleService = bundleOperations,
             caseBackupService = backupOperations,
             backupAttachmentRoot = backupRoot?.resolve("attachments"),
             backupWorkRoot = backupRoot?.resolve("work"),
             ioDispatcher = dispatcher,
         )
+    }
+
+    private class RecordingSingleCaseBundleOperations(
+        private val caseData: BaziCase,
+    ) : SingleCaseBundleOperations {
+        var exportCalled = false
+        var previewCalled = false
+        var commitImportCalled = false
+
+        override suspend fun export(
+            caseId: String,
+            output: OutputStream,
+            attachmentRoot: Path,
+            appVersion: String,
+            protection: SingleCaseProtection,
+        ): SingleCaseExportResult {
+            exportCalled = true
+            output.write("PK-bundle".encodeToByteArray())
+            return SingleCaseExportResult.Success(
+                suggestedFileName = suggestedFileName(caseData),
+                byteSize = 9,
+                sha256 = "1".repeat(64),
+            )
+        }
+
+        override fun suggestedFileName(case: BaziCase): String =
+            "${case.alias}_南枫八字命例包.nfbcase"
+
+        override fun suggestedEncryptedFileName(case: BaziCase): String =
+            "${case.alias}_南枫八字命例包_加密.nfbcase"
+
+        override suspend fun preview(
+            input: InputStream,
+            workRoot: Path,
+            password: CharArray?,
+        ): SingleCasePreviewResult {
+            previewCalled = true
+            input.readBytes()
+            return SingleCasePreviewResult.Success(
+                SingleCasePreview(
+                    document = SingleCaseDocument(
+                        formatVersion = 1,
+                        appVersion = "0.3.0-test",
+                        databaseSchemaVersion = 5,
+                        exportedAt = FixedInstant.toString(),
+                        attachmentMode = SingleCaseAttachmentMode.BUNDLED_BINARIES,
+                        payloadSha256 = "0".repeat(64),
+                        caseData = caseData,
+                    ),
+                    counts = SingleCaseCounts(
+                        calculationSnapshots = caseData.calculationSnapshots.size,
+                        textRecords = caseData.textRecords.size,
+                        textRecordRevisions = caseData.textRecordRevisions.size,
+                        events = caseData.events.size,
+                        eventRevisions = caseData.eventRevisions.size,
+                        attachmentReferences = caseData.attachments.size,
+                        fieldEvidence = caseData.fieldEvidence.size,
+                    ),
+                    conflicts = emptyList(),
+                    containsAttachmentBinaries = true,
+                    bundleManifestSha256 = "2".repeat(64),
+                ),
+            )
+        }
+
+        override suspend fun commitImport(
+            preview: SingleCasePreview,
+            decision: SingleCaseImportDecision,
+            input: InputStream,
+            workRoot: Path,
+            attachmentRoot: Path,
+            password: CharArray?,
+        ): SingleCaseImportResult {
+            commitImportCalled = true
+            input.readBytes()
+            return SingleCaseImportResult.Imported("imported-bundle", 1)
+        }
+
+        override suspend fun commitMerge(
+            plan: SingleCaseMergePlan,
+            input: InputStream,
+            workRoot: Path,
+            attachmentRoot: Path,
+            password: CharArray?,
+        ): SingleCaseImportResult {
+            error("本测试不执行命例包合并")
+        }
     }
 
     private class RecordingBackupOperations : CaseBackupOperations {

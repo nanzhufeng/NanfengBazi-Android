@@ -249,7 +249,10 @@ class SingleCaseExchangeService(
                 "所选目标位于回收站，请先恢复后再合并。",
             )
         }
-        if (preview.document.caseData.attachments.isNotEmpty()) {
+        if (
+            preview.document.caseData.attachments.isNotEmpty() &&
+            !preview.containsAttachmentBinaries
+        ) {
             return rejectedMergePreparation(
                 "ATTACHMENT_BINARIES_REQUIRED",
                 "来源命例含图片或字段证据，但 JSON 没有图片二进制，当前不能合并。",
@@ -432,6 +435,207 @@ class SingleCaseExchangeService(
         modules: Set<SingleCaseMergeModule>,
     ): Set<String> = calculateMergeAdditions(source, target)
         .requiredAttachmentIds(modules)
+
+    internal suspend fun prepareBundledImport(
+        preview: SingleCasePreview,
+        attachmentIdMapping: Map<String, String>,
+        importedAttachments: List<SourceAttachment>,
+    ): PreparedBundledImportResult {
+        revalidateBundledPreview(preview)?.let {
+            return PreparedBundledImportResult.Rejected(it.code, it.message)
+        }
+        val source = preview.document.caseData
+        if (
+            attachmentIdMapping.keys != source.attachments.mapTo(mutableSetOf()) { it.id } ||
+            attachmentIdMapping.values.toSet() !=
+            importedAttachments.mapTo(mutableSetOf()) { it.id }
+        ) {
+            return PreparedBundledImportResult.Rejected(
+                "ATTACHMENT_MAPPING_INVALID",
+                "命例附件身份映射不完整，未写入数据。",
+            )
+        }
+        return try {
+            PreparedBundledImportResult.Success(
+                cloneForKeepBoth(
+                    source = source,
+                    attachmentIdMapping = attachmentIdMapping,
+                    importedAttachments = importedAttachments,
+                ),
+            )
+        } catch (_: Exception) {
+            PreparedBundledImportResult.Rejected(
+                "ID_GENERATION_FAILED",
+                "无法生成安全的新命例及附件身份，未写入数据。",
+            )
+        }
+    }
+
+    internal suspend fun prepareBundledMerge(
+        plan: SingleCaseMergePlan,
+        attachmentIdMapping: Map<String, String>,
+        importedAttachments: List<SourceAttachment>,
+    ): PreparedBundledMergeResult {
+        val preparation = plan.preparation
+        val sourcePreview = preparation.sourcePreview
+        val source = sourcePreview.document.caseData
+        validateDocument(sourcePreview.document)?.let {
+            return PreparedBundledMergeResult.Rejected(it.code, it.message)
+        }
+        if (
+            !sourcePreview.containsAttachmentBinaries ||
+            sourcePreview.document.attachmentMode !=
+            SingleCaseAttachmentMode.BUNDLED_BINARIES
+        ) {
+            return PreparedBundledMergeResult.Rejected(
+                "ATTACHMENT_BINARIES_REQUIRED",
+                "当前预览没有经过命例附件包校验，未写入数据。",
+            )
+        }
+        val currentConflicts = try {
+            loadConflicts(source)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return PreparedBundledMergeResult.Rejected(
+                "CONFLICT_LOOKUP_FAILED",
+                "提交前无法重新核对本地冲突，未写入数据。",
+            )
+        }
+        if (currentConflicts != sourcePreview.conflicts) {
+            return PreparedBundledMergeResult.Rejected(
+                "PREVIEW_STALE",
+                "本地冲突已在选择方案后发生变化，请重新预览。",
+            )
+        }
+        if (currentConflicts.none { it.caseId == preparation.targetCaseId }) {
+            return PreparedBundledMergeResult.Rejected(
+                "TARGET_NOT_IN_PREVIEW",
+                "所选目标不再是当前冲突候选，请重新预览。",
+            )
+        }
+        val target = try {
+            repository.findById(preparation.targetCaseId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return PreparedBundledMergeResult.Rejected(
+            "TARGET_NOT_FOUND",
+            "所选本地目标命例已不存在，未写入数据。",
+        )
+        if (
+            target.deletedAt != null ||
+            target.revision != preparation.targetRevision ||
+            sha256(canonicalPayload(target)) != preparation.targetPayloadSha256
+        ) {
+            return PreparedBundledMergeResult.Rejected(
+                "TARGET_CHANGED",
+                "本地目标命例已在选择方案后变化，请重新生成差异。",
+            )
+        }
+        val differences = fieldDifferences(target, source).mapTo(mutableSetOf()) { it.key }
+        if (plan.fieldChoices.keys.any { it !in differences }) {
+            return PreparedBundledMergeResult.Rejected(
+                "INVALID_FIELD_CHOICE",
+                "字段采用方案包含当前不存在的差异，请重新生成差异。",
+            )
+        }
+        val additions = calculateMergeAdditions(source, target)
+        val importedFieldKeys = plan.fieldChoices
+            .filterValues { it == SingleCaseValueChoice.IMPORTED }
+            .keys
+        val hasModuleChanges = (
+            SingleCaseMergeModule.CALCULATION_SNAPSHOTS in plan.modules &&
+                additions.calculationSnapshots.isNotEmpty() ||
+                SingleCaseMergeModule.TEXT_RECORDS in plan.modules &&
+                (
+                    additions.textRecords.isNotEmpty() ||
+                        additions.textRecordRevisions.isNotEmpty()
+                    ) ||
+                SingleCaseMergeModule.EVENTS in plan.modules &&
+                (
+                    additions.events.isNotEmpty() ||
+                        additions.eventRevisions.isNotEmpty()
+                    ) ||
+                SingleCaseMergeModule.ORGANIZATION in plan.modules &&
+                (additions.groups.isNotEmpty() || additions.tags.isNotEmpty())
+            )
+        if (importedFieldKeys.isEmpty() && !hasModuleChanges) {
+            return PreparedBundledMergeResult.Rejected(
+                "NO_CHANGES_SELECTED",
+                "当前方案没有选择任何可写入差异。",
+            )
+        }
+        val requiredAttachmentIds = additions.requiredAttachmentIds(plan.modules)
+        if (
+            attachmentIdMapping.keys != requiredAttachmentIds ||
+            attachmentIdMapping.values.toSet() !=
+            importedAttachments.mapTo(mutableSetOf()) { it.id }
+        ) {
+            return PreparedBundledMergeResult.Rejected(
+                "ATTACHMENT_MAPPING_INVALID",
+                "所选合并内容的附件身份映射不完整，未写入数据。",
+            )
+        }
+        val merged = try {
+            buildMergedCase(
+                target = target,
+                source = source,
+                modules = plan.modules,
+                fieldChoices = plan.fieldChoices,
+                additions = additions,
+                attachmentIdMapping = attachmentIdMapping,
+                importedAttachments = importedAttachments,
+            )
+        } catch (_: Exception) {
+            return PreparedBundledMergeResult.Rejected(
+                "MERGE_BUILD_FAILED",
+                "无法构建安全合并结果，未写入数据。",
+            )
+        }
+        return PreparedBundledMergeResult.Success(
+            caseData = merged,
+            targetRevision = target.revision,
+            previousPayloadSha256 = sha256(canonicalPayload(target)),
+            expectedCommittedCase = merged.copy(revision = target.revision + 1),
+            addedCounts = additions.selectedCounts(plan.modules),
+        )
+    }
+
+    internal suspend fun revalidateBundledPreview(
+        preview: SingleCasePreview,
+    ): BundledPreviewRejection? {
+        validateDocument(preview.document)?.let {
+            return BundledPreviewRejection(it.code, it.message)
+        }
+        if (
+            !preview.containsAttachmentBinaries ||
+            preview.document.attachmentMode != SingleCaseAttachmentMode.BUNDLED_BINARIES
+        ) {
+            return BundledPreviewRejection(
+                "ATTACHMENT_BINARIES_REQUIRED",
+                "当前预览没有经过命例附件包校验，未写入数据。",
+            )
+        }
+        val currentConflicts = try {
+            loadConflicts(preview.document.caseData)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return BundledPreviewRejection(
+                "CONFLICT_LOOKUP_FAILED",
+                "提交前无法重新核对本地冲突，未写入数据。",
+            )
+        }
+        if (currentConflicts != preview.conflicts) {
+            return BundledPreviewRejection(
+                "PREVIEW_STALE",
+                "本地命例已在预览后发生变化，请重新选择文件并预览。",
+            )
+        }
+        return null
+    }
 
     private fun validateDocument(
         document: SingleCaseDocument,
@@ -737,7 +941,7 @@ class SingleCaseExchangeService(
         attachmentIdMapping: Map<String, String> = emptyMap(),
         importedAttachments: List<SourceAttachment> = emptyList(),
     ): BaziCase {
-        val usedIds = mutableSetOf<String>()
+        val usedIds = importedAttachments.mapTo(mutableSetOf()) { it.id }
         fun nextId() = nextGeneratedId(usedIds)
         fun imported(key: SingleCaseFieldKey) =
             fieldChoices[key] == SingleCaseValueChoice.IMPORTED
@@ -904,8 +1108,21 @@ class SingleCaseExchangeService(
         throw IllegalArgumentException("Unable to generate a unique non-blank id")
     }
 
-    private fun cloneForKeepBoth(source: BaziCase): BaziCase {
-        val usedIds = mutableSetOf<String>()
+    private fun cloneForKeepBoth(
+        source: BaziCase,
+        attachmentIdMapping: Map<String, String> = emptyMap(),
+        importedAttachments: List<SourceAttachment> = emptyList(),
+    ): BaziCase {
+        require(
+            source.attachments.isEmpty() ||
+                (
+                    attachmentIdMapping.keys ==
+                        source.attachments.mapTo(mutableSetOf()) { it.id } &&
+                        attachmentIdMapping.values.toSet() ==
+                        importedAttachments.mapTo(mutableSetOf()) { it.id }
+                    ),
+        ) { "命例附件映射不完整" }
+        val usedIds = importedAttachments.mapTo(mutableSetOf()) { it.id }
         fun nextId() = nextGeneratedId(usedIds)
 
         val recordIds = (
@@ -917,25 +1134,41 @@ class SingleCaseExchangeService(
                 source.eventRevisions.map { it.eventId }
             ).distinct().associateWith { nextId() }
         val copiedRecords = source.textRecords.map { record ->
-            record.copy(id = recordIds.getValue(record.id))
+            record.copy(
+                id = recordIds.getValue(record.id),
+                sourceAttachmentId = record.sourceAttachmentId
+                    ?.let(attachmentIdMapping::getValue),
+            )
         }
         val copiedRecordRevisions = source.textRecordRevisions.map { revision ->
             val newRecordId = recordIds.getValue(revision.recordId)
             revision.copy(
                 id = nextId(),
                 recordId = newRecordId,
-                snapshot = revision.snapshot.copy(id = newRecordId),
+                snapshot = revision.snapshot.copy(
+                    id = newRecordId,
+                    sourceAttachmentId = revision.snapshot.sourceAttachmentId
+                        ?.let(attachmentIdMapping::getValue),
+                ),
             )
         }
         val copiedEvents = source.events.map { event ->
-            event.copy(id = eventIds.getValue(event.id))
+            event.copy(
+                id = eventIds.getValue(event.id),
+                sourceAttachmentId = event.sourceAttachmentId
+                    ?.let(attachmentIdMapping::getValue),
+            )
         }
         val copiedEventRevisions = source.eventRevisions.map { revision ->
             val newEventId = eventIds.getValue(revision.eventId)
             revision.copy(
                 id = nextId(),
                 eventId = newEventId,
-                snapshot = revision.snapshot.copy(id = newEventId),
+                snapshot = revision.snapshot.copy(
+                    id = newEventId,
+                    sourceAttachmentId = revision.snapshot.sourceAttachmentId
+                        ?.let(attachmentIdMapping::getValue),
+                ),
             )
         }
         val now = clock.instant()
@@ -947,6 +1180,13 @@ class SingleCaseExchangeService(
             eventRevisions = copiedEventRevisions,
             calculationSnapshots = source.calculationSnapshots.map {
                 it.copy(id = nextId())
+            },
+            attachments = importedAttachments,
+            fieldEvidence = source.fieldEvidence.map { evidence ->
+                evidence.copy(
+                    id = nextId(),
+                    attachmentId = attachmentIdMapping.getValue(evidence.attachmentId),
+                )
             },
             groups = source.groups.map { it.copy(id = nextId()) },
             tags = source.tags.map { it.copy(id = nextId()) },

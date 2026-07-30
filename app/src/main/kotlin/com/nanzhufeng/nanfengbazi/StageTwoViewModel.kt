@@ -17,6 +17,8 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreRecoveryResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseBundleOperations
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportResult
@@ -42,6 +44,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.PushbackInputStream
 import java.nio.file.Path
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
@@ -146,7 +149,9 @@ data class StageTwoUiState(
     val singleCaseExportConfirmationVisible: Boolean = false,
     val singleCasePasswordExportVisible: Boolean = false,
     val singleCasePasswordImportVisible: Boolean = false,
+    val singleCasePasswordCommitVisible: Boolean = false,
     val singleCasePasswordError: String? = null,
+    val singleCaseExportIncludesAttachments: Boolean = false,
     val singleCaseExchangeBusy: Boolean = false,
     val singleCasePreview: SingleCasePreview? = null,
     val singleCaseMergePreparation: SingleCaseMergePreparation? = null,
@@ -170,6 +175,16 @@ data class StageTwoUiState(
     val message: String? = null,
 )
 
+private sealed interface PendingSingleCaseBundleCommit {
+    data class Import(
+        val decision: SingleCaseImportDecision,
+    ) : PendingSingleCaseBundleCommit
+
+    data class Merge(
+        val plan: SingleCaseMergePlan,
+    ) : PendingSingleCaseBundleCommit
+}
+
 class StageTwoViewModel(
     private val caseRepository: CaseRepository,
     private val createCase: CreateCaseUseCase,
@@ -182,6 +197,7 @@ class StageTwoViewModel(
     private val clock: Clock = Clock.systemUTC(),
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
+    private val singleCaseBundleService: SingleCaseBundleOperations? = null,
     private val caseBackupService: CaseBackupOperations? = null,
     private val backupAttachmentRoot: Path? = null,
     private val backupWorkRoot: Path? = null,
@@ -191,6 +207,8 @@ class StageTwoViewModel(
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
     private var pendingExportPassword: CharArray? = null
+    private var pendingSingleCaseBundleExport: Boolean = false
+    private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
     private var pendingFullBackupPassword: CharArray? = null
 
     init {
@@ -902,23 +920,45 @@ class StageTwoViewModel(
     }
 
     fun requestSingleCaseExport() {
-        if (mutableState.value.detail == null || mutableState.value.singleCaseExchangeBusy) return
+        val detail = mutableState.value.detail
+        if (detail == null || mutableState.value.singleCaseExchangeBusy) return
         mutableState.update {
             it.copy(
                 singleCaseExportConfirmationVisible = true,
+                singleCaseExportIncludesAttachments = detail.attachments.isNotEmpty(),
                 singleCaseExchangeError = null,
             )
         }
     }
 
+    fun chooseSingleCaseExportAttachments(include: Boolean) {
+        val detail = mutableState.value.detail ?: return
+        if (mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(
+                singleCaseExportIncludesAttachments =
+                    include && detail.attachments.isNotEmpty(),
+            )
+        }
+    }
+
     fun cancelSingleCaseExport() {
-        mutableState.update { it.copy(singleCaseExportConfirmationVisible = false) }
+        pendingSingleCaseBundleExport = false
+        mutableState.update {
+            it.copy(
+                singleCaseExportConfirmationVisible = false,
+                singleCaseExportIncludesAttachments = false,
+            )
+        }
     }
 
     fun confirmSingleCaseExport(): String? {
         val detail = mutableState.value.detail ?: return null
         pendingExportPassword?.fill('\u0000')
         pendingExportPassword = null
+        pendingSingleCaseBundleExport =
+            mutableState.value.singleCaseExportIncludesAttachments &&
+                detail.attachments.isNotEmpty()
         mutableState.update {
             it.copy(
                 singleCaseExportConfirmationVisible = false,
@@ -927,7 +967,11 @@ class StageTwoViewModel(
                 singleCaseExchangeError = null,
             )
         }
-        return singleCaseExchange.suggestedFileName(detail)
+        return if (pendingSingleCaseBundleExport) {
+            singleCaseBundleService?.suggestedFileName(detail)
+        } else {
+            singleCaseExchange.suggestedFileName(detail)
+        }
     }
 
     fun requestPasswordSingleCaseExport() {
@@ -978,6 +1022,9 @@ class StageTwoViewModel(
         }
         pendingExportPassword?.fill('\u0000')
         pendingExportPassword = password.copyOf()
+        pendingSingleCaseBundleExport =
+            mutableState.value.singleCaseExportIncludesAttachments &&
+                detail.attachments.isNotEmpty()
         password.fill('\u0000')
         mutableState.update {
             it.copy(
@@ -986,12 +1033,17 @@ class StageTwoViewModel(
                 singleCaseExchangeError = null,
             )
         }
-        return singleCaseExchange.suggestedEncryptedFileName(detail)
+        return if (pendingSingleCaseBundleExport) {
+            singleCaseBundleService?.suggestedEncryptedFileName(detail)
+        } else {
+            singleCaseExchange.suggestedEncryptedFileName(detail)
+        }
     }
 
     fun clearPendingSingleCaseExport() {
         pendingExportPassword?.fill('\u0000')
         pendingExportPassword = null
+        pendingSingleCaseBundleExport = false
     }
 
     fun exportCurrentCase(openOutput: () -> OutputStream?) {
@@ -1002,6 +1054,8 @@ class StageTwoViewModel(
         }
         val exportPassword = pendingExportPassword
         pendingExportPassword = null
+        val exportBundle = pendingSingleCaseBundleExport
+        pendingSingleCaseBundleExport = false
         val passwordProtected = exportPassword != null
         viewModelScope.launch {
             mutableState.update {
@@ -1014,17 +1068,37 @@ class StageTwoViewModel(
                             code = "OUTPUT_OPEN_FAILED",
                             message = "无法创建目标文件。",
                         )
-                    output.use {
-                        singleCaseExchange.export(
-                            caseId = caseId,
-                            output = it,
-                            appVersion = BuildConfig.VERSION_NAME,
-                            protection = if (exportPassword == null) {
-                                SingleCaseProtection.UnencryptedSensitiveDataConfirmed
+                    output.use { stream ->
+                        val protection = if (exportPassword == null) {
+                            SingleCaseProtection.UnencryptedSensitiveDataConfirmed
+                        } else {
+                            SingleCaseProtection.PasswordProtected(exportPassword)
+                        }
+                        if (exportBundle) {
+                            val service = singleCaseBundleService
+                            val attachmentRoot = backupAttachmentRoot
+                            if (service == null || attachmentRoot == null) {
+                                SingleCaseExportResult.Rejected(
+                                    code = "BUNDLE_EXPORT_UNAVAILABLE",
+                                    message = "当前环境未配置单命例附件包导出。",
+                                )
                             } else {
-                                SingleCaseProtection.PasswordProtected(exportPassword)
-                            },
-                        )
+                                service.export(
+                                    caseId = caseId,
+                                    output = stream,
+                                    attachmentRoot = attachmentRoot,
+                                    appVersion = BuildConfig.VERSION_NAME,
+                                    protection = protection,
+                                )
+                            }
+                        } else {
+                            singleCaseExchange.export(
+                                caseId = caseId,
+                                output = stream,
+                                appVersion = BuildConfig.VERSION_NAME,
+                                protection = protection,
+                            )
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -1041,7 +1115,11 @@ class StageTwoViewModel(
                 when (result) {
                     is SingleCaseExportResult.Success -> it.copy(
                         singleCaseExchangeBusy = false,
-                        message = if (passwordProtected) {
+                        message = if (exportBundle && passwordProtected) {
+                            "密码加密单命例附件包已导出；图片二进制已包含，请另行保存密码。"
+                        } else if (exportBundle) {
+                            "单命例附件包已导出，图片二进制和引用均已校验。"
+                        } else if (passwordProtected) {
                             "密码加密单命例已导出；请另行安全保存密码。"
                         } else {
                             "单命例 JSON 已导出，图片仅保留引用信息。"
@@ -1096,7 +1174,7 @@ class StageTwoViewModel(
                             code = "INPUT_OPEN_FAILED",
                             message = "无法打开所选文件。",
                         )
-                    input.use { singleCaseExchange.preview(it, password) }
+                    input.use { previewSingleCaseInput(it, password) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1149,6 +1227,43 @@ class StageTwoViewModel(
         }
     }
 
+    private suspend fun previewSingleCaseInput(
+        input: InputStream,
+        password: CharArray?,
+    ): SingleCasePreviewResult {
+        val pushback = PushbackInputStream(input, SINGLE_CASE_FORMAT_PROBE_BYTES)
+        val prefix = ByteArray(SINGLE_CASE_FORMAT_PROBE_BYTES)
+        var count = 0
+        while (count < prefix.size) {
+            val read = pushback.read(prefix, count, prefix.size - count)
+            if (read < 0) break
+            count += read
+        }
+        if (count > 0) {
+            pushback.unread(prefix, 0, count)
+        }
+        val firstContentByte = prefix
+            .take(count)
+            .firstOrNull { byte ->
+                byte.toInt().toChar() !in setOf(' ', '\t', '\r', '\n')
+            }
+        return if (firstContentByte?.toInt()?.toChar() == '{') {
+            singleCaseExchange.preview(pushback, password)
+        } else {
+            val service = singleCaseBundleService
+                ?: return SingleCasePreviewResult.Rejected(
+                    "BUNDLE_IMPORT_UNAVAILABLE",
+                    "当前环境未配置单命例附件包导入。",
+                )
+            val workRoot = backupWorkRoot
+                ?: return SingleCasePreviewResult.Rejected(
+                    "BUNDLE_IMPORT_UNAVAILABLE",
+                    "当前环境没有可用的命例包校验临时目录。",
+                )
+            service.preview(pushback, workRoot, password)
+        }
+    }
+
     fun cancelPasswordSingleCaseImport() {
         if (mutableState.value.singleCaseExchangeBusy) return
         mutableState.update {
@@ -1161,19 +1276,94 @@ class StageTwoViewModel(
 
     fun dismissSingleCasePreview() {
         if (mutableState.value.singleCaseExchangeBusy) return
-        mutableState.update { it.copy(singleCasePreview = null) }
+        pendingSingleCaseBundleCommit = null
+        mutableState.update {
+            it.copy(
+                singleCasePreview = null,
+                singleCasePasswordCommitVisible = false,
+                singleCasePasswordError = null,
+            )
+        }
     }
 
-    fun commitSingleCaseImport(decision: SingleCaseImportDecision) {
+    fun commitSingleCaseImport(
+        decision: SingleCaseImportDecision,
+        openInput: (() -> InputStream?)? = null,
+        password: CharArray? = null,
+    ) {
         val preview = mutableState.value.singleCasePreview ?: return
-        if (mutableState.value.singleCaseExchangeBusy) return
+        if (mutableState.value.singleCaseExchangeBusy) {
+            password?.fill('\u0000')
+            return
+        }
+        val bundledCommit =
+            preview.containsAttachmentBinaries &&
+                decision != SingleCaseImportDecision.SKIP
+        if (
+            bundledCommit &&
+            preview.protection == SingleCaseDocumentProtection.PASSWORD_PROTECTED &&
+            password == null
+        ) {
+            pendingSingleCaseBundleCommit = PendingSingleCaseBundleCommit.Import(decision)
+            mutableState.update {
+                it.copy(
+                    singleCasePasswordCommitVisible = true,
+                    singleCasePasswordError = null,
+                )
+            }
+            return
+        }
+        if (bundledCommit && openInput == null) {
+            password?.fill('\u0000')
+            mutableState.update {
+                it.copy(
+                    singleCaseExchangeError =
+                        "无法重新打开命例附件包，未写入数据。（INPUT_OPEN_FAILED）",
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             mutableState.update {
-                it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
+                it.copy(
+                    singleCaseExchangeBusy = true,
+                    singleCasePasswordCommitVisible = false,
+                    singleCasePasswordError = null,
+                    singleCaseExchangeError = null,
+                )
             }
             val result = try {
                 withContext(ioDispatcher) {
-                    singleCaseExchange.commitImport(preview, decision)
+                    if (bundledCommit) {
+                        val service = singleCaseBundleService
+                        val workRoot = backupWorkRoot
+                        val attachmentRoot = backupAttachmentRoot
+                        val input = openInput?.invoke()
+                        if (
+                            service == null ||
+                            workRoot == null ||
+                            attachmentRoot == null ||
+                            input == null
+                        ) {
+                            SingleCaseImportResult.Rejected(
+                                code = "INPUT_OPEN_FAILED",
+                                message = "无法重新打开命例附件包。",
+                            )
+                        } else {
+                            input.use {
+                                service.commitImport(
+                                    preview = preview,
+                                    decision = decision,
+                                    input = it,
+                                    workRoot = workRoot,
+                                    attachmentRoot = attachmentRoot,
+                                    password = password,
+                                )
+                            }
+                        }
+                    } else {
+                        singleCaseExchange.commitImport(preview, decision)
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1182,12 +1372,16 @@ class StageTwoViewModel(
                     code = "IMPORT_FAILED",
                     message = "单命例导入失败，未写入数据。",
                 )
+            } finally {
+                password?.fill('\u0000')
             }
             when (result) {
                 is SingleCaseImportResult.Imported -> {
+                    pendingSingleCaseBundleCommit = null
                     mutableState.update {
                         it.copy(
                             singleCaseExchangeBusy = false,
+                            singleCasePasswordCommitVisible = false,
                             singleCasePreview = null,
                             visibility = CaseVisibility.ACTIVE,
                             message = "单命例已作为新命例导入，原有本地命例未被覆盖。",
@@ -1195,25 +1389,55 @@ class StageTwoViewModel(
                     }
                     refreshCases()
                 }
-                is SingleCaseImportResult.Skipped -> mutableState.update {
-                    it.copy(
-                        singleCaseExchangeBusy = false,
-                        singleCasePreview = null,
-                        message = "已跳过该单命例，未写入数据。",
-                    )
+                is SingleCaseImportResult.Skipped -> {
+                    pendingSingleCaseBundleCommit = null
+                    mutableState.update {
+                        it.copy(
+                            singleCaseExchangeBusy = false,
+                            singleCasePasswordCommitVisible = false,
+                            singleCasePreview = null,
+                            message = "已跳过该单命例，未写入数据。",
+                        )
+                    }
                 }
-                is SingleCaseImportResult.Merged -> mutableState.update {
-                    it.copy(
-                        singleCaseExchangeBusy = false,
-                        singleCasePreview = null,
-                        message = "单命例差异已合并到本地目标。",
-                    )
+                is SingleCaseImportResult.Merged -> {
+                    pendingSingleCaseBundleCommit = null
+                    mutableState.update {
+                        it.copy(
+                            singleCaseExchangeBusy = false,
+                            singleCasePasswordCommitVisible = false,
+                            singleCasePreview = null,
+                            message = "单命例差异已合并到本地目标。",
+                        )
+                    }
                 }
-                is SingleCaseImportResult.Rejected -> mutableState.update {
-                    it.copy(
-                        singleCaseExchangeBusy = false,
-                        singleCaseExchangeError = "${result.message}（${result.code}）",
-                    )
+                is SingleCaseImportResult.Rejected -> {
+                    val retryPassword =
+                        bundledCommit &&
+                            (
+                                result.code == "PASSWORD_REQUIRED" ||
+                                    result.code == "DECRYPTION_FAILED"
+                                )
+                    if (!retryPassword) {
+                        pendingSingleCaseBundleCommit = null
+                    }
+                    mutableState.update {
+                        if (retryPassword) {
+                            it.copy(
+                                singleCaseExchangeBusy = false,
+                                singleCasePasswordCommitVisible = true,
+                                singleCasePasswordError =
+                                    "${result.message}（${result.code}）",
+                            )
+                        } else {
+                            it.copy(
+                                singleCaseExchangeBusy = false,
+                                singleCasePasswordCommitVisible = false,
+                                singleCaseExchangeError =
+                                    "${result.message}（${result.code}）",
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1280,30 +1504,109 @@ class StageTwoViewModel(
 
     fun cancelSingleCaseMerge() {
         if (mutableState.value.singleCaseExchangeBusy) return
+        pendingSingleCaseBundleCommit = null
         mutableState.update {
             it.copy(
                 singleCasePreview = it.singleCaseMergePreparation?.sourcePreview,
                 singleCaseMergePreparation = null,
                 singleCaseMergeModules = emptySet(),
                 singleCaseFieldChoices = emptyMap(),
+                singleCasePasswordCommitVisible = false,
+                singleCasePasswordError = null,
             )
         }
     }
 
-    fun commitSingleCaseMerge() {
+    fun commitSingleCaseMerge(
+        openInput: (() -> InputStream?)? = null,
+        password: CharArray? = null,
+    ) {
         val preparation = mutableState.value.singleCaseMergePreparation ?: return
-        if (mutableState.value.singleCaseExchangeBusy) return
+        if (mutableState.value.singleCaseExchangeBusy) {
+            password?.fill('\u0000')
+            return
+        }
         val plan = SingleCaseMergePlan(
             preparation = preparation,
             modules = mutableState.value.singleCaseMergeModules,
             fieldChoices = mutableState.value.singleCaseFieldChoices,
         )
+        commitSingleCaseMergePlan(plan, openInput, password)
+    }
+
+    private fun commitSingleCaseMergePlan(
+        plan: SingleCaseMergePlan,
+        openInput: (() -> InputStream?)?,
+        password: CharArray?,
+    ) {
+        val preparation = plan.preparation
+        val bundledCommit = preparation.sourcePreview.containsAttachmentBinaries
+        if (
+            bundledCommit &&
+            preparation.sourcePreview.protection ==
+            SingleCaseDocumentProtection.PASSWORD_PROTECTED &&
+            password == null
+        ) {
+            pendingSingleCaseBundleCommit = PendingSingleCaseBundleCommit.Merge(plan)
+            mutableState.update {
+                it.copy(
+                    singleCasePasswordCommitVisible = true,
+                    singleCasePasswordError = null,
+                )
+            }
+            return
+        }
+        if (bundledCommit && openInput == null) {
+            password?.fill('\u0000')
+            mutableState.update {
+                it.copy(
+                    singleCaseExchangeError =
+                        "无法重新打开命例附件包，未写入数据。（INPUT_OPEN_FAILED）",
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             mutableState.update {
-                it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
+                it.copy(
+                    singleCaseExchangeBusy = true,
+                    singleCasePasswordCommitVisible = false,
+                    singleCasePasswordError = null,
+                    singleCaseExchangeError = null,
+                )
             }
             val result = try {
-                withContext(ioDispatcher) { singleCaseExchange.commitMerge(plan) }
+                withContext(ioDispatcher) {
+                    if (bundledCommit) {
+                        val service = singleCaseBundleService
+                        val workRoot = backupWorkRoot
+                        val attachmentRoot = backupAttachmentRoot
+                        val input = openInput?.invoke()
+                        if (
+                            service == null ||
+                            workRoot == null ||
+                            attachmentRoot == null ||
+                            input == null
+                        ) {
+                            SingleCaseImportResult.Rejected(
+                                code = "INPUT_OPEN_FAILED",
+                                message = "无法重新打开命例附件包。",
+                            )
+                        } else {
+                            input.use {
+                                service.commitMerge(
+                                    plan = plan,
+                                    input = it,
+                                    workRoot = workRoot,
+                                    attachmentRoot = attachmentRoot,
+                                    password = password,
+                                )
+                            }
+                        }
+                    } else {
+                        singleCaseExchange.commitMerge(plan)
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -1311,12 +1614,16 @@ class StageTwoViewModel(
                     code = "MERGE_FAILED",
                     message = "单命例合并失败，未写入数据。",
                 )
+            } finally {
+                password?.fill('\u0000')
             }
             when (result) {
                 is SingleCaseImportResult.Merged -> {
+                    pendingSingleCaseBundleCommit = null
                     mutableState.update {
                         it.copy(
                             singleCaseExchangeBusy = false,
+                            singleCasePasswordCommitVisible = false,
                             singleCaseMergePreparation = null,
                             singleCaseMergeModules = emptySet(),
                             singleCaseFieldChoices = emptyMap(),
@@ -1326,21 +1633,95 @@ class StageTwoViewModel(
                     }
                     refreshCases()
                 }
-                is SingleCaseImportResult.Rejected -> mutableState.update {
-                    it.copy(
-                        singleCaseExchangeBusy = false,
-                        singleCaseExchangeError = "${result.message}（${result.code}）",
-                    )
+                is SingleCaseImportResult.Rejected -> {
+                    val retryPassword =
+                        bundledCommit &&
+                            (
+                                result.code == "PASSWORD_REQUIRED" ||
+                                    result.code == "DECRYPTION_FAILED"
+                                )
+                    if (!retryPassword) {
+                        pendingSingleCaseBundleCommit = null
+                    }
+                    mutableState.update {
+                        if (retryPassword) {
+                            it.copy(
+                                singleCaseExchangeBusy = false,
+                                singleCasePasswordCommitVisible = true,
+                                singleCasePasswordError =
+                                    "${result.message}（${result.code}）",
+                            )
+                        } else {
+                            it.copy(
+                                singleCaseExchangeBusy = false,
+                                singleCasePasswordCommitVisible = false,
+                                singleCaseExchangeError =
+                                    "${result.message}（${result.code}）",
+                            )
+                        }
+                    }
                 }
                 is SingleCaseImportResult.Imported,
                 is SingleCaseImportResult.Skipped,
-                -> mutableState.update {
+                -> {
+                    pendingSingleCaseBundleCommit = null
+                    mutableState.update {
+                        it.copy(
+                            singleCaseExchangeBusy = false,
+                            singleCasePasswordCommitVisible = false,
+                            singleCaseExchangeError =
+                                "合并返回了不匹配的结果，未确认成功。",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun commitPendingSingleCaseBundle(
+        password: CharArray,
+        openInput: () -> InputStream?,
+    ) {
+        if (password.isEmpty()) {
+            password.fill('\u0000')
+            mutableState.update {
+                it.copy(singleCasePasswordError = "请输入解密密码。")
+            }
+            return
+        }
+        when (val pending = pendingSingleCaseBundleCommit) {
+            is PendingSingleCaseBundleCommit.Import -> commitSingleCaseImport(
+                decision = pending.decision,
+                openInput = openInput,
+                password = password,
+            )
+            is PendingSingleCaseBundleCommit.Merge -> commitSingleCaseMergePlan(
+                plan = pending.plan,
+                openInput = openInput,
+                password = password,
+            )
+            null -> {
+                password.fill('\u0000')
+                mutableState.update {
                     it.copy(
-                        singleCaseExchangeBusy = false,
-                        singleCaseExchangeError = "合并返回了不匹配的结果，未确认成功。",
+                        singleCasePasswordCommitVisible = false,
+                        singleCasePasswordError = null,
+                        singleCaseExchangeError =
+                            "没有待认证的单命例附件提交。（NO_PENDING_COMMIT）",
                     )
                 }
             }
+        }
+    }
+
+    fun cancelPasswordSingleCaseCommit() {
+        if (mutableState.value.singleCaseExchangeBusy) return
+        pendingSingleCaseBundleCommit = null
+        mutableState.update {
+            it.copy(
+                singleCasePasswordCommitVisible = false,
+                singleCasePasswordError = null,
+            )
         }
     }
 
@@ -1908,6 +2289,7 @@ class StageTwoViewModel(
                 textRecords = TextRecordUseCase(container.caseRepository),
                 caseEvents = CaseEventUseCase(container.caseRepository),
                 caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
+                singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
                 backupWorkRoot = container.backupWorkRoot,
@@ -1918,6 +2300,7 @@ class StageTwoViewModel(
     private companion object {
         const val MIN_EXPORT_PASSWORD_LENGTH = 8
         const val MAX_EXPORT_PASSWORD_LENGTH = 256
+        const val SINGLE_CASE_FORMAT_PROBE_BYTES = 64
     }
 
     private fun validateExportPassword(

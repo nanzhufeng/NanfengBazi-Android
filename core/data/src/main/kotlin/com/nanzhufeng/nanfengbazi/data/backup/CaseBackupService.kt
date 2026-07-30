@@ -28,8 +28,6 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
-import java.nio.channels.FileChannel
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Clock
@@ -40,7 +38,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
 interface CaseBackupOperations {
@@ -1109,47 +1106,6 @@ class CaseBackupService(
         throw IllegalArgumentException("Unable to generate restore id")
     }
 
-    private fun casePayloadSha256(caseData: BaziCase): String =
-        sha256(DomainJson.encodeToString(caseData).encodeToByteArray())
-
-    private fun writeRestoreJournal(
-        attachmentRoot: Path,
-        journal: RestoreJournal,
-    ): Path {
-        val journalRoot = attachmentRoot.resolve(RESTORE_JOURNAL_DIRECTORY)
-        Files.createDirectories(journalRoot)
-        val target = journalRoot.resolve("${journal.transactionId}.json")
-        val temporary = journalRoot.resolve(
-            "${journal.transactionId}.${UUID.randomUUID()}.tmp",
-        )
-        return try {
-            Files.write(
-                temporary,
-                DomainJson.encodeToString(journal).encodeToByteArray(),
-            )
-            FileChannel.open(temporary, StandardOpenOption.WRITE).use {
-                it.force(true)
-            }
-            try {
-                Files.move(
-                    temporary,
-                    target,
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(
-                    temporary,
-                    target,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            }
-            target
-        } finally {
-            Files.deleteIfExists(temporary)
-        }
-    }
-
     private fun recoveryAttention(
         code: String,
         message: String,
@@ -1718,47 +1674,6 @@ class CaseBackupService(
         val sha256: String,
     )
 
-    @Serializable
-    private data class RestoreJournal(
-        val formatVersion: Int = RESTORE_JOURNAL_FORMAT_VERSION,
-        val transactionId: String,
-        val state: RestoreJournalState,
-        val finalDirectory: String,
-        val expectedCases: List<RestoreExpectedCase>,
-    ) {
-        fun isValid(): Boolean =
-            formatVersion == RESTORE_JOURNAL_FORMAT_VERSION &&
-                transactionId.matches(RESTORE_TRANSACTION_ID_PATTERN) &&
-                finalDirectory == "$RESTORED_ATTACHMENTS_DIRECTORY/$transactionId" &&
-                expectedCases.isNotEmpty() &&
-                expectedCases.map { it.caseId }.distinct().size == expectedCases.size &&
-                expectedCases.all {
-                    it.caseId.isNotBlank() &&
-                        it.payloadSha256.matches(SHA256_PATTERN) &&
-                        (
-                            it.previousPayloadSha256 == null ||
-                                (
-                                    it.previousPayloadSha256.matches(SHA256_PATTERN) &&
-                                        it.previousPayloadSha256 != it.payloadSha256
-                                    )
-                            )
-                }
-    }
-
-    @Serializable
-    private enum class RestoreJournalState {
-        PREPARED,
-        FILES_MOVED,
-        DB_COMMITTED,
-    }
-
-    @Serializable
-    private data class RestoreExpectedCase(
-        val caseId: String,
-        val payloadSha256: String,
-        val previousPayloadSha256: String? = null,
-    )
-
     private data class RestoredCaseState(
         val expected: RestoreExpectedCase,
         val caseData: BaziCase?,
@@ -1828,10 +1743,10 @@ class CaseBackupService(
         private const val SETTINGS_PATH = "settings.json"
         private const val IMPORTS_PATH = "imports.json"
         private const val ATTACHMENTS_DIRECTORY = "attachments"
-        private const val RESTORE_STAGING_DIRECTORY = ".restore-staging"
-        private const val RESTORE_JOURNAL_DIRECTORY = ".restore-journal"
-        private const val RESTORED_ATTACHMENTS_DIRECTORY = "restored"
-        private const val RESTORE_JOURNAL_FORMAT_VERSION = 1
+        private const val RESTORE_STAGING_DIRECTORY = RESTORE_STAGING_DIRECTORY_NAME
+        private const val RESTORE_JOURNAL_DIRECTORY = RESTORE_JOURNAL_DIRECTORY_NAME
+        private const val RESTORED_ATTACHMENTS_DIRECTORY =
+            RESTORED_ATTACHMENTS_DIRECTORY_NAME
         private const val MAX_RECOVERY_JOURNAL_COUNT = 1_000
         private const val MAX_RESTORE_JOURNAL_BYTES = 64L * 1024
         private const val MAX_RESTORE_ID_GENERATION_ATTEMPTS = 100
@@ -1840,8 +1755,6 @@ class CaseBackupService(
         private const val MAX_SINGLE_ENTRY_BYTES = 512L * 1024 * 1024
         private const val MAX_TOTAL_BYTES = 2L * 1024 * 1024 * 1024
         private val FILE_NAME_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm")
-        private val RESTORE_TRANSACTION_ID_PATTERN =
-            Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
         private val RESTORE_GENERATED_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
         private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
     }

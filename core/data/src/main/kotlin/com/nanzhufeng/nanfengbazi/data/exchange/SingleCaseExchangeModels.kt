@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class SingleCaseAttachmentMode {
     REFERENCES_ONLY,
+    BUNDLED_BINARIES,
 }
 
 @Serializable
@@ -29,6 +30,23 @@ data class SingleCaseEncryptedDocument(
     val cipherAlgorithm: String,
     val nonceBase64: String,
     val ciphertextBase64: String,
+)
+
+@Serializable
+data class SingleCaseBundleManifest(
+    val formatVersion: Int,
+    val documentPath: String,
+    val documentByteSize: Long,
+    val documentSha256: String,
+    val attachments: List<SingleCaseBundleAttachmentEntry>,
+)
+
+@Serializable
+data class SingleCaseBundleAttachmentEntry(
+    val attachmentId: String,
+    val path: String,
+    val byteSize: Long,
+    val sha256: String,
 )
 
 enum class SingleCaseDocumentProtection {
@@ -66,6 +84,7 @@ data class SingleCasePreview(
     val counts: SingleCaseCounts,
     val conflicts: List<SingleCaseConflictCandidate>,
     val containsAttachmentBinaries: Boolean = false,
+    val bundleManifestSha256: String? = null,
     val protection: SingleCaseDocumentProtection =
         SingleCaseDocumentProtection.UNENCRYPTED,
 )
@@ -193,3 +212,34 @@ sealed interface SingleCaseImportResult {
         val message: String,
     ) : SingleCaseImportResult
 }
+
+internal sealed interface PreparedBundledImportResult {
+    data class Success(
+        val caseData: BaziCase,
+    ) : PreparedBundledImportResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : PreparedBundledImportResult
+}
+
+internal sealed interface PreparedBundledMergeResult {
+    data class Success(
+        val caseData: BaziCase,
+        val targetRevision: Long,
+        val previousPayloadSha256: String,
+        val expectedCommittedCase: BaziCase,
+        val addedCounts: SingleCaseCounts,
+    ) : PreparedBundledMergeResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : PreparedBundledMergeResult
+}
+
+internal data class BundledPreviewRejection(
+    val code: String,
+    val message: String,
+)
