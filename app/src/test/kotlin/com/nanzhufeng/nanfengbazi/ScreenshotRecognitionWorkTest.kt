@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.os.Build
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
 import java.time.Instant
 import org.junit.Assert.assertFalse
@@ -17,6 +18,27 @@ class ScreenshotRecognitionWorkTest {
         assertTrue(
             recognitionNeedsForeground(
                 List(8) { index -> image("count-$index", 1_000, 1_000, 1_000_000) },
+            ),
+        )
+        assertFalse(
+            shouldRequestLargeBatchNotificationPermission(
+                imageCount = 7,
+                sdkInt = Build.VERSION_CODES.TIRAMISU,
+                permissionGranted = false,
+            ),
+        )
+        assertTrue(
+            shouldRequestLargeBatchNotificationPermission(
+                imageCount = 8,
+                sdkInt = Build.VERSION_CODES.TIRAMISU,
+                permissionGranted = false,
+            ),
+        )
+        assertFalse(
+            shouldRequestLargeBatchNotificationPermission(
+                imageCount = 8,
+                sdkInt = Build.VERSION_CODES.TIRAMISU,
+                permissionGranted = true,
             ),
         )
         assertTrue(

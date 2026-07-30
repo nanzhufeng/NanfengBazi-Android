@@ -1,9 +1,13 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,6 +21,22 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
+    private var pendingLargeBatchUris: List<Uri>? = null
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val uris = pendingLargeBatchUris.orEmpty()
+        pendingLargeBatchUris = null
+        if (!granted && uris.isNotEmpty()) {
+            Toast.makeText(
+                this,
+                "通知未开启，识别仍会继续；请回到应用查看进度。",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+        importScreenshotUrisNow(uris)
+    }
+
     private val viewModel: StageTwoViewModel by viewModels {
         val app = application as NanfengBaziApplication
         StageTwoViewModel.Factory(app.container)
@@ -232,6 +252,45 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun importScreenshotUris(uris: List<Uri>) {
+        if (shouldRequestLargeBatchNotificationPermission(
+                imageCount = uris.size,
+                sdkInt = Build.VERSION.SDK_INT,
+                permissionGranted = checkSelfPermission(
+                    POST_NOTIFICATIONS_PERMISSION,
+                ) == PackageManager.PERMISSION_GRANTED,
+            )
+        ) {
+            pendingLargeBatchUris = uris
+            AlertDialog.Builder(this)
+                .setTitle("允许显示长批次识别进度？")
+                .setMessage(
+                    "本次选择了 ${uris.size} 张图片，离线识别可能持续较久。" +
+                        "允许通知后可在后台查看进度并取消；不允许也会继续导入。",
+                )
+                .setPositiveButton("允许通知") { _, _ ->
+                    notificationPermissionLauncher.launch(
+                        POST_NOTIFICATIONS_PERMISSION,
+                    )
+                }
+                .setNegativeButton("不允许，继续") { _, _ ->
+                    val pending = pendingLargeBatchUris.orEmpty()
+                    pendingLargeBatchUris = null
+                    Toast.makeText(
+                        this,
+                        "识别会继续，请回到应用查看进度。",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    importScreenshotUrisNow(pending)
+                }
+                .setCancelable(false)
+                .show()
+            return
+        }
+        importScreenshotUrisNow(uris)
+    }
+
+    private fun importScreenshotUrisNow(uris: List<Uri>) {
+        if (uris.isEmpty()) return
         val sources = uris.mapNotNull { uri ->
             runCatching {
                 PendingImportImage(
@@ -266,3 +325,13 @@ class MainActivity : ComponentActivity() {
     private fun Intent.sharedImageUris(): List<Uri> =
         getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
 }
+
+internal fun shouldRequestLargeBatchNotificationPermission(
+    imageCount: Int,
+    sdkInt: Int,
+    permissionGranted: Boolean,
+): Boolean = sdkInt >= Build.VERSION_CODES.TIRAMISU &&
+    imageCount >= 8 &&
+    !permissionGranted
+
+private const val POST_NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"

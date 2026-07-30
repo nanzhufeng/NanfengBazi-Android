@@ -1,15 +1,18 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.Manifest
 import android.app.NotificationManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.test.assertIsDisplayed
@@ -30,6 +33,10 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import androidx.lifecycle.ViewModelProvider
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
@@ -60,6 +67,12 @@ class ScreenshotShareFlowTest {
 
     @Test
     fun 八张图片批次通过前台识别并保留可恢复结果() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val notificationPermissionMissing =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                instrumentation.targetContext.checkSelfPermission(
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) != PackageManager.PERMISSION_GRANTED
         val uris = List(8) { createSyntheticWenzhenListImage() }
         syntheticImageUris += uris
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
@@ -73,6 +86,17 @@ class ScreenshotShareFlowTest {
 
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.consumeSharedImages(intent)
+        }
+        if (notificationPermissionMissing) {
+            val device = UiDevice.getInstance(instrumentation)
+            assertTrue(
+                "大批次首次导入应先解释通知用途",
+                device.wait(
+                    Until.hasObject(By.text("允许显示长批次识别进度？")),
+                    10_000,
+                ),
+            )
+            device.findObject(By.text("不允许，继续")).click()
         }
         composeRule.waitUntil(timeoutMillis = 180_000) {
             var finished = false

@@ -251,6 +251,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     WorkManager `dataSync` 前台服务，建立低打扰离线识别通知并提供取消动作；小批次继续
     普通后台执行。8 个不同 MediaStore URI 的 bundled OCR 前台专项进入可恢复
     `NEEDS_REVIEW` 并完成测试数据清理，设备流程 1/1 通过；
+  - alpha49 在 Android 13+ 选择至少 8 张图片且未授权通知时，先解释长批次通知用途；
+    用户可允许通知，也可明确选择“不允许，继续”。拒绝路径仍完成前台 OCR、通知通道
+    建立、可恢复结果与测试清理，8 图设备流程 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -258,17 +261,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha48-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha49-debug.apk`
 
-- 大小：55,729,191 bytes
-- SHA-256：`f7e24c262e18d735adc988ebb82e7e8fb74a735d96e271bf6ae6110d8911ccb0`
+- 大小：55,729,219 bytes
+- SHA-256：`49647b375b5c21ca60a941aa5c035ce3fdeb8414c6317e69d5331fae9c354cfa`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha48-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha49-release-unsigned.apk`
 
-- 大小：52,007,002 bytes
-- SHA-256：`26917849d48a68787eb1df5d85dec25a9d7e5df8e044b51d311dbaad5bb0e927`
+- 大小：52,007,042 bytes
+- SHA-256：`5dcc6dab54417d10f6f7bafa2381b49ec690811347265b19a569fce6ad2aa11c`
 
 ## 当前限制与风险
 
@@ -281,8 +284,9 @@ Debug 验收构建：
   及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
   反馈年份事件候选、P1 基本排盘分柱证据和逐命例候选问题摘要也已接入核对链路；
   大批次前台任务模式已按数量/字节/像素门槛接通，基本资料非核心衍生字段尚未实现。
-  Android 13+ 未授予通知权限时，前台任务仍执行但自定义通知和取消动作可能只通过系统
-  任务管理入口呈现；后续需补上下文通知授权说明。基本排盘真实问真截图的 OCR 分块与
+  Android 13+ 的 8 图以上路径已补上下文授权说明和拒绝后继续提示；少于 8 图但因
+  总字节/像素触发前台模式时不会预先请求通知权限，拒绝或未授权时任务仍执行，但自定义
+  通知与取消动作可能只通过系统任务管理入口呈现。基本排盘真实问真截图的 OCR 分块与
   字段准确率仍待用户批准样本校准。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
 - 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；2.0 倍字体并启用
@@ -295,8 +299,8 @@ Debug 验收构建：
 继续 Stage 5A，优先顺序：
 
 1. 继续 TalkBack 全页面逐焦点朗读与真实目标视口 QA；
-2. 增加 Android 13+ 长批次通知授权的上下文说明和拒绝后降级提示；
-3. 在用户授权真实问真样本后，校准基本排盘分块与字段准确率。
+2. 在用户授权真实问真样本后，校准基本排盘分块与字段准确率；
+3. 在用户授权目标设备后执行数据保留安装、展开/折叠和通知实机验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于
 整个产品已经落地。
