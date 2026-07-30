@@ -395,6 +395,9 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("文件保护：未加密")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("full_backup_conflict_summary")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onNodeWithTag("close_full_backup_preview").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
@@ -436,6 +439,9 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("文件保护：密码加密")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("full_backup_conflict_summary")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("close_full_backup_preview").performClick()

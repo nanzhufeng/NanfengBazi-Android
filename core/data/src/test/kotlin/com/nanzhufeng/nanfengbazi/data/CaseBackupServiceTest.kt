@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryption
 import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryptionHeader
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
@@ -167,7 +168,76 @@ class CaseBackupServiceTest {
             assertEquals(1, result.preview.manifest.counts.cases)
             assertEquals(1, result.preview.manifest.counts.attachments)
             assertEquals(11, result.preview.sourceFileCount)
+            val casePreview = result.preview.cases.single()
+            assertEquals("case-1", casePreview.sourceCaseId)
+            assertEquals("脱敏案例一", casePreview.sourceAlias)
+            val conflict = casePreview.conflicts.single()
+            assertEquals("case-1", conflict.localCaseId)
+            assertEquals(1L, conflict.localRevision)
+            assertEquals(
+                setOf(
+                    BackupCaseConflictReason.STABLE_ID_EXISTS,
+                    BackupCaseConflictReason.SAME_BIRTH_INPUT,
+                    BackupCaseConflictReason.SAME_FOUR_PILLARS,
+                ),
+                conflict.reasons,
+            )
             assertEquals(before, database.caseDao().allCases())
+        }
+    }
+
+    @Test
+    fun `完整备份预览识别不同稳定ID下的出生输入与四柱冲突`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-conflicts-")
+        val attachmentBytes = "脱敏冲突附件".encodeToByteArray()
+        val sourceAttachments = root.resolve("source-attachments")
+        val sourceFile = sourceAttachments.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, attachmentBytes)
+        val backupBytes = withDatabase { sourceDatabase ->
+            RoomCaseRepository(sourceDatabase).save(sampleCase(attachmentBytes), null)
+            ByteArrayOutputStream().also { output ->
+                assertTrue(
+                    CaseBackupService(sourceDatabase, fixedClock).export(
+                        output = output,
+                        attachmentRoot = sourceAttachments,
+                        appVersion = "0.3.0-test",
+                        protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                    ) is BackupExportResult.Success,
+                )
+            }.toByteArray()
+        }
+
+        withDatabase { destinationDatabase ->
+            val localCase = sampleCase(attachmentBytes).copy(
+                id = "local-case-2",
+                alias = "本地同盘候选",
+            )
+            RoomCaseRepository(destinationDatabase).save(localCase, null)
+            val before = destinationDatabase.caseDao().allCases()
+
+            val result = CaseBackupService(destinationDatabase, fixedClock).preview(
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("preview-work"),
+            )
+
+            assertTrue(result is BackupPreviewResult.Success)
+            val conflict = (result as BackupPreviewResult.Success)
+                .preview
+                .cases
+                .single()
+                .conflicts
+                .single()
+            assertEquals("local-case-2", conflict.localCaseId)
+            assertEquals("本地同盘候选", conflict.localAlias)
+            assertEquals(
+                setOf(
+                    BackupCaseConflictReason.SAME_BIRTH_INPUT,
+                    BackupCaseConflictReason.SAME_FOUR_PILLARS,
+                ),
+                conflict.reasons,
+            )
+            assertEquals(before, destinationDatabase.caseDao().allCases())
         }
     }
 

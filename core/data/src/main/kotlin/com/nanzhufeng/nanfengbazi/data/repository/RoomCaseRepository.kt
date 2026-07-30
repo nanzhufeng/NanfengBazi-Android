@@ -435,7 +435,7 @@ private fun CaseEntity.toSummary(
     revision = revision,
 )
 
-private fun BirthInput.hasSameBirthIdentity(other: BirthInput): Boolean =
+internal fun BirthInput.hasSameBirthIdentity(other: BirthInput): Boolean =
     calendarInput == other.calendarInput &&
         sexForFortuneDirection == other.sexForFortuneDirection
 

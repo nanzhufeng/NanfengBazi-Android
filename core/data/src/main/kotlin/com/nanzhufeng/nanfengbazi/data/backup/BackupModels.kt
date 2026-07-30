@@ -69,6 +69,29 @@ sealed interface BackupExportResult {
 data class RestorePreview(
     val manifest: BackupManifest,
     val sourceFileCount: Int,
+    val cases: List<BackupCaseRestorePreview> = emptyList(),
+)
+
+enum class BackupCaseConflictReason {
+    STABLE_ID_EXISTS,
+    SAME_BIRTH_INPUT,
+    SAME_FOUR_PILLARS,
+}
+
+data class BackupCaseConflictCandidate(
+    val localCaseId: String,
+    val localAlias: String,
+    val localRevision: Long,
+    val isTrashed: Boolean,
+    val reasons: Set<BackupCaseConflictReason>,
+)
+
+data class BackupCaseRestorePreview(
+    val sourceCaseId: String,
+    val sourceAlias: String,
+    val sourceRevision: Long,
+    val isTrashed: Boolean,
+    val conflicts: List<BackupCaseConflictCandidate>,
 )
 
 sealed interface BackupPreviewResult {

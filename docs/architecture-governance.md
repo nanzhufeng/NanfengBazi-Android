@@ -99,7 +99,7 @@
 | 单命例只读预览 | 系统打开文档、明文 16 MiB/容器 24 MiB 上限、解密后格式/Schema/哈希/领域校验和预览弹窗 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.preview` | 同一真实加密文件输错/输对密码、冲突显示且数据库零写入 |
 | 单命例密码容器 | 保护版本 1；PBKDF2-HMAC-SHA256 600,000 次导出；AES-256-GCM、16 字节盐、12 字节 nonce、128 位 tag 与参数 AAD | `SingleCaseEncryption`，只由 `SingleCaseExchangeService` 调用 | 无密码、错密码、篡改和越界 KDF 参数统一安全拒绝；正确密码恢复原严格封套 |
 | 完整备份导出 | 明文风险确认后写出 ZIP，或把 ZIP 流式写入独立 v1 密码容器 `.nfbak` | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP/密码容器、manifest/文件哈希与导出计数 |
-| 完整备份只读预览 | 系统打开文档；密码文件先认证解密到私有临时 ZIP，再校验路径/大小/哈希/引用/附件并清理 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 无密码/错密码/篡改安全拒绝；非空当前库仍零写入并显示计数 |
+| 完整备份只读预览 | 系统打开文档；密码文件先认证解密，再校验 ZIP，并逐命例对照当前库稳定 ID/出生输入/四柱 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 普通/密码文件显示候选原因、本地 revision 与回收站状态；非空库零写入 |
 | 完整备份密码容器 | 独立保护版本 1；PBKDF2-HMAC-SHA256 600,000 次、AES-256-GCM 与参数 AAD；不整包入内存 | `BackupEncryption`，只由 `CaseBackupService` 调用 | 参数边界、认证失败、明文不可见及 Android `.nfbak` 往返 |
 | 本地冲突候选 | 稳定 ID、出生输入、四柱和回收站位置 | `CaseRepository` 查询，由预览服务合并 | 同一候选理由合并且不修改本地命例 |
 | 无附件命例提交 | 跳过零写入；保留两份重建全部聚合 ID，提交前复查冲突 | `StageTwoViewModel` → `SingleCaseExchangeService.commitImport` → `CaseRepository.save` | 过期预览拒绝、事务失败不覆盖、系统文件 E2E 后列表读回第二份 |

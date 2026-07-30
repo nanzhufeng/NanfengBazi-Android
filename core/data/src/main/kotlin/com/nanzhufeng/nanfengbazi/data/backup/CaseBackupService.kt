@@ -1,10 +1,13 @@
 package com.nanzhufeng.nanfengbazi.data.backup
 
 import androidx.room.withTransaction
+import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
+import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
+import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
@@ -253,7 +256,7 @@ class CaseBackupService(
         caseTagCrossRefs = dao.allCaseTagCrossRefs(),
     )
 
-    private fun inspectBackup(
+    private suspend fun inspectBackup(
         input: InputStream,
         stagingRoot: Path,
         encrypted: Boolean,
@@ -280,9 +283,72 @@ class CaseBackupService(
             RestorePreview(
                 manifest = manifest,
                 sourceFileCount = extracted.size,
+                cases = buildCaseRestorePreviews(snapshot),
             ),
         )
     }
+
+    private suspend fun buildCaseRestorePreviews(
+        source: RoomDataSnapshot,
+    ): List<BackupCaseRestorePreview> {
+        val (localCases, localSnapshots) = database.withTransaction {
+            dao.allCases() to dao.allCalculationSnapshots()
+        }
+        val localPillars = adoptedPillarsByCase(localSnapshots)
+        val sourcePillars = adoptedPillarsByCase(source.calculationSnapshots)
+        val localBirthInputs = localCases.associate { entity ->
+            entity.id to DomainJson.decodeFromString<BirthInput>(entity.birthInputJson)
+        }
+        return source.cases.map { sourceCase ->
+            val sourceBirthInput = DomainJson.decodeFromString<BirthInput>(sourceCase.birthInputJson)
+            val sourceFourPillars = sourcePillars[sourceCase.id]
+            val conflicts = localCases.mapNotNull { localCase ->
+                val reasons = buildSet {
+                    if (sourceCase.id == localCase.id) {
+                        add(BackupCaseConflictReason.STABLE_ID_EXISTS)
+                    }
+                    if (sourceBirthInput.hasSameBirthIdentity(localBirthInputs.getValue(localCase.id))) {
+                        add(BackupCaseConflictReason.SAME_BIRTH_INPUT)
+                    }
+                    if (
+                        sourceFourPillars != null &&
+                        sourceFourPillars == localPillars[localCase.id]
+                    ) {
+                        add(BackupCaseConflictReason.SAME_FOUR_PILLARS)
+                    }
+                }
+                reasons.takeIf { it.isNotEmpty() }?.let {
+                    BackupCaseConflictCandidate(
+                        localCaseId = localCase.id,
+                        localAlias = localCase.alias,
+                        localRevision = localCase.revision,
+                        isTrashed = localCase.deletedAtEpochMillis != null,
+                        reasons = it,
+                    )
+                }
+            }.sortedWith(compareBy({ it.isTrashed }, { it.localAlias }, { it.localCaseId }))
+            BackupCaseRestorePreview(
+                sourceCaseId = sourceCase.id,
+                sourceAlias = sourceCase.alias,
+                sourceRevision = sourceCase.revision,
+                isTrashed = sourceCase.deletedAtEpochMillis != null,
+                conflicts = conflicts,
+            )
+        }.sortedWith(compareBy({ it.isTrashed }, { it.sourceAlias }, { it.sourceCaseId }))
+    }
+
+    private fun adoptedPillarsByCase(
+        snapshots: List<CalculationSnapshotEntity>,
+    ) = snapshots
+        .asSequence()
+        .filter { it.adopted }
+        .groupBy { it.caseId }
+        .mapValues { (_, values) ->
+            values.maxByOrNull { it.sortOrder }
+                ?.let { DomainJson.decodeFromString<CaseCalculationSnapshot>(it.resultJson) }
+                ?.result
+                ?.fourPillars
+        }
 
     private fun preparePreviewInput(
         input: InputStream,

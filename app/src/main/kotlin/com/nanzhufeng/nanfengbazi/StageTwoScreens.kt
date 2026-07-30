@@ -77,6 +77,7 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparation
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 
 @Composable
@@ -221,8 +222,8 @@ fun NanfengBaziApp(
                     text = {
                         Text(
                             "ZIP 会包含全部命例、出生资料、健康/婚姻/财务记录、" +
-                                "版本历史和来源图片附件。当前完整备份尚不支持密码加密，" +
-                                "请只保存到可信位置。",
+                                "版本历史和来源图片附件。如不想保存明文，请选择密码加密；" +
+                                "否则请只保存到可信位置。",
                         )
                     },
                     confirmButton = {
@@ -422,6 +423,8 @@ private fun FullBackupPreviewDialog(
     onDismiss: () -> Unit,
 ) {
     val manifest = preview.manifest
+    val conflictedCases = preview.cases.filter { it.conflicts.isNotEmpty() }
+    val conflictCandidateCount = conflictedCases.sumOf { it.conflicts.size }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("完整备份只读预览") },
@@ -451,9 +454,45 @@ private fun FullBackupPreviewDialog(
                 Text("附件：${manifest.counts.attachments}")
                 Text("已校验文件：${preview.sourceFileCount}")
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text("逐命例检查：${preview.cases.size} 个")
+                if (conflictedCases.isEmpty()) {
+                    Text("当前库未发现稳定 ID、出生输入或四柱冲突。")
+                } else {
+                    Text(
+                        "发现 ${conflictedCases.size} 个来源命例、" +
+                            "$conflictCandidateCount 个本地冲突候选。",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("full_backup_conflict_summary"),
+                    )
+                    conflictedCases.take(MAX_FULL_BACKUP_CONFLICT_CASES).forEach { sourceCase ->
+                        Text(
+                            "来源：${sourceCase.sourceAlias}" +
+                                (if (sourceCase.isTrashed) "（回收站）" else ""),
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag(
+                                "full_backup_conflict_${sourceCase.sourceCaseId}",
+                            ),
+                        )
+                        sourceCase.conflicts.forEach { conflict ->
+                            Text(
+                                "本地：${conflict.localAlias}" +
+                                    (if (conflict.isTrashed) "（回收站）" else "") +
+                                    "；${conflict.reasons.joinToString("、") { it.label }}" +
+                                    "；修订 ${conflict.localRevision}",
+                            )
+                        }
+                    }
+                    if (conflictedCases.size > MAX_FULL_BACKUP_CONFLICT_CASES) {
+                        Text(
+                            "另有 ${conflictedCases.size - MAX_FULL_BACKUP_CONFLICT_CASES} 个" +
+                                "冲突命例未在此摘要展开。",
+                        )
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Text(
-                    "本页面只验证 ZIP 路径、大小、哈希、数据引用和附件一致性，" +
-                        "不会写入或覆盖当前数据库。恢复将在非空库冲突方案完成后另行开放。",
+                    "本页面已验证文件保护、ZIP 路径、大小、哈希、数据引用、附件一致性和" +
+                        "当前库冲突候选；不会写入或覆盖数据库。恢复决策与提交仍未开放。",
                 )
             }
         },
@@ -467,6 +506,15 @@ private fun FullBackupPreviewDialog(
         },
     )
 }
+
+private val BackupCaseConflictReason.label: String
+    get() = when (this) {
+        BackupCaseConflictReason.STABLE_ID_EXISTS -> "稳定 ID 已存在"
+        BackupCaseConflictReason.SAME_BIRTH_INPUT -> "出生输入相同"
+        BackupCaseConflictReason.SAME_FOUR_PILLARS -> "四柱相同"
+    }
+
+private const val MAX_FULL_BACKUP_CONFLICT_CASES = 20
 
 @Composable
 private fun SingleCasePreviewDialog(
