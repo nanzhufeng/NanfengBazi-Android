@@ -1,11 +1,11 @@
-# 当前交接：Stage 3B 完整来源聚合第十增量
+# 当前交接：Stage 3B 共享合并分析第十一增量
 
 更新日期：2026-07-30
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2 与 Stage 3A 已有当前实现和证据，Stage 3B 正在进行。
-- 本增量让完整备份预览与计划绑定完整来源聚合；仍未开放恢复提交。
+- 本增量让完整备份复用单命例的模块与字段合并分析；仍未开放恢复提交。
 - v1.0 总方案仍未完成；附件事务、密码备份恢复、非空恢复和进程恢复仍待落地。
 - 未使用真实问真资料、真实姓名或用户截图；未安装或操作 OPPO 真机，未 push、未发布。
 
@@ -52,10 +52,13 @@
   预览逐例保存来源身份、资料、快照、记录/历史、事件/历史、附件、字段证据和组织信息；
 - 来源聚合构造会执行 `BaziCase` 的领域引用约束，缺失附件引用、重复子项 ID 等事实不能
   只靠摘要绕过；恢复计划 equality 同时绑定完整来源事实与 manifest 文件哈希；
+- `prepareCaseMerge` 在分析前重新核对完整冲突预览，拒绝过期、非候选和回收站目标；
+- 合并分析直接调用单命例现有的内容去重与字段差异实现，输出可追加快照、记录/历史、
+  事件/历史、组织数量以及别名、姓名、出生资料、五类资料、收藏和置顶前后值；
 - 预览不检查当前库是否为空、不写数据库且不提供恢复按钮；空库恢复服务仍保持原边界；
 - 错误弹窗保留协议错误代码，导出成功明确图片仅保留引用；
 - 启用 App `BuildConfig.VERSION_NAME`，导出文件记录真实当前版本；
-- Debug 版本升级到 `0.3.0-alpha15`。
+- Debug 版本升级到 `0.3.0-alpha16`。
 
 ## 所有者与边界
 
@@ -101,11 +104,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 ## APK
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha15-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha16-debug.apk`
 
-大小：9,818,722 bytes
+大小：9,822,202 bytes
 
-SHA-256：`5a34e80dced5150045165ef5caa479cbc3b9f5fcf64e09cb76403666828ec41b`
+SHA-256：`01294fd13b51026e65f3ced85a506064a61c315da885c17bd8773d97e3bcfdf2`
 
 该 APK 是 Debug 验收构建，不是正式签名 Release。
 

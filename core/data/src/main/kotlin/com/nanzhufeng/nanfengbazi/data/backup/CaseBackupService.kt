@@ -6,7 +6,9 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
+import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
 import com.nanzhufeng.nanfengbazi.data.repository.toDomainCases
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -55,6 +57,12 @@ interface CaseBackupOperations {
         preview: RestorePreview,
         decisions: List<BackupCaseRestoreDecision>,
     ): BackupRestorePlanResult
+
+    suspend fun prepareCaseMerge(
+        preview: RestorePreview,
+        sourceCaseId: String,
+        targetCaseId: String,
+    ): BackupCaseMergePreparationResult
 }
 
 class CaseBackupService(
@@ -65,6 +73,8 @@ class CaseBackupService(
 ) : CaseBackupOperations {
     private val dao = database.caseDao()
     private val encryption = BackupEncryption(secureRandom, passwordKdfIterations)
+    private val repository = RoomCaseRepository(database)
+    private val mergeService = SingleCaseExchangeService(repository, clock)
 
     override suspend fun export(
         output: OutputStream,
@@ -255,6 +265,46 @@ class CaseBackupService(
             BackupRestorePlan(
                 preview = preview,
                 decisions = decisions.sortedBy { sourceIndex.getValue(it.sourceCaseId) },
+            ),
+        )
+    }
+
+    override suspend fun prepareCaseMerge(
+        preview: RestorePreview,
+        sourceCaseId: String,
+        targetCaseId: String,
+    ): BackupCaseMergePreparationResult {
+        val source = preview.cases.singleOrNull { it.sourceCaseId == sourceCaseId }
+            ?: return rejectedCaseMerge("SOURCE_NOT_IN_PREVIEW", "来源命例不在当前完整备份预览中。")
+        val refreshed = try {
+            refreshCaseRestorePreviews(preview.cases)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return rejectedCaseMerge("CONFLICT_LOOKUP_FAILED", "无法重新核对当前库冲突。")
+        }
+        if (refreshed != preview.cases) {
+            return rejectedCaseMerge("PREVIEW_STALE", "当前库已在预览后变化，请重新检查备份。")
+        }
+        val candidate = source.conflicts.singleOrNull { it.localCaseId == targetCaseId }
+            ?: return rejectedCaseMerge("TARGET_NOT_IN_PREVIEW", "所选目标不在当前冲突候选中。")
+        if (candidate.isTrashed) {
+            return rejectedCaseMerge("TARGET_TRASHED", "回收站命例必须先恢复后才能合并。")
+        }
+        val target = try {
+            repository.findById(targetCaseId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return rejectedCaseMerge("TARGET_NOT_FOUND", "没有找到所选本地目标命例。")
+        return BackupCaseMergePreparationResult.Success(
+            BackupCaseMergePreparation(
+                sourceCaseId = sourceCaseId,
+                targetCaseId = target.id,
+                targetAlias = target.alias,
+                targetRevision = target.revision,
+                analysis = mergeService.analyzeMerge(source.sourceCase, target),
             ),
         )
     }
@@ -457,6 +507,9 @@ class CaseBackupService(
 
     private fun rejectedPlan(code: String, message: String) =
         BackupRestorePlanResult.Rejected(code, message)
+
+    private fun rejectedCaseMerge(code: String, message: String) =
+        BackupCaseMergePreparationResult.Rejected(code, message)
 
     private fun adoptedPillarsByCase(
         snapshots: List<CalculationSnapshotEntity>,

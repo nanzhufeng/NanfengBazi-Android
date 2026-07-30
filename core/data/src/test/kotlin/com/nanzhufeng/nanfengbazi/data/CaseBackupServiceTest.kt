@@ -7,6 +7,7 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryption
 import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryptionHeader
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparationResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
 import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
@@ -20,6 +21,7 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
@@ -333,6 +335,24 @@ class CaseBackupServiceTest {
                     BackupCaseConflictReason.SAME_FOUR_PILLARS,
                 ),
                 conflict.reasons,
+            )
+            val mergePreparation = CaseBackupService(
+                destinationDatabase,
+                fixedClock,
+            ).prepareCaseMerge(
+                preview = result.preview,
+                sourceCaseId = "case-1",
+                targetCaseId = "local-case-2",
+            )
+            assertTrue(mergePreparation is BackupCaseMergePreparationResult.Success)
+            mergePreparation as BackupCaseMergePreparationResult.Success
+            assertEquals(
+                listOf(SingleCaseFieldKey.ALIAS),
+                mergePreparation.preparation.analysis.fieldDifferences.map { it.key },
+            )
+            assertEquals(
+                0,
+                mergePreparation.preparation.analysis.addableCounts.textRecords,
             )
             assertEquals(before, destinationDatabase.caseDao().allCases())
         }

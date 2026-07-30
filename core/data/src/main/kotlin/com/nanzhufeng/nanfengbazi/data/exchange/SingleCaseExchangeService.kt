@@ -39,6 +39,14 @@ class SingleCaseExchangeService(
 ) {
     private val encryption = SingleCaseEncryption(secureRandom, passwordKdfIterations)
 
+    internal fun analyzeMerge(
+        source: BaziCase,
+        target: BaziCase,
+    ): CaseMergeAnalysis = CaseMergeAnalysis(
+        fieldDifferences = fieldDifferences(target, source),
+        addableCounts = calculateMergeAdditions(source, target).counts(),
+    )
+
     suspend fun export(
         caseId: String,
         output: OutputStream,

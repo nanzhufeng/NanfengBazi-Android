@@ -13,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
+import com.nanzhufeng.nanfengbazi.data.exchange.CaseMergeAnalysis
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
@@ -135,6 +136,25 @@ sealed interface BackupRestorePlanResult {
         val code: String,
         val message: String,
     ) : BackupRestorePlanResult
+}
+
+data class BackupCaseMergePreparation(
+    val sourceCaseId: String,
+    val targetCaseId: String,
+    val targetAlias: String,
+    val targetRevision: Long,
+    val analysis: CaseMergeAnalysis,
+)
+
+sealed interface BackupCaseMergePreparationResult {
+    data class Success(
+        val preparation: BackupCaseMergePreparation,
+    ) : BackupCaseMergePreparationResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : BackupCaseMergePreparationResult
 }
 
 sealed interface BackupPreviewResult {

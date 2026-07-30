@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparationResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
@@ -642,6 +643,15 @@ class StageTwoViewModelTest {
         ): BackupRestorePlanResult = BackupRestorePlanResult.Rejected(
             code = "NOT_USED_IN_VIEW_MODEL_TEST",
             message = "测试替身未启用恢复方案。",
+        )
+
+        override suspend fun prepareCaseMerge(
+            preview: RestorePreview,
+            sourceCaseId: String,
+            targetCaseId: String,
+        ): BackupCaseMergePreparationResult = BackupCaseMergePreparationResult.Rejected(
+            code = "NOT_USED_IN_VIEW_MODEL_TEST",
+            message = "测试替身未启用完整备份合并分析。",
         )
 
         private fun counts() = BackupCounts(

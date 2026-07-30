@@ -140,6 +140,11 @@ data class SingleCaseFieldDifference(
     val importedValue: String,
 )
 
+data class CaseMergeAnalysis(
+    val fieldDifferences: List<SingleCaseFieldDifference>,
+    val addableCounts: SingleCaseCounts,
+)
+
 data class SingleCaseMergePreparation(
     val sourcePreview: SingleCasePreview,
     val targetCaseId: String,
