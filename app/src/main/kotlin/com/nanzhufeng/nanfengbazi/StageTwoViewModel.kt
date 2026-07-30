@@ -65,6 +65,7 @@ sealed interface AppDestination {
     data object CreateCase : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
     data class EditCase(val caseId: String) : AppDestination
+    data class AddBirthTimeCandidate(val caseId: String) : AppDestination
     data class EditMetadata(val caseId: String) : AppDestination
     data class EditTextRecord(
         val caseId: String,
@@ -91,6 +92,10 @@ class StageTwoNavigator {
 
     fun openEditCase(caseId: String): AppDestination {
         return push(AppDestination.EditCase(caseId))
+    }
+
+    fun openBirthTimeCandidate(caseId: String): AppDestination {
+        return push(AppDestination.AddBirthTimeCandidate(caseId))
     }
 
     fun openMetadata(caseId: String): AppDestination {
@@ -144,6 +149,8 @@ data class StageTwoUiState(
     val detailLoading: Boolean = false,
     val detailError: String? = null,
     val editForm: CaseFormState = CaseFormState(),
+    val candidateLabel: String = "",
+    val candidateForm: CaseFormState = CaseFormState(),
     val metadataDraft: CaseMetadataDraft = CaseMetadataDraft(),
     val recordDraft: TextRecordDraft = TextRecordDraft(),
     val eventDraft: EventDraft = EventDraft(),
@@ -193,6 +200,7 @@ class StageTwoViewModel(
     private val caseRepository: CaseRepository,
     private val createCase: CreateCaseUseCase,
     private val editCase: EditCaseUseCase,
+    private val birthTimeCandidates: BirthTimeCandidateUseCase,
     private val caseMetadata: CaseMetadataUseCase = CaseMetadataUseCase(caseRepository),
     private val textRecords: TextRecordUseCase,
     private val caseEvents: CaseEventUseCase,
@@ -1992,6 +2000,80 @@ class StageTwoViewModel(
         }
     }
 
+    fun openBirthTimeCandidate() {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
+        mutableState.update {
+            it.copy(
+                destination = navigator.openBirthTimeCandidate(detail.id),
+                candidateLabel = "",
+                candidateForm = detail.toEditableForm(),
+                mutationError = null,
+            )
+        }
+    }
+
+    fun updateCandidateLabel(value: String) {
+        mutableState.update {
+            it.copy(candidateLabel = value, mutationError = null)
+        }
+    }
+
+    fun updateCandidateForm(transform: (CaseFormState) -> CaseFormState) {
+        val detail = mutableState.value.detail ?: return
+        mutableState.update {
+            it.copy(
+                candidateForm = transform(it.candidateForm).copy(
+                    sex = detail.sexForFortuneDirection,
+                ),
+                mutationError = null,
+            )
+        }
+    }
+
+    fun saveBirthTimeCandidate() {
+        val detail = mutableState.value.detail ?: return
+        if (mutableState.value.mutationSaving) return
+        val label = mutableState.value.candidateLabel
+        val form = mutableState.value.candidateForm.copy(
+            sex = detail.sexForFortuneDirection,
+        )
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val result = birthTimeCandidates.add(
+                caseId = detail.id,
+                expectedRevision = detail.revision,
+                label = label,
+                form = form,
+            )
+            finishBirthTimeCandidateMutation(
+                result = result,
+                caseId = detail.id,
+                successMessage = "出生时间候选已添加；当前采用盘未改变。",
+                navigateBackOnSuccess = true,
+            )
+        }
+    }
+
+    fun adoptBirthTimeCandidate(candidateId: String) {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null || mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val result = birthTimeCandidates.adopt(
+                caseId = detail.id,
+                expectedRevision = detail.revision,
+                candidateId = candidateId,
+            )
+            finishBirthTimeCandidateMutation(
+                result = result,
+                caseId = detail.id,
+                successMessage = "已切换采用的出生时间与对应排盘。",
+                navigateBackOnSuccess = false,
+            )
+        }
+    }
+
     fun openMetadata() {
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
@@ -2352,6 +2434,88 @@ class StageTwoViewModel(
         }
     }
 
+    private suspend fun finishBirthTimeCandidateMutation(
+        result: CaseMutationResult,
+        caseId: String,
+        successMessage: String,
+        navigateBackOnSuccess: Boolean,
+    ) {
+        when (result) {
+            is CaseMutationResult.Saved -> {
+                val refreshed = try {
+                    caseRepository.findById(caseId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                mutableState.update {
+                    if (refreshed == null) {
+                        it.copy(
+                            mutationSaving = false,
+                            mutationError = "更改已保存，但详情刷新失败。请返回列表后重新打开。",
+                        )
+                    } else {
+                        it.copy(
+                            destination = if (navigateBackOnSuccess) {
+                                navigator.back()
+                            } else {
+                                navigator.current
+                            },
+                            detail = refreshed,
+                            mutationSaving = false,
+                            mutationError = null,
+                            message = successMessage,
+                        )
+                    }
+                }
+                if (refreshed != null) refreshCases()
+            }
+            is CaseMutationResult.ValidationFailed -> mutableState.update {
+                it.copy(mutationSaving = false, mutationError = result.message)
+            }
+            is CaseMutationResult.TimeZoneChoiceRequired -> mutableState.update {
+                it.copy(
+                    candidateForm = it.candidateForm.copy(
+                        resolvedUtcOffsetSeconds = null,
+                        availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                    ),
+                    mutationSaving = false,
+                    mutationError = "该出生时间在 ${result.timeZoneId} 出现两次。" +
+                        "请选择实际 UTC offset 后再次保存。",
+                )
+            }
+            CaseMutationResult.NotFound -> mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    mutationError = "目标命例不存在，未保存任何更改。",
+                )
+            }
+            is CaseMutationResult.RevisionConflict -> mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    mutationError = "保存冲突：命例已有较新修订（${result.actualRevision}），" +
+                        "请返回详情重新操作。",
+                )
+            }
+            is CaseMutationResult.CalculationFailed -> mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    mutationError = "候选排盘失败：${result.message} 当前输入仍保留。",
+                )
+            }
+            is CaseMutationResult.StorageFailed -> mutableState.update {
+                it.copy(mutationSaving = false, mutationError = result.message)
+            }
+            is CaseMutationResult.DuplicateCandidates -> mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    mutationError = "候选时间重复检查异常，未保存任何更改。",
+                )
+            }
+        }
+    }
+
     fun consumeMessage() {
         mutableState.update { it.copy(message = null) }
     }
@@ -2369,6 +2533,10 @@ class StageTwoViewModel(
                 caseRepository = container.caseRepository,
                 createCase = useCase,
                 editCase = EditCaseUseCase(
+                    baziEngine = container.baziEngine,
+                    caseRepository = container.caseRepository,
+                ),
+                birthTimeCandidates = BirthTimeCandidateUseCase(
                     baziEngine = container.baziEngine,
                     caseRepository = container.caseRepository,
                 ),

@@ -36,6 +36,7 @@ class DefaultAppContainer(
             DatabaseMigrations.MIGRATION_2_3,
             DatabaseMigrations.MIGRATION_3_4,
             DatabaseMigrations.MIGRATION_4_5,
+            DatabaseMigrations.MIGRATION_5_6,
         )
         .build()
 

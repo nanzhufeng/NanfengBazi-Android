@@ -8,6 +8,7 @@ import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
@@ -315,6 +316,8 @@ class CreateCaseUseCase(
         }
         val now = clock.instant()
         val caseId = idGenerator.nextId()
+        val snapshotId = idGenerator.nextId()
+        val candidateId = idGenerator.nextId()
         val case = BaziCase(
             id = caseId,
             alias = prepared.alias,
@@ -322,11 +325,22 @@ class CreateCaseUseCase(
             sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
             sourceType = CaseSourceType.MANUAL,
             birthInput = calculation.normalizedInput,
+            birthTimeCandidates = listOf(
+                BirthTimeCandidate(
+                    id = candidateId,
+                    label = "采用时间",
+                    birthInput = calculation.normalizedInput,
+                    calculationSnapshotId = snapshotId,
+                    adopted = true,
+                    createdAt = now,
+                ),
+            ),
             calculationSnapshots = listOf(
                 CaseCalculationSnapshot(
-                    id = idGenerator.nextId(),
+                    id = snapshotId,
                     result = calculation,
                     adopted = true,
+                    birthTimeCandidateId = candidateId,
                     createdAt = now,
                 ),
             ),

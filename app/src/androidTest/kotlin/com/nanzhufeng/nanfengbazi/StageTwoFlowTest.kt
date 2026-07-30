@@ -147,6 +147,91 @@ class StageTwoFlowTest {
     }
 
     @Test
+    fun addAndAdoptBirthTimeCandidateWithoutDuplicatingCase() {
+        val alias = "Stage4时间候选-${System.currentTimeMillis()}"
+        val candidateLabel = "家人回忆 12 点"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("2000")
+        composeRule.onNodeWithTag("birth_month").performTextInput("2")
+        composeRule.onNodeWithTag("birth_day").performTextInput("29")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("10")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("30")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省苏州市")
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("别名：$alias").performClick()
+
+        composeRule.onNodeWithTag("add_birth_time_candidate_button")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("add_birth_time_candidate_screen")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("birth_time_candidate_label")
+            .performTextInput(candidateLabel)
+        composeRule.onNodeWithTag("birth_hour")
+            .performScrollTo()
+            .performTextReplacement("12")
+        composeRule.onNodeWithTag("birth_time_precision_APPROXIMATE")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("birth_time_source_FAMILY_REPORTED")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(candidateLabel)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("采用此时间")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("当前采用：$candidateLabel"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("candidate_mutation_error"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        val candidateErrors = composeRule.onAllNodes(
+            hasTestTag("candidate_mutation_error"),
+        ).fetchSemanticsNodes()
+        check(candidateErrors.isEmpty()) {
+            "采用出生时间候选失败：${candidateErrors.joinToString { it.config.toString() }}"
+        }
+        composeRule.onNodeWithText("当前采用：$candidateLabel")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("公历 2000-02-29 12:30:00")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun dstOverlapRequiresOffsetChoiceAndPersistsEvidence() {
         val alias = "Stage4时区样例-${System.currentTimeMillis()}"
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
@@ -373,7 +458,7 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasTestTag("export_single_case_button"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(editedAlias).assertIsDisplayed()
+        composeRule.onNodeWithText(editedAlias).performScrollTo().assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(
                 hasText("命例资料已重新排盘并保存；旧计算快照仍保留。"),

@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
-    fun `v1 命例迁移到 v5 时补充管理历史字段且保留原值`() {
+    fun `v1 命例迁移到 v6 时补充管理历史和时间候选字段且保留原值`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -62,6 +62,7 @@ class DatabaseMigrationTest {
             DatabaseMigrations.MIGRATION_2_3,
             DatabaseMigrations.MIGRATION_3_4,
             DatabaseMigrations.MIGRATION_4_5,
+            DatabaseMigrations.MIGRATION_5_6,
         )
             .allowMainThreadQueries()
             .build()
@@ -69,7 +70,8 @@ class DatabaseMigrationTest {
             migrated.openHelper.readableDatabase.query(
                 """
                 SELECT alias, sourceType, revision, isFavorite, isPinned,
-                       lastViewedAtEpochMillis, copiedFromCaseId, deletedAtEpochMillis
+                       lastViewedAtEpochMillis, copiedFromCaseId, deletedAtEpochMillis,
+                       birthTimeCandidatesJson
                 FROM cases WHERE id = 'legacy-case'
                 """.trimIndent(),
             ).use { cursor ->
@@ -82,6 +84,7 @@ class DatabaseMigrationTest {
                 assertEquals(true, cursor.isNull(5))
                 assertEquals(true, cursor.isNull(6))
                 assertEquals(true, cursor.isNull(7))
+                assertEquals("[]", cursor.getString(8))
             }
             migrated.openHelper.readableDatabase.query(
                 "PRAGMA table_info(text_records)",

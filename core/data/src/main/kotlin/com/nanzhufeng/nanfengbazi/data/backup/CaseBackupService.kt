@@ -954,6 +954,12 @@ class CaseBackupService(
             source.events.map { it.id } +
                 source.eventRevisions.map { it.eventId }
             ).distinct().associateWith { nextRestoreId(usedIds) }
+        val candidateIds = source.birthTimeCandidates.associate {
+            it.id to nextRestoreId(usedIds)
+        }
+        val snapshotIds = source.calculationSnapshots.associate {
+            it.id to nextRestoreId(usedIds)
+        }
         val restoredAttachments = source.attachments.map { attachment ->
             val newId = attachmentIds.getValue(attachment.id)
             attachment.copy(
@@ -1000,8 +1006,21 @@ class CaseBackupService(
                     ),
                 )
             },
-            calculationSnapshots = source.calculationSnapshots.map {
-                it.copy(id = nextRestoreId(usedIds))
+            birthTimeCandidates = source.birthTimeCandidates.map { candidate ->
+                candidate.copy(
+                    id = candidateIds.getValue(candidate.id),
+                    calculationSnapshotId = snapshotIds.getValue(
+                        candidate.calculationSnapshotId,
+                    ),
+                )
+            },
+            calculationSnapshots = source.calculationSnapshots.map { snapshot ->
+                snapshot.copy(
+                    id = snapshotIds.getValue(snapshot.id),
+                    birthTimeCandidateId = snapshot.birthTimeCandidateId?.let(
+                        candidateIds::getValue,
+                    ),
+                )
             },
             attachments = restoredAttachments,
             fieldEvidence = source.fieldEvidence.map { evidence ->

@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
@@ -27,16 +28,90 @@ class CaseManagementTest {
     private val fixedClock = Clock.fixed(FixedInstant.plusSeconds(3600), ZoneOffset.UTC)
 
     @Test
+    fun `同一命例可添加时间候选并显式切换采用值`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-candidate"] = sampleStoredCase("case-candidate")
+        }
+        val ids = ArrayDeque(
+            listOf("candidate-original", "snapshot-candidate", "candidate-new"),
+        )
+        val useCase = BirthTimeCandidateUseCase(
+            baziEngine = RecordingEngine(),
+            caseRepository = repository,
+            clock = fixedClock,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )
+
+        assertEquals(
+            CaseMutationResult.Saved("case-candidate", 2),
+            useCase.add(
+                caseId = "case-candidate",
+                expectedRevision = 1,
+                label = "上午十一点候选",
+                form = validForm().copy(alias = "", hour = "11"),
+            ),
+        )
+        val withCandidate = repository.stored.getValue("case-candidate")
+        assertEquals(2, withCandidate.birthTimeCandidates.size)
+        assertEquals(2, withCandidate.calculationSnapshots.size)
+        assertTrue(withCandidate.birthTimeCandidates.first().adopted)
+        assertFalse(withCandidate.birthTimeCandidates.last().adopted)
+
+        assertEquals(
+            CaseMutationResult.Saved("case-candidate", 3),
+            useCase.adopt(
+                caseId = "case-candidate",
+                expectedRevision = 2,
+                candidateId = "candidate-new",
+            ),
+        )
+        val adopted = repository.stored.getValue("case-candidate")
+        val solar = adopted.birthInput.calendarInput as BirthCalendarInput.Solar
+        assertEquals(11, solar.dateTime.hour)
+        assertTrue(adopted.birthTimeCandidates.last().adopted)
+        assertTrue(adopted.calculationSnapshots.last().adopted)
+    }
+
+    @Test
+    fun `重复候选和旧修订均零写入拒绝`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-candidate-reject"] = sampleStoredCase("case-candidate-reject")
+        }
+        val useCase = BirthTimeCandidateUseCase(RecordingEngine(), repository)
+
+        assertEquals(
+            CaseMutationResult.ValidationFailed("该出生时间已经存在，无需重复添加。"),
+            useCase.add(
+                "case-candidate-reject",
+                1,
+                "重复时间",
+                validForm().copy(alias = ""),
+            ),
+        )
+        assertEquals(1L, repository.stored.getValue("case-candidate-reject").revision)
+        assertEquals(
+            CaseMutationResult.RevisionConflict(1),
+            useCase.add(
+                "case-candidate-reject",
+                0,
+                "旧修订",
+                validForm().copy(alias = "", hour = "11"),
+            ),
+        )
+    }
+
+    @Test
     fun `编辑出生资料会重算并保留旧快照`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-edit"] = sampleStoredCase("case-edit")
         }
         val engine = RecordingEngine()
+        val ids = ArrayDeque(listOf("candidate-old", "snapshot-new", "candidate-new"))
         val useCase = EditCaseUseCase(
             baziEngine = engine,
             caseRepository = repository,
             clock = fixedClock,
-            idGenerator = IdGenerator { "snapshot-new" },
+            idGenerator = IdGenerator { ids.removeFirst() },
         )
 
         val result = useCase(
@@ -71,11 +146,14 @@ class CaseManagementTest {
                 ),
             )
         }
+        val zoneIds = ArrayDeque(
+            listOf("candidate-zone-old", "snapshot-zone", "candidate-zone-new"),
+        )
         val saved = EditCaseUseCase(
             normalizedEngine,
             repository,
             fixedClock,
-            IdGenerator { "snapshot-zone" },
+            IdGenerator { zoneIds.removeFirst() },
         )("case-zone", 1, validForm())
 
         assertEquals(CaseMutationResult.Saved("case-zone", 2), saved)
@@ -106,11 +184,14 @@ class CaseManagementTest {
         val repository = FakeCaseRepository().apply {
             stored["case-name"] = sampleStoredCase("case-name")
         }
+        val nameIds = ArrayDeque(
+            listOf("candidate-name-old", "snapshot-name", "candidate-name-new"),
+        )
         val useCase = EditCaseUseCase(
             baziEngine = RecordingEngine(),
             caseRepository = repository,
             clock = fixedClock,
-            idGenerator = IdGenerator { "snapshot-name" },
+            idGenerator = IdGenerator { nameIds.removeFirst() },
         )
 
         useCase("case-name", 1, validForm().copy(name = ""))

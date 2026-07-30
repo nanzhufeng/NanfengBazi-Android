@@ -4,6 +4,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
@@ -136,6 +137,16 @@ internal fun sampleCase(
         sexForFortuneDirection = SexForFortuneDirection.MAN,
         sourceType = CaseSourceType.WENZHEN_SCREENSHOT,
         birthInput = birthInput,
+        birthTimeCandidates = listOf(
+            BirthTimeCandidate(
+                id = "candidate-1",
+                label = "采用时间",
+                birthInput = birthInput,
+                calculationSnapshotId = "snapshot-1",
+                adopted = true,
+                createdAt = FixtureInstant,
+            ),
+        ),
         profile = CaseProfile(
             occupation = ExplicitText.present("测试职业"),
             education = ExplicitText.absent(),
@@ -179,6 +190,7 @@ internal fun sampleCase(
                 id = "snapshot-1",
                 result = result,
                 adopted = true,
+                birthTimeCandidateId = "candidate-1",
                 createdAt = FixtureInstant,
             ),
         ),

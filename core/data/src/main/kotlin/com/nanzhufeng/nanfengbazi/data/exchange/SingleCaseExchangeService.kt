@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
@@ -943,7 +944,20 @@ class SingleCaseExchangeService(
         attachmentIdMapping: Map<String, String> = emptyMap(),
         importedAttachments: List<SourceAttachment> = emptyList(),
     ): BaziCase {
-        val usedIds = importedAttachments.mapTo(mutableSetOf()) { it.id }
+        val usedIds = buildSet {
+            add(target.id)
+            addAll(target.birthTimeCandidates.map { it.id })
+            addAll(target.calculationSnapshots.map { it.id })
+            addAll(target.textRecords.map { it.id })
+            addAll(target.textRecordRevisions.map { it.id })
+            addAll(target.events.map { it.id })
+            addAll(target.eventRevisions.map { it.id })
+            addAll(target.attachments.map { it.id })
+            addAll(target.fieldEvidence.map { it.id })
+            addAll(target.groups.map { it.id })
+            addAll(target.tags.map { it.id })
+            addAll(importedAttachments.map { it.id })
+        }.toMutableSet()
         fun nextId() = nextGeneratedId(usedIds)
         fun imported(key: SingleCaseFieldKey) =
             fieldChoices[key] == SingleCaseValueChoice.IMPORTED
@@ -975,6 +989,77 @@ class SingleCaseExchangeService(
         } else {
             target.birthInput
         }
+        val sourceAdoptedCandidate = source.birthTimeCandidates.singleOrNull {
+            it.adopted
+        }
+        val sourceAdoptedSnapshot = sourceAdoptedCandidate?.let { candidate ->
+            source.calculationSnapshots.singleOrNull {
+                it.id == candidate.calculationSnapshotId &&
+                    it.result.normalizedInput == source.birthInput
+            }
+        } ?: source.calculationSnapshots.firstOrNull {
+            it.adopted && it.result.normalizedInput == source.birthInput
+        }
+        val importedCandidateAndSnapshot = if (
+            useImportedBirth && sourceAdoptedSnapshot != null
+        ) {
+            val candidateId = nextId()
+            val snapshotId = nextId()
+            BirthTimeCandidate(
+                id = candidateId,
+                label = sourceAdoptedCandidate?.label ?: "导入采用时间",
+                birthInput = source.birthInput,
+                calculationSnapshotId = snapshotId,
+                adopted = true,
+                createdAt = sourceAdoptedCandidate?.createdAt
+                    ?: sourceAdoptedSnapshot.createdAt,
+            ) to sourceAdoptedSnapshot.copy(
+                id = snapshotId,
+                birthTimeCandidateId = candidateId,
+                adopted = true,
+            )
+        } else {
+            null
+        }
+        require(
+            !useImportedBirth ||
+                importedCandidateAndSnapshot != null ||
+                target.birthTimeCandidates.isEmpty(),
+        ) { "采用导入出生输入时必须同时保留可核验的候选与计算快照" }
+        val mergedCandidates = when {
+            !useImportedBirth -> target.birthTimeCandidates
+            importedCandidateAndSnapshot != null ->
+                target.birthTimeCandidates.map { it.copy(adopted = false) } +
+                    importedCandidateAndSnapshot.first
+            else -> emptyList()
+        }
+        val retainedSnapshots = if (useImportedBirth) {
+            target.calculationSnapshots.map { snapshot ->
+                snapshot.copy(
+                    birthTimeCandidateId = if (mergedCandidates.isEmpty()) {
+                        null
+                    } else {
+                        snapshot.birthTimeCandidateId
+                    },
+                    adopted = false,
+                )
+            }
+        } else {
+            target.calculationSnapshots
+        }
+        val appendedSnapshots = if (appendCalculations) {
+            additions.calculationSnapshots
+                .filterNot { it.id == sourceAdoptedSnapshot?.id && useImportedBirth }
+                .map { snapshot ->
+                    snapshot.copy(
+                        id = nextId(),
+                        birthTimeCandidateId = null,
+                        adopted = false,
+                    )
+                }
+        } else {
+            emptyList()
+        }
         return target.copy(
             alias = if (imported(SingleCaseFieldKey.ALIAS)) source.alias else target.alias,
             name = if (imported(SingleCaseFieldKey.NAME)) source.name else target.name,
@@ -989,6 +1074,7 @@ class SingleCaseExchangeService(
                 target.sourceType
             },
             birthInput = birthInput,
+            birthTimeCandidates = mergedCandidates,
             profile = target.profile.copy(
                 occupation = if (imported(SingleCaseFieldKey.PROFILE_OCCUPATION)) {
                     source.profile.occupation
@@ -1070,13 +1156,10 @@ class SingleCaseExchangeService(
             } else {
                 emptyList()
             },
-            calculationSnapshots = target.calculationSnapshots + if (appendCalculations) {
-                additions.calculationSnapshots.map { snapshot ->
-                    snapshot.copy(id = nextId(), adopted = false)
-                }
-            } else {
-                emptyList()
-            },
+            calculationSnapshots =
+                retainedSnapshots +
+                    listOfNotNull(importedCandidateAndSnapshot?.second) +
+                    appendedSnapshots,
             attachments = target.attachments + importedAttachments,
             groups = target.groups + if (appendOrganization) {
                 additions.groups.map { it.copy(id = nextId()) }
@@ -1174,14 +1257,33 @@ class SingleCaseExchangeService(
             )
         }
         val now = clock.instant()
+        val candidateIds = source.birthTimeCandidates.associate {
+            it.id to nextId()
+        }
+        val snapshotIds = source.calculationSnapshots.associate {
+            it.id to nextId()
+        }
         return source.copy(
             id = nextId(),
             textRecords = copiedRecords,
             textRecordRevisions = copiedRecordRevisions,
             events = copiedEvents,
             eventRevisions = copiedEventRevisions,
+            birthTimeCandidates = source.birthTimeCandidates.map {
+                it.copy(
+                    id = candidateIds.getValue(it.id),
+                    calculationSnapshotId = snapshotIds.getValue(
+                        it.calculationSnapshotId,
+                    ),
+                )
+            },
             calculationSnapshots = source.calculationSnapshots.map {
-                it.copy(id = nextId())
+                it.copy(
+                    id = snapshotIds.getValue(it.id),
+                    birthTimeCandidateId = it.birthTimeCandidateId?.let(
+                        candidateIds::getValue,
+                    ),
+                )
             },
             attachments = importedAttachments,
             fieldEvidence = source.fieldEvidence.map { evidence ->

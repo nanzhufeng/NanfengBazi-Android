@@ -22,8 +22,10 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
@@ -497,6 +499,9 @@ class SingleCaseExchangeServiceTest {
                     occupation = ExplicitText.present("本地职业"),
                 ),
                 textRecords = listOf(localRecord),
+                birthTimeCandidates = source.birthTimeCandidates.map {
+                    it.copy(calculationSnapshotId = localSnapshot.id)
+                },
                 calculationSnapshots = listOf(localSnapshot),
                 events = emptyList(),
                 groups = source.groups.map { it.copy(id = "local-group") },
@@ -553,6 +558,79 @@ class SingleCaseExchangeServiceTest {
             assertEquals(1, merged.groups.size)
             assertEquals(1, merged.tags.size)
             assertEquals(2, merged.revision)
+        }
+    }
+
+    @Test
+    fun `采用导入出生输入时同步迁入候选和计算证据`() = runTest {
+        val base = attachmentFree(sampleCase())
+        val importedInput = base.birthInput.copy(
+            calendarInput = BirthCalendarInput.Solar(
+                CivilDateTime(1986, 5, 29, 15, 37, 0),
+            ),
+        )
+        val source = base.copy(
+            birthInput = importedInput,
+            birthTimeCandidates = base.birthTimeCandidates.map {
+                it.copy(birthInput = importedInput)
+            },
+            calculationSnapshots = base.calculationSnapshots.map {
+                it.copy(
+                    result = it.result.copy(
+                        normalizedInput = importedInput,
+                        fourPillars = FourPillars("丙寅", "癸巳", "癸酉", "庚申"),
+                    ),
+                )
+            },
+        )
+        val bytes = withDatabase { sourceDatabase ->
+            val sourceRepository = RoomCaseRepository(sourceDatabase)
+            sourceRepository.save(source, null)
+            exportBytes(sourceRepository, source.id)
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationRepository = RoomCaseRepository(destinationDatabase)
+            val target = base
+            destinationRepository.save(target, null)
+            val ids = generateSequence(1) { it + 1 }.iterator()
+            val service = SingleCaseExchangeService(
+                repository = destinationRepository,
+                clock = fixedClock,
+                idGenerator = { "birth-merge-${ids.next()}" },
+            )
+            val preview = (
+                service.preview(ByteArrayInputStream(bytes)) as
+                    SingleCasePreviewResult.Success
+                ).preview
+            val preparation = (
+                service.prepareMerge(preview, target.id) as
+                    SingleCaseMergePreparationResult.Success
+                ).preparation
+
+            val result = service.commitMerge(
+                SingleCaseMergePlan(
+                    preparation = preparation,
+                    fieldChoices = mapOf(
+                        SingleCaseFieldKey.BIRTH_INPUT to
+                            SingleCaseValueChoice.IMPORTED,
+                    ),
+                ),
+            )
+
+            assertTrue(result is SingleCaseImportResult.Merged)
+            val merged = checkNotNull(destinationRepository.findById(target.id))
+            assertEquals(importedInput, merged.birthInput)
+            assertEquals(2, merged.birthTimeCandidates.size)
+            val adoptedCandidate = merged.birthTimeCandidates.single { it.adopted }
+            val adoptedSnapshot = merged.calculationSnapshots.single { it.adopted }
+            assertEquals(importedInput, adoptedCandidate.birthInput)
+            assertEquals(adoptedCandidate.calculationSnapshotId, adoptedSnapshot.id)
+            assertEquals(adoptedCandidate.id, adoptedSnapshot.birthTimeCandidateId)
+            assertEquals(
+                FourPillars("丙寅", "癸巳", "癸酉", "庚申"),
+                adoptedSnapshot.result.fourPillars,
+            )
         }
     }
 

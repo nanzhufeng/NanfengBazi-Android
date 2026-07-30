@@ -25,6 +25,7 @@ data class CaseEntity(
     val sexForFortuneDirection: String,
     val sourceType: String,
     val birthInputJson: String,
+    val birthTimeCandidatesJson: String = "[]",
     val profileJson: String,
     val isFavorite: Boolean = false,
     val isPinned: Boolean = false,

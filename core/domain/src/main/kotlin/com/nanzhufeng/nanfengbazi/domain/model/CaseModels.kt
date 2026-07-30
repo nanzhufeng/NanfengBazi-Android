@@ -189,11 +189,33 @@ data class CaseCalculationSnapshot(
     val id: String,
     val result: CalculationResult,
     val adopted: Boolean,
+    val birthTimeCandidateId: String? = null,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
 ) {
     init {
         require(id.isNotBlank()) { "快照 id 不能为空" }
+        require(birthTimeCandidateId == null || birthTimeCandidateId.isNotBlank()) {
+            "出生时间候选 id 不能为空"
+        }
+    }
+}
+
+@Serializable
+data class BirthTimeCandidate(
+    val id: String,
+    val label: String,
+    val birthInput: BirthInput,
+    val calculationSnapshotId: String,
+    val adopted: Boolean,
+    @Serializable(with = InstantIsoSerializer::class)
+    val createdAt: Instant,
+) {
+    init {
+        require(id.isNotBlank()) { "出生时间候选 id 不能为空" }
+        require(label.isNotBlank()) { "出生时间候选标签不能为空" }
+        require(label.length <= 60) { "出生时间候选标签不能超过 60 个字符" }
+        require(calculationSnapshotId.isNotBlank()) { "出生时间候选必须关联计算快照" }
     }
 }
 
@@ -314,6 +336,7 @@ data class BaziCase(
     val sexForFortuneDirection: SexForFortuneDirection,
     val sourceType: CaseSourceType,
     val birthInput: BirthInput,
+    val birthTimeCandidates: List<BirthTimeCandidate> = emptyList(),
     val profile: CaseProfile = CaseProfile(),
     val textRecords: List<CaseTextRecord> = emptyList(),
     val textRecordRevisions: List<CaseTextRecordRevision> = emptyList(),
@@ -346,6 +369,21 @@ data class BaziCase(
         require(copiedFromCaseId != id) { "命例不能复制自自身" }
         require(revision >= 0) { "命例修订号不能为负数" }
         require(createdAt <= updatedAt) { "更新时间不能早于创建时间" }
+        require(
+            birthTimeCandidates.map { it.id }.distinct().size == birthTimeCandidates.size,
+        ) { "出生时间候选 id 不能重复" }
+        require(
+            birthTimeCandidates.map { it.calculationSnapshotId }.distinct().size ==
+                birthTimeCandidates.size,
+        ) { "出生时间候选不能共用计算快照" }
+        if (birthTimeCandidates.isNotEmpty()) {
+            require(birthTimeCandidates.count { it.adopted } == 1) {
+                "出生时间候选必须且只能采用一个"
+            }
+            require(birthTimeCandidates.single { it.adopted }.birthInput == birthInput) {
+                "命例出生输入必须与采用的出生时间候选一致"
+            }
+        }
         require(textRecords.map { it.id }.distinct().size == textRecords.size)
         require(
             textRecordRevisions.map { it.id }.distinct().size == textRecordRevisions.size,
@@ -359,6 +397,20 @@ data class BaziCase(
                 },
         ) { "同一记录的历史版本号不能重复" }
         require(events.map { it.id }.distinct().size == events.size)
+        val snapshotsById = calculationSnapshots.associateBy { it.id }
+        birthTimeCandidates.forEach { candidate ->
+            val snapshot = snapshotsById[candidate.calculationSnapshotId]
+            require(snapshot != null) { "出生时间候选必须关联当前命例的计算快照" }
+            require(snapshot.birthTimeCandidateId == candidate.id) {
+                "出生时间候选与计算快照关联不一致"
+            }
+            require(snapshot.result.normalizedInput == candidate.birthInput) {
+                "出生时间候选输入与计算快照不一致"
+            }
+            require(snapshot.adopted == candidate.adopted) {
+                "出生时间候选与计算快照采用状态不一致"
+            }
+        }
         require(eventRevisions.map { it.id }.distinct().size == eventRevisions.size)
         require(
             eventRevisions

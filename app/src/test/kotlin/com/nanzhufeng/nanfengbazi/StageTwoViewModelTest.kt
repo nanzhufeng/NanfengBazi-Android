@@ -230,6 +230,59 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `新增出生时间候选不改采用盘且可在详情明确切换`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-time-candidates"] = sampleStoredCase("case-time-candidates")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-time-candidates")
+        viewModel.openBirthTimeCandidate()
+        viewModel.updateCandidateLabel("家人回忆 12 点")
+        viewModel.updateCandidateForm {
+            it.copy(
+                hour = "12",
+                timePrecision = TimePrecision.APPROXIMATE,
+                timeSourceType = TimeSourceType.FAMILY_REPORTED,
+            )
+        }
+
+        viewModel.saveBirthTimeCandidate()
+
+        assertEquals(
+            AppDestination.CaseDetail("case-time-candidates"),
+            viewModel.state.value.destination,
+        )
+        val afterAdd = checkNotNull(viewModel.state.value.detail)
+        assertEquals(2, afterAdd.birthTimeCandidates.size)
+        assertEquals(1, afterAdd.birthTimeCandidates.count { it.adopted })
+        assertEquals(
+            10,
+            (afterAdd.birthInput.calendarInput as BirthCalendarInput.Solar).dateTime.hour,
+        )
+        val added = afterAdd.birthTimeCandidates.single {
+            it.label == "家人回忆 12 点"
+        }
+        assertFalse(added.adopted)
+
+        viewModel.adoptBirthTimeCandidate(added.id)
+
+        val afterAdopt = checkNotNull(viewModel.state.value.detail)
+        assertEquals(
+            AppDestination.CaseDetail("case-time-candidates"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(
+            12,
+            (afterAdopt.birthInput.calendarInput as BirthCalendarInput.Solar).dateTime.hour,
+        )
+        assertEquals(added.id, afterAdopt.birthTimeCandidates.single { it.adopted }.id)
+        assertEquals(
+            added.calculationSnapshotId,
+            afterAdopt.calculationSnapshots.single { it.adopted }.id,
+        )
+    }
+
+    @Test
     fun `农历命例进入编辑器时保留历法与闰月`() = runTest {
         val base = sampleStoredCase("case-lunar")
         val lunarInput = base.birthInput.copy(
@@ -767,6 +820,12 @@ class StageTwoViewModelTest {
                 idGenerator = IdGenerator { ids.next() },
             ),
             editCase = EditCaseUseCase(
+                baziEngine = engine,
+                caseRepository = repository,
+                clock = fixedClock,
+                idGenerator = IdGenerator { ids.next() },
+            ),
+            birthTimeCandidates = BirthTimeCandidateUseCase(
                 baziEngine = engine,
                 caseRepository = repository,
                 clock = fixedClock,

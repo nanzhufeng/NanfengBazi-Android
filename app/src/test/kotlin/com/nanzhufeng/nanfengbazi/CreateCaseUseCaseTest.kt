@@ -32,7 +32,7 @@ class CreateCaseUseCaseTest {
     fun `有效表单通过唯一引擎计算并由仓储保存`() = runTest {
         val engine = RecordingEngine()
         val repository = FakeCaseRepository()
-        val ids = ArrayDeque(listOf("case-created", "snapshot-created"))
+        val ids = ArrayDeque(listOf("case-created", "snapshot-created", "candidate-created"))
         val useCase = CreateCaseUseCase(
             baziEngine = engine,
             caseRepository = repository,
@@ -53,6 +53,12 @@ class CreateCaseUseCaseTest {
             saved.calculationSnapshots.single().result.fourPillars,
         )
         assertTrue(saved.calculationSnapshots.single().adopted)
+        assertEquals("candidate-created", saved.birthTimeCandidates.single().id)
+        assertTrue(saved.birthTimeCandidates.single().adopted)
+        assertEquals(
+            saved.calculationSnapshots.single().id,
+            saved.birthTimeCandidates.single().calculationSnapshotId,
+        )
     }
 
     @Test
@@ -66,7 +72,9 @@ class CreateCaseUseCaseTest {
                 ),
             )
         }
-        val ids = ArrayDeque(listOf("normalized-case", "normalized-snapshot"))
+        val ids = ArrayDeque(
+            listOf("normalized-case", "normalized-snapshot", "normalized-candidate"),
+        )
         val result = CreateCaseUseCase(
             baziEngine = engine,
             caseRepository = repository,
@@ -165,7 +173,7 @@ class CreateCaseUseCaseTest {
         val repository = FakeCaseRepository().apply {
             stored["existing"] = sampleStoredCase("existing")
         }
-        val ids = ArrayDeque(listOf("copy", "snapshot-copy"))
+        val ids = ArrayDeque(listOf("copy", "snapshot-copy", "candidate-copy"))
         val useCase = CreateCaseUseCase(
             baziEngine = engine,
             caseRepository = repository,

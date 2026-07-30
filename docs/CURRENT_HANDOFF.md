@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 134 条唯一单元契约；Debug/Release 变体合计 234 次执行，0 失败、0 跳过。
+- 138 条唯一单元契约；Debug/Release 变体合计 242 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -165,11 +165,16 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - 时间精度与来源显式选择、来源说明去空白和精度对应的分秒约束；
   - 时辰未知在表单与引擎两层拒绝唯一命盘，旧输入缺来源类型按未说明读取；
   - 农历命例编辑时原样回显时间精度、来源和说明。
+  - 同一命例添加多个出生时间候选时，每个候选绑定唯一计算快照；添加不改变当前采用盘，
+    明确采用后才同步切换出生输入、候选状态和快照。
+  - Room Schema v5→v6 迁移、仓储往返、命例复制、单命例交换和完整备份恢复均保持
+    候选与快照双向身份关联。
 - App 与 `core:data` Lint 均 0 错误；仅有 9 + 5 条依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - API 35 模拟器 `ExpenseCapture_API35`：
-  - Stage 4A 页面链 6/6 通过：即时排盘零写入、历法切换、农历保存与换算、DST 重叠
-    选择与证据落库、真太阳时跨时辰与完整审计详情、既有新建/搜索/详情/编辑长流程；
+  - Stage 4A 页面链 7/7 通过：即时排盘零写入、多个出生时间候选添加/采用、历法切换、
+    农历保存与换算、DST 重叠选择与证据落库、真太阳时跨时辰与完整审计详情、既有
+    新建/搜索/详情/编辑长流程；
   - alpha27 精确交运与前八步大运详情目标流程 1/1 通过；
   - DST 详情真实显示 `America/New_York`、`UTC-05:00` 与 tzdb 版本字段；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
@@ -179,17 +184,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha29-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha30-debug.apk`
 
-- 大小：10,074,389 bytes
-- SHA-256：`f34bfdfdd9d9600360968bea8c4bcf55499a1c756d0302b78a43d2581f130cab`
+- 大小：10,103,261 bytes
+- SHA-256：`e6f2c92177d6ecb26f25e460568ad9f4e87e88f1c15f1aeef24ddd37d7479c2d`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha29-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha30-release-unsigned.apk`
 
-- 大小：6,871,575 bytes
-- SHA-256：`257edc2dc4d4b75a05dba7a773c3cb44b4c95934c7580105a0e88a2711832c4e`
+- 大小：6,889,651 bytes
+- SHA-256：`cd816ac8beb2e05bd56c6e9769d401fe7d1ac95557f3b1d0ab89f6945af0a358`
 
 ## 当前限制与风险
 

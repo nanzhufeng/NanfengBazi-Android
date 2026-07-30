@@ -164,6 +164,9 @@ class RoomCaseRepositoryTest {
             events = emptyList(),
             attachments = emptyList(),
             fieldEvidence = emptyList(),
+            birthTimeCandidates = sampleCase().birthTimeCandidates.map {
+                it.copy(calculationSnapshotId = "snapshot-2")
+            },
             calculationSnapshots = sampleCase().calculationSnapshots.map {
                 it.copy(id = "snapshot-2")
             },
@@ -254,6 +257,12 @@ class RoomCaseRepositoryTest {
             eventRevisions = emptyList(),
             attachments = emptyList(),
             fieldEvidence = emptyList(),
+            birthTimeCandidates = base.birthTimeCandidates.map {
+                it.copy(
+                    birthInput = solarInput,
+                    calculationSnapshotId = "snapshot-solar",
+                )
+            },
             calculationSnapshots = base.calculationSnapshots.map {
                 it.copy(
                     id = "snapshot-solar",
@@ -288,6 +297,12 @@ class RoomCaseRepositoryTest {
             id = "case-lunar",
             alias = "农历合成案例",
             birthInput = lunarInput,
+            birthTimeCandidates = solarCase.birthTimeCandidates.map {
+                it.copy(
+                    birthInput = lunarInput,
+                    calculationSnapshotId = "snapshot-lunar",
+                )
+            },
             calculationSnapshots = solarCase.calculationSnapshots.map {
                 it.copy(
                     id = "snapshot-lunar",

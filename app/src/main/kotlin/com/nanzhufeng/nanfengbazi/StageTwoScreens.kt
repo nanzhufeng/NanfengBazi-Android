@@ -159,6 +159,8 @@ fun NanfengBaziApp(
                         state = state,
                         onBack = viewModel::backToList,
                         onEditCase = viewModel::openEditCase,
+                        onAddBirthTimeCandidate = viewModel::openBirthTimeCandidate,
+                        onAdoptBirthTimeCandidate = viewModel::adoptBirthTimeCandidate,
                         onEditMetadata = viewModel::openMetadata,
                         onAddRecord = { viewModel.openTextRecord() },
                         onEditRecord = viewModel::openTextRecord,
@@ -184,6 +186,22 @@ fun NanfengBaziApp(
                         onConfirmDuplicate = {
                             viewModel.saveEditedCase(allowDuplicate = true)
                         },
+                        modifier = Modifier.padding(padding),
+                    )
+                    is AppDestination.AddBirthTimeCandidate -> CaseFormScreen(
+                        title = "新增出生时间候选",
+                        screenTag = "add_birth_time_candidate_screen",
+                        form = state.candidateForm,
+                        error = state.mutationError,
+                        saving = state.mutationSaving,
+                        submitLabel = "计算并添加候选",
+                        showIdentityFields = false,
+                        candidateLabel = state.candidateLabel,
+                        onCandidateLabelChange = viewModel::updateCandidateLabel,
+                        sexEditable = false,
+                        onBack = viewModel::navigateBack,
+                        onFormChange = viewModel::updateCandidateForm,
+                        onSubmit = viewModel::saveBirthTimeCandidate,
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.EditMetadata -> CaseMetadataEditorScreen(
@@ -1763,6 +1781,10 @@ internal fun CaseFormScreen(
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
     onPreview: (() -> Unit)? = null,
     onSubmit: () -> Unit,
+    showIdentityFields: Boolean = true,
+    candidateLabel: String = "",
+    onCandidateLabelChange: (String) -> Unit = {},
+    sexEditable: Boolean = true,
     duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     onConfirmDuplicate: (() -> Unit)? = null,
 ) {
@@ -1785,28 +1807,46 @@ internal fun CaseFormScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            SectionHeading("身份信息", "别名用于本地识别；姓名可以留空。")
-            OutlinedTextField(
-                value = form.alias,
-                onValueChange = { value -> onFormChange { it.copy(alias = value) } },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("case_alias"),
-                label = { Text("命例别名 *") },
-                singleLine = true,
-                enabled = !saving,
-            )
-            OutlinedTextField(
-                value = form.name,
-                onValueChange = { value -> onFormChange { it.copy(name = value) } },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .testTag("case_name"),
-                label = { Text("姓名（可选）") },
-                singleLine = true,
-                enabled = !saving,
-            )
+            if (showIdentityFields) {
+                SectionHeading("身份信息", "别名用于本地识别；姓名可以留空。")
+                OutlinedTextField(
+                    value = form.alias,
+                    onValueChange = { value -> onFormChange { it.copy(alias = value) } },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("case_alias"),
+                    label = { Text("命例别名 *") },
+                    singleLine = true,
+                    enabled = !saving,
+                )
+                OutlinedTextField(
+                    value = form.name,
+                    onValueChange = { value -> onFormChange { it.copy(name = value) } },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .testTag("case_name"),
+                    label = { Text("姓名（可选）") },
+                    singleLine = true,
+                    enabled = !saving,
+                )
+            } else {
+                SectionHeading(
+                    "候选说明",
+                    "同一命例可保存多个出生时间；新增候选不会自动改变当前采用盘。",
+                )
+                OutlinedTextField(
+                    value = candidateLabel,
+                    onValueChange = onCandidateLabelChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("birth_time_candidate_label"),
+                    label = { Text("候选名称 *") },
+                    supportingText = { Text("例如：问真原记录、家人回忆 11:50") },
+                    singleLine = true,
+                    enabled = !saving,
+                )
+            }
             Text(
                 "性别 *",
                 modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
@@ -1816,7 +1856,7 @@ internal fun CaseFormScreen(
                 SexButton(
                     text = "男",
                     selected = form.sex == SexForFortuneDirection.MAN,
-                    enabled = !saving,
+                    enabled = !saving && sexEditable,
                     tag = "sex_man",
                     onClick = {
                         onFormChange { it.copy(sex = SexForFortuneDirection.MAN) }
@@ -1825,7 +1865,7 @@ internal fun CaseFormScreen(
                 SexButton(
                     text = "女",
                     selected = form.sex == SexForFortuneDirection.WOMAN,
-                    enabled = !saving,
+                    enabled = !saving && sexEditable,
                     tag = "sex_woman",
                     onClick = {
                         onFormChange { it.copy(sex = SexForFortuneDirection.WOMAN) }
@@ -2398,6 +2438,8 @@ private fun CaseDetailScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
     onEditCase: () -> Unit,
+    onAddBirthTimeCandidate: () -> Unit,
+    onAdoptBirthTimeCandidate: (String) -> Unit,
     onEditMetadata: () -> Unit,
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
@@ -2432,6 +2474,8 @@ private fun CaseDetailScreen(
             state.detail != null -> CaseDetailContent(
                 case = state.detail,
                 onEditCase = onEditCase,
+                onAddBirthTimeCandidate = onAddBirthTimeCandidate,
+                onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
                 onEditMetadata = onEditMetadata,
                 onAddRecord = onAddRecord,
                 onEditRecord = onEditRecord,
@@ -2442,6 +2486,8 @@ private fun CaseDetailScreen(
                 onMoveToTrash = onMoveToTrash,
                 onRestore = onRestore,
                 singleCaseExchangeBusy = state.singleCaseExchangeBusy,
+                mutationSaving = state.mutationSaving,
+                mutationError = state.mutationError,
             )
         }
     }
@@ -2451,6 +2497,8 @@ private fun CaseDetailScreen(
 private fun CaseDetailContent(
     case: BaziCase,
     onEditCase: () -> Unit,
+    onAddBirthTimeCandidate: () -> Unit,
+    onAdoptBirthTimeCandidate: (String) -> Unit,
     onEditMetadata: () -> Unit,
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
@@ -2461,6 +2509,8 @@ private fun CaseDetailContent(
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
     singleCaseExchangeBusy: Boolean,
+    mutationSaving: Boolean,
+    mutationError: String?,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     Column(
@@ -2549,6 +2599,124 @@ private fun CaseDetailContent(
                 "标签",
                 case.tags.joinToString("、") { it.name }.ifEmpty { "未设置" },
             )
+        }
+        DetailSection("出生时间候选") {
+            if (case.deletedAt == null) {
+                OutlinedButton(
+                    onClick = onAddBirthTimeCandidate,
+                    enabled = !mutationSaving,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_birth_time_candidate_button"),
+                ) {
+                    Text("新增时间候选")
+                }
+            }
+            if (case.birthTimeCandidates.isEmpty()) {
+                Text(
+                    "旧版命例暂无候选记录；下次重新排盘或添加候选时会建立证据链。",
+                    modifier = Modifier.padding(top = 10.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                case.birthTimeCandidates.forEach { candidate ->
+                    val snapshot = case.calculationSnapshots.firstOrNull {
+                        it.id == candidate.calculationSnapshotId
+                    }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .testTag(
+                                if (candidate.adopted) {
+                                    "adopted_birth_time_candidate_${candidate.label}"
+                                } else {
+                                    "alternate_birth_time_candidate_${candidate.label}"
+                                },
+                            )
+                            .semantics {
+                                contentDescription =
+                                    "出生时间候选：${candidate.label}；" +
+                                        if (candidate.adopted) "当前采用" else "备选"
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (candidate.adopted) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    if (candidate.adopted) {
+                                        "当前采用：${candidate.label}"
+                                    } else {
+                                        candidate.label
+                                    },
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    if (candidate.adopted) "已采用" else "备选",
+                                    color = if (candidate.adopted) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                            Text(
+                                "候选时间：${candidate.birthInput.displayDateTime()}",
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                            Text(
+                                "${candidate.birthInput.timePrecision.displayName()} · " +
+                                    candidate.birthInput.timeSourceType.displayName(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "四柱：${snapshot?.result?.fourPillars?.display() ?: "计算快照缺失"}",
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (
+                                case.deletedAt == null &&
+                                !candidate.adopted
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onAdoptBirthTimeCandidate(candidate.id)
+                                    },
+                                    enabled = !mutationSaving && snapshot != null,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp)
+                                        .testTag(
+                                            "adopt_birth_time_candidate_${candidate.id}",
+                                        ),
+                                ) {
+                                    Text(if (mutationSaving) "正在切换…" else "采用此时间")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            mutationError?.let { error ->
+                Text(
+                    error,
+                    modifier = Modifier
+                        .padding(top = 10.dp)
+                        .testTag("candidate_mutation_error"),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
         DetailSection("原始录入信息") {
             DetailRow("命例别名", case.alias)

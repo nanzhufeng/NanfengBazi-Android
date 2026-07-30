@@ -27,7 +27,7 @@ abstract class NanfengBaziDatabase : RoomDatabase() {
     internal abstract fun caseDao(): CaseDao
 
     companion object {
-        const val SCHEMA_VERSION = 5
+        const val SCHEMA_VERSION = 6
     }
 }
 
@@ -144,6 +144,15 @@ object DatabaseMigrations {
                 "CREATE UNIQUE INDEX IF NOT EXISTS " +
                     "index_case_event_revisions_caseId_eventId_version " +
                     "ON case_event_revisions(caseId, eventId, version)",
+            )
+        }
+    }
+
+    val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE cases ADD COLUMN birthTimeCandidatesJson " +
+                    "TEXT NOT NULL DEFAULT '[]'",
             )
         }
     }

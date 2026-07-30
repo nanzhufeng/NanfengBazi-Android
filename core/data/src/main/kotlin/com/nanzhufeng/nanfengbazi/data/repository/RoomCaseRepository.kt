@@ -26,6 +26,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
@@ -267,6 +268,10 @@ private fun BaziCase.toCaseEntity(): CaseEntity = CaseEntity(
     sexForFortuneDirection = sexForFortuneDirection.name,
     sourceType = sourceType.name,
     birthInputJson = DomainJson.encodeToString(BirthInput.serializer(), birthInput),
+    birthTimeCandidatesJson = DomainJson.encodeToString(
+        kotlinx.serialization.builtins.ListSerializer(BirthTimeCandidate.serializer()),
+        birthTimeCandidates,
+    ),
     profileJson = DomainJson.encodeToString(CaseProfile.serializer(), profile),
     isFavorite = isFavorite,
     isPinned = isPinned,
@@ -381,6 +386,10 @@ internal fun CaseEntity.toDomain(
     sexForFortuneDirection = SexForFortuneDirection.valueOf(sexForFortuneDirection),
     sourceType = CaseSourceType.valueOf(sourceType),
     birthInput = DomainJson.decodeFromString(BirthInput.serializer(), birthInputJson),
+    birthTimeCandidates = DomainJson.decodeFromString(
+        kotlinx.serialization.builtins.ListSerializer(BirthTimeCandidate.serializer()),
+        birthTimeCandidatesJson,
+    ),
     profile = DomainJson.decodeFromString(CaseProfile.serializer(), profileJson),
     textRecords = textRecords.map {
         CaseTextRecord(

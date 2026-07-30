@@ -84,7 +84,7 @@
 | 整例删除与恢复 | 软删除进入回收站，完整聚合和附件引用保留 | `CaseLifecycleUseCase` → `CaseRepository.save` | 主列表隐藏、回收站可见、恢复后事实不变 |
 | 命例复制 | 生成新稳定 ID，只复制出生资料、分类与计算快照 | `CaseLifecycleUseCase.duplicate` | 来源 ID、新快照 ID、空记录/附件和别名去重 |
 | 重复命例提示 | 新建与编辑在保存前按出生身份和四柱生成候选 | `CaseRepository.findDuplicateCandidates` | 活动/回收站位置、理由、确认前零写入 |
-| 完整备份与旧版恢复 | Schema v5 精确保真软删除、复制来源和记录历史 | `CaseBackupService` | 旧备份默认空历史、v1→v5 迁移和往返 |
+| 完整备份与旧版恢复 | Schema v6 精确保真软删除、复制来源、记录历史和出生时间候选 | `CaseBackupService` | 旧备份默认空历史/空候选、v1→v6 迁移和往返 |
 
 ## 变更门禁
 

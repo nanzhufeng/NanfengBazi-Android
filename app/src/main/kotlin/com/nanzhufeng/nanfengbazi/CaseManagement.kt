@@ -9,6 +9,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
@@ -120,6 +121,25 @@ class EditCaseUseCase(
             }
         }
         val now = clock.instant()
+        val oldAdoptedSnapshot = existing.calculationSnapshots
+            .asReversed()
+            .firstOrNull { it.adopted }
+        val legacyCandidate = if (
+            existing.birthTimeCandidates.isEmpty() && oldAdoptedSnapshot != null
+        ) {
+            BirthTimeCandidate(
+                id = idGenerator.nextId(),
+                label = "编辑前采用时间",
+                birthInput = oldAdoptedSnapshot.result.normalizedInput,
+                calculationSnapshotId = oldAdoptedSnapshot.id,
+                adopted = false,
+                createdAt = oldAdoptedSnapshot.createdAt,
+            )
+        } else {
+            null
+        }
+        val snapshotId = idGenerator.nextId()
+        val candidateId = idGenerator.nextId()
         val updated = existing.copy(
             alias = valid.alias,
             name = valid.name?.let(ExplicitText::present) ?: when (existing.name.state) {
@@ -130,18 +150,197 @@ class EditCaseUseCase(
             },
             sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
             birthInput = calculation.normalizedInput,
+            birthTimeCandidates = (
+                existing.birthTimeCandidates.map { it.copy(adopted = false) } +
+                    listOfNotNull(legacyCandidate) +
+                    BirthTimeCandidate(
+                        id = candidateId,
+                        label = "编辑后采用时间",
+                        birthInput = calculation.normalizedInput,
+                        calculationSnapshotId = snapshotId,
+                        adopted = true,
+                        createdAt = now,
+                    )
+                ),
             calculationSnapshots = existing.calculationSnapshots
-                .map { it.copy(adopted = false) } +
+                .map { snapshot ->
+                    snapshot.copy(
+                        adopted = false,
+                        birthTimeCandidateId = if (snapshot.id == oldAdoptedSnapshot?.id) {
+                            legacyCandidate?.id ?: snapshot.birthTimeCandidateId
+                        } else {
+                            snapshot.birthTimeCandidateId
+                        },
+                    )
+                } +
                 CaseCalculationSnapshot(
-                    id = idGenerator.nextId(),
+                    id = snapshotId,
                     result = calculation,
                     adopted = true,
+                    birthTimeCandidateId = candidateId,
                     createdAt = now,
                 ),
             updatedAt = now,
         )
         return persistCase(caseRepository, updated, expectedRevision)
     }
+}
+
+class BirthTimeCandidateUseCase(
+    private val baziEngine: BaziEngine,
+    private val caseRepository: CaseRepository,
+    private val clock: Clock = Clock.systemUTC(),
+    private val idGenerator: IdGenerator = UuidGenerator(),
+) {
+    suspend fun add(
+        caseId: String,
+        expectedRevision: Long,
+        label: String,
+        form: CaseFormState,
+    ): CaseMutationResult {
+        val normalizedLabel = label.trim()
+        if (normalizedLabel.isEmpty()) {
+            return CaseMutationResult.ValidationFailed("请填写候选时间标签。")
+        }
+        if (normalizedLabel.length > 60) {
+            return CaseMutationResult.ValidationFailed("候选时间标签不能超过 60 个字符。")
+        }
+        val valid = when (
+            val validation = CaseFormValidator.validate(form, requireAlias = false)
+        ) {
+            is CaseFormValidation.Invalid ->
+                return CaseMutationResult.ValidationFailed(validation.message)
+            is CaseFormValidation.Valid -> validation
+        }
+        val existing = when (val loaded = loadCase(caseRepository, caseId)) {
+            is CaseLoadResult.Found -> loaded.case
+            CaseLoadResult.NotFound -> return CaseMutationResult.NotFound
+            CaseLoadResult.Failed -> return caseReadFailure()
+        }
+        if (existing.revision != expectedRevision) {
+            return CaseMutationResult.RevisionConflict(existing.revision)
+        }
+        if (existing.deletedAt != null) {
+            return CaseMutationResult.ValidationFailed("回收站命例不能添加出生时间候选。")
+        }
+        if (valid.birthInput.sexForFortuneDirection != existing.sexForFortuneDirection) {
+            return CaseMutationResult.ValidationFailed("出生时间候选不能改变命例性别。")
+        }
+        val profile = CalculationProfile.tymeDefault(
+            solarTimeMode = if (valid.birthInput.useTrueSolarTime) {
+                SolarTimeMode.TRUE_SOLAR_TIME
+            } else {
+                SolarTimeMode.CIVIL_TIME
+            },
+        )
+        val calculation = try {
+            baziEngine.calculate(valid.birthInput, profile)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: TimeZoneChoiceRequiredException) {
+            return CaseMutationResult.TimeZoneChoiceRequired(
+                error.timeZoneId,
+                error.validUtcOffsetSeconds,
+                error.timeZoneDataVersion,
+            )
+        } catch (error: Exception) {
+            return CaseMutationResult.CalculationFailed(
+                if (error is IllegalArgumentException) {
+                    error.message?.takeIf(String::isNotBlank)
+                        ?: "当前出生资料或计算口径不受支持。"
+                } else {
+                    "计算引擎暂时无法完成候选排盘，请稍后重试。"
+                },
+            )
+        }
+        val allInputs = existing.birthTimeCandidates.map { it.birthInput } +
+            existing.birthInput
+        if (calculation.normalizedInput in allInputs) {
+            return CaseMutationResult.ValidationFailed("该出生时间已经存在，无需重复添加。")
+        }
+        val now = clock.instant()
+        val oldAdoptedSnapshot = existing.calculationSnapshots
+            .asReversed()
+            .firstOrNull { it.adopted }
+        val legacyCandidate = if (
+            existing.birthTimeCandidates.isEmpty() && oldAdoptedSnapshot != null
+        ) {
+            BirthTimeCandidate(
+                id = idGenerator.nextId(),
+                label = "原采用时间",
+                birthInput = oldAdoptedSnapshot.result.normalizedInput,
+                calculationSnapshotId = oldAdoptedSnapshot.id,
+                adopted = true,
+                createdAt = oldAdoptedSnapshot.createdAt,
+            )
+        } else {
+            null
+        }
+        val snapshotId = idGenerator.nextId()
+        val candidateId = idGenerator.nextId()
+        val updated = existing.copy(
+            birthTimeCandidates = existing.birthTimeCandidates +
+                listOfNotNull(legacyCandidate) +
+                BirthTimeCandidate(
+                    id = candidateId,
+                    label = normalizedLabel,
+                    birthInput = calculation.normalizedInput,
+                    calculationSnapshotId = snapshotId,
+                    adopted = false,
+                    createdAt = now,
+                ),
+            calculationSnapshots = existing.calculationSnapshots.map { snapshot ->
+                if (snapshot.id == oldAdoptedSnapshot?.id && legacyCandidate != null) {
+                    snapshot.copy(birthTimeCandidateId = legacyCandidate.id)
+                } else {
+                    snapshot
+                }
+            } + CaseCalculationSnapshot(
+                id = snapshotId,
+                result = calculation,
+                adopted = false,
+                birthTimeCandidateId = candidateId,
+                createdAt = now,
+            ),
+            updatedAt = now,
+        )
+        return persistCase(caseRepository, updated, expectedRevision)
+    }
+
+    suspend fun adopt(
+        caseId: String,
+        expectedRevision: Long,
+        candidateId: String,
+    ): CaseMutationResult {
+        val existing = when (val loaded = loadCase(caseRepository, caseId)) {
+            is CaseLoadResult.Found -> loaded.case
+            CaseLoadResult.NotFound -> return CaseMutationResult.NotFound
+            CaseLoadResult.Failed -> return caseReadFailure()
+        }
+        if (existing.revision != expectedRevision) {
+            return CaseMutationResult.RevisionConflict(existing.revision)
+        }
+        if (existing.deletedAt != null) {
+            return CaseMutationResult.ValidationFailed("回收站命例不能切换出生时间候选。")
+        }
+        val candidate = existing.birthTimeCandidates.firstOrNull { it.id == candidateId }
+            ?: return CaseMutationResult.ValidationFailed("目标出生时间候选不存在。")
+        if (candidate.adopted) {
+            return CaseMutationResult.ValidationFailed("该出生时间已经是当前采用值。")
+        }
+        val updated = existing.copy(
+            birthInput = candidate.birthInput,
+            birthTimeCandidates = existing.birthTimeCandidates.map {
+                it.copy(adopted = it.id == candidateId)
+            },
+            calculationSnapshots = existing.calculationSnapshots.map {
+                it.copy(adopted = it.id == candidate.calculationSnapshotId)
+            },
+            updatedAt = clock.instant(),
+        )
+        return persistCase(caseRepository, updated, expectedRevision)
+    }
+
 }
 
 class CaseLifecycleUseCase(
@@ -207,16 +406,38 @@ class CaseLifecycleUseCase(
             return caseReadFailure("无法检查命例别名，未创建副本。")
         }
         val now = clock.instant()
+        val copyId = idGenerator.nextId()
+        val candidateIdMap = existing.birthTimeCandidates.associate {
+            it.id to idGenerator.nextId()
+        }
+        val snapshotIdMap = existing.calculationSnapshots.associate {
+            it.id to idGenerator.nextId()
+        }
         val copy = existing.copy(
-            id = idGenerator.nextId(),
+            id = copyId,
             alias = nextCopyAlias(existing.alias, aliases),
             sourceType = com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType.CASE_COPY,
             textRecords = emptyList(),
             textRecordRevisions = emptyList(),
             events = emptyList(),
             eventRevisions = emptyList(),
+            birthTimeCandidates = existing.birthTimeCandidates.map {
+                it.copy(
+                    id = candidateIdMap.getValue(it.id),
+                    calculationSnapshotId = snapshotIdMap.getValue(
+                        it.calculationSnapshotId,
+                    ),
+                    createdAt = now,
+                )
+            },
             calculationSnapshots = existing.calculationSnapshots.map {
-                it.copy(id = idGenerator.nextId(), createdAt = now)
+                it.copy(
+                    id = snapshotIdMap.getValue(it.id),
+                    birthTimeCandidateId = it.birthTimeCandidateId?.let(
+                        candidateIdMap::getValue,
+                    ),
+                    createdAt = now,
+                )
             },
             attachments = emptyList(),
             fieldEvidence = emptyList(),

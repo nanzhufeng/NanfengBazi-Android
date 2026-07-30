@@ -20,6 +20,11 @@ class StageTwoNavigatorTest {
             navigator.openTextRecord("case-1", null),
         )
         assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
+        assertEquals(
+            AppDestination.AddBirthTimeCandidate("case-1"),
+            navigator.openBirthTimeCandidate("case-1"),
+        )
+        assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
         assertEquals(AppDestination.CaseList, navigator.backToList())
     }
 }
