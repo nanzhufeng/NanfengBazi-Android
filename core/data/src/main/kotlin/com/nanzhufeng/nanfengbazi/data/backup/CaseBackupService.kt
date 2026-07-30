@@ -5,13 +5,16 @@ import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
 import com.nanzhufeng.nanfengbazi.data.repository.toDomainCases
+import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
@@ -24,15 +27,19 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.nio.channels.FileChannel
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Clock
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
 interface CaseBackupOperations {
@@ -63,6 +70,24 @@ interface CaseBackupOperations {
         sourceCaseId: String,
         targetCaseId: String,
     ): BackupCaseMergePreparationResult
+
+    suspend fun executeRestorePlan(
+        plan: BackupRestorePlan,
+        input: InputStream,
+        workRoot: Path,
+        attachmentRoot: Path,
+        password: CharArray? = null,
+    ): BackupRestoreExecutionResult = BackupRestoreExecutionResult.Rejected(
+        code = "RESTORE_EXECUTION_UNAVAILABLE",
+        message = "完整备份提交执行器尚未就绪。",
+    )
+
+    suspend fun recoverInterruptedRestores(
+        attachmentRoot: Path,
+    ): BackupRestoreRecoveryResult = BackupRestoreRecoveryResult.Success(
+        rolledBackTransactions = 0,
+        finalizedTransactions = 0,
+    )
 }
 
 class CaseBackupService(
@@ -70,6 +95,7 @@ class CaseBackupService(
     private val clock: Clock = Clock.systemUTC(),
     secureRandom: SecureRandom = SecureRandom(),
     passwordKdfIterations: Int = PasswordCrypto.DEFAULT_KDF_ITERATIONS,
+    private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) : CaseBackupOperations {
     private val dao = database.caseDao()
     private val encryption = BackupEncryption(secureRandom, passwordKdfIterations)
@@ -190,6 +216,15 @@ class CaseBackupService(
         ) {
             return rejectedPlan("DECISIONS_INCOMPLETE", "每个来源命例都必须明确选择一个恢复方案。")
         }
+        val mergeTargets = decisions
+            .filter { it.action == BackupCaseRestoreAction.MERGE }
+            .mapNotNull { it.targetCaseId }
+        if (mergeTargets.size != mergeTargets.distinct().size) {
+            return rejectedPlan(
+                "DUPLICATE_MERGE_TARGET",
+                "同一批恢复中一个本地命例只能接收一个来源合并，避免顺序依赖。",
+            )
+        }
         val refreshed = try {
             refreshCaseRestorePreviews(preview.cases)
         } catch (cancelled: CancellationException) {
@@ -251,11 +286,79 @@ class CaseBackupService(
                     if (target.isTrashed) {
                         return rejectedPlan("TARGET_TRASHED", "回收站命例必须先恢复后才能合并。")
                     }
+                    val targetCase = try {
+                        repository.findById(targetId)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    } ?: return rejectedPlan(
+                        "TARGET_NOT_FOUND",
+                        "所选本地目标命例已不存在，请重新检查备份。",
+                    )
+                    val analysis = mergeService.analyzeMerge(source.sourceCase, targetCase)
+                    val differenceKeys = analysis.fieldDifferences.mapTo(mutableSetOf()) { it.key }
+                    if (decision.fieldChoices.keys.any { it !in differenceKeys }) {
+                        return rejectedPlan(
+                            "INVALID_FIELD_CHOICE",
+                            "字段采用方案包含当前不存在的差异，请重新选择合并范围。",
+                        )
+                    }
+                    val counts = analysis.addableCounts
+                    val modulesWithChanges = buildSet {
+                        if (counts.calculationSnapshots > 0) {
+                            add(SingleCaseMergeModule.CALCULATION_SNAPSHOTS)
+                        }
+                        if (counts.textRecords + counts.textRecordRevisions > 0) {
+                            add(SingleCaseMergeModule.TEXT_RECORDS)
+                        }
+                        if (counts.events + counts.eventRevisions > 0) {
+                            add(SingleCaseMergeModule.EVENTS)
+                        }
+                        if (counts.groups + counts.tags > 0) {
+                            add(SingleCaseMergeModule.ORGANIZATION)
+                        }
+                    }
+                    if (decision.modules.any { it !in modulesWithChanges }) {
+                        return rejectedPlan(
+                            "EMPTY_SELECTED_MODULE",
+                            "合并范围包含当前没有可追加内容的模块，请重新选择。",
+                        )
+                    }
+                    val attachmentBackedRecords =
+                        source.sourceCase.textRecords.any {
+                            it.sourceAttachmentId != null
+                        } ||
+                            source.sourceCase.textRecordRevisions.any {
+                                it.snapshot.sourceAttachmentId != null
+                            }
+                    val attachmentBackedEvents =
+                        source.sourceCase.events.any {
+                            it.sourceAttachmentId != null
+                        } ||
+                            source.sourceCase.eventRevisions.any {
+                                it.snapshot.sourceAttachmentId != null
+                            }
                     if (
-                        decision.modules.isEmpty() &&
-                        decision.fieldChoices.values.none { it == SingleCaseValueChoice.IMPORTED }
+                        SingleCaseMergeModule.TEXT_RECORDS in decision.modules &&
+                        attachmentBackedRecords ||
+                        SingleCaseMergeModule.EVENTS in decision.modules &&
+                        attachmentBackedEvents
                     ) {
-                        return rejectedPlan("EMPTY_MERGE_SCOPE", "范围合并必须至少选择一个模块或来源字段。")
+                        return rejectedPlan(
+                            "ATTACHMENT_MERGE_SCOPE_UNSUPPORTED",
+                            "所选记录或事件依赖来源附件；附件随模块合并尚未开放。",
+                        )
+                    }
+                    if (decision.modules.isEmpty() &&
+                        decision.fieldChoices.values.none {
+                            it == SingleCaseValueChoice.IMPORTED
+                        }
+                    ) {
+                        return rejectedPlan(
+                            "EMPTY_MERGE_SCOPE",
+                            "范围合并必须至少选择一个有变化的模块或来源字段。",
+                        )
                     }
                 }
             }
@@ -307,6 +410,357 @@ class CaseBackupService(
                 analysis = mergeService.analyzeMerge(source.sourceCase, target),
             ),
         )
+    }
+
+    override suspend fun executeRestorePlan(
+        plan: BackupRestorePlan,
+        input: InputStream,
+        workRoot: Path,
+        attachmentRoot: Path,
+        password: CharArray?,
+    ): BackupRestoreExecutionResult {
+        when (val recovery = recoverInterruptedRestores(attachmentRoot)) {
+            is BackupRestoreRecoveryResult.RequiresAttention -> {
+                return BackupRestoreExecutionResult.Rejected(
+                    code = recovery.code,
+                    message = recovery.message,
+                )
+            }
+            is BackupRestoreRecoveryResult.Success -> Unit
+        }
+        Files.createDirectories(workRoot)
+        val stagingRoot = Files.createTempDirectory(workRoot, "nanfeng-bazi-execute-")
+        var attachmentStageRoot: Path? = null
+        var finalAttachmentRoot: Path? = null
+        var journalPath: Path? = null
+        var journal: RestoreJournal? = null
+        var committed = false
+        return try {
+            val checkedPlan = when (
+                val checked = prepareRestorePlan(plan.preview, plan.decisions)
+            ) {
+                is BackupRestorePlanResult.Success -> checked.plan
+                is BackupRestorePlanResult.Rejected -> {
+                    return BackupRestoreExecutionResult.Rejected(
+                        checked.code,
+                        checked.message,
+                    )
+                }
+            }
+            val validated = when (
+                val prepared = preparePreviewInput(input, password, stagingRoot)
+            ) {
+                is PreparedBackupInput.Rejected -> {
+                    return BackupRestoreExecutionResult.Rejected(
+                        prepared.code,
+                        prepared.message,
+                    )
+                }
+                is PreparedBackupInput.Success -> prepared.input.use {
+                    readValidatedExecutionSource(it, stagingRoot, prepared.encrypted)
+                }
+            }
+            if (validated is ExecutionSourceResult.Rejected) {
+                return BackupRestoreExecutionResult.Rejected(
+                    validated.code,
+                    validated.message,
+                )
+            }
+            validated as ExecutionSourceResult.Success
+            val expectedSources = checkedPlan.preview.cases
+                .associate { it.sourceCaseId to it.sourceCase }
+            val actualSources = validated.snapshot.toDomainCases().associateBy { it.id }
+            if (
+                validated.manifest != checkedPlan.preview.manifest ||
+                validated.extracted.size != checkedPlan.preview.sourceFileCount ||
+                actualSources != expectedSources
+            ) {
+                return BackupRestoreExecutionResult.Rejected(
+                    code = "SOURCE_CHANGED_AFTER_PREVIEW",
+                    message = "提交时读取的备份已不是生成恢复方案的同一份文件。",
+                )
+            }
+
+            val transactionId = UUID.randomUUID().toString()
+            val usedIds = database.withTransaction { readSnapshot().allStableIds() }
+            val preparedImports = checkedPlan.decisions.mapNotNull { decision ->
+                val source = expectedSources.getValue(decision.sourceCaseId)
+                when (decision.action) {
+                    BackupCaseRestoreAction.IMPORT_AS_IS -> prepareImportedCase(
+                        source = source,
+                        restoredCaseId = source.id,
+                        restoredRevision = maxOf(1, source.revision),
+                        copiedFromCaseId = source.copiedFromCaseId,
+                        transactionId = transactionId,
+                        usedIds = usedIds,
+                        extracted = validated.extracted,
+                    )
+                    BackupCaseRestoreAction.KEEP_BOTH -> {
+                        val newCaseId = nextRestoreId(usedIds)
+                        prepareImportedCase(
+                            source = source,
+                            restoredCaseId = newCaseId,
+                            restoredRevision = 1,
+                            copiedFromCaseId = source.id,
+                            transactionId = transactionId,
+                            usedIds = usedIds,
+                            extracted = validated.extracted,
+                        )
+                    }
+                    BackupCaseRestoreAction.SKIP,
+                    BackupCaseRestoreAction.MERGE,
+                    -> null
+                }
+            }.associateBy { it.sourceCaseId }
+
+            val attachmentFiles = preparedImports.values.flatMap { it.attachmentFiles }
+            if (attachmentFiles.isNotEmpty()) {
+                Files.createDirectories(attachmentRoot)
+                val restoreJournal = RestoreJournal(
+                    transactionId = transactionId,
+                    state = RestoreJournalState.PREPARED,
+                    finalDirectory = "$RESTORED_ATTACHMENTS_DIRECTORY/$transactionId",
+                    expectedCases = preparedImports.values
+                        .filter { it.attachmentFiles.isNotEmpty() }
+                        .map {
+                            RestoreExpectedCase(
+                                caseId = it.caseData.id,
+                                payloadSha256 = casePayloadSha256(it.caseData),
+                            )
+                        },
+                )
+                journal = restoreJournal
+                journalPath = writeRestoreJournal(attachmentRoot, restoreJournal)
+                val stageParent = attachmentRoot.resolve(RESTORE_STAGING_DIRECTORY)
+                Files.createDirectories(stageParent)
+                val stageRoot = stageParent.resolve(transactionId)
+                Files.createDirectory(stageRoot)
+                attachmentStageRoot = stageRoot
+                attachmentFiles.forEach { preparedAttachment ->
+                    val target = stageRoot.resolve(preparedAttachment.fileName)
+                    Files.copy(preparedAttachment.source, target)
+                    check(
+                        Files.size(target) == preparedAttachment.byteSize &&
+                            sha256(target) == preparedAttachment.sha256,
+                    ) { "暂存附件校验失败" }
+                }
+                val finalParent = attachmentRoot.resolve(RESTORED_ATTACHMENTS_DIRECTORY)
+                Files.createDirectories(finalParent)
+                val finalRoot = finalParent.resolve(transactionId)
+                check(!Files.exists(finalRoot)) { "恢复附件事务目录已存在" }
+                moveDirectory(stageRoot, finalRoot)
+                attachmentStageRoot = null
+                finalAttachmentRoot = finalRoot
+                val movedJournal = restoreJournal.copy(
+                    state = RestoreJournalState.FILES_MOVED,
+                )
+                journal = movedJournal
+                journalPath = writeRestoreJournal(attachmentRoot, movedJournal)
+            }
+
+            var importedCount = 0
+            var keptBothCount = 0
+            var mergedCount = 0
+            var skippedCount = 0
+            database.withTransaction {
+                when (
+                    val rechecked = prepareRestorePlan(
+                        checkedPlan.preview,
+                        checkedPlan.decisions,
+                    )
+                ) {
+                    is BackupRestorePlanResult.Rejected -> throw RestoreExecutionRejectedException(
+                        rechecked.code,
+                        rechecked.message,
+                    )
+                    is BackupRestorePlanResult.Success -> Unit
+                }
+                checkedPlan.decisions.forEach { decision ->
+                    when (decision.action) {
+                        BackupCaseRestoreAction.IMPORT_AS_IS -> {
+                            val restored = preparedImports.getValue(decision.sourceCaseId)
+                            val result = repository.insertRestored(restored.caseData)
+                            if (result !is CaseWriteResult.Created) {
+                                throw RestoreExecutionRejectedException(
+                                    "IMPORT_ID_CONFLICT",
+                                    "按原 ID 导入时检测到身份冲突，事务已回滚。",
+                                )
+                            }
+                            importedCount += 1
+                        }
+                        BackupCaseRestoreAction.KEEP_BOTH -> {
+                            val restored = preparedImports.getValue(decision.sourceCaseId)
+                            val result = repository.insertRestored(restored.caseData)
+                            if (result !is CaseWriteResult.Created) {
+                                throw RestoreExecutionRejectedException(
+                                    "GENERATED_ID_CONFLICT",
+                                    "保留两份生成的身份发生冲突，事务已回滚。",
+                                )
+                            }
+                            keptBothCount += 1
+                        }
+                        BackupCaseRestoreAction.MERGE -> {
+                            val targetId = checkNotNull(decision.targetCaseId)
+                            val target = repository.findById(targetId)
+                                ?: throw RestoreExecutionRejectedException(
+                                    "TARGET_NOT_FOUND",
+                                    "范围合并目标已不存在，事务已回滚。",
+                                )
+                            val source = expectedSources.getValue(decision.sourceCaseId)
+                            val merged = mergeService.buildMergedCaseForRestore(
+                                source = source,
+                                target = target,
+                                modules = decision.modules,
+                                fieldChoices = decision.fieldChoices,
+                            )
+                            val result = repository.save(
+                                merged,
+                                expectedRevision = target.revision,
+                            )
+                            if (result !is CaseWriteResult.Updated) {
+                                throw RestoreExecutionRejectedException(
+                                    "MERGE_WRITE_CONTRACT_FAILED",
+                                    "范围合并未按更新合同完成，事务已回滚。",
+                                )
+                            }
+                            mergedCount += 1
+                        }
+                        BackupCaseRestoreAction.SKIP -> skippedCount += 1
+                    }
+                }
+            }
+            committed = true
+            journal?.let { restoreJournal ->
+                runCatching {
+                    writeRestoreJournal(
+                        attachmentRoot,
+                        restoreJournal.copy(state = RestoreJournalState.DB_COMMITTED),
+                    )
+                    Files.deleteIfExists(
+                        attachmentRoot
+                            .resolve(RESTORE_JOURNAL_DIRECTORY)
+                            .resolve("${restoreJournal.transactionId}.json"),
+                    )
+                }
+            }
+            BackupRestoreExecutionResult.Success(
+                BackupRestoreExecutionSummary(
+                    importedCases = importedCount,
+                    keptBothCases = keptBothCount,
+                    mergedCases = mergedCount,
+                    skippedCases = skippedCount,
+                    restoredAttachments = attachmentFiles.size,
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (rejected: RestoreExecutionRejectedException) {
+            BackupRestoreExecutionResult.Rejected(rejected.code, rejected.safeMessage)
+        } catch (_: Exception) {
+            BackupRestoreExecutionResult.Rejected(
+                code = "RESTORE_EXECUTION_FAILED_ROLLED_BACK",
+                message = "恢复提交失败，数据库事务已回滚，未覆盖现有附件。",
+            )
+        } finally {
+            if (!committed) {
+                finalAttachmentRoot?.let(::deleteRecursively)
+                journalPath?.let(Files::deleteIfExists)
+            }
+            attachmentStageRoot?.let(::deleteRecursively)
+            deleteRecursively(stagingRoot)
+        }
+    }
+
+    override suspend fun recoverInterruptedRestores(
+        attachmentRoot: Path,
+    ): BackupRestoreRecoveryResult {
+        val journalRoot = attachmentRoot.resolve(RESTORE_JOURNAL_DIRECTORY)
+        if (!Files.isDirectory(journalRoot, LinkOption.NOFOLLOW_LINKS)) {
+            return BackupRestoreRecoveryResult.Success(0, 0)
+        }
+        val journalFiles = mutableListOf<Path>()
+        Files.list(journalRoot).use { paths ->
+            paths
+                .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+                .filter { it.fileName.toString().endsWith(".json") }
+                .sorted()
+                .forEach(journalFiles::add)
+        }
+        if (journalFiles.size > MAX_RECOVERY_JOURNAL_COUNT) {
+            return recoveryAttention(
+                "RESTORE_JOURNAL_LIMIT_EXCEEDED",
+                "待恢复事务日志数量异常，已停止自动处理以保护数据。",
+            )
+        }
+        var rolledBack = 0
+        var finalized = 0
+        journalFiles.forEach { journalFile ->
+            val journal = try {
+                if (Files.size(journalFile) > MAX_RESTORE_JOURNAL_BYTES) {
+                    return recoveryAttention(
+                        "RESTORE_JOURNAL_INVALID",
+                        "恢复事务日志大小异常，需要人工检查。",
+                    )
+                }
+                DomainJson.decodeFromString<RestoreJournal>(readUtf8(journalFile))
+            } catch (_: Exception) {
+                return recoveryAttention(
+                    "RESTORE_JOURNAL_INVALID",
+                    "恢复事务日志损坏，需要人工检查；未删除任何恢复附件。",
+                )
+            }
+            if (!journal.isValid()) {
+                return recoveryAttention(
+                    "RESTORE_JOURNAL_INVALID",
+                    "恢复事务日志包含不安全路径或无效身份，需要人工检查。",
+                )
+            }
+            val finalRoot = attachmentRoot.resolve(journal.finalDirectory).normalize()
+            val stageRoot = attachmentRoot
+                .resolve(RESTORE_STAGING_DIRECTORY)
+                .resolve(journal.transactionId)
+                .normalize()
+            val restoredCases = journal.expectedCases.map { expected ->
+                expected to repository.findById(expected.caseId)
+            }
+            val presentCount = restoredCases.count { it.second != null }
+            if (presentCount == 0) {
+                deleteRecursively(finalRoot)
+                deleteRecursively(stageRoot)
+                Files.deleteIfExists(journalFile)
+                rolledBack += 1
+            } else if (presentCount != restoredCases.size) {
+                return recoveryAttention(
+                    "RESTORE_PARTIAL_DATABASE_STATE",
+                    "检测到恢复事务只写入了部分命例，已保留日志和附件等待人工检查。",
+                )
+            } else {
+                val exactAndReadable = restoredCases.all { (expected, caseData) ->
+                    caseData != null &&
+                        casePayloadSha256(caseData) == expected.payloadSha256 &&
+                        caseData.attachments.all { attachment ->
+                            val file = resolveContained(
+                                attachmentRoot,
+                                attachment.relativePath,
+                            )
+                            file != null &&
+                                Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) &&
+                                Files.size(file) == attachment.byteSize &&
+                                sha256(file) == attachment.sha256
+                        }
+                }
+                if (!exactAndReadable) {
+                    return recoveryAttention(
+                        "RESTORE_COMMITTED_STATE_MISMATCH",
+                        "恢复命例已存在但事实或附件不完整，已保留现场等待人工检查。",
+                    )
+                }
+                deleteRecursively(stageRoot)
+                Files.deleteIfExists(journalFile)
+                finalized += 1
+            }
+        }
+        return BackupRestoreRecoveryResult.Success(rolledBack, finalized)
     }
 
     suspend fun restoreIntoEmptyStore(
@@ -416,6 +870,187 @@ class CaseBackupService(
         caseGroupCrossRefs = dao.allCaseGroupCrossRefs(),
         caseTagCrossRefs = dao.allCaseTagCrossRefs(),
     )
+
+    private fun readValidatedExecutionSource(
+        input: InputStream,
+        stagingRoot: Path,
+        encrypted: Boolean,
+    ): ExecutionSourceResult {
+        val extracted = extractSafely(input, stagingRoot)
+            ?: return ExecutionSourceResult.Rejected(
+                "INVALID_ZIP",
+                "备份压缩包路径、数量或展开大小不符合安全限制。",
+            )
+        val manifestPath = extracted[MANIFEST_PATH]
+            ?: return ExecutionSourceResult.Rejected(
+                "MANIFEST_MISSING",
+                "备份缺少 manifest.json。",
+            )
+        val manifest = DomainJson.decodeFromString<BackupManifest>(readUtf8(manifestPath))
+        validateExtracted(manifest, extracted, encrypted)?.let { error ->
+            return ExecutionSourceResult.Rejected(error.first, error.second)
+        }
+        val snapshot = parseSnapshot(extracted)
+        validateReferences(snapshot, extracted, manifest)?.let { error ->
+            return ExecutionSourceResult.Rejected(error.first, error.second)
+        }
+        return ExecutionSourceResult.Success(manifest, snapshot, extracted)
+    }
+
+    private fun prepareImportedCase(
+        source: BaziCase,
+        restoredCaseId: String,
+        restoredRevision: Long,
+        copiedFromCaseId: String?,
+        transactionId: String,
+        usedIds: MutableSet<String>,
+        extracted: Map<String, Path>,
+    ): PreparedImportedCase {
+        usedIds.add(restoredCaseId)
+        val attachmentIds = source.attachments.associate { it.id to nextRestoreId(usedIds) }
+        val recordIds = (
+            source.textRecords.map { it.id } +
+                source.textRecordRevisions.map { it.recordId }
+            ).distinct().associateWith { nextRestoreId(usedIds) }
+        val eventIds = (
+            source.events.map { it.id } +
+                source.eventRevisions.map { it.eventId }
+            ).distinct().associateWith { nextRestoreId(usedIds) }
+        val restoredAttachments = source.attachments.map { attachment ->
+            val newId = attachmentIds.getValue(attachment.id)
+            attachment.copy(
+                id = newId,
+                relativePath =
+                    "$RESTORED_ATTACHMENTS_DIRECTORY/$transactionId/$newId",
+            )
+        }
+        val caseData = source.copy(
+            id = restoredCaseId,
+            textRecords = source.textRecords.map { record ->
+                record.copy(
+                    id = recordIds.getValue(record.id),
+                    sourceAttachmentId = record.sourceAttachmentId?.let(attachmentIds::getValue),
+                )
+            },
+            textRecordRevisions = source.textRecordRevisions.map { revision ->
+                val recordId = recordIds.getValue(revision.recordId)
+                revision.copy(
+                    id = nextRestoreId(usedIds),
+                    recordId = recordId,
+                    snapshot = revision.snapshot.copy(
+                        id = recordId,
+                        sourceAttachmentId = revision.snapshot.sourceAttachmentId
+                            ?.let(attachmentIds::getValue),
+                    ),
+                )
+            },
+            events = source.events.map { event ->
+                event.copy(
+                    id = eventIds.getValue(event.id),
+                    sourceAttachmentId = event.sourceAttachmentId?.let(attachmentIds::getValue),
+                )
+            },
+            eventRevisions = source.eventRevisions.map { revision ->
+                val eventId = eventIds.getValue(revision.eventId)
+                revision.copy(
+                    id = nextRestoreId(usedIds),
+                    eventId = eventId,
+                    snapshot = revision.snapshot.copy(
+                        id = eventId,
+                        sourceAttachmentId = revision.snapshot.sourceAttachmentId
+                            ?.let(attachmentIds::getValue),
+                    ),
+                )
+            },
+            calculationSnapshots = source.calculationSnapshots.map {
+                it.copy(id = nextRestoreId(usedIds))
+            },
+            attachments = restoredAttachments,
+            fieldEvidence = source.fieldEvidence.map { evidence ->
+                evidence.copy(
+                    id = nextRestoreId(usedIds),
+                    attachmentId = attachmentIds.getValue(evidence.attachmentId),
+                )
+            },
+            groups = source.groups.map { it.copy(id = nextRestoreId(usedIds)) },
+            tags = source.tags.map { it.copy(id = nextRestoreId(usedIds)) },
+            copiedFromCaseId = copiedFromCaseId,
+            revision = restoredRevision,
+        )
+        val attachmentFiles = source.attachments.map { sourceAttachment ->
+            val restored = restoredAttachments.single {
+                it.id == attachmentIds.getValue(sourceAttachment.id)
+            }
+            PreparedAttachmentFile(
+                source = extracted.getValue(
+                    "$ATTACHMENTS_DIRECTORY/${sourceAttachment.relativePath}",
+                ),
+                fileName = restored.id,
+                byteSize = restored.byteSize,
+                sha256 = restored.sha256,
+            )
+        }
+        return PreparedImportedCase(source.id, caseData, attachmentFiles)
+    }
+
+    private fun nextRestoreId(usedIds: MutableSet<String>): String {
+        repeat(MAX_RESTORE_ID_GENERATION_ATTEMPTS) {
+            val candidate = idGenerator().trim()
+            if (
+                candidate.matches(RESTORE_GENERATED_ID_PATTERN) &&
+                usedIds.add(candidate)
+            ) {
+                return candidate
+            }
+        }
+        throw IllegalArgumentException("Unable to generate restore id")
+    }
+
+    private fun casePayloadSha256(caseData: BaziCase): String =
+        sha256(DomainJson.encodeToString(caseData).encodeToByteArray())
+
+    private fun writeRestoreJournal(
+        attachmentRoot: Path,
+        journal: RestoreJournal,
+    ): Path {
+        val journalRoot = attachmentRoot.resolve(RESTORE_JOURNAL_DIRECTORY)
+        Files.createDirectories(journalRoot)
+        val target = journalRoot.resolve("${journal.transactionId}.json")
+        val temporary = journalRoot.resolve(
+            "${journal.transactionId}.${UUID.randomUUID()}.tmp",
+        )
+        return try {
+            Files.write(
+                temporary,
+                DomainJson.encodeToString(journal).encodeToByteArray(),
+            )
+            FileChannel.open(temporary, StandardOpenOption.WRITE).use {
+                it.force(true)
+            }
+            try {
+                Files.move(
+                    temporary,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(
+                    temporary,
+                    target,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+            target
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+    }
+
+    private fun recoveryAttention(
+        code: String,
+        message: String,
+    ) = BackupRestoreRecoveryResult.RequiresAttention(code, message)
 
     private suspend fun inspectBackup(
         input: InputStream,
@@ -957,6 +1592,82 @@ class CaseBackupService(
         }
     }
 
+    private data class PreparedImportedCase(
+        val sourceCaseId: String,
+        val caseData: BaziCase,
+        val attachmentFiles: List<PreparedAttachmentFile>,
+    )
+
+    private data class PreparedAttachmentFile(
+        val source: Path,
+        val fileName: String,
+        val byteSize: Long,
+        val sha256: String,
+    )
+
+    @Serializable
+    private data class RestoreJournal(
+        val formatVersion: Int = RESTORE_JOURNAL_FORMAT_VERSION,
+        val transactionId: String,
+        val state: RestoreJournalState,
+        val finalDirectory: String,
+        val expectedCases: List<RestoreExpectedCase>,
+    ) {
+        fun isValid(): Boolean =
+            formatVersion == RESTORE_JOURNAL_FORMAT_VERSION &&
+                transactionId.matches(RESTORE_TRANSACTION_ID_PATTERN) &&
+                finalDirectory == "$RESTORED_ATTACHMENTS_DIRECTORY/$transactionId" &&
+                expectedCases.isNotEmpty() &&
+                expectedCases.map { it.caseId }.distinct().size == expectedCases.size &&
+                expectedCases.all {
+                    it.caseId.isNotBlank() && it.payloadSha256.matches(SHA256_PATTERN)
+                }
+    }
+
+    @Serializable
+    private enum class RestoreJournalState {
+        PREPARED,
+        FILES_MOVED,
+        DB_COMMITTED,
+    }
+
+    @Serializable
+    private data class RestoreExpectedCase(
+        val caseId: String,
+        val payloadSha256: String,
+    )
+
+    private sealed interface ExecutionSourceResult {
+        data class Success(
+            val manifest: BackupManifest,
+            val snapshot: RoomDataSnapshot,
+            val extracted: Map<String, Path>,
+        ) : ExecutionSourceResult
+
+        data class Rejected(
+            val code: String,
+            val message: String,
+        ) : ExecutionSourceResult
+    }
+
+    private class RestoreExecutionRejectedException(
+        val code: String,
+        val safeMessage: String,
+    ) : IllegalStateException(safeMessage)
+
+    private fun RoomDataSnapshot.allStableIds(): MutableSet<String> = buildSet {
+        addAll(cases.map { it.id })
+        addAll(calculationSnapshots.map { it.id })
+        addAll(textRecords.map { it.id })
+        addAll(textRecordRevisions.map { it.id })
+        addAll(events.map { it.id })
+        addAll(eventRevisions.map { it.id })
+        addAll(attachments.map { it.id })
+        addAll(fieldEvidence.map { it.id })
+        addAll(groups.map { it.id })
+        addAll(tags.map { it.id })
+    }.toMutableSet()
+
     private sealed interface PreparedBackupInput {
         data class Success(
             val input: InputStream,
@@ -983,11 +1694,22 @@ class CaseBackupService(
         private const val SETTINGS_PATH = "settings.json"
         private const val IMPORTS_PATH = "imports.json"
         private const val ATTACHMENTS_DIRECTORY = "attachments"
+        private const val RESTORE_STAGING_DIRECTORY = ".restore-staging"
+        private const val RESTORE_JOURNAL_DIRECTORY = ".restore-journal"
+        private const val RESTORED_ATTACHMENTS_DIRECTORY = "restored"
+        private const val RESTORE_JOURNAL_FORMAT_VERSION = 1
+        private const val MAX_RECOVERY_JOURNAL_COUNT = 1_000
+        private const val MAX_RESTORE_JOURNAL_BYTES = 64L * 1024
+        private const val MAX_RESTORE_ID_GENERATION_ATTEMPTS = 100
         private const val MAX_ENTRY_COUNT = 10_000
         private const val MAX_JSON_BYTES = 16L * 1024 * 1024
         private const val MAX_SINGLE_ENTRY_BYTES = 512L * 1024 * 1024
         private const val MAX_TOTAL_BYTES = 2L * 1024 * 1024 * 1024
         private val FILE_NAME_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm")
+        private val RESTORE_TRANSACTION_ID_PATTERN =
+            Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+        private val RESTORE_GENERATED_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
+        private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
     }
 }
 

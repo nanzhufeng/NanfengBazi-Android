@@ -11,7 +11,9 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparation
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparationResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreExecutionResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreRecoveryResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
@@ -162,6 +164,8 @@ data class StageTwoUiState(
     val fullBackupMergeModules: Set<SingleCaseMergeModule> = emptySet(),
     val fullBackupMergeFieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
     val fullBackupRestorePlan: BackupRestorePlan? = null,
+    val fullBackupRestoreConfirmationVisible: Boolean = false,
+    val fullBackupRestorePasswordVisible: Boolean = false,
     val fullBackupError: String? = null,
     val message: String? = null,
 )
@@ -190,7 +194,47 @@ class StageTwoViewModel(
     private var pendingFullBackupPassword: CharArray? = null
 
     init {
+        recoverInterruptedRestores()
         refreshCases()
+    }
+
+    private fun recoverInterruptedRestores() {
+        val service = caseBackupService ?: return
+        val attachmentRoot = backupAttachmentRoot ?: return
+        viewModelScope.launch {
+            val result = try {
+                withContext(ioDispatcher) {
+                    service.recoverInterruptedRestores(attachmentRoot)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                BackupRestoreRecoveryResult.RequiresAttention(
+                    code = "RESTORE_RECOVERY_FAILED",
+                    message = "启动时无法检查未完成恢复事务，已停止自动处理。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is BackupRestoreRecoveryResult.Success -> {
+                        val recovered = result.rolledBackTransactions +
+                            result.finalizedTransactions
+                        if (recovered == 0) {
+                            it
+                        } else {
+                            it.copy(
+                                message =
+                                    "已检查未完成恢复：回滚 ${result.rolledBackTransactions} 个，" +
+                                        "完成收尾 ${result.finalizedTransactions} 个。",
+                            )
+                        }
+                    }
+                    is BackupRestoreRecoveryResult.RequiresAttention -> it.copy(
+                        fullBackupError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
     }
 
     fun refreshCases() {
@@ -683,6 +727,152 @@ class StageTwoViewModel(
                 fullBackupMergeModules = emptySet(),
                 fullBackupMergeFieldChoices = emptyMap(),
             )
+        }
+    }
+
+    fun requestFullBackupRestore() {
+        if (mutableState.value.fullBackupBusy) return
+        if (mutableState.value.fullBackupRestorePlan == null) return
+        mutableState.update {
+            it.copy(
+                fullBackupRestoreConfirmationVisible = true,
+                fullBackupPasswordError = null,
+                fullBackupError = null,
+            )
+        }
+    }
+
+    fun cancelFullBackupRestore() {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update {
+            it.copy(
+                fullBackupRestoreConfirmationVisible = false,
+                fullBackupRestorePasswordVisible = false,
+                fullBackupPasswordError = null,
+            )
+        }
+    }
+
+    fun confirmFullBackupRestore(): Boolean {
+        if (mutableState.value.fullBackupBusy) return false
+        val plan = mutableState.value.fullBackupRestorePlan ?: return false
+        return if (plan.preview.manifest.encrypted) {
+            mutableState.update {
+                it.copy(
+                    fullBackupRestoreConfirmationVisible = false,
+                    fullBackupRestorePasswordVisible = true,
+                    fullBackupPasswordError = null,
+                )
+            }
+            false
+        } else {
+            mutableState.update {
+                it.copy(fullBackupRestoreConfirmationVisible = false)
+            }
+            true
+        }
+    }
+
+    fun executeFullBackupRestore(
+        password: CharArray? = null,
+        openInput: () -> InputStream?,
+    ) {
+        if (mutableState.value.fullBackupBusy) {
+            password?.fill('\u0000')
+            return
+        }
+        val service = caseBackupService
+        val workRoot = backupWorkRoot
+        val attachmentRoot = backupAttachmentRoot
+        val plan = mutableState.value.fullBackupRestorePlan
+        if (service == null || workRoot == null || attachmentRoot == null || plan == null) {
+            password?.fill('\u0000')
+            mutableState.update {
+                it.copy(
+                    fullBackupRestoreConfirmationVisible = false,
+                    fullBackupRestorePasswordVisible = false,
+                    fullBackupError = "完整备份恢复服务尚未就绪（RESTORE_SERVICE_UNAVAILABLE）。",
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    fullBackupBusy = true,
+                    fullBackupRestoreConfirmationVisible = false,
+                    fullBackupRestorePasswordVisible = false,
+                    fullBackupPasswordError = null,
+                    fullBackupError = null,
+                )
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    val input = openInput()
+                        ?: return@withContext BackupRestoreExecutionResult.Rejected(
+                            code = "INPUT_OPEN_FAILED",
+                            message = "无法重新打开生成恢复方案的备份文件。",
+                        )
+                    input.use {
+                        service.executeRestorePlan(
+                            plan = plan,
+                            input = it,
+                            workRoot = workRoot,
+                            attachmentRoot = attachmentRoot,
+                            password = password,
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                BackupRestoreExecutionResult.Rejected(
+                    code = "RESTORE_EXECUTION_FAILED",
+                    message = "完整备份恢复失败，未确认任何写入成功。",
+                )
+            } finally {
+                password?.fill('\u0000')
+            }
+            mutableState.update {
+                when (result) {
+                    is BackupRestoreExecutionResult.Success -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupPreview = null,
+                        fullBackupDecisions = emptyMap(),
+                        fullBackupMergePreparation = null,
+                        fullBackupMergeModules = emptySet(),
+                        fullBackupMergeFieldChoices = emptyMap(),
+                        fullBackupRestorePlan = null,
+                        message =
+                            "完整备份恢复完成：导入 ${result.summary.importedCases}，" +
+                                "保留两份 ${result.summary.keptBothCases}，" +
+                                "合并 ${result.summary.mergedCases}，" +
+                                "跳过 ${result.summary.skippedCases}，" +
+                                "附件 ${result.summary.restoredAttachments}。",
+                    )
+                    is BackupRestoreExecutionResult.Rejected -> {
+                        if (
+                            result.code == "PASSWORD_REQUIRED" ||
+                            result.code == "DECRYPTION_FAILED"
+                        ) {
+                            it.copy(
+                                fullBackupBusy = false,
+                                fullBackupRestorePasswordVisible = true,
+                                fullBackupPasswordError =
+                                    "${result.message}（${result.code}）",
+                            )
+                        } else {
+                            it.copy(
+                                fullBackupBusy = false,
+                                fullBackupError = "${result.message}（${result.code}）",
+                            )
+                        }
+                    }
+                }
+            }
+            if (result is BackupRestoreExecutionResult.Success) {
+                refreshCases()
+            }
         }
     }
 

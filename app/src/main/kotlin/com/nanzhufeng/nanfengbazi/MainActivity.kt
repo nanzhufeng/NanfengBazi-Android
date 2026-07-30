@@ -108,6 +108,12 @@ class MainActivity : ComponentActivity() {
                         uri?.let(contentResolver::openInputStream)
                     }
                 },
+                onExecuteFullBackupDocument = { password ->
+                    val uri = lastFullBackupUri
+                    viewModel.executeFullBackupRestore(password) {
+                        uri?.let(contentResolver::openInputStream)
+                    }
+                },
             )
         }
     }

@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -429,7 +430,35 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("confirm_full_backup_merge").assertIsNotEnabled()
         composeRule.onNodeWithTag("cancel_full_backup_merge").performClick()
         composeRule.onNodeWithTag("full_backup_preview").assertIsDisplayed()
-        composeRule.onNodeWithTag("close_full_backup_preview").performClick()
+        val fullBackupSkipButtons = composeRule.onAllNodes(
+            hasContentDescription("跳过完整备份来源", substring = true),
+        )
+        val fullBackupCaseCount = fullBackupSkipButtons.fetchSemanticsNodes().size
+        check(fullBackupCaseCount > 0) { "完整备份预览没有逐例跳过动作" }
+        repeat(fullBackupCaseCount) { index ->
+            fullBackupSkipButtons[index]
+                .assertIsEnabled()
+                .performSemanticsAction(SemanticsActions.OnClick)
+        }
+        composeRule.onNodeWithTag("prepare_full_backup_plan")
+            .assertIsEnabled()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasTestTag("full_backup_plan_ready"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("request_full_backup_restore")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithTag("confirm_full_backup_restore")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() &&
+                composeRule.onAllNodes(
+                    hasText("完整备份恢复完成", substring = true),
+                ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
         composeRule.onNodeWithTag("export_full_backup_button").performClick()

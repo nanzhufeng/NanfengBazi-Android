@@ -127,6 +127,37 @@ data class BackupRestorePlan(
     val decisions: List<BackupCaseRestoreDecision>,
 )
 
+data class BackupRestoreExecutionSummary(
+    val importedCases: Int,
+    val keptBothCases: Int,
+    val mergedCases: Int,
+    val skippedCases: Int,
+    val restoredAttachments: Int,
+)
+
+sealed interface BackupRestoreExecutionResult {
+    data class Success(
+        val summary: BackupRestoreExecutionSummary,
+    ) : BackupRestoreExecutionResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : BackupRestoreExecutionResult
+}
+
+sealed interface BackupRestoreRecoveryResult {
+    data class Success(
+        val rolledBackTransactions: Int,
+        val finalizedTransactions: Int,
+    ) : BackupRestoreRecoveryResult
+
+    data class RequiresAttention(
+        val code: String,
+        val message: String,
+    ) : BackupRestoreRecoveryResult
+}
+
 sealed interface BackupRestorePlanResult {
     data class Success(
         val plan: BackupRestorePlan,

@@ -372,7 +372,8 @@ class SingleCaseExchangeService(
             buildMergedCase(
                 target = target,
                 source = source,
-                plan = plan,
+                modules = plan.modules,
+                fieldChoices = plan.fieldChoices,
                 additions = additions,
             )
         } catch (_: Exception) {
@@ -400,6 +401,19 @@ class SingleCaseExchangeService(
             -> rejectedImport("MERGE_WRITE_CONTRACT_FAILED", "合并没有按更新合同完成，未确认成功。")
         }
     }
+
+    internal fun buildMergedCaseForRestore(
+        source: BaziCase,
+        target: BaziCase,
+        modules: Set<SingleCaseMergeModule>,
+        fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
+    ): BaziCase = buildMergedCase(
+        target = target,
+        source = source,
+        modules = modules,
+        fieldChoices = fieldChoices,
+        additions = calculateMergeAdditions(source, target),
+    )
 
     private fun validateDocument(
         document: SingleCaseDocument,
@@ -699,19 +713,20 @@ class SingleCaseExchangeService(
     private fun buildMergedCase(
         target: BaziCase,
         source: BaziCase,
-        plan: SingleCaseMergePlan,
+        modules: Set<SingleCaseMergeModule>,
+        fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
         additions: MergeAdditions,
     ): BaziCase {
         val usedIds = mutableSetOf<String>()
         fun nextId() = nextGeneratedId(usedIds)
         fun imported(key: SingleCaseFieldKey) =
-            plan.fieldChoices[key] == SingleCaseValueChoice.IMPORTED
+            fieldChoices[key] == SingleCaseValueChoice.IMPORTED
 
-        val appendRecords = SingleCaseMergeModule.TEXT_RECORDS in plan.modules
-        val appendEvents = SingleCaseMergeModule.EVENTS in plan.modules
+        val appendRecords = SingleCaseMergeModule.TEXT_RECORDS in modules
+        val appendEvents = SingleCaseMergeModule.EVENTS in modules
         val appendCalculations =
-            SingleCaseMergeModule.CALCULATION_SNAPSHOTS in plan.modules
-        val appendOrganization = SingleCaseMergeModule.ORGANIZATION in plan.modules
+            SingleCaseMergeModule.CALCULATION_SNAPSHOTS in modules
+        val appendOrganization = SingleCaseMergeModule.ORGANIZATION in modules
         val recordIds = if (appendRecords) {
             (
                 additions.textRecords.map { it.id } +

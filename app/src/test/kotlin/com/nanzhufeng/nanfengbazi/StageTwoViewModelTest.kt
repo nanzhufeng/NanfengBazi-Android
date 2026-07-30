@@ -13,6 +13,8 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestorePreview
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictCandidate
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreExecutionResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreExecutionSummary
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
@@ -551,6 +553,18 @@ class StageTwoViewModelTest {
         )
         assertNotNull(viewModel.state.value.fullBackupRestorePlan)
         assertTrue(viewModel.state.value.message?.contains("尚未执行写入") == true)
+
+        viewModel.requestFullBackupRestore()
+        assertTrue(viewModel.state.value.fullBackupRestoreConfirmationVisible)
+        assertTrue(viewModel.confirmFullBackupRestore())
+        viewModel.executeFullBackupRestore {
+            ByteArrayInputStream("zip".encodeToByteArray())
+        }
+
+        assertTrue(backup.executeCalled)
+        assertNull(viewModel.state.value.fullBackupRestorePlan)
+        assertNull(viewModel.state.value.fullBackupPreview)
+        assertTrue(viewModel.state.value.message?.contains("完整备份恢复完成") == true)
     }
 
     private fun createViewModel(
@@ -614,6 +628,7 @@ class StageTwoViewModelTest {
     private class RecordingBackupOperations : CaseBackupOperations {
         var exportCalled = false
         var previewCalled = false
+        var executeCalled = false
         private var encryptedExport = false
 
         override suspend fun export(
@@ -718,6 +733,26 @@ class StageTwoViewModelTest {
                 ),
             ),
         )
+
+        override suspend fun executeRestorePlan(
+            plan: BackupRestorePlan,
+            input: InputStream,
+            workRoot: Path,
+            attachmentRoot: Path,
+            password: CharArray?,
+        ): BackupRestoreExecutionResult {
+            executeCalled = true
+            input.readBytes()
+            return BackupRestoreExecutionResult.Success(
+                BackupRestoreExecutionSummary(
+                    importedCases = 1,
+                    keptBothCases = 0,
+                    mergedCases = 1,
+                    skippedCases = 0,
+                    restoredAttachments = 0,
+                ),
+            )
+        }
 
         private fun backupCases() = listOf(
             BackupCaseRestorePreview(sampleStoredCase("backup-new"), emptyList()),

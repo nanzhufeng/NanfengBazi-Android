@@ -15,6 +15,8 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreExecutionResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreRecoveryResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
@@ -22,7 +24,9 @@ import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
@@ -42,6 +46,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -249,8 +254,9 @@ class CaseBackupServiceTest {
                     ),
                 ) as BackupRestorePlanResult.Rejected).code,
             )
-            assertTrue(
-                service.prepareRestorePlan(
+            assertEquals(
+                "EMPTY_SELECTED_MODULE",
+                (service.prepareRestorePlan(
                     result.preview,
                     listOf(
                         BackupCaseRestoreDecision(
@@ -260,7 +266,24 @@ class CaseBackupServiceTest {
                             modules = setOf(SingleCaseMergeModule.TEXT_RECORDS),
                         ),
                     ),
-                ) is BackupRestorePlanResult.Success,
+                ) as BackupRestorePlanResult.Rejected).code,
+            )
+            assertEquals(
+                "INVALID_FIELD_CHOICE",
+                (service.prepareRestorePlan(
+                    result.preview,
+                    listOf(
+                        BackupCaseRestoreDecision(
+                            sourceCaseId = "case-1",
+                            action = BackupCaseRestoreAction.MERGE,
+                            targetCaseId = "case-1",
+                            fieldChoices = mapOf(
+                                SingleCaseFieldKey.ALIAS to
+                                    SingleCaseValueChoice.IMPORTED,
+                            ),
+                        ),
+                    ),
+                ) as BackupRestorePlanResult.Rejected).code,
             )
             val skipDecision = listOf(
                 BackupCaseRestoreDecision(
@@ -356,6 +379,514 @@ class CaseBackupServiceTest {
             )
             assertEquals(before, destinationDatabase.caseDao().allCases())
         }
+    }
+
+    @Test
+    fun `非空库保留两份恢复重映射身份并提交真实附件`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-execute-")
+        val attachmentBytes = "脱敏非空库恢复附件".encodeToByteArray()
+        val sourceAttachmentRoot = root.resolve("source-attachments")
+        val sourceFile = sourceAttachmentRoot.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, attachmentBytes)
+        val backupBytes = withDatabase { sourceDatabase ->
+            RoomCaseRepository(sourceDatabase).save(sampleCase(attachmentBytes), null)
+            ByteArrayOutputStream().also { output ->
+                assertTrue(
+                    CaseBackupService(sourceDatabase, fixedClock).export(
+                        output = output,
+                        attachmentRoot = sourceAttachmentRoot,
+                        appVersion = "0.3.0-execute-test",
+                        protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                    ) is BackupExportResult.Success,
+                )
+            }.toByteArray()
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationAttachmentRoot = root.resolve("destination-attachments")
+            val localCase = sampleCase(attachmentBytes).copy(
+                id = "local-case",
+                alias = "本地冲突命例",
+            )
+            val localFile = destinationAttachmentRoot.resolve(
+                localCase.attachments.single().relativePath,
+            )
+            Files.createDirectories(localFile.parent)
+            Files.write(localFile, attachmentBytes)
+            val repository = RoomCaseRepository(destinationDatabase)
+            repository.save(localCase, null)
+            val localBefore = repository.findById("local-case")
+            val service = CaseBackupService(destinationDatabase, fixedClock)
+            val preview = service.preview(
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("preview-work"),
+            ) as BackupPreviewResult.Success
+            val plan = service.prepareRestorePlan(
+                preview.preview,
+                listOf(
+                    BackupCaseRestoreDecision(
+                        sourceCaseId = "case-1",
+                        action = BackupCaseRestoreAction.KEEP_BOTH,
+                    ),
+                ),
+            ) as BackupRestorePlanResult.Success
+
+            val execution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("execute-work"),
+                attachmentRoot = destinationAttachmentRoot,
+            )
+
+            assertTrue(execution is BackupRestoreExecutionResult.Success)
+            execution as BackupRestoreExecutionResult.Success
+            assertEquals(1, execution.summary.keptBothCases)
+            assertEquals(1, execution.summary.restoredAttachments)
+            assertEquals(localBefore, repository.findById("local-case"))
+            val restoredId = destinationDatabase.caseDao()
+                .allCases()
+                .map { it.id }
+                .single { it != "local-case" }
+            val restored = repository.findById(restoredId)!!
+            assertEquals("case-1", restored.copiedFromCaseId)
+            assertEquals(1L, restored.revision)
+            assertNotEquals("attachment-1", restored.attachments.single().id)
+            assertTrue(restored.attachments.single().relativePath.startsWith("restored/"))
+            val restoredFile = destinationAttachmentRoot.resolve(
+                restored.attachments.single().relativePath,
+            )
+            assertArrayEquals(attachmentBytes, Files.readAllBytes(restoredFile))
+            assertArrayEquals(attachmentBytes, Files.readAllBytes(localFile))
+        }
+    }
+
+    @Test
+    fun `非空库范围合并复用共享语义且不创建来源命例`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-execute-merge-")
+        val sourceCase = sampleCase().copy(
+            alias = "来源范围合并命例",
+            attachments = emptyList(),
+            fieldEvidence = emptyList(),
+            textRecords = sampleCase().textRecords.map {
+                it.copy(sourceAttachmentId = null)
+            },
+            events = sampleCase().events.map {
+                it.copy(sourceAttachmentId = null)
+            },
+        )
+        val backupBytes = withDatabase { sourceDatabase ->
+            RoomCaseRepository(sourceDatabase).save(sourceCase, null)
+            ByteArrayOutputStream().also { output ->
+                CaseBackupService(sourceDatabase, fixedClock).export(
+                    output = output,
+                    attachmentRoot = root.resolve("source-attachments"),
+                    appVersion = "0.3.0-merge-test",
+                    protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                )
+            }.toByteArray()
+        }
+
+        withDatabase { destinationDatabase ->
+            val localCase = sourceCase.copy(
+                id = "local-merge-target",
+                alias = "本地范围合并目标",
+                textRecords = emptyList(),
+                events = emptyList(),
+                groups = emptyList(),
+                tags = emptyList(),
+            )
+            val repository = RoomCaseRepository(destinationDatabase)
+            repository.save(localCase, null)
+            val service = CaseBackupService(destinationDatabase, fixedClock)
+            val preview = service.preview(
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("preview-work"),
+            ) as BackupPreviewResult.Success
+            val plan = service.prepareRestorePlan(
+                preview.preview,
+                listOf(
+                    BackupCaseRestoreDecision(
+                        sourceCaseId = "case-1",
+                        action = BackupCaseRestoreAction.MERGE,
+                        targetCaseId = "local-merge-target",
+                        modules = setOf(
+                            SingleCaseMergeModule.TEXT_RECORDS,
+                            SingleCaseMergeModule.EVENTS,
+                            SingleCaseMergeModule.ORGANIZATION,
+                        ),
+                        fieldChoices = mapOf(
+                            SingleCaseFieldKey.ALIAS to SingleCaseValueChoice.IMPORTED,
+                        ),
+                    ),
+                ),
+            ) as BackupRestorePlanResult.Success
+
+            val execution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("execute-work"),
+                attachmentRoot = root.resolve("destination-attachments"),
+            )
+
+            assertTrue(execution is BackupRestoreExecutionResult.Success)
+            execution as BackupRestoreExecutionResult.Success
+            assertEquals(1, execution.summary.mergedCases)
+            assertEquals(0, execution.summary.restoredAttachments)
+            assertNull(repository.findById("case-1"))
+            val merged = repository.findById("local-merge-target")!!
+            assertEquals("来源范围合并命例", merged.alias)
+            assertEquals(sourceCase.textRecords.map { it.content }, merged.textRecords.map { it.content })
+            assertEquals(sourceCase.events.map { it.rawText }, merged.events.map { it.rawText })
+            assertEquals(sourceCase.groups.map { it.name }, merged.groups.map { it.name })
+            assertEquals(sourceCase.tags.map { it.name }, merged.tags.map { it.name })
+        }
+    }
+
+    @Test
+    fun `密码完整备份提交重新认证同一文件并恢复附件`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-execute-encrypted-")
+        val attachmentBytes = "脱敏密码恢复附件".encodeToByteArray()
+        val sourceAttachmentRoot = root.resolve("source-attachments")
+        val sourceFile = sourceAttachmentRoot.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, attachmentBytes)
+        val password = "Encrypted-Restore-123".toCharArray()
+        val backupBytes = withDatabase { sourceDatabase ->
+            RoomCaseRepository(sourceDatabase).save(sampleCase(attachmentBytes), null)
+            ByteArrayOutputStream().also { output ->
+                assertTrue(
+                    CaseBackupService(
+                        database = sourceDatabase,
+                        clock = fixedClock,
+                        passwordKdfIterations = 100_000,
+                    ).export(
+                        output = output,
+                        attachmentRoot = sourceAttachmentRoot,
+                        appVersion = "0.3.0-encrypted-restore-test",
+                        protection = BackupProtection.PasswordProtected(password),
+                    ) is BackupExportResult.Success,
+                )
+            }.toByteArray()
+        }
+
+        withDatabase { destinationDatabase ->
+            val service = CaseBackupService(
+                database = destinationDatabase,
+                clock = fixedClock,
+                passwordKdfIterations = 100_000,
+            )
+            val preview = service.preview(
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("preview-work"),
+                password = password,
+            ) as BackupPreviewResult.Success
+            val plan = service.prepareRestorePlan(
+                preview.preview,
+                listOf(
+                    BackupCaseRestoreDecision(
+                        sourceCaseId = "case-1",
+                        action = BackupCaseRestoreAction.IMPORT_AS_IS,
+                    ),
+                ),
+            ) as BackupRestorePlanResult.Success
+            val wrongPassword = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("wrong-password-work"),
+                attachmentRoot = root.resolve("destination-attachments"),
+                password = "Wrong-Restore-Password".toCharArray(),
+            )
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (wrongPassword as BackupRestoreExecutionResult.Rejected).code,
+            )
+            assertNull(RoomCaseRepository(destinationDatabase).findById("case-1"))
+
+            val execution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("execute-work"),
+                attachmentRoot = root.resolve("destination-attachments"),
+                password = password,
+            )
+
+            assertTrue(execution is BackupRestoreExecutionResult.Success)
+            val restored = RoomCaseRepository(destinationDatabase).findById("case-1")!!
+            val restoredFile = root.resolve("destination-attachments")
+                .resolve(restored.attachments.single().relativePath)
+            assertArrayEquals(attachmentBytes, Files.readAllBytes(restoredFile))
+        }
+    }
+
+    @Test
+    fun `提交时换成另一份有效备份会拒绝且保持零写入`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-source-changed-")
+        val sourceAttachmentRoot = root.resolve("source-attachments")
+        Files.createDirectories(sourceAttachmentRoot)
+        val backups = withDatabase { sourceDatabase ->
+            val repository = RoomCaseRepository(sourceDatabase)
+            repository.save(
+                sampleCase().copy(
+                    textRecords = emptyList(),
+                    textRecordRevisions = emptyList(),
+                    events = emptyList(),
+                    eventRevisions = emptyList(),
+                    attachments = emptyList(),
+                    fieldEvidence = emptyList(),
+                ),
+                null,
+            )
+            val first = ByteArrayOutputStream().also { output ->
+                CaseBackupService(sourceDatabase, fixedClock).export(
+                    output = output,
+                    attachmentRoot = sourceAttachmentRoot,
+                    appVersion = "0.3.0-source-a",
+                    protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                )
+            }.toByteArray()
+            val current = repository.findById("case-1")!!
+            repository.save(
+                current.copy(alias = "另一份有效备份"),
+                expectedRevision = current.revision,
+            )
+            val second = ByteArrayOutputStream().also { output ->
+                CaseBackupService(sourceDatabase, fixedClock).export(
+                    output = output,
+                    attachmentRoot = sourceAttachmentRoot,
+                    appVersion = "0.3.0-source-b",
+                    protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                )
+            }.toByteArray()
+            first to second
+        }
+
+        withDatabase { destinationDatabase ->
+            val service = CaseBackupService(destinationDatabase, fixedClock)
+            val preview = service.preview(
+                input = ByteArrayInputStream(backups.first),
+                workRoot = root.resolve("preview-work"),
+            ) as BackupPreviewResult.Success
+            val plan = service.prepareRestorePlan(
+                preview.preview,
+                listOf(
+                    BackupCaseRestoreDecision(
+                        sourceCaseId = "case-1",
+                        action = BackupCaseRestoreAction.IMPORT_AS_IS,
+                    ),
+                ),
+            ) as BackupRestorePlanResult.Success
+
+            val execution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backups.second),
+                workRoot = root.resolve("execute-work"),
+                attachmentRoot = root.resolve("destination-attachments"),
+            )
+
+            assertEquals(
+                "SOURCE_CHANGED_AFTER_PREVIEW",
+                (execution as BackupRestoreExecutionResult.Rejected).code,
+            )
+            assertNull(RoomCaseRepository(destinationDatabase).findById("case-1"))
+        }
+    }
+
+    @Test
+    fun `非空库恢复数据库失败时移除本次附件并保留既有事实`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-execute-rollback-")
+        val attachmentBytes = "脱敏回滚附件".encodeToByteArray()
+        val sourceAttachmentRoot = root.resolve("source-attachments")
+        val sourceFile = sourceAttachmentRoot.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, attachmentBytes)
+        val backupBytes = withDatabase { sourceDatabase ->
+            RoomCaseRepository(sourceDatabase).save(sampleCase(attachmentBytes), null)
+            ByteArrayOutputStream().also { output ->
+                CaseBackupService(sourceDatabase, fixedClock).export(
+                    output = output,
+                    attachmentRoot = sourceAttachmentRoot,
+                    appVersion = "0.3.0-rollback-test",
+                    protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                )
+            }.toByteArray()
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationAttachmentRoot = root.resolve("destination-attachments")
+            val localCase = sampleCase(attachmentBytes).copy(
+                id = "local-case",
+                alias = "本地保留事实",
+            )
+            val localFile = destinationAttachmentRoot.resolve(
+                localCase.attachments.single().relativePath,
+            )
+            Files.createDirectories(localFile.parent)
+            Files.write(localFile, attachmentBytes)
+            val repository = RoomCaseRepository(destinationDatabase)
+            repository.save(localCase, null)
+            val localBefore = repository.findById("local-case")
+            val service = CaseBackupService(destinationDatabase, fixedClock)
+            val preview = service.preview(
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("preview-work"),
+            ) as BackupPreviewResult.Success
+            val plan = service.prepareRestorePlan(
+                preview.preview,
+                listOf(
+                    BackupCaseRestoreDecision(
+                        sourceCaseId = "case-1",
+                        action = BackupCaseRestoreAction.KEEP_BOTH,
+                    ),
+                ),
+            ) as BackupRestorePlanResult.Success
+            destinationDatabase.openHelper.writableDatabase.execSQL(
+                """
+                CREATE TRIGGER reject_restored_case
+                BEFORE INSERT ON cases
+                WHEN NEW.id != 'local-case'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced restore failure');
+                END
+                """.trimIndent(),
+            )
+
+            val execution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("execute-work"),
+                attachmentRoot = destinationAttachmentRoot,
+            )
+
+            assertTrue(execution is BackupRestoreExecutionResult.Rejected)
+            assertEquals(
+                "RESTORE_EXECUTION_FAILED_ROLLED_BACK",
+                (execution as BackupRestoreExecutionResult.Rejected).code,
+            )
+            assertEquals(localBefore, repository.findById("local-case"))
+            assertEquals(listOf("local-case"), destinationDatabase.caseDao().allCases().map { it.id })
+            val restoredRoot = destinationAttachmentRoot.resolve("restored")
+            assertTrue(
+                !Files.exists(restoredRoot) ||
+                    Files.list(restoredRoot).use { it.findAny().isEmpty },
+            )
+            assertArrayEquals(attachmentBytes, Files.readAllBytes(localFile))
+        }
+    }
+
+    @Test
+    fun `进程中断日志在数据库未提交时清理孤儿附件`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-restore-recovery-rollback-")
+        val transactionId = "11111111-1111-4111-8111-111111111111"
+        val finalRoot = root.resolve("restored/$transactionId")
+        Files.createDirectories(finalRoot)
+        Files.write(finalRoot.resolve("orphan"), "orphan".encodeToByteArray())
+        val journalRoot = root.resolve(".restore-journal")
+        Files.createDirectories(journalRoot)
+        val journal = """
+            {
+              "formatVersion": 1,
+              "transactionId": "$transactionId",
+              "state": "FILES_MOVED",
+              "finalDirectory": "restored/$transactionId",
+              "expectedCases": [
+                {
+                  "caseId": "missing-case",
+                  "payloadSha256": "${"0".repeat(64)}"
+                }
+              ]
+            }
+        """.trimIndent()
+        Files.write(
+            journalRoot.resolve("$transactionId.json"),
+            journal.encodeToByteArray(),
+        )
+
+        withDatabase { database ->
+            val result = CaseBackupService(database, fixedClock)
+                .recoverInterruptedRestores(root)
+            assertEquals(
+                BackupRestoreRecoveryResult.Success(
+                    rolledBackTransactions = 1,
+                    finalizedTransactions = 0,
+                ),
+                result,
+            )
+        }
+        assertFalse(Files.exists(finalRoot))
+        assertFalse(Files.exists(journalRoot.resolve("$transactionId.json")))
+    }
+
+    @Test
+    fun `进程中断日志在数据库已提交且附件完整时只完成收尾`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-restore-recovery-finalize-")
+        val transactionId = "22222222-2222-4222-8222-222222222222"
+        val attachmentBytes = "脱敏已提交恢复附件".encodeToByteArray()
+        val relativePath = "restored/$transactionId/restored-attachment"
+        val finalFile = root.resolve(relativePath)
+        Files.createDirectories(finalFile.parent)
+        Files.write(finalFile, attachmentBytes)
+        val journalRoot = root.resolve(".restore-journal")
+        Files.createDirectories(journalRoot)
+
+        withDatabase { database ->
+            val repository = RoomCaseRepository(database)
+            val committedCase = sampleCase(attachmentBytes).copy(
+                id = "restored-case",
+                attachments = sampleCase(attachmentBytes).attachments.map {
+                    it.copy(
+                        id = "restored-attachment",
+                        relativePath = relativePath,
+                    )
+                },
+                textRecords = sampleCase(attachmentBytes).textRecords.map {
+                    it.copy(sourceAttachmentId = "restored-attachment")
+                },
+                events = sampleCase(attachmentBytes).events.map {
+                    it.copy(sourceAttachmentId = "restored-attachment")
+                },
+                fieldEvidence = sampleCase(attachmentBytes).fieldEvidence.map {
+                    it.copy(attachmentId = "restored-attachment")
+                },
+            )
+            repository.save(committedCase, null)
+            val persisted = repository.findById("restored-case")!!
+            val payloadSha256 = sha256(
+                DomainJson.encodeToString(
+                    BaziCase.serializer(),
+                    persisted,
+                ).encodeToByteArray(),
+            )
+            val journal = """
+                {
+                  "formatVersion": 1,
+                  "transactionId": "$transactionId",
+                  "state": "FILES_MOVED",
+                  "finalDirectory": "restored/$transactionId",
+                  "expectedCases": [
+                    {
+                      "caseId": "restored-case",
+                      "payloadSha256": "$payloadSha256"
+                    }
+                  ]
+                }
+            """.trimIndent()
+            val journalFile = journalRoot.resolve("$transactionId.json")
+            Files.write(journalFile, journal.encodeToByteArray())
+
+            val result = CaseBackupService(database, fixedClock)
+                .recoverInterruptedRestores(root)
+
+            assertEquals(
+                BackupRestoreRecoveryResult.Success(
+                    rolledBackTransactions = 0,
+                    finalizedTransactions = 1,
+                ),
+                result,
+            )
+            assertFalse(Files.exists(journalFile))
+        }
+        assertArrayEquals(attachmentBytes, Files.readAllBytes(finalFile))
     }
 
     @Test

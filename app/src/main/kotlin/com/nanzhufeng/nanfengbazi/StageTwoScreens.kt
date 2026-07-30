@@ -94,6 +94,7 @@ fun NanfengBaziApp(
     onCreateEncryptedFullBackupDocument: (String) -> Unit = {},
     onOpenFullBackupDocument: () -> Unit = {},
     onRetryPasswordFullBackupDocument: (CharArray) -> Unit = {},
+    onExecuteFullBackupDocument: (CharArray?) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -291,6 +292,82 @@ fun NanfengBaziApp(
                     onDismiss = viewModel::cancelPasswordFullBackupImport,
                 )
             }
+            if (state.fullBackupRestoreConfirmationVisible) {
+                val plan = state.fullBackupRestorePlan
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelFullBackupRestore,
+                    title = { Text("执行完整备份恢复？") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "将按已检查的逐例方案写入当前资料库，并复制被导入命例的" +
+                                    "真实附件。不会提供无范围覆盖。",
+                            )
+                            plan?.let {
+                                Text(
+                                    "按原 ID ${it.decisions.count { decision ->
+                                        decision.action ==
+                                            BackupCaseRestoreAction.IMPORT_AS_IS
+                                    }}，保留两份 ${it.decisions.count { decision ->
+                                        decision.action ==
+                                            BackupCaseRestoreAction.KEEP_BOTH
+                                    }}，范围合并 ${it.decisions.count { decision ->
+                                        decision.action == BackupCaseRestoreAction.MERGE
+                                    }}，跳过 ${it.decisions.count { decision ->
+                                        decision.action == BackupCaseRestoreAction.SKIP
+                                    }}。",
+                                )
+                            }
+                            Text(
+                                "提交前会重新读取同一文件、复核冲突和目标修订；任一步失败会" +
+                                    "回滚数据库并移除本次新增附件。",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (viewModel.confirmFullBackupRestore()) {
+                                    onExecuteFullBackupDocument(null)
+                                }
+                            },
+                            modifier = Modifier.testTag("confirm_full_backup_restore"),
+                        ) {
+                            Text(
+                                if (plan?.preview?.manifest?.encrypted == true) {
+                                    "继续并输入密码"
+                                } else {
+                                    "确认执行恢复"
+                                },
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = viewModel::cancelFullBackupRestore,
+                            modifier = Modifier.testTag("cancel_full_backup_restore"),
+                        ) {
+                            Text("返回方案")
+                        }
+                    },
+                )
+            }
+            if (state.fullBackupRestorePasswordVisible) {
+                SingleCasePasswordDialog(
+                    title = "再次输入完整备份密码",
+                    description = "密码只用于本次提交前重新认证同一备份，不会保存。",
+                    error = state.fullBackupPasswordError,
+                    requireConfirmation = false,
+                    confirmLabel = "认证并执行恢复",
+                    confirmTag = "confirm_password_full_backup_restore",
+                    passwordTag = "full_backup_restore_password",
+                    onConfirm = { password, _ ->
+                        onExecuteFullBackupDocument(password)
+                    },
+                    onDismiss = viewModel::cancelFullBackupRestore,
+                )
+            }
             if (state.singleCaseExportConfirmationVisible) {
                 AlertDialog(
                     onDismissRequest = viewModel::cancelSingleCaseExport,
@@ -388,7 +465,11 @@ fun NanfengBaziApp(
                 )
             }
             state.fullBackupPreview
-                ?.takeIf { state.fullBackupMergePreparation == null }
+                ?.takeIf {
+                    state.fullBackupMergePreparation == null &&
+                        !state.fullBackupRestoreConfirmationVisible &&
+                        !state.fullBackupRestorePasswordVisible
+                }
                 ?.let { preview ->
                 FullBackupPreviewDialog(
                     preview = preview,
@@ -398,6 +479,7 @@ fun NanfengBaziApp(
                     onChooseDecision = viewModel::chooseFullBackupDecision,
                     onPrepareMerge = viewModel::prepareFullBackupCaseMerge,
                     onPreparePlan = viewModel::prepareFullBackupRestorePlan,
+                    onRequestRestore = viewModel::requestFullBackupRestore,
                     onDismiss = viewModel::dismissFullBackupPreview,
                 )
             }
@@ -450,6 +532,7 @@ private fun FullBackupPreviewDialog(
     onChooseDecision: (String, BackupCaseRestoreAction) -> Unit,
     onPrepareMerge: (String, String) -> Unit,
     onPreparePlan: () -> Unit,
+    onRequestRestore: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val manifest = preview.manifest
@@ -585,9 +668,12 @@ private fun FullBackupPreviewDialog(
                                 )
                             },
                             enabled = !busy,
-                            modifier = Modifier.testTag(
-                                "full_backup_skip_${sourceCase.sourceCaseId}",
-                            ),
+                            modifier = Modifier
+                                .testTag("full_backup_skip_${sourceCase.sourceCaseId}")
+                                .semantics {
+                                    contentDescription =
+                                        "跳过完整备份来源 ${sourceCase.sourceCaseId}"
+                                },
                         ) { Text("跳过") }
                     }
                 }
@@ -596,6 +682,15 @@ private fun FullBackupPreviewDialog(
                         "恢复方案已通过过期与范围检查，尚未写入数据。",
                         modifier = Modifier.testTag("full_backup_plan_ready"),
                     )
+                    Button(
+                        onClick = onRequestRestore,
+                        enabled = !busy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("request_full_backup_restore"),
+                    ) {
+                        Text("核对后执行恢复")
+                    }
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Text(

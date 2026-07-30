@@ -94,6 +94,21 @@ class RoomCaseRepository(
         }
     }
 
+    internal suspend fun insertRestored(case: BaziCase): CaseWriteResult =
+        database.withTransaction {
+            require(case.revision > 0) { "恢复命例必须携带已持久化修订号" }
+            val current = dao.findCase(case.id)
+            if (current != null) {
+                return@withTransaction CaseWriteResult.AlreadyExists(
+                    caseId = case.id,
+                    revision = current.revision,
+                )
+            }
+            dao.insertCase(case.toCaseEntity())
+            insertChildren(case)
+            CaseWriteResult.Created(case.id, case.revision)
+        }
+
     override suspend fun findById(id: String): BaziCase? = database.withTransaction {
         val entity = dao.findCase(id) ?: return@withTransaction null
         entity.toDomain(
