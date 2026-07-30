@@ -106,6 +106,7 @@
 | 带附件范围合并 | 只收集所选记录/事件中实际新增内容引用的来源附件；跨模块按来源附件 ID 去重 | `SingleCaseExchangeService` 分析/重映射 → `CaseBackupService` 文件事务 | 新附件 ID/路径、引用一致；失败只清理本事务文件，目标既有附件和字段证据不变 |
 | 恢复附件事务 | 导入命例的附件复制到事务专属暂存目录，校验后原子切换；不覆盖现有路径 | `CaseBackupService` → App 私有附件根目录 | 数据库失败只移除本次目录；现有命例和附件保持不变 |
 | 中断恢复日志 | 启动及下次执行前扫描事务日志；无 DB 事实则回收附件，事实与附件完全一致则收尾 | `StageTwoViewModel` → `CaseBackupService.recoverInterruptedRestores` | 部分写入、载荷变化或附件不一致时停止自动处理并保留现场 |
+| 进程强杀设备证据 | instrumentation 持久化真实私有边界并等待；主机强杀后以新 PID 冷启动验证 | `scripts/run_restore_process_recovery_e2e.sh` → `RestoreProcessRecoveryDeviceTest` | 脚本拒绝非模拟器；强杀后状态仍在，冷启动后日志/暂存/最终孤儿目录均消失 |
 | 完整来源聚合 | 从备份 Room 实体、交叉引用与 sortOrder 重建完整领域命例，供冲突、差异和提交共用 | `RoomDataSnapshot.toDomainCases` → `BackupCaseRestorePreview.sourceCase` | 与原仓储聚合完全相等并执行 `BaziCase` 引用约束 |
 | 共享合并分析 | 完整备份目标分析调用单命例同一内容去重与逐字段差异实现 | `CaseBackupService.prepareCaseMerge` → `SingleCaseExchangeService.analyzeMerge` | 候选复查、字段键和可追加数量一致；零写入 |
 | 完整备份范围编辑 | 对具体活动候选显示模块数量和逐字段前后值；空范围不能确认，返回后保留其他逐例决策 | `FullBackupMergeDialog` → `StageTwoViewModel` | 模拟器从真实 ZIP 冲突候选进入、空范围禁用并返回预览 |
