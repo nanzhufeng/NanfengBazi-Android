@@ -175,6 +175,7 @@ data class ImportedLongTextEvidence(
     val parserConfidence: Float,
     val parserRuleId: String,
     val userEdited: Boolean = false,
+    val adopted: Boolean = false,
 ) {
     init {
         require(id.isNotBlank()) { "长文本证据 id 不能为空" }

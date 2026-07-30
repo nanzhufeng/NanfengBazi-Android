@@ -63,6 +63,7 @@ import kotlinx.coroutines.withContext
 sealed interface AppDestination {
     data object CaseList : AppDestination
     data object CreateCase : AppDestination
+    data object ScreenshotImportReview : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
     data class EditCase(val caseId: String) : AppDestination
     data class AddBirthTimeCandidate(val caseId: String) : AppDestination
@@ -84,6 +85,10 @@ class StageTwoNavigator {
 
     fun openCreate(): AppDestination {
         return push(AppDestination.CreateCase)
+    }
+
+    fun openScreenshotImportReview(): AppDestination {
+        return push(AppDestination.ScreenshotImportReview)
     }
 
     fun openDetail(caseId: String): AppDestination {
@@ -1787,6 +1792,15 @@ class StageTwoViewModel(
                 duplicateCandidates = emptyList(),
                 previewing = false,
                 instantCalculation = null,
+                message = null,
+            )
+        }
+    }
+
+    fun openScreenshotImportReview() {
+        mutableState.update {
+            it.copy(
+                destination = navigator.openScreenshotImportReview(),
                 message = null,
             )
         }

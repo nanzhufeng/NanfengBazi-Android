@@ -102,6 +102,10 @@ fun NanfengBaziApp(
     screenshotImportState: ScreenshotImportUiState = ScreenshotImportUiState(),
     onRetryScreenshotImport: () -> Unit = {},
     onDeleteScreenshotImport: () -> Unit = {},
+    onSetScreenshotFieldAdopted: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onSetScreenshotLongTextAdopted: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onSetScreenshotCandidateAdopted: (String, Boolean) -> Unit = { _, _ -> },
+    onCommitScreenshotCandidate: (String) -> Unit = {},
     onConsumeScreenshotImportMessage: () -> Unit = {},
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
@@ -134,6 +138,17 @@ fun NanfengBaziApp(
             onConsumeScreenshotImportMessage()
         }
     }
+    LaunchedEffect(screenshotImportState.committedCaseCount) {
+        if (screenshotImportState.committedCaseCount > 0) {
+            viewModel.refreshCases()
+            if (
+                screenshotImportState.activeSessionId == null &&
+                state.destination == AppDestination.ScreenshotImportReview
+            ) {
+                viewModel.navigateBack()
+            }
+        }
+    }
     BackHandler(enabled = state.destination != AppDestination.CaseList) {
         viewModel.navigateBack()
     }
@@ -156,10 +171,20 @@ fun NanfengBaziApp(
                         screenshotImportState = screenshotImportState,
                         onRetryScreenshotImport = onRetryScreenshotImport,
                         onDeleteScreenshotImport = onDeleteScreenshotImport,
+                        onReviewScreenshotImport = viewModel::openScreenshotImportReview,
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onPreviewFullBackup = onOpenFullBackupDocument,
                         onOpenCase = viewModel::openDetail,
+                        modifier = Modifier.padding(padding),
+                    )
+                    AppDestination.ScreenshotImportReview -> ScreenshotImportReviewScreen(
+                        state = screenshotImportState,
+                        onBack = viewModel::navigateBack,
+                        onSetFieldAdopted = onSetScreenshotFieldAdopted,
+                        onSetLongTextAdopted = onSetScreenshotLongTextAdopted,
+                        onSetCandidateAdopted = onSetScreenshotCandidateAdopted,
+                        onCommitCandidate = onCommitScreenshotCandidate,
                         modifier = Modifier.padding(padding),
                     )
                     AppDestination.CreateCase -> CreateCaseScreen(
@@ -1429,6 +1454,7 @@ private fun CaseListScreen(
     screenshotImportState: ScreenshotImportUiState,
     onRetryScreenshotImport: () -> Unit,
     onDeleteScreenshotImport: () -> Unit,
+    onReviewScreenshotImport: () -> Unit,
     onImportSingleCase: () -> Unit,
     onExportFullBackup: () -> Unit,
     onPreviewFullBackup: () -> Unit,
@@ -1505,6 +1531,7 @@ private fun CaseListScreen(
             state = screenshotImportState,
             onRetry = onRetryScreenshotImport,
             onDelete = onDeleteScreenshotImport,
+            onReview = onReviewScreenshotImport,
         )
         Row(
             modifier = Modifier
@@ -1572,6 +1599,7 @@ private fun ScreenshotImportSummary(
     state: ScreenshotImportUiState,
     onRetry: () -> Unit,
     onDelete: () -> Unit,
+    onReview: () -> Unit,
 ) {
     if (
         !state.busy &&
@@ -1646,6 +1674,14 @@ private fun ScreenshotImportSummary(
             if (facts.isNotEmpty()) Text(facts.joinToString(" · "))
             if (state.needsReview) {
                 Text("当前结果只保存在导入会话中，尚未写入正式命例。")
+                if (state.reviewCandidates.isNotEmpty()) {
+                    Button(
+                        onClick = onReview,
+                        modifier = Modifier.testTag("review_screenshot_import_button"),
+                    ) {
+                        Text("逐项核对")
+                    }
+                }
             }
             if (state.canRetry && !state.busy) {
                 OutlinedButton(
@@ -1687,6 +1723,197 @@ private fun ScreenshotImportSummary(
                 }
             },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScreenshotImportReviewScreen(
+    state: ScreenshotImportUiState,
+    onBack: () -> Unit,
+    onSetFieldAdopted: (String, String, Boolean) -> Unit,
+    onSetLongTextAdopted: (String, String, Boolean) -> Unit,
+    onSetCandidateAdopted: (String, Boolean) -> Unit,
+    onCommitCandidate: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("screenshot_import_review_screen"),
+    ) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text("核对问真导入", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "确认前不会写入正式命例",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            navigationIcon = {
+                TextButton(onClick = onBack) {
+                    Text("返回")
+                }
+            },
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(state.reviewCandidates, key = ScreenshotCandidateReviewUi::id) { candidate ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("screenshot_candidate_${candidate.id}"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(candidate.alias, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "来源图片 ${candidate.imageCount} 张 · " +
+                                "字段 ${candidate.fields.size} 项 · " +
+                                "原文 ${candidate.longTexts.size} 段",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                onSetCandidateAdopted(candidate.id, !candidate.fullyAdopted)
+                            },
+                            modifier = Modifier.testTag(
+                                "adopt_screenshot_candidate_${candidate.id}",
+                            ),
+                        ) {
+                            Text(if (candidate.fullyAdopted) "撤销本候选采用" else "采用本候选全部内容")
+                        }
+                        Button(
+                            onClick = { onCommitCandidate(candidate.id) },
+                            enabled = candidate.readyToCommit &&
+                                candidate.targetCaseId == null &&
+                                state.committingCandidateId == null,
+                            modifier = Modifier.testTag(
+                                "commit_screenshot_candidate_${candidate.id}",
+                            ),
+                        ) {
+                            Text(
+                                when {
+                                    candidate.targetCaseId != null -> "已写入正式命例"
+                                    state.committingCandidateId == candidate.id -> "正在复算并写入…"
+                                    !candidate.readyToCommit -> "必填字段尚未齐全"
+                                    else -> "复算一致后写入正式命例"
+                                },
+                            )
+                        }
+                        if (candidate.missingRequiredFields.isNotEmpty()) {
+                            Text(
+                                "还需确认：${candidate.missingRequiredFields.joinToString("、")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        Text(
+                            "提交时会用采用的生日和时柱复算；四柱不一致将自动拦截。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        candidate.fields.forEach { field ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(field.label, fontWeight = FontWeight.Medium)
+                                        Switch(
+                                            checked = field.adoptedValue != null,
+                                            onCheckedChange = { adopted ->
+                                                onSetFieldAdopted(
+                                                    candidate.id,
+                                                    field.id,
+                                                    adopted,
+                                                )
+                                            },
+                                            modifier = Modifier.testTag(
+                                                "adopt_screenshot_field_${field.id}",
+                                            ),
+                                        )
+                                    }
+                                    Text("来源值：${field.sourceValue}")
+                                    Text("规范值：${field.normalizedValue ?: "未识别"}")
+                                    Text("计算值：${field.calculationValue}")
+                                    Text("采用值：${field.adoptedValue ?: "未采用"}")
+                                    field.confidencePercent?.let {
+                                        Text(
+                                            "最低置信度：$it%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        candidate.longTexts.forEach { longText ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(longText.label, fontWeight = FontWeight.Medium)
+                                        Switch(
+                                            checked = longText.adopted,
+                                            onCheckedChange = { adopted ->
+                                                onSetLongTextAdopted(
+                                                    candidate.id,
+                                                    longText.id,
+                                                    adopted,
+                                                )
+                                            },
+                                            modifier = Modifier.testTag(
+                                                "adopt_screenshot_text_${longText.id}",
+                                            ),
+                                        )
+                                    }
+                                    Text(longText.rawText)
+                                    Text(
+                                        if (longText.adopted) "采用状态：已确认" else "采用状态：未采用",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

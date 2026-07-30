@@ -1,0 +1,505 @@
+package com.nanzhufeng.nanfengbazi
+
+import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
+import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
+import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
+import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
+import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
+import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
+import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.time.Clock
+import java.time.LocalDate
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+sealed interface ScreenshotCandidateCommitResult {
+    data class Committed(
+        val caseId: String,
+        val sessionCompleted: Boolean,
+    ) : ScreenshotCandidateCommitResult
+
+    data class Rejected(val message: String) : ScreenshotCandidateCommitResult
+    data class Failed(val message: String) : ScreenshotCandidateCommitResult
+}
+
+class ScreenshotImportCommitter(
+    private val caseRepository: CaseRepository,
+    private val importSessionRepository: ImportSessionRepository,
+    private val baziEngine: BaziEngine,
+    private val importImageStore: PrivateImportImageStore,
+    private val attachmentRoot: Path,
+    private val clock: Clock = Clock.systemUTC(),
+) {
+    suspend fun commitCandidate(
+        sessionId: String,
+        candidateId: String,
+    ): ScreenshotCandidateCommitResult {
+        val session = importSessionRepository.findById(sessionId)
+            ?: return ScreenshotCandidateCommitResult.Rejected("导入会话已经不存在。")
+        if (
+            session.status !in setOf(
+                ImportStatus.NEEDS_REVIEW,
+                ImportStatus.READY_TO_COMMIT,
+                ImportStatus.COMMITTING,
+            )
+        ) {
+            return ScreenshotCandidateCommitResult.Rejected("当前导入状态不能提交命例。")
+        }
+        val candidate = session.caseCandidates.singleOrNull { it.id == candidateId }
+            ?: return ScreenshotCandidateCommitResult.Rejected("找不到对应待核对候选。")
+        val caseId = stableCaseId(session.id, candidate.id)
+        candidate.targetCaseId?.let { targetCaseId ->
+            return completeSessionIfReady(session, targetCaseId)
+        }
+
+        val prepared = when (val result = prepareCase(session, candidate, caseId)) {
+            is PreparedCaseResult.Valid -> result
+            is PreparedCaseResult.Invalid ->
+                return ScreenshotCandidateCommitResult.Rejected(result.message)
+        }
+        val existing = caseRepository.findById(caseId)
+        if (existing == null) {
+            val duplicates = try {
+                caseRepository.findDuplicateCandidates(
+                    birthInput = prepared.case.birthInput,
+                    fourPillars = prepared.case.calculationSnapshots
+                        .single()
+                        .result
+                        .fourPillars,
+                    canonicalSolarDateTime = prepared.case.birthInput
+                        .calendarInput
+                        .let { it as BirthCalendarInput.Solar }
+                        .dateTime,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                return ScreenshotCandidateCommitResult.Failed(
+                    "重复命例检查失败，本次没有写入正式命例。",
+                )
+            }
+            if (duplicates.isNotEmpty()) {
+                return ScreenshotCandidateCommitResult.Rejected(
+                    "检测到相同出生资料或四柱的既有命例，请先人工决定是否合并。",
+                )
+            }
+        } else if (existing.sourceType != CaseSourceType.WENZHEN_SCREENSHOT) {
+            return ScreenshotCandidateCommitResult.Rejected("稳定命例标识已被其他来源占用。")
+        }
+
+        val createdPaths = mutableListOf<Path>()
+        return try {
+            copyAttachments(prepared, createdPaths)
+            if (existing == null) {
+                when (caseRepository.save(prepared.case, expectedRevision = null)) {
+                    is CaseWriteResult.Created,
+                    is CaseWriteResult.AlreadyExists,
+                    -> Unit
+
+                    is CaseWriteResult.Updated,
+                    is CaseWriteResult.RevisionConflict,
+                    -> error("正式命例写入出现非预期修订结果")
+                }
+            }
+            markCandidateCommitted(sessionId, candidateId, caseId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            if (caseRepository.findById(caseId) == null) {
+                cleanupCreatedPaths(createdPaths)
+            }
+            ScreenshotCandidateCommitResult.Failed(
+                "命例提交未完成；待核对会话和原图仍保留，可稍后重试。",
+            )
+        }
+    }
+
+    suspend fun resumeCompletedSession(sessionId: String): ScreenshotCandidateCommitResult {
+        val session = importSessionRepository.findById(sessionId)
+            ?: return ScreenshotCandidateCommitResult.Rejected("导入会话已经不存在。")
+        val targetCaseIds = session.caseCandidates
+            .mapNotNull(ImportCaseCandidate::targetCaseId)
+        val targetCaseId = targetCaseIds.lastOrNull()
+            ?: return ScreenshotCandidateCommitResult.Rejected("当前会话没有可恢复的已提交候选。")
+        if (session.caseCandidates.any { it.targetCaseId == null }) {
+            return ScreenshotCandidateCommitResult.Rejected("当前会话仍有候选等待核对。")
+        }
+        if (targetCaseIds.any { caseRepository.findById(it) == null }) {
+            return ScreenshotCandidateCommitResult.Failed(
+                "导入完成状态与正式命例不一致，已停止自动收尾。",
+            )
+        }
+        return completeSessionIfReady(session, targetCaseId)
+    }
+
+    private suspend fun prepareCase(
+        session: ImportSession,
+        candidate: ImportCaseCandidate,
+        caseId: String,
+    ): PreparedCaseResult {
+        val fields = candidate.fieldEvidenceIds.mapNotNull { id ->
+            session.extractedFields.singleOrNull { it.id == id }
+        }
+        fun adopted(fieldKey: String): TypedFieldValue? =
+            fields.singleOrNull { it.fieldKey == fieldKey }?.adoptedValue
+
+        val alias = (adopted(FIELD_ALIAS) as? TypedFieldValue.Text)
+            ?.value
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: return PreparedCaseResult.Invalid("请先确认命例名称。")
+        val sex = when ((adopted(FIELD_SEX) as? TypedFieldValue.Text)?.value) {
+            "男" -> SexForFortuneDirection.MAN
+            "女" -> SexForFortuneDirection.WOMAN
+            else -> return PreparedCaseResult.Invalid("请先确认性别。")
+        }
+        val solarDate = (adopted(FIELD_SOLAR_DATE) as? TypedFieldValue.Text)
+            ?.value
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: return PreparedCaseResult.Invalid("请先确认有效的公历生日。")
+        val sourcePillars = (adopted(FIELD_FOUR_PILLARS) as? TypedFieldValue.FourPillarsValue)
+            ?.value
+            ?: return PreparedCaseResult.Invalid("请先确认四柱。")
+        val representativeHour = sourcePillars.hour
+            .lastOrNull()
+            ?.let(HOUR_BY_BRANCH::get)
+            ?: return PreparedCaseResult.Invalid("无法从时柱确定对应时辰，请人工补充出生时间。")
+        val birthInput = BirthInput(
+            calendarInput = BirthCalendarInput.Solar(
+                CivilDateTime(
+                    year = solarDate.year,
+                    month = solarDate.monthValue,
+                    day = solarDate.dayOfMonth,
+                    hour = representativeHour,
+                    minute = 0,
+                    second = 0,
+                ),
+            ),
+            sexForFortuneDirection = sex,
+            timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+            timeZoneId = "Asia/Shanghai",
+            resolvedUtcOffsetSeconds = 8 * 60 * 60,
+            timeZoneDataVersion = TIME_ZONE_EVIDENCE_VERSION,
+            useTrueSolarTime = false,
+            timeSourceType = TimeSourceType.WENZHEN_SCREENSHOT,
+            sourceNote = "由问真截图时柱推定对应时辰代表时刻，并与来源四柱复核。",
+        )
+        val calculation = try {
+            baziEngine.calculate(birthInput, CalculationProfile.tymeDefault())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            return PreparedCaseResult.Invalid("采用的出生资料无法完成排盘，请返回核对。")
+        }
+        if (calculation.fourPillars != sourcePillars) {
+            return PreparedCaseResult.Invalid(
+                "来源四柱与本机复算不一致，已阻止写入；请人工补充时间或修正 OCR。",
+            )
+        }
+        val normalizedBirthInput = calculation.normalizedInput
+        val now = clock.instant()
+        val snapshotId = "$caseId-snapshot"
+        val birthCandidateId = "$caseId-birth"
+        val candidateImageIds = candidate.imageIds.toSet()
+        val attachments = session.images
+            .filter { it.id in candidateImageIds }
+            .map { image ->
+                SourceAttachment(
+                    id = image.id,
+                    relativePath = attachmentRelativePath(caseId, image.id, image.mimeType),
+                    originalFileName = image.originalFileName,
+                    mimeType = image.mimeType,
+                    sha256 = image.sha256,
+                    byteSize = image.byteSize,
+                    createdAt = image.createdAt,
+                )
+            }
+        val adoptedLongTexts = candidate.longTextEvidenceIds.mapNotNull { id ->
+            session.extractedLongTexts.singleOrNull { it.id == id }?.takeIf { it.adopted }
+        }
+        val case = BaziCase(
+            id = caseId,
+            alias = alias,
+            name = ExplicitText.absent(),
+            sexForFortuneDirection = sex,
+            sourceType = CaseSourceType.WENZHEN_SCREENSHOT,
+            birthInput = normalizedBirthInput,
+            birthTimeCandidates = listOf(
+                BirthTimeCandidate(
+                    id = birthCandidateId,
+                    label = "问真截图时辰",
+                    birthInput = normalizedBirthInput,
+                    calculationSnapshotId = snapshotId,
+                    adopted = true,
+                    createdAt = now,
+                ),
+            ),
+            textRecords = adoptedLongTexts.map { it.toCaseTextRecord(caseId, now) },
+            calculationSnapshots = listOf(
+                CaseCalculationSnapshot(
+                    id = snapshotId,
+                    result = calculation,
+                    adopted = true,
+                    birthTimeCandidateId = birthCandidateId,
+                    createdAt = now,
+                ),
+            ),
+            attachments = attachments,
+            fieldEvidence = fields,
+            createdAt = now,
+            updatedAt = now,
+        )
+        return PreparedCaseResult.Valid(
+            case = case,
+            imagesById = session.images.associateBy { it.id },
+        )
+    }
+
+    private suspend fun copyAttachments(
+        prepared: PreparedCaseResult.Valid,
+        createdPaths: MutableList<Path>,
+    ) {
+        prepared.case.attachments.forEach { attachment ->
+            val image = requireNotNull(prepared.imagesById[attachment.id])
+            val bytes = importImageStore.readBytes(image)
+            val target = resolveAttachment(attachment.relativePath)
+            withContext(Dispatchers.IO) {
+                Files.createDirectories(target.parent)
+                if (Files.exists(target)) {
+                    require(Files.size(target) == attachment.byteSize) {
+                        "既有附件大小不一致"
+                    }
+                    require(sha256(target) == attachment.sha256) {
+                        "既有附件摘要不一致"
+                    }
+                    return@withContext
+                }
+                val temp = target.resolveSibling("${target.fileName}.part-${UUID.randomUUID()}")
+                try {
+                    Files.write(temp, bytes)
+                    try {
+                        Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE)
+                    } catch (_: AtomicMoveNotSupportedException) {
+                        Files.move(temp, target)
+                    }
+                    createdPaths.add(target)
+                } catch (error: Throwable) {
+                    Files.deleteIfExists(temp)
+                    throw error
+                }
+            }
+        }
+    }
+
+    private suspend fun markCandidateCommitted(
+        sessionId: String,
+        candidateId: String,
+        caseId: String,
+    ): ScreenshotCandidateCommitResult {
+        var session = importSessionRepository.findById(sessionId)
+            ?: return ScreenshotCandidateCommitResult.Failed("正式命例已写入，但导入会话需要恢复。")
+        if (session.caseCandidates.none { it.id == candidateId }) {
+            return ScreenshotCandidateCommitResult.Failed("正式命例已写入，但候选状态需要恢复。")
+        }
+        if (session.caseCandidates.single { it.id == candidateId }.targetCaseId == null) {
+            val updated = session.copy(
+                caseCandidates = session.caseCandidates.map { candidate ->
+                    if (candidate.id == candidateId) {
+                        candidate.copy(targetCaseId = caseId)
+                    } else {
+                        candidate
+                    }
+                },
+                updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+            )
+            val write = importSessionRepository.save(updated, session.revision)
+            if (write !is ImportSessionWriteResult.Updated) {
+                return ScreenshotCandidateCommitResult.Failed(
+                    "正式命例已写入，但导入会话标记失败；请重试以完成恢复。",
+                )
+            }
+            session = requireNotNull(importSessionRepository.findById(sessionId))
+        }
+        return completeSessionIfReady(session, caseId)
+    }
+
+    private suspend fun completeSessionIfReady(
+        initial: ImportSession,
+        caseId: String,
+    ): ScreenshotCandidateCommitResult {
+        if (initial.caseCandidates.any { it.targetCaseId == null }) {
+            return ScreenshotCandidateCommitResult.Committed(caseId, sessionCompleted = false)
+        }
+        var session = initial
+        if (session.status == ImportStatus.NEEDS_REVIEW) {
+            session = persistStatus(session, ImportStatus.READY_TO_COMMIT)
+                ?: return ScreenshotCandidateCommitResult.Failed(
+                    "命例已写入，但完成状态待恢复。",
+                )
+        }
+        if (session.status == ImportStatus.READY_TO_COMMIT) {
+            session = persistStatus(session, ImportStatus.COMMITTING)
+                ?: return ScreenshotCandidateCommitResult.Failed(
+                    "命例已写入，但完成状态待恢复。",
+                )
+        }
+        if (session.status == ImportStatus.COMMITTING) {
+            val completed = session.copy(
+                status = ImportStatus.COMPLETED,
+                completedAt = clock.instant().coerceAtLeast(session.updatedAt),
+                updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+            )
+            if (importSessionRepository.save(completed, session.revision)
+                !is ImportSessionWriteResult.Updated
+            ) {
+                return ScreenshotCandidateCommitResult.Failed(
+                    "命例已写入，但完成状态待恢复。",
+                )
+            }
+        }
+        return ScreenshotCandidateCommitResult.Committed(caseId, sessionCompleted = true)
+    }
+
+    private suspend fun persistStatus(
+        session: ImportSession,
+        status: ImportStatus,
+    ): ImportSession? {
+        val updated = session.copy(
+            status = status,
+            updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+        )
+        if (importSessionRepository.save(updated, session.revision)
+            !is ImportSessionWriteResult.Updated
+        ) {
+            return null
+        }
+        return importSessionRepository.findById(session.id)
+    }
+
+    private fun ImportedLongTextEvidence.toCaseTextRecord(
+        caseId: String,
+        now: java.time.Instant,
+    ) = CaseTextRecord(
+        id = "$caseId-text-${id.takeLast(16)}",
+        type = when (type) {
+            ImportedLongTextType.OWNER_FEEDBACK -> CaseTextRecordType.OWNER_FEEDBACK
+            ImportedLongTextType.MASTER_COMMENTARY -> CaseTextRecordType.MASTER_COMMENTARY
+            ImportedLongTextType.UNKNOWN -> CaseTextRecordType.NOTE
+        },
+        content = rawText,
+        sourceAttachmentId = imageId,
+        createdAt = now,
+        updatedAt = now,
+    )
+
+    private fun resolveAttachment(relativePath: String): Path {
+        require(!relativePath.startsWith("/") && '\\' !in relativePath && ':' !in relativePath)
+        require(relativePath.split('/').none { it.isBlank() || it == "." || it == ".." })
+        val root = attachmentRoot.toAbsolutePath().normalize()
+        val target = root.resolve(relativePath).normalize()
+        require(target.startsWith(root)) { "附件路径越界" }
+        return target
+    }
+
+    private suspend fun cleanupCreatedPaths(paths: List<Path>) {
+        withContext(Dispatchers.IO) {
+            paths.asReversed().forEach { Files.deleteIfExists(it) }
+        }
+    }
+
+    private fun stableCaseId(sessionId: String, candidateId: String): String =
+        "wenzhen-${stableToken("$sessionId\u0000$candidateId")}"
+
+    private fun stableToken(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.encodeToByteArray())
+            .joinToString("") { "%02x".format(it) }
+            .take(24)
+
+    private fun attachmentRelativePath(
+        caseId: String,
+        imageId: String,
+        mimeType: String,
+    ): String = "wenzhen/$caseId/$imageId.${mimeType.extension()}"
+
+    private fun String.extension(): String = when (lowercase()) {
+        "image/jpeg", "image/jpg" -> "jpg"
+        "image/png" -> "png"
+        "image/webp" -> "webp"
+        "image/heic" -> "heic"
+        "image/heif" -> "heif"
+        else -> "img"
+    }
+
+    private fun sha256(path: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private sealed interface PreparedCaseResult {
+        data class Valid(
+            val case: BaziCase,
+            val imagesById: Map<String, com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef>,
+        ) : PreparedCaseResult
+
+        data class Invalid(val message: String) : PreparedCaseResult
+    }
+
+    private companion object {
+        const val FIELD_ALIAS = "identity.alias"
+        const val FIELD_SEX = "identity.sex"
+        const val FIELD_SOLAR_DATE = "birth.solar_date"
+        const val FIELD_FOUR_PILLARS = "chart.four_pillars"
+        const val TIME_ZONE_EVIDENCE_VERSION = "Asia-Shanghai-fixed-UTC+08-import-v1"
+        val HOUR_BY_BRANCH = mapOf(
+            '子' to 0,
+            '丑' to 2,
+            '寅' to 4,
+            '卯' to 6,
+            '辰' to 8,
+            '巳' to 10,
+            '午' to 12,
+            '未' to 14,
+            '申' to 16,
+            '酉' to 18,
+            '戌' to 20,
+            '亥' to 22,
+        )
+    }
+}

@@ -7,11 +7,16 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageFailure
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
+import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -132,6 +137,65 @@ class RoomImportSessionRepositoryTest {
 
         assertEquals(image, restored.images.single())
         assertEquals(session.imageFailures, restored.imageFailures)
+    }
+
+    @Test
+    fun `字段与长文本采用状态跨仓储实例保留`() = runTest {
+        val now = Instant.parse("2026-01-01T00:00:00Z")
+        val image = ImportImageRef(
+            id = "image-1",
+            originalFileName = "synthetic.png",
+            mimeType = "image/png",
+            relativePath = "session-1/image-1.png",
+            sha256 = "a".repeat(64),
+            byteSize = 10,
+            createdAt = now,
+        )
+        val field = CaseFieldEvidence(
+            id = "field-1",
+            attachmentId = image.id,
+            fieldKey = "identity.alias",
+            rawText = "案例甲",
+            normalizedValue = TypedFieldValue.Text("案例甲"),
+            adoptedValue = TypedFieldValue.Text("案例甲"),
+            parserConfidence = 0.95f,
+            parserRuleId = "fixture",
+            userEdited = false,
+            createdAt = now,
+        )
+        val longText = ImportedLongTextEvidence(
+            id = "text-1",
+            imageId = image.id,
+            type = ImportedLongTextType.OWNER_FEEDBACK,
+            rawText = "完整反馈原文",
+            ocrConfidence = 0.9f,
+            parserConfidence = 0.9f,
+            parserRuleId = "fixture",
+            adopted = true,
+        )
+        val session = fixture().copy(
+            status = ImportStatus.NEEDS_REVIEW,
+            images = listOf(image),
+            extractedFields = listOf(field),
+            extractedLongTexts = listOf(longText),
+            caseCandidates = listOf(
+                ImportCaseCandidate(
+                    id = "candidate-1",
+                    imageIds = listOf(image.id),
+                    fieldEvidenceIds = listOf(field.id),
+                    longTextEvidenceIds = listOf(longText.id),
+                    suggestedAlias = "案例甲",
+                    groupingConfidence = 0.9f,
+                    requiresReview = true,
+                ),
+            ),
+        )
+        repository.save(session, expectedRevision = 0)
+
+        val restored = requireNotNull(RoomImportSessionRepository(database).findById(session.id))
+
+        assertEquals(field.adoptedValue, restored.extractedFields.single().adoptedValue)
+        assertTrue(restored.extractedLongTexts.single().adopted)
     }
 
     private fun fixture(): ImportSession {

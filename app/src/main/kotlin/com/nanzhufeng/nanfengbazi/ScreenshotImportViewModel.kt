@@ -7,10 +7,15 @@ import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
+import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
+import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.imageparser.RecognitionRunResult
 import com.nanzhufeng.nanfengbazi.imageparser.DuplicateImageKind
@@ -31,6 +36,35 @@ data class PendingImportImage(
     val openInput: () -> InputStream?,
 )
 
+data class ScreenshotFieldReviewUi(
+    val id: String,
+    val label: String,
+    val sourceValue: String,
+    val normalizedValue: String?,
+    val calculationValue: String,
+    val adoptedValue: String?,
+    val confidencePercent: Int?,
+)
+
+data class ScreenshotLongTextReviewUi(
+    val id: String,
+    val label: String,
+    val rawText: String,
+    val adopted: Boolean,
+)
+
+data class ScreenshotCandidateReviewUi(
+    val id: String,
+    val alias: String,
+    val imageCount: Int,
+    val fields: List<ScreenshotFieldReviewUi>,
+    val longTexts: List<ScreenshotLongTextReviewUi>,
+    val fullyAdopted: Boolean,
+    val readyToCommit: Boolean,
+    val missingRequiredFields: List<String>,
+    val targetCaseId: String?,
+)
+
 data class ScreenshotImportUiState(
     val busy: Boolean = false,
     val progressText: String? = null,
@@ -44,6 +78,9 @@ data class ScreenshotImportUiState(
     val multiImageCandidateCount: Int = 0,
     val extractedFieldCount: Int = 0,
     val extractedLongTextCount: Int = 0,
+    val reviewCandidates: List<ScreenshotCandidateReviewUi> = emptyList(),
+    val committingCandidateId: String? = null,
+    val committedCaseCount: Int = 0,
     val needsReview: Boolean = false,
     val canRetry: Boolean = false,
     val recoverableSessionCount: Int = 0,
@@ -54,6 +91,7 @@ class ScreenshotImportViewModel(
     private val repository: ImportSessionRepository,
     private val imageStore: PrivateImportImageStore,
     private val recognitionScheduler: ScreenshotRecognitionScheduler,
+    private val importCommitter: ScreenshotImportCommitter? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
@@ -61,6 +99,7 @@ class ScreenshotImportViewModel(
         repository = container.importSessionRepository,
         imageStore = container.importImageStore,
         recognitionScheduler = container.screenshotRecognitionScheduler,
+        importCommitter = container.screenshotImportCommitter,
     )
 
     private val mutableState = MutableStateFlow(ScreenshotImportUiState())
@@ -190,6 +229,139 @@ class ScreenshotImportViewModel(
         }
     }
 
+    fun setFieldAdopted(
+        candidateId: String,
+        fieldId: String,
+        adopted: Boolean,
+    ) {
+        updateReviewSession { session ->
+            val candidate = session.caseCandidates
+                .singleOrNull { it.id == candidateId }
+                ?: return@updateReviewSession null
+            if (fieldId !in candidate.fieldEvidenceIds) return@updateReviewSession null
+            session.copy(
+                extractedFields = session.extractedFields.map { field ->
+                    if (field.id == fieldId) {
+                        field.copy(adoptedValue = field.normalizedValue.takeIf { adopted })
+                    } else {
+                        field
+                    }
+                },
+                updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+            )
+        }
+    }
+
+    fun setLongTextAdopted(
+        candidateId: String,
+        longTextId: String,
+        adopted: Boolean,
+    ) {
+        updateReviewSession { session ->
+            val candidate = session.caseCandidates
+                .singleOrNull { it.id == candidateId }
+                ?: return@updateReviewSession null
+            if (longTextId !in candidate.longTextEvidenceIds) return@updateReviewSession null
+            session.copy(
+                extractedLongTexts = session.extractedLongTexts.map { longText ->
+                    if (longText.id == longTextId) {
+                        longText.copy(adopted = adopted)
+                    } else {
+                        longText
+                    }
+                },
+                updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+            )
+        }
+    }
+
+    fun setCandidateAdopted(
+        candidateId: String,
+        adopted: Boolean,
+    ) {
+        updateReviewSession { session ->
+            val candidate = session.caseCandidates
+                .singleOrNull { it.id == candidateId }
+                ?: return@updateReviewSession null
+            session.copy(
+                extractedFields = session.extractedFields.map { field ->
+                    if (field.id in candidate.fieldEvidenceIds) {
+                        field.copy(adoptedValue = field.normalizedValue.takeIf { adopted })
+                    } else {
+                        field
+                    }
+                },
+                extractedLongTexts = session.extractedLongTexts.map { longText ->
+                    if (longText.id in candidate.longTextEvidenceIds) {
+                        longText.copy(adopted = adopted)
+                    } else {
+                        longText
+                    }
+                },
+                updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+            )
+        }
+    }
+
+    fun commitCandidate(candidateId: String) {
+        val sessionId = mutableState.value.activeSessionId ?: return
+        val committer = importCommitter
+        if (committer == null) {
+            mutableState.update { it.copy(message = "当前环境未接入正式命例提交器。") }
+            return
+        }
+        if (mutableState.value.committingCandidateId != null) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    committingCandidateId = candidateId,
+                    message = null,
+                )
+            }
+            when (val result = committer.commitCandidate(sessionId, candidateId)) {
+                is ScreenshotCandidateCommitResult.Committed -> {
+                    if (result.sessionCompleted) {
+                        mutableState.update {
+                            it.copy(
+                                activeSessionId = null,
+                                needsReview = false,
+                                reviewCandidates = emptyList(),
+                                committingCandidateId = null,
+                                committedCaseCount = it.committedCaseCount + 1,
+                                message = "全部候选已核对并写入正式命例。",
+                            )
+                        }
+                    } else {
+                        val persisted = importSessionRepositorySession(sessionId)
+                        mutableState.update {
+                            it.copy(
+                                reviewCandidates = persisted?.toReviewCandidates().orEmpty(),
+                                committingCandidateId = null,
+                                committedCaseCount = it.committedCaseCount + 1,
+                                message = "当前候选已写入正式命例，其余候选仍待核对。",
+                            )
+                        }
+                    }
+                }
+
+                is ScreenshotCandidateCommitResult.Rejected -> mutableState.update {
+                    it.copy(
+                        committingCandidateId = null,
+                        message = result.message,
+                    )
+                }
+
+                is ScreenshotCandidateCommitResult.Failed -> mutableState.update {
+                    it.copy(
+                        committingCandidateId = null,
+                        message = result.message,
+                    )
+                }
+            }
+            refreshRecoverableSessions()
+        }
+    }
+
     fun deleteActiveImport() {
         val sessionId = mutableState.value.activeSessionId ?: return
         if (mutableState.value.busy) return
@@ -259,6 +431,7 @@ class ScreenshotImportViewModel(
                     },
                     extractedFieldCount = result.session.extractedFields.size,
                     extractedLongTextCount = result.session.extractedLongTexts.size,
+                    reviewCandidates = result.session.toReviewCandidates(),
                     needsReview = true,
                     canRetry = result.session.imageFailures.any { failure -> failure.retryable },
                     message = if (result.session.imageFailures.isEmpty()) {
@@ -323,16 +496,44 @@ class ScreenshotImportViewModel(
 
     private fun refreshRecoverableSessions() {
         viewModelScope.launch {
-            val sessions = repository.list(
+            var sessions = repository.list(
                 ImportStatus.entries.toSet() - setOf(
                     ImportStatus.COMPLETED,
                     ImportStatus.CANCELLED,
                 ),
             )
+            val recoverableCompletion = sessions.firstOrNull { session ->
+                session.status in setOf(
+                    ImportStatus.NEEDS_REVIEW,
+                    ImportStatus.READY_TO_COMMIT,
+                    ImportStatus.COMMITTING,
+                ) &&
+                    session.caseCandidates.isNotEmpty() &&
+                    session.caseCandidates.all { it.targetCaseId != null }
+            }
+            var recoveryMessage: String? = null
+            if (recoverableCompletion != null && importCommitter != null) {
+                recoveryMessage = when (
+                    val recovery = importCommitter.resumeCompletedSession(recoverableCompletion.id)
+                ) {
+                    is ScreenshotCandidateCommitResult.Committed -> null
+                    is ScreenshotCandidateCommitResult.Rejected -> recovery.message
+                    is ScreenshotCandidateCommitResult.Failed -> recovery.message
+                }
+                sessions = repository.list(
+                    ImportStatus.entries.toSet() - setOf(
+                        ImportStatus.COMPLETED,
+                        ImportStatus.CANCELLED,
+                    ),
+                )
+            }
             mutableState.update { current ->
                 val recent = sessions.firstOrNull()
                 if (recent == null || current.busy || current.activeSessionId != null) {
-                    current.copy(recoverableSessionCount = sessions.size)
+                    current.copy(
+                        recoverableSessionCount = sessions.size,
+                        message = current.message ?: recoveryMessage,
+                    )
                 } else {
                     val duplicateCounts = duplicateCounts(recent)
                     current.copy(
@@ -348,6 +549,7 @@ class ScreenshotImportViewModel(
                         },
                         extractedFieldCount = recent.extractedFields.size,
                         extractedLongTextCount = recent.extractedLongTexts.size,
+                        reviewCandidates = recent.toReviewCandidates(),
                         needsReview = recent.status == ImportStatus.NEEDS_REVIEW,
                         canRetry = when (recent.status) {
                             ImportStatus.CLASSIFYING,
@@ -361,6 +563,7 @@ class ScreenshotImportViewModel(
                             else -> false
                         },
                         recoverableSessionCount = sessions.size,
+                        message = current.message ?: recoveryMessage,
                     )
                 }
             }
@@ -371,6 +574,147 @@ class ScreenshotImportViewModel(
         val matches = ImportImageDuplicateDetector().findMatches(session.images)
         return matches.count { it.kind == DuplicateImageKind.EXACT } to
             matches.count { it.kind == DuplicateImageKind.VISUALLY_SIMILAR }
+    }
+
+    private fun updateReviewSession(
+        transform: (ImportSession) -> ImportSession?,
+    ) {
+        val sessionId = mutableState.value.activeSessionId ?: return
+        if (mutableState.value.busy) return
+        viewModelScope.launch {
+            val current = repository.findById(sessionId)
+            if (current == null || current.status != ImportStatus.NEEDS_REVIEW) {
+                mutableState.update {
+                    it.copy(message = "当前导入会话已经变化，请返回后重新打开。")
+                }
+                return@launch
+            }
+            val updated = transform(current) ?: return@launch
+            when (repository.save(updated, current.revision)) {
+                is ImportSessionWriteResult.Updated -> {
+                    val persisted = requireNotNull(repository.findById(sessionId))
+                    mutableState.update {
+                        it.copy(
+                            reviewCandidates = persisted.toReviewCandidates(),
+                            extractedFieldCount = persisted.extractedFields.size,
+                            extractedLongTextCount = persisted.extractedLongTexts.size,
+                        )
+                    }
+                }
+
+                is ImportSessionWriteResult.RevisionConflict -> mutableState.update {
+                    it.copy(message = "核对结果已在其他流程更新，请重新打开后再试。")
+                }
+
+                else -> mutableState.update {
+                    it.copy(message = "本次核对未保存，原始识别结果没有改变。")
+                }
+            }
+        }
+    }
+
+    private fun ImportSession.toReviewCandidates(): List<ScreenshotCandidateReviewUi> {
+        val fieldsById = extractedFields.associateBy(CaseFieldEvidence::id)
+        val longTextsById = extractedLongTexts.associateBy(ImportedLongTextEvidence::id)
+        return caseCandidates.map { candidate ->
+            candidate.toReviewUi(fieldsById, longTextsById)
+        }
+    }
+
+    private fun ImportCaseCandidate.toReviewUi(
+        fieldsById: Map<String, CaseFieldEvidence>,
+        longTextsById: Map<String, ImportedLongTextEvidence>,
+    ) = ScreenshotCandidateReviewUi(
+        id = id,
+        alias = suggestedAlias ?: "未命名候选",
+        imageCount = imageIds.size,
+        fields = fieldEvidenceIds.mapNotNull(fieldsById::get).map { field ->
+            ScreenshotFieldReviewUi(
+                id = field.id,
+                label = field.fieldKey.displayLabel(),
+                sourceValue = field.rawText,
+                normalizedValue = field.normalizedValue?.displayValue(),
+                calculationValue = if (field.fieldKey == "chart.four_pillars") {
+                    "提交前按采用的出生资料复算"
+                } else {
+                    "不参与命盘计算"
+                },
+                adoptedValue = field.adoptedValue?.displayValue(),
+                confidencePercent = listOfNotNull(
+                    field.ocrConfidence,
+                    field.parserConfidence,
+                    field.consistencyConfidence,
+                ).minOrNull()?.times(100)?.toInt(),
+            )
+        },
+        longTexts = longTextEvidenceIds.mapNotNull(longTextsById::get).map { text ->
+            ScreenshotLongTextReviewUi(
+                id = text.id,
+                label = when (text.type) {
+                    ImportedLongTextType.OWNER_FEEDBACK -> "命主反馈"
+                    ImportedLongTextType.MASTER_COMMENTARY -> "师傅点评"
+                    ImportedLongTextType.UNKNOWN -> "其他原文"
+                },
+                rawText = text.rawText,
+                adopted = text.adopted,
+            )
+        },
+        fullyAdopted = fieldEvidenceIds
+            .mapNotNull(fieldsById::get)
+            .takeIf { it.isNotEmpty() }
+            ?.all { it.adoptedValue != null } == true &&
+            longTextEvidenceIds
+                .mapNotNull(longTextsById::get)
+                .all(ImportedLongTextEvidence::adopted),
+        readyToCommit = REQUIRED_COMMIT_FIELD_KEYS.all { requiredKey ->
+            fieldEvidenceIds
+                .mapNotNull(fieldsById::get)
+                .any { field ->
+                    field.fieldKey == requiredKey && field.adoptedValue != null
+                }
+        },
+        missingRequiredFields = REQUIRED_COMMIT_FIELD_KEYS.mapNotNull { requiredKey ->
+            requiredKey.displayLabel().takeUnless {
+                fieldEvidenceIds
+                    .mapNotNull(fieldsById::get)
+                    .any { field ->
+                        field.fieldKey == requiredKey && field.adoptedValue != null
+                    }
+            }
+        },
+        targetCaseId = targetCaseId,
+    )
+
+    private suspend fun importSessionRepositorySession(sessionId: String): ImportSession? =
+        repository.findById(sessionId)
+
+    private fun String.displayLabel(): String = when (this) {
+        "identity.alias" -> "命例名称"
+        "identity.sex" -> "性别"
+        "birth.solar_date" -> "公历生日"
+        "chart.four_pillars" -> "四柱"
+        else -> this
+    }
+
+    private fun TypedFieldValue.displayValue(): String = when (this) {
+        is TypedFieldValue.Text -> value
+        is TypedFieldValue.IntegerNumber -> value.toString()
+        is TypedFieldValue.DecimalNumber -> canonicalValue
+        is TypedFieldValue.BooleanValue -> if (value) "是" else "否"
+        is TypedFieldValue.DateTimeValue -> value.run {
+            "%04d-%02d-%02d %02d:%02d:%02d".format(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+            )
+        }
+
+        is TypedFieldValue.FourPillarsValue -> value.run {
+            "$year $month $day $hour"
+        }
     }
 
     class Factory(
@@ -385,5 +729,11 @@ class ScreenshotImportViewModel(
 
     private companion object {
         const val PARSER_VERSION = "wenzhen-p0-v1"
+        val REQUIRED_COMMIT_FIELD_KEYS = listOf(
+            "identity.alias",
+            "identity.sex",
+            "birth.solar_date",
+            "chart.four_pillars",
+        )
     }
 }

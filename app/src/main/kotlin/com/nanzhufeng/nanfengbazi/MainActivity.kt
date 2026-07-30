@@ -145,6 +145,14 @@ class MainActivity : ComponentActivity() {
                 screenshotImportState = screenshotImportState,
                 onRetryScreenshotImport = screenshotImportViewModel::retryRecognition,
                 onDeleteScreenshotImport = screenshotImportViewModel::deleteActiveImport,
+                onSetScreenshotFieldAdopted =
+                    screenshotImportViewModel::setFieldAdopted,
+                onSetScreenshotLongTextAdopted =
+                    screenshotImportViewModel::setLongTextAdopted,
+                onSetScreenshotCandidateAdopted =
+                    screenshotImportViewModel::setCandidateAdopted,
+                onCommitScreenshotCandidate =
+                    screenshotImportViewModel::commitCandidate,
                 onConsumeScreenshotImportMessage =
                     screenshotImportViewModel::consumeMessage,
                 onRetryPasswordSingleCaseDocument = { password ->

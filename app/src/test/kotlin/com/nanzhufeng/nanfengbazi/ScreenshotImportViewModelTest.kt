@@ -4,9 +4,16 @@ import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
+import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.OcrDocument
+import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.canTransitionTo
 import com.nanzhufeng.nanfengbazi.imageparser.AnchorBasedWenzhenPageClassifier
 import com.nanzhufeng.nanfengbazi.imageparser.ImportImageContentReader
@@ -96,6 +103,101 @@ class ScreenshotImportViewModelTest {
         assertEquals(bytes.toList(), imageStore.readBytes(session.images.single()).toList())
         assertTrue(session.ocrDocuments.single().rawText.contains("用户列表"))
     }
+
+    @Test
+    fun `逐字段和长文本采用结果写回待核对会话且不创建正式命例`() = runBlocking {
+        val now = Instant.parse("2026-01-01T00:00:00Z")
+        val field = CaseFieldEvidence(
+            id = "field-1",
+            attachmentId = "image-1",
+            fieldKey = "identity.alias",
+            rawText = "案例甲",
+            normalizedValue = TypedFieldValue.Text("案例甲"),
+            parserConfidence = 0.95f,
+            parserRuleId = "fixture",
+            userEdited = false,
+            createdAt = now,
+        )
+        val longText = ImportedLongTextEvidence(
+            id = "text-1",
+            imageId = "image-1",
+            type = ImportedLongTextType.OWNER_FEEDBACK,
+            rawText = "反馈完整原文",
+            ocrConfidence = 0.9f,
+            parserConfidence = 0.9f,
+            parserRuleId = "fixture",
+        )
+        val session = ImportSession(
+            id = "review-session",
+            sourceApp = ImportSourceApp.WENZHEN_BAZI,
+            status = ImportStatus.NEEDS_REVIEW,
+            images = listOf(
+                ImportImageRef(
+                    id = "image-1",
+                    originalFileName = "fixture.png",
+                    mimeType = "image/png",
+                    relativePath = "review-session/image-1.png",
+                    sha256 = "a".repeat(64),
+                    byteSize = 1,
+                    createdAt = now,
+                ),
+            ),
+            extractedFields = listOf(field),
+            extractedLongTexts = listOf(longText),
+            caseCandidates = listOf(
+                ImportCaseCandidate(
+                    id = "candidate-1",
+                    imageIds = listOf("image-1"),
+                    fieldEvidenceIds = listOf(field.id),
+                    longTextEvidenceIds = listOf(longText.id),
+                    suggestedAlias = "案例甲",
+                    groupingConfidence = 0.9f,
+                    requiresReview = true,
+                ),
+            ),
+            parserVersion = "fixture",
+            createdAt = now,
+            updatedAt = now,
+        )
+        val repository = FakeImportSessionRepository(listOf(session))
+        val viewModel = ScreenshotImportViewModel(
+            repository = repository,
+            imageStore = PrivateImportImageStore(
+                temporaryFolder.newFolder("review-imports").toPath(),
+            ),
+            recognitionScheduler = ScreenshotRecognitionScheduler {
+                com.nanzhufeng.nanfengbazi.imageparser.RecognitionRunResult.NotFound
+            },
+            clock = Clock.fixed(now, ZoneOffset.UTC),
+        )
+
+        val initial = withTimeout(5_000) {
+            viewModel.state.first { it.reviewCandidates.size == 1 }
+        }
+        assertEquals(null, initial.reviewCandidates.single().fields.single().adoptedValue)
+        assertTrue(!initial.reviewCandidates.single().longTexts.single().adopted)
+
+        viewModel.setFieldAdopted("candidate-1", "field-1", true)
+        viewModel.setLongTextAdopted("candidate-1", "text-1", true)
+
+        val adopted = withTimeout(5_000) {
+            viewModel.state.first {
+                it.reviewCandidates.singleOrNull()
+                    ?.fields
+                    ?.singleOrNull()
+                    ?.adoptedValue == "案例甲" &&
+                    it.reviewCandidates.single().longTexts.single().adopted
+            }
+        }
+        assertEquals("案例甲", adopted.reviewCandidates.single().fields.single().adoptedValue)
+        val persisted = requireNotNull(repository.findById("review-session"))
+        assertEquals(
+            TypedFieldValue.Text("案例甲"),
+            persisted.extractedFields.single().adoptedValue,
+        )
+        assertTrue(persisted.extractedLongTexts.single().adopted)
+        assertEquals(ImportStatus.NEEDS_REVIEW, persisted.status)
+    }
 }
 
 private class FixtureOfflineOcrEngine : OcrEngine {
@@ -113,8 +215,14 @@ private class FixtureOfflineOcrEngine : OcrEngine {
     )
 }
 
-private class FakeImportSessionRepository : ImportSessionRepository {
-    private val sessions = linkedMapOf<String, ImportSession>()
+private class FakeImportSessionRepository(
+    initial: List<ImportSession> = emptyList(),
+) : ImportSessionRepository {
+    private val sessions = linkedMapOf<String, ImportSession>().apply {
+        initial.forEach { session ->
+            put(session.id, session.copy(revision = session.revision.coerceAtLeast(1)))
+        }
+    }
 
     override suspend fun save(
         session: ImportSession,

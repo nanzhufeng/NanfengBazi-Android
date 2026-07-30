@@ -31,6 +31,7 @@ interface AppContainer {
     val importImageStore: PrivateImportImageStore
     val importRecognitionCoordinator: ImportRecognitionCoordinator
     val screenshotRecognitionScheduler: ScreenshotRecognitionScheduler
+    val screenshotImportCommitter: ScreenshotImportCommitter
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
 }
@@ -77,6 +78,14 @@ class DefaultAppContainer(
         )
     override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
     override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")
+    override val screenshotImportCommitter: ScreenshotImportCommitter =
+        ScreenshotImportCommitter(
+            caseRepository = caseRepository,
+            importSessionRepository = importSessionRepository,
+            baziEngine = baziEngine,
+            importImageStore = importImageStore,
+            attachmentRoot = backupAttachmentRoot,
+        )
 
     private companion object {
         const val DATABASE_NAME = "nanfeng-bazi.db"

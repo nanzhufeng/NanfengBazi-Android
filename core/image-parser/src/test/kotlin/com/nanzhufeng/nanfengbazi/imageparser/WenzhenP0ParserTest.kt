@@ -24,9 +24,8 @@ class WenzhenP0ParserTest {
             imageId = image.id,
             blocks = listOf(
                 block("name-1", "案例甲 男", 30, 100, 210, 140),
-                block("stems-1", "壬 戊 壬 丙", 560, 105, 760, 125),
-                block("branches-1", "申 申 申 午", 560, 130, 760, 150),
-                block("date-1", "阳历1992年8月24日", 30, 160, 300, 195),
+                block("stems-1", "壬戊壬丙", 560, 105, 760, 125),
+                block("date-1", "阳历1992年8月24日 申申申午", 30, 160, 760, 195),
                 block("name-2", "案例乙 女", 30, 300, 210, 340),
                 block("stems-2", "庚 癸 乙 甲", 560, 305, 760, 325),
                 block("branches-2", "辰 未 未 申", 560, 330, 760, 350),

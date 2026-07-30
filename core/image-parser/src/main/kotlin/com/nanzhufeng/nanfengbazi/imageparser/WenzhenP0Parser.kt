@@ -115,6 +115,7 @@ class WenzhenP0Parser(
             }
             val rowText = rowBlocks.joinToString("\n", transform = OcrTextBlock::text)
             val identity = identityExtractor.extract(document.copy(rawText = rowText))
+            val rowFourPillars = identity.fourPillars ?: extractCompactFourPillars(rowBlocks)
             val evidence = buildList {
                 add(
                     field(
@@ -155,7 +156,7 @@ class WenzhenP0Parser(
                         parserConfidence = 0.96f,
                     ),
                 )
-                identity.fourPillars?.let { pillars ->
+                rowFourPillars?.let { pillars ->
                     add(
                         field(
                             image = image,
@@ -180,7 +181,7 @@ class WenzhenP0Parser(
                     imageIds = listOf(image.id),
                     fieldEvidenceIds = evidenceIds,
                     suggestedAlias = anchor.nameAndSex.first,
-                    groupingConfidence = if (identity.fourPillars == null) 0.82f else 0.94f,
+                    groupingConfidence = if (rowFourPillars == null) 0.82f else 0.94f,
                     requiresReview = true,
                 ),
             )
@@ -303,6 +304,16 @@ class WenzhenP0Parser(
         return "%04d-%02d-%02d".format(year, month, day)
     }
 
+    private fun extractCompactFourPillars(blocks: List<OcrTextBlock>): String? {
+        val stems = blocks.firstNotNullOfOrNull { block ->
+            STEM_SEQUENCE.find(block.text)?.groupValues?.drop(1)
+        } ?: return null
+        val branches = blocks.firstNotNullOfOrNull { block ->
+            BRANCH_SEQUENCE.find(block.text)?.groupValues?.drop(1)
+        } ?: return null
+        return stems.zip(branches).joinToString(" ") { (stem, branch) -> stem + branch }
+    }
+
     private fun String.toFourPillars(): FourPillars {
         val values = split(Regex("\\s+"))
         require(values.size == 4) { "四柱必须包含四项" }
@@ -343,6 +354,8 @@ class WenzhenP0Parser(
     )
 
     private companion object {
+        private const val STEMS = "甲乙丙丁戊己庚辛壬癸"
+        private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
         const val PARSER_RULE_ID = "wenzhen-p0-parser-v1"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_SEX = "identity.sex"
@@ -356,6 +369,12 @@ class WenzhenP0Parser(
         )
         val SOLAR_DATE_PATTERN = Regex(
             "(?:阳历|公历)\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-](\\d{1,2})日?",
+        )
+        val STEM_SEQUENCE = Regex(
+            "([$STEMS])\\s*([$STEMS])\\s*([$STEMS])\\s*([$STEMS])",
+        )
+        val BRANCH_SEQUENCE = Regex(
+            "([$BRANCHES])\\s*([$BRANCHES])\\s*([$BRANCHES])\\s*([$BRANCHES])",
         )
     }
 }
