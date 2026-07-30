@@ -30,6 +30,7 @@ interface AppContainer {
     val importSessionRepository: ImportSessionRepository
     val importImageStore: PrivateImportImageStore
     val importRecognitionCoordinator: ImportRecognitionCoordinator
+    val screenshotRecognitionScheduler: ScreenshotRecognitionScheduler
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
 }
@@ -68,6 +69,11 @@ class DefaultAppContainer(
             ocrEngine = MlKitChineseOcrEngine(),
             pageClassifier = AnchorBasedWenzhenPageClassifier(),
             fingerprintEngine = DHashImageFingerprintEngine(),
+        )
+    override val screenshotRecognitionScheduler: ScreenshotRecognitionScheduler =
+        WorkManagerScreenshotRecognitionScheduler(
+            context = application,
+            repository = importSessionRepository,
         )
     override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
     override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")

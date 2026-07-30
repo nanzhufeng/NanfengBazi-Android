@@ -12,10 +12,13 @@ import android.provider.MediaStore
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
+import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -70,6 +73,7 @@ class ScreenshotShareFlowTest {
         var formalCaseCount = -1
         var fingerprint: String? = null
         var dimensions: Pair<Int?, Int?>? = null
+        var privateImagePath: Path? = null
         composeRule.activityRule.scenario.onActivity { activity ->
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
@@ -80,6 +84,9 @@ class ScreenshotShareFlowTest {
                 pageType = image.pageType
                 fingerprint = image.perceptualHash
                 dimensions = image.widthPx to image.heightPx
+                privateImagePath = activity.filesDir.toPath()
+                    .resolve("import-images")
+                    .resolve(image.relativePath)
                 syntheticOcrText = session.ocrDocuments.single().rawText
                 formalCaseCount = container.caseRepository.search().size
             }
@@ -88,6 +95,23 @@ class ScreenshotShareFlowTest {
         assertTrue("私有图片必须保存 64 位感知哈希", fingerprint?.length == 16)
         assertEquals(1080 to 1600, dimensions)
         assertTrue("截图识别不得直接写入正式命例", formalCaseCount == 0)
+        val storedImagePath = requireNotNull(privateImagePath)
+        assertTrue("识别完成后私有原图必须存在", java.nio.file.Files.exists(storedImagePath))
+
+        composeRule.onNodeWithTag("delete_screenshot_import_button").performClick()
+        composeRule.onNodeWithTag("confirm_delete_screenshot_import").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("screenshot_import_summary")
+                .fetchSemanticsNodes()
+                .isEmpty()
+        }
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val container = (activity.application as NanfengBaziApplication).container
+            runBlocking {
+                assertTrue("确认删除后导入会话应移除", container.importSessionRepository.list().isEmpty())
+            }
+        }
+        assertTrue("确认删除后私有原图应移除", !java.nio.file.Files.exists(storedImagePath))
     }
 
     private fun createSyntheticWenzhenListImage(): Uri {

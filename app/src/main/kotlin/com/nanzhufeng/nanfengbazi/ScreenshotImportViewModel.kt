@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
+import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
@@ -14,7 +15,6 @@ import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.imageparser.RecognitionRunResult
 import com.nanzhufeng.nanfengbazi.imageparser.DuplicateImageKind
 import com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetector
-import com.nanzhufeng.nanfengbazi.imageparser.ImportRecognitionCoordinator
 import java.io.InputStream
 import java.time.Clock
 import java.util.UUID
@@ -49,14 +49,14 @@ data class ScreenshotImportUiState(
 class ScreenshotImportViewModel(
     private val repository: ImportSessionRepository,
     private val imageStore: PrivateImportImageStore,
-    private val recognitionCoordinator: ImportRecognitionCoordinator,
+    private val recognitionScheduler: ScreenshotRecognitionScheduler,
     private val clock: Clock = Clock.systemUTC(),
     private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
     constructor(container: AppContainer) : this(
         repository = container.importSessionRepository,
         imageStore = container.importImageStore,
-        recognitionCoordinator = container.importRecognitionCoordinator,
+        recognitionScheduler = container.screenshotRecognitionScheduler,
     )
 
     private val mutableState = MutableStateFlow(ScreenshotImportUiState())
@@ -133,7 +133,7 @@ class ScreenshotImportViewModel(
                     )
                 }
                 applyRecognitionResult(
-                    recognitionCoordinator.recognize(sessionId),
+                    recognitionScheduler.recognize(sessionId),
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -181,8 +181,54 @@ class ScreenshotImportViewModel(
                 )
             }
             applyRecognitionResult(
-                recognitionCoordinator.recognize(sessionId),
+                recognitionScheduler.recognize(sessionId),
             )
+        }
+    }
+
+    fun deleteActiveImport() {
+        val sessionId = mutableState.value.activeSessionId ?: return
+        if (mutableState.value.busy) return
+        viewModelScope.launch {
+            val session = repository.findById(sessionId)
+            if (session == null) {
+                mutableState.value = ScreenshotImportUiState(
+                    message = "导入会话已经不存在。",
+                )
+                refreshRecoverableSessions()
+                return@launch
+            }
+            when (repository.delete(session.id, session.revision)) {
+                ImportSessionDeleteResult.Deleted -> {
+                    val undeletedCount = session.images.count { image ->
+                        runCatching {
+                            imageStore.deleteImage(image)
+                            true
+                        }.getOrDefault(false).not()
+                    }
+                    mutableState.value = ScreenshotImportUiState(
+                        message = if (undeletedCount == 0) {
+                            "本次截图导入会话及私有原图已删除。"
+                        } else {
+                            "导入会话已删除，$undeletedCount 张原图未能清理。"
+                        },
+                    )
+                    refreshRecoverableSessions()
+                }
+
+                is ImportSessionDeleteResult.RevisionConflict -> {
+                    mutableState.update {
+                        it.copy(message = "导入会话刚刚发生更新，请确认后重试删除。")
+                    }
+                }
+
+                ImportSessionDeleteResult.NotFound -> {
+                    mutableState.value = ScreenshotImportUiState(
+                        message = "导入会话已经不存在。",
+                    )
+                    refreshRecoverableSessions()
+                }
+            }
         }
     }
 

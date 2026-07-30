@@ -101,6 +101,7 @@ fun NanfengBaziApp(
     onImportScreenshots: () -> Unit = {},
     screenshotImportState: ScreenshotImportUiState = ScreenshotImportUiState(),
     onRetryScreenshotImport: () -> Unit = {},
+    onDeleteScreenshotImport: () -> Unit = {},
     onConsumeScreenshotImportMessage: () -> Unit = {},
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
@@ -154,6 +155,7 @@ fun NanfengBaziApp(
                         onImportScreenshots = onImportScreenshots,
                         screenshotImportState = screenshotImportState,
                         onRetryScreenshotImport = onRetryScreenshotImport,
+                        onDeleteScreenshotImport = onDeleteScreenshotImport,
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onPreviewFullBackup = onOpenFullBackupDocument,
@@ -1426,6 +1428,7 @@ private fun CaseListScreen(
     onImportScreenshots: () -> Unit,
     screenshotImportState: ScreenshotImportUiState,
     onRetryScreenshotImport: () -> Unit,
+    onDeleteScreenshotImport: () -> Unit,
     onImportSingleCase: () -> Unit,
     onExportFullBackup: () -> Unit,
     onPreviewFullBackup: () -> Unit,
@@ -1501,6 +1504,7 @@ private fun CaseListScreen(
         ScreenshotImportSummary(
             state = screenshotImportState,
             onRetry = onRetryScreenshotImport,
+            onDelete = onDeleteScreenshotImport,
         )
         Row(
             modifier = Modifier
@@ -1567,6 +1571,7 @@ private fun CaseListScreen(
 private fun ScreenshotImportSummary(
     state: ScreenshotImportUiState,
     onRetry: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     if (
         !state.busy &&
@@ -1576,6 +1581,7 @@ private fun ScreenshotImportSummary(
     ) {
         return
     }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1637,7 +1643,38 @@ private fun ScreenshotImportSummary(
                     Text("复用原图重试")
                 }
             }
+            if (state.activeSessionId != null && !state.busy) {
+                TextButton(
+                    onClick = { showDeleteConfirmation = true },
+                    modifier = Modifier.testTag("delete_screenshot_import_button"),
+                ) {
+                    Text("删除本次导入")
+                }
+            }
         }
+    }
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("删除本次截图导入？") },
+            text = { Text("导入会话、识别结果和已私有复制的原图都会删除，正式命例不会受影响。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        onDelete()
+                    },
+                    modifier = Modifier.testTag("confirm_delete_screenshot_import"),
+                ) {
+                    Text("确认删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 }
 

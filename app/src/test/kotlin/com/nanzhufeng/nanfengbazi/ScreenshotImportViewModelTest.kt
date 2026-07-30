@@ -68,7 +68,7 @@ class ScreenshotImportViewModelTest {
         val viewModel = ScreenshotImportViewModel(
             repository = repository,
             imageStore = imageStore,
-            recognitionCoordinator = coordinator,
+            recognitionScheduler = DirectScreenshotRecognitionScheduler(coordinator),
             clock = clock,
             idFactory = ids::removeFirst,
         )
