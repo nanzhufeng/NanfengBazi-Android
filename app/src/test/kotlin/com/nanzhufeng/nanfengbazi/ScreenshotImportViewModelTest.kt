@@ -197,6 +197,27 @@ class ScreenshotImportViewModelTest {
         )
         assertTrue(persisted.extractedLongTexts.single().adopted)
         assertEquals(ImportStatus.NEEDS_REVIEW, persisted.status)
+
+        viewModel.updateFieldNormalizedValue("candidate-1", "field-1", "案例乙")
+
+        val corrected = withTimeout(5_000) {
+            viewModel.state.first {
+                it.reviewCandidates.singleOrNull()
+                    ?.fields
+                    ?.singleOrNull()
+                    ?.normalizedValue == "案例乙"
+            }
+        }
+        val correctedField = corrected.reviewCandidates.single().fields.single()
+        assertEquals(null, correctedField.adoptedValue)
+        assertTrue(correctedField.userEdited)
+        val correctedSession = requireNotNull(repository.findById("review-session"))
+        assertEquals(
+            TypedFieldValue.Text("案例乙"),
+            correctedSession.extractedFields.single().normalizedValue,
+        )
+        assertEquals(null, correctedSession.extractedFields.single().adoptedValue)
+        assertTrue(correctedSession.extractedFields.single().userEdited)
     }
 }
 

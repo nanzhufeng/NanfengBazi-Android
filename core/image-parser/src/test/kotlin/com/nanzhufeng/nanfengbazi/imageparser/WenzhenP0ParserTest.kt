@@ -27,8 +27,8 @@ class WenzhenP0ParserTest {
                 block("stems-1", "壬戊壬丙", 560, 105, 760, 125),
                 block("date-1", "阳历1992年8月24日 申申申午", 30, 160, 760, 195),
                 block("name-2", "案例乙 女", 30, 300, 210, 340),
-                block("stems-2", "庚 癸 乙 甲", 560, 305, 760, 325),
-                block("branches-2", "辰 未 未 申", 560, 330, 760, 350),
+                block("stems-2", "庾癸乙甲", 560, 305, 760, 325),
+                block("branches-2", "辰末未中", 560, 330, 760, 350),
                 block("date-2", "阳历2000年8月5日", 30, 360, 300, 395),
             ),
         )
@@ -44,6 +44,13 @@ class WenzhenP0ParserTest {
         assertEquals(8, result.fields.size)
         assertTrue(result.fields.all { it.adoptedValue == null && !it.userEdited })
         assertTrue(result.candidates.all { it.requiresReview && it.fieldEvidenceIds.size == 4 })
+        val secondFields = result.fields.filter {
+            it.id in result.candidates.last().fieldEvidenceIds
+        }
+        assertEquals(
+            null,
+            secondFields.single { it.fieldKey == "chart.four_pillars" }.normalizedValue,
+        )
 
         val firstFields = result.fields.filter { it.id in result.candidates.first().fieldEvidenceIds }
         assertEquals(

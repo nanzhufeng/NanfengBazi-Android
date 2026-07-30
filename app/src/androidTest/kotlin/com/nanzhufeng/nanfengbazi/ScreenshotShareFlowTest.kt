@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -9,7 +10,11 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.provider.MediaStore
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -17,8 +22,14 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.ViewModelProvider
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import java.nio.file.Path
@@ -81,6 +92,8 @@ class ScreenshotShareFlowTest {
         var candidateCount = -1
         var extractedFieldCount = -1
         var allFieldsUnadopted = false
+        var missingFourPillarsFieldId = ""
+        var incompleteCandidateId = ""
         composeRule.activityRule.scenario.onActivity { activity ->
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
@@ -94,6 +107,13 @@ class ScreenshotShareFlowTest {
                 candidateCount = session.caseCandidates.size
                 extractedFieldCount = session.extractedFields.size
                 allFieldsUnadopted = session.extractedFields.all { it.adoptedValue == null }
+                val missingFourPillars = session.extractedFields.single {
+                    it.fieldKey == "chart.four_pillars" && it.normalizedValue == null
+                }
+                missingFourPillarsFieldId = missingFourPillars.id
+                incompleteCandidateId = session.caseCandidates.single {
+                    missingFourPillars.id in it.fieldEvidenceIds
+                }.id
                 privateImagePath = activity.filesDir.toPath()
                     .resolve("import-images")
                     .resolve(image.relativePath)
@@ -109,8 +129,8 @@ class ScreenshotShareFlowTest {
         assertEquals(1080 to 1600, dimensions)
         assertEquals("用户列表一张图应拆成两个待核对候选", 2, candidateCount)
         assertEquals(
-            "首候选四柱应从紧凑 OCR 块恢复，第二候选错字保持待核对；OCR=$syntheticOcrBlocks",
-            7,
+            "首候选四柱应恢复，第二候选错字应保留为可修正字段；OCR=$syntheticOcrBlocks",
+            8,
             extractedFieldCount,
         )
         assertTrue("OCR 字段未经确认不得产生采用值", allFieldsUnadopted)
@@ -154,6 +174,73 @@ class ScreenshotShareFlowTest {
                 committedCandidateCount == 1 &&
                 sessionStillNeedsReview
         }
+        composeRule
+            .onNodeWithTag("screenshot_review_list")
+            .performScrollToNode(hasTestTag("screenshot_candidate_$incompleteCandidateId"))
+        composeRule
+            .onNodeWithTag("edit_screenshot_field_$missingFourPillarsFieldId")
+            .performScrollTo()
+            .performTextReplacement("庚辰 癸未 乙未 甲申")
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag("edit_screenshot_field_$missingFourPillarsFieldId")
+            .assertTextContains("庚辰 癸未 乙未 甲申")
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val inputMethodManager =
+                activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            inputMethodManager.hideSoftInputFromWindow(
+                activity.currentFocus?.windowToken,
+                0,
+            )
+            activity.currentFocus?.clearFocus()
+        }
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag("screenshot_review_list")
+            .performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag("save_screenshot_field_$missingFourPillarsFieldId")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .performClick()
+        var correctionDebug = "尚未读取修正状态"
+        val correctionPersisted = runCatching {
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                var corrected = false
+                composeRule.activityRule.scenario.onActivity { activity ->
+                    val container = (activity.application as NanfengBaziApplication).container
+                    val screenshotImportViewModel =
+                        ViewModelProvider(activity)[ScreenshotImportViewModel::class.java]
+                    runBlocking {
+                        val persistedField = container.importSessionRepository
+                            .list()
+                            .first()
+                            .extractedFields
+                            .single { it.id == missingFourPillarsFieldId }
+                        corrected =
+                            persistedField.userEdited &&
+                                persistedField.normalizedValue != null &&
+                                persistedField.adoptedValue == null
+                        correctionDebug =
+                            "message=${screenshotImportViewModel.state.value.message}, " +
+                                "busy=${screenshotImportViewModel.state.value.busy}, " +
+                                "activeSession=${screenshotImportViewModel.state.value.activeSessionId}, " +
+                                "field=$persistedField"
+                    }
+                }
+                corrected
+            }
+        }.isSuccess
+        assertTrue(correctionDebug, correctionPersisted)
+        composeRule
+            .onNodeWithTag("adopt_screenshot_candidate_$incompleteCandidateId")
+            .performScrollTo()
+            .performClick()
+        composeRule
+            .onNodeWithTag("commit_screenshot_candidate_$incompleteCandidateId")
+            .performScrollTo()
+            .assertIsEnabled()
         composeRule.onNodeWithText("返回").performClick()
         composeRule.onNodeWithTag("delete_screenshot_import_button").performClick()
         composeRule.onNodeWithTag("confirm_delete_screenshot_import").performClick()

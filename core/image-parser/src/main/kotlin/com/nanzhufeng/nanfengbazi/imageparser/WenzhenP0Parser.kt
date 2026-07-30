@@ -171,7 +171,20 @@ class WenzhenP0Parser(
                             parserConfidence = 0.9f,
                         ),
                     )
-                }
+                } ?: add(
+                    field(
+                        image = image,
+                        document = document,
+                        rowKey = "row-$index",
+                        fieldKey = FIELD_FOUR_PILLARS,
+                        rawText = probablePillarRawText(anchor, rowBlocks),
+                        value = null,
+                        confidence = rowBlocks.mapNotNull(OcrTextBlock::confidence)
+                            .averageOrNull(),
+                        boundingBox = rowBlocks.unionBoundingBox(),
+                        parserConfidence = 0.25f,
+                    ),
+                )
             }
             val evidenceIds = evidence.map(CaseFieldEvidence::id)
             ParsedUserRow(
@@ -270,7 +283,7 @@ class WenzhenP0Parser(
         rowKey: String,
         fieldKey: String,
         rawText: String,
-        value: TypedFieldValue,
+        value: TypedFieldValue?,
         confidence: Float?,
         boundingBox: EvidenceBoundingBox?,
         parserConfidence: Float,
@@ -339,6 +352,21 @@ class WenzhenP0Parser(
             .digest(parts.joinToString("\u0000").encodeToByteArray())
             .joinToString("") { "%02x".format(it) }
         return "$prefix-${digest.take(20)}"
+    }
+
+    private fun probablePillarRawText(
+        anchor: UserRowAnchor,
+        rowBlocks: List<OcrTextBlock>,
+    ): String {
+        val identityRight = maxOf(
+            anchor.nameBlock.boundingBox?.right ?: 0,
+            anchor.dateBlock.boundingBox?.right ?: 0,
+        )
+        return rowBlocks
+            .filter { block -> (block.boundingBox?.left ?: 0) > identityRight + 32 }
+            .joinToString(" / ", transform = OcrTextBlock::text)
+            .takeIf(String::isNotBlank)
+            ?: rowBlocks.joinToString(" / ", transform = OcrTextBlock::text)
     }
 
     private data class UserRowAnchor(

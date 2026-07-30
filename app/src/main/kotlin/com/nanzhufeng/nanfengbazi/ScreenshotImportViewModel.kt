@@ -8,6 +8,7 @@ import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
@@ -22,6 +23,7 @@ import com.nanzhufeng.nanfengbazi.imageparser.DuplicateImageKind
 import com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetector
 import java.io.InputStream
 import java.time.Clock
+import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +46,9 @@ data class ScreenshotFieldReviewUi(
     val calculationValue: String,
     val adoptedValue: String?,
     val confidencePercent: Int?,
+    val sourceImageName: String,
+    val evidenceRegion: String?,
+    val userEdited: Boolean,
 )
 
 data class ScreenshotLongTextReviewUi(
@@ -51,6 +56,7 @@ data class ScreenshotLongTextReviewUi(
     val label: String,
     val rawText: String,
     val adopted: Boolean,
+    val sourceImageName: String,
 )
 
 data class ScreenshotCandidateReviewUi(
@@ -296,6 +302,42 @@ class ScreenshotImportViewModel(
                         longText.copy(adopted = adopted)
                     } else {
                         longText
+                    }
+                },
+                updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
+            )
+        }
+    }
+
+    fun updateFieldNormalizedValue(
+        candidateId: String,
+        fieldId: String,
+        editedValue: String,
+    ) {
+        updateReviewSession { session ->
+            val candidate = session.caseCandidates
+                .singleOrNull { it.id == candidateId }
+                ?: return@updateReviewSession null
+            if (fieldId !in candidate.fieldEvidenceIds) return@updateReviewSession null
+            val field = session.extractedFields.singleOrNull { it.id == fieldId }
+                ?: return@updateReviewSession null
+            val normalized = field.fieldKey.parseEditedValue(editedValue)
+            if (normalized == null) {
+                mutableState.update {
+                    it.copy(message = field.fieldKey.editValidationMessage())
+                }
+                return@updateReviewSession null
+            }
+            session.copy(
+                extractedFields = session.extractedFields.map { existing ->
+                    if (existing.id == fieldId) {
+                        existing.copy(
+                            normalizedValue = normalized,
+                            adoptedValue = null,
+                            userEdited = true,
+                        )
+                    } else {
+                        existing
                     }
                 },
                 updatedAt = clock.instant().coerceAtLeast(session.updatedAt),
@@ -616,14 +658,16 @@ class ScreenshotImportViewModel(
     private fun ImportSession.toReviewCandidates(): List<ScreenshotCandidateReviewUi> {
         val fieldsById = extractedFields.associateBy(CaseFieldEvidence::id)
         val longTextsById = extractedLongTexts.associateBy(ImportedLongTextEvidence::id)
+        val imagesById = images.associateBy { it.id }
         return caseCandidates.map { candidate ->
-            candidate.toReviewUi(fieldsById, longTextsById)
+            candidate.toReviewUi(fieldsById, longTextsById, imagesById)
         }
     }
 
     private fun ImportCaseCandidate.toReviewUi(
         fieldsById: Map<String, CaseFieldEvidence>,
         longTextsById: Map<String, ImportedLongTextEvidence>,
+        imagesById: Map<String, com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef>,
     ) = ScreenshotCandidateReviewUi(
         id = id,
         alias = suggestedAlias ?: "未命名候选",
@@ -645,6 +689,13 @@ class ScreenshotImportViewModel(
                     field.parserConfidence,
                     field.consistencyConfidence,
                 ).minOrNull()?.times(100)?.toInt(),
+                sourceImageName = imagesById[field.attachmentId]
+                    ?.originalFileName
+                    ?: "未知来源图片",
+                evidenceRegion = field.boundingBox?.run {
+                    "($left,$top)-($right,$bottom)"
+                },
+                userEdited = field.userEdited,
             )
         },
         longTexts = longTextEvidenceIds.mapNotNull(longTextsById::get).map { text ->
@@ -657,6 +708,9 @@ class ScreenshotImportViewModel(
                 },
                 rawText = text.rawText,
                 adopted = text.adopted,
+                sourceImageName = imagesById[text.imageId]
+                    ?.originalFileName
+                    ?: "未知来源图片",
             )
         },
         fullyAdopted = fieldEvidenceIds
@@ -717,6 +771,50 @@ class ScreenshotImportViewModel(
         }
     }
 
+    private fun String.parseEditedValue(rawValue: String): TypedFieldValue? {
+        val value = rawValue.trim()
+        return when (this) {
+            "identity.alias" -> value
+                .takeIf { it.isNotEmpty() && it.length <= 60 }
+                ?.let(TypedFieldValue::Text)
+
+            "identity.sex" -> value
+                .takeIf { it == "男" || it == "女" }
+                ?.let(TypedFieldValue::Text)
+
+            "birth.solar_date" -> runCatching { LocalDate.parse(value) }
+                .getOrNull()
+                ?.toString()
+                ?.let(TypedFieldValue::Text)
+
+            "chart.four_pillars" -> value
+                .split(Regex("\\s+"))
+                .takeIf { pillars ->
+                    pillars.size == 4 && pillars.all(FOUR_PILLAR_PATTERN::matches)
+                }
+                ?.let { pillars ->
+                    TypedFieldValue.FourPillarsValue(
+                        FourPillars(
+                            year = pillars[0],
+                            month = pillars[1],
+                            day = pillars[2],
+                            hour = pillars[3],
+                        ),
+                    )
+                }
+
+            else -> value.takeIf(String::isNotEmpty)?.let(TypedFieldValue::Text)
+        }
+    }
+
+    private fun String.editValidationMessage(): String = when (this) {
+        "identity.alias" -> "命例名称不能为空且不能超过 60 个字符。"
+        "identity.sex" -> "性别只能填写“男”或“女”。"
+        "birth.solar_date" -> "公历生日必须使用 YYYY-MM-DD 格式并且是真实日期。"
+        "chart.four_pillars" -> "四柱必须按“年柱 月柱 日柱 时柱”填写，例如：壬申 戊申 壬申 丙午。"
+        else -> "修正值不能为空。"
+    }
+
     class Factory(
         private val container: AppContainer,
     ) : ViewModelProvider.Factory {
@@ -734,6 +832,9 @@ class ScreenshotImportViewModel(
             "identity.sex",
             "birth.solar_date",
             "chart.four_pillars",
+        )
+        val FOUR_PILLAR_PATTERN = Regex(
+            "[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]",
         )
     }
 }

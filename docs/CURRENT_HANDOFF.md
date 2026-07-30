@@ -213,6 +213,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha37 使用真实 ML Kit 分块暴露并修复无空格干支块：第一候选恢复四柱后经核对、
     本机复算和附件复制写入正式命例；第二候选因 OCR 错字缺四柱仍停在待核对，删除导入
     会话不删除已提交命例，候选级目标流程 1/1 通过；
+  - alpha38 对无法规范化的四柱继续保留原文、原图文件和边界框，核对页人工修正后撤销
+    采用并要求重新确认；真实 bundled OCR 双候选流程证明第二候选四柱可修正落库，且
+    长列表离屏回收不丢修正草稿，目标流程 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -220,17 +223,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha37-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha38-debug.apk`
 
-- 大小：56,140,408 bytes
-- SHA-256：`b4bfe1bf30a84cfe82130a7fa81db264c9b28511e1adf1ed2fa734aa46118bef`
+- 大小：55,647,219 bytes
+- SHA-256：`06df2a8c63195a114d4285482fe8ed8683c08d41dcf28091eba46dec16e6352e`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha37-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha38-release-unsigned.apk`
 
-- 大小：51,941,418 bytes
-- SHA-256：`5066b8a7d11119f00ed76f4cbae0c66ecd5d0f086a3a9c337d4e47cabfb2f7f0`
+- 大小：51,957,802 bytes
+- SHA-256：`52a157fd56dc9e12f469bb0c817773844a78ce9bd8e0101d1d93f6c9250a66f9`
 
 ## 当前限制与风险
 
@@ -240,8 +243,8 @@ Debug 验收构建：
   Stage 4B 扩大边界黄金集和后续问真真实样本对照。
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
-  及反馈/点评完整原文已实现；逐命例候选失败结果、超 10 分钟前台任务模式、其余基本
-  资料字段、OCR 值修正和原图边界框联动尚未实现。
+  及反馈/点评完整原文、字段人工修正和原图文件/边界框坐标已实现；逐命例候选失败结果、
+  超 10 分钟前台任务模式、其余基本资料字段和原图可视框选联动尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
 - App 仍是手机单列工作台，OPPO Find N5 展开双栏、无障碍和大字体尚未验收。
 - 当前 Debug APK 不是正式签名 Release；OPPO 数据保留安装与发布需要用户明确授权。
@@ -250,8 +253,8 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 增加 OCR 规范值人工修正与原图边界框定位；
-2. 持久化来源值/计算值/采用值对照报告，并支持重复命例人工决策；
+1. 持久化来源值/计算值/采用值对照报告，并支持重复命例人工决策；
+2. 增加原图预览与边界框可视定位；
 3. 扩展问真基本资料字段解析，并保持真实样本外部验收门禁。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

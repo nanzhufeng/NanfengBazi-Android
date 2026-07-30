@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,6 +104,7 @@ fun NanfengBaziApp(
     onRetryScreenshotImport: () -> Unit = {},
     onDeleteScreenshotImport: () -> Unit = {},
     onSetScreenshotFieldAdopted: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onUpdateScreenshotFieldValue: (String, String, String) -> Unit = { _, _, _ -> },
     onSetScreenshotLongTextAdopted: (String, String, Boolean) -> Unit = { _, _, _ -> },
     onSetScreenshotCandidateAdopted: (String, Boolean) -> Unit = { _, _ -> },
     onCommitScreenshotCandidate: (String) -> Unit = {},
@@ -182,6 +184,7 @@ fun NanfengBaziApp(
                         state = screenshotImportState,
                         onBack = viewModel::navigateBack,
                         onSetFieldAdopted = onSetScreenshotFieldAdopted,
+                        onUpdateFieldValue = onUpdateScreenshotFieldValue,
                         onSetLongTextAdopted = onSetScreenshotLongTextAdopted,
                         onSetCandidateAdopted = onSetScreenshotCandidateAdopted,
                         onCommitCandidate = onCommitScreenshotCandidate,
@@ -1732,11 +1735,15 @@ private fun ScreenshotImportReviewScreen(
     state: ScreenshotImportUiState,
     onBack: () -> Unit,
     onSetFieldAdopted: (String, String, Boolean) -> Unit,
+    onUpdateFieldValue: (String, String, String) -> Unit,
     onSetLongTextAdopted: (String, String, Boolean) -> Unit,
     onSetCandidateAdopted: (String, Boolean) -> Unit,
     onCommitCandidate: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var correctionDrafts by rememberSaveable {
+        mutableStateOf(emptyMap<String, String>())
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1760,7 +1767,9 @@ private fun ScreenshotImportReviewScreen(
             },
         )
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("screenshot_review_list"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -1826,6 +1835,8 @@ private fun ScreenshotImportReviewScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         candidate.fields.forEach { field ->
+                            val correctedValue =
+                                correctionDrafts[field.id] ?: field.normalizedValue.orEmpty()
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
@@ -1858,6 +1869,43 @@ private fun ScreenshotImportReviewScreen(
                                     }
                                     Text("来源值：${field.sourceValue}")
                                     Text("规范值：${field.normalizedValue ?: "未识别"}")
+                                    Text(
+                                        "证据：${field.sourceImageName}" +
+                                            (field.evidenceRegion?.let { " · 区域 $it" } ?: ""),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    OutlinedTextField(
+                                        value = correctedValue,
+                                        onValueChange = { updatedValue ->
+                                            correctionDrafts =
+                                                correctionDrafts + (field.id to updatedValue)
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("edit_screenshot_field_${field.id}"),
+                                        label = {
+                                            Text(if (field.userEdited) "人工修正值（已修改）" else "人工修正值")
+                                        },
+                                        supportingText = {
+                                            Text("保存修正后会撤销该字段的采用状态，需重新确认。")
+                                        },
+                                    )
+                                    OutlinedButton(
+                                        onClick = {
+                                            onUpdateFieldValue(
+                                                candidate.id,
+                                                field.id,
+                                                correctedValue,
+                                            )
+                                        },
+                                        enabled = correctedValue.trim() != field.normalizedValue,
+                                        modifier = Modifier.testTag(
+                                            "save_screenshot_field_${field.id}",
+                                        ),
+                                    ) {
+                                        Text("保存修正")
+                                    }
                                     Text("计算值：${field.calculationValue}")
                                     Text("采用值：${field.adoptedValue ?: "未采用"}")
                                     field.confidencePercent?.let {
@@ -1902,6 +1950,11 @@ private fun ScreenshotImportReviewScreen(
                                         )
                                     }
                                     Text(longText.rawText)
+                                    Text(
+                                        "来源：${longText.sourceImageName}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                     Text(
                                         if (longText.adopted) "采用状态：已确认" else "采用状态：未采用",
                                         style = MaterialTheme.typography.bodySmall,

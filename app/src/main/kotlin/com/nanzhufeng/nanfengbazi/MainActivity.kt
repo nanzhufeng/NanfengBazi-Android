@@ -147,6 +147,8 @@ class MainActivity : ComponentActivity() {
                 onDeleteScreenshotImport = screenshotImportViewModel::deleteActiveImport,
                 onSetScreenshotFieldAdopted =
                     screenshotImportViewModel::setFieldAdopted,
+                onUpdateScreenshotFieldValue =
+                    screenshotImportViewModel::updateFieldNormalizedValue,
                 onSetScreenshotLongTextAdopted =
                     screenshotImportViewModel::setLongTextAdopted,
                 onSetScreenshotCandidateAdopted =
