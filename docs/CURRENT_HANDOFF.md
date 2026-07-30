@@ -1,13 +1,13 @@
-# 当前交接：Stage 4A 基础排盘第四增量
+# 当前交接：Stage 4A 岁运展示第五增量
 
 更新日期：2026-07-31
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2、Stage 3A、Stage 3B 均已完成当前实现与自动化证据。
-- Stage 4A 前四项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
+- Stage 4A 前五项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
   真太阳时可以在新建和编辑中录入；唯一计算链会固化标准历法转换、历史 UTC offset、
-  tzdb 版本、完整真太阳时校正证据及四柱基础排盘明细。
+  tzdb 版本、完整真太阳时校正证据、四柱基础排盘及岁运明细。
 - 夏令时回拨重叠时刻必须由用户在两个有效 offset 中明确选择；跳时产生的不存在时刻
   明确失败且零写入。
 - 下一安全增量是补齐即时不保存排盘、时间候选/精度来源及详细交运展示，再进入
@@ -94,6 +94,14 @@
 - 泗阳问真非身份化样例已固定主星、藏干副星、长生、自坐、旬空、纳音、生肖和节气预期；
   神煞和断语没有稳定规则证据，未混入本增量。
 
+### 精确交运与前八步大运
+
+- Tyme 官方定义童限结束公历时刻即开始起运；项目统一将
+  `FortuneStart.endAt` 显示为“精确交运时间”，不再保留含混命名。
+- 起运年龄完整展示年、月、日、时、分；前八步大运逐步显示干支、起止年龄和起止年份，
+  不再仅输出一行干支摘要。
+- 页面只读取版本化 `CalculationResult`，没有在 UI 重新推算交运或大运。
+
 ## 所有者与边界
 
 - 唯一计算入口：`BaziEngine.calculate()`。
@@ -138,6 +146,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 - API 35 模拟器 `ExpenseCapture_API35`：
   - Stage 4A 页面链 5/5 通过：历法切换、农历保存与换算、DST 重叠选择与证据落库、
     真太阳时跨时辰与完整审计详情、既有新建/搜索/详情/编辑长流程；
+  - alpha27 精确交运与前八步大运详情目标流程 1/1 通过；
   - DST 详情真实显示 `America/New_York`、`UTC-05:00` 与 tzdb 版本字段；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
@@ -146,17 +155,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha26-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha27-debug.apk`
 
-- 大小：10,055,437 bytes
-- SHA-256：`95a26f5b81add23e9481a74c921ba3e2eaa78267ad56b03e269c65fd4dac1a1f`
+- 大小：10,059,745 bytes
+- SHA-256：`8534e4e209fd25bc907052fea9edd3ea602c1b036902d625d5e6d067addf177a`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha26-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha27-release-unsigned.apk`
 
-- 大小：6,860,535 bytes
-- SHA-256：`4900687cab92b0d45135425ba533df12d2077a982cd3954864998e102ad50cbd`
+- 大小：6,861,723 bytes
+- SHA-256：`ce31e4d195ba1acb258c484524b474879c87f5bfebc8f30df9a047d31c4e20c9`
 
 ## 当前限制与风险
 

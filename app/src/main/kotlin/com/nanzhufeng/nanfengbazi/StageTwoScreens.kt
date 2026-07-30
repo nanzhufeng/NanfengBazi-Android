@@ -69,6 +69,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
@@ -2476,12 +2477,16 @@ private fun CaseDetailContent(
                     "起运年龄",
                     "${adopted.result.fortuneStart.years} 年 " +
                         "${adopted.result.fortuneStart.months} 月 " +
-                        "${adopted.result.fortuneStart.days} 日",
+                        "${adopted.result.fortuneStart.days} 日 " +
+                        "${adopted.result.fortuneStart.hours} 时 " +
+                        "${adopted.result.fortuneStart.minutes} 分",
                 )
                 DetailRow(
-                    "大运",
-                    adopted.result.decadeFortunes.joinToString("、") { it.name },
+                    "精确交运时间",
+                    adopted.result.fortuneStart.endAt.display(),
+                    tag = "fortune_transfer_time",
                 )
+                DecadeFortuneDetailsView(adopted.result.decadeFortunes)
             }
         }
         DetailSection("分析与记录") {
@@ -2720,14 +2725,76 @@ private fun DetailSection(
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
-    Column(modifier = Modifier.padding(bottom = 10.dp)) {
+private fun DetailRow(
+    label: String,
+    value: String,
+    tag: String? = null,
+) {
+    Column(
+        modifier = Modifier
+            .then(if (tag == null) Modifier else Modifier.testTag(tag))
+            .padding(bottom = 10.dp),
+    ) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(value, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun DecadeFortuneDetailsView(
+    decades: List<DecadeFortune>,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp)
+            .testTag("decade_fortune_details"),
+    ) {
+        Text(
+            "前八步大运",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Row(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) {
+            Text("大运", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+            Text(
+                "起止年龄",
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(
+                "起止年份",
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        decades.forEachIndexed { index, decade ->
+            Row(modifier = Modifier.padding(vertical = 3.dp)) {
+                Text(
+                    "${index + 1}. ${decade.name}",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "${decade.startAge}–${decade.endAge} 岁",
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "${decade.startYear}–${decade.endYear}",
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 
