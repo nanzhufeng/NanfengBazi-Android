@@ -8,6 +8,8 @@
     <uses-permission
         android:name="android.permission.INTERNET"
         tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".NanfengBaziApplication"
@@ -34,6 +36,10 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
     </application>
 
 </manifest>

@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.app.NotificationManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -46,11 +47,11 @@ class ScreenshotShareFlowTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    private var syntheticImageUri: Uri? = null
+    private val syntheticImageUris = mutableListOf<Uri>()
 
     @After
     fun tearDown() {
-        syntheticImageUri?.let {
+        syntheticImageUris.forEach {
             ApplicationProvider.getApplicationContext<android.content.Context>()
                 .contentResolver
                 .delete(it, null, null)
@@ -58,9 +59,64 @@ class ScreenshotShareFlowTest {
     }
 
     @Test
+    fun 八张图片批次通过前台识别并保留可恢复结果() {
+        val uris = List(8) { createSyntheticWenzhenListImage() }
+        syntheticImageUris += uris
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "image/png"
+            putParcelableArrayListExtra(
+                Intent.EXTRA_STREAM,
+                ArrayList(uris),
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.consumeSharedImages(intent)
+        }
+        composeRule.waitUntil(timeoutMillis = 180_000) {
+            var finished = false
+            composeRule.activityRule.scenario.onActivity { activity ->
+                val container = (activity.application as NanfengBaziApplication).container
+                runBlocking {
+                    finished = container.importSessionRepository
+                        .list()
+                        .singleOrNull { it.images.size == 8 }
+                        ?.status == ImportStatus.NEEDS_REVIEW
+                }
+            }
+            finished
+        }
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val notificationManager = context.getSystemService(NotificationManager::class.java)
+        assertTrue(
+            "大批次应创建前台识别通知渠道",
+            notificationManager.getNotificationChannel(
+                ScreenshotRecognitionWorker.NOTIFICATION_CHANNEL_ID,
+            ) != null,
+        )
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val container = (activity.application as NanfengBaziApplication).container
+            runBlocking {
+                val session = container.importSessionRepository
+                    .list()
+                    .single { it.images.size == 8 }
+                session.images.forEach { image ->
+                    java.nio.file.Files.deleteIfExists(
+                        activity.filesDir.toPath()
+                            .resolve("import-images")
+                            .resolve(image.relativePath),
+                    )
+                }
+                container.importSessionRepository.delete(session.id, session.revision)
+            }
+        }
+    }
+
+    @Test
     fun 系统分享合成问真列表图后私有复制并完成离线识别() {
         val uri = createSyntheticWenzhenListImage()
-        syntheticImageUri = uri
+        syntheticImageUris += uri
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
