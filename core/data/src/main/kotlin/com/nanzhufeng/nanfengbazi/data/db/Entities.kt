@@ -303,6 +303,24 @@ data class CaseTagCrossRefEntity(
     val tagId: String,
 )
 
+@Serializable
+@Entity(
+    tableName = "import_sessions",
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["updatedAtEpochMillis"]),
+    ],
+)
+data class ImportSessionEntity(
+    @androidx.room.PrimaryKey
+    val id: String,
+    val status: String,
+    val sessionJson: String,
+    val createdAtEpochMillis: Long,
+    val updatedAtEpochMillis: Long,
+    val revision: Long,
+)
+
 internal data class RoomDataSnapshot(
     val cases: List<CaseEntity>,
     val calculationSnapshots: List<CalculationSnapshotEntity>,

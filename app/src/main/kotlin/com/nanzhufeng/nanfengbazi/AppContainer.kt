@@ -8,9 +8,12 @@ import com.nanzhufeng.nanfengbazi.data.db.DatabaseMigrations
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseBundleOperations
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseBundleService
+import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
+import com.nanzhufeng.nanfengbazi.data.repository.RoomImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
 import java.nio.file.Path
 
@@ -19,6 +22,8 @@ interface AppContainer {
     val baziEngine: BaziEngine
     val caseBackupService: CaseBackupOperations
     val singleCaseBundleService: SingleCaseBundleOperations
+    val importSessionRepository: ImportSessionRepository
+    val importImageStore: PrivateImportImageStore
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
 }
@@ -37,6 +42,7 @@ class DefaultAppContainer(
             DatabaseMigrations.MIGRATION_3_4,
             DatabaseMigrations.MIGRATION_4_5,
             DatabaseMigrations.MIGRATION_5_6,
+            DatabaseMigrations.MIGRATION_6_7,
         )
         .build()
 
@@ -45,6 +51,10 @@ class DefaultAppContainer(
     override val caseBackupService: CaseBackupOperations = CaseBackupService(database)
     override val singleCaseBundleService: SingleCaseBundleOperations =
         SingleCaseBundleService(database)
+    override val importSessionRepository: ImportSessionRepository =
+        RoomImportSessionRepository(database)
+    override val importImageStore: PrivateImportImageStore =
+        PrivateImportImageStore(application.filesDir.toPath().resolve("import-images"))
     override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
     override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")
 

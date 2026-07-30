@@ -33,6 +33,9 @@
 | 单命例附件包 | `SingleCaseBundleService` | Stage 3B `.nfbcase` 系统文件入口 | 页面解析 ZIP、跳过来源重读或绕过附件事务 |
 | 完整备份与恢复 | `CaseBackupService` | Stage 3B 系统文件入口 | 无范围覆盖、忽略哈希、静默降级明文或页面直接写库 |
 | Room Schema 与迁移 | `core:data` | 仓储、恢复 | 破坏性迁移或省略 Schema 证据 |
+| 图片导入会话 | `ImportSessionRepository` | 图片入口、后台识别协调器 | OCR、页面或 Worker 直接写 Room |
+| 私有导入图片 | `PrivateImportImageStore` | Photo Picker、系统分享入口 | 后台任务长期持有外部 URI 或传递 Bitmap |
+| OCR 与页面分类 | `core:image-parser` | `ImportRecognitionCoordinator` | 在线引擎进入主链、单关键词猜测页面或直接写正式命例 |
 
 ## 模块边界
 
@@ -42,7 +45,8 @@
 - `core:solar-time`：NREL SPA 真太阳时适配器，只输出领域证据，不计算四柱。
 - `core:engine-tyme`：Tyme4j 适配器及状态隔离。
 - `core:data`：Room、仓储实现、JSON/ZIP 协议、恢复校验和附件提交。
-- 后续 OCR 模块必须在进入对应阶段后新增，不能提前塞入 `app`。
+- `core:image-parser`：离线 OCR 端口、问真页面分类与可恢复识别协调；不依赖 Compose、
+  Room 或八字计算实现。
 
 ## Stage 1 入口矩阵
 
@@ -84,7 +88,7 @@
 | 整例删除与恢复 | 软删除进入回收站，完整聚合和附件引用保留 | `CaseLifecycleUseCase` → `CaseRepository.save` | 主列表隐藏、回收站可见、恢复后事实不变 |
 | 命例复制 | 生成新稳定 ID，只复制出生资料、分类与计算快照 | `CaseLifecycleUseCase.duplicate` | 来源 ID、新快照 ID、空记录/附件和别名去重 |
 | 重复命例提示 | 新建与编辑在保存前按出生身份和四柱生成候选 | `CaseRepository.findDuplicateCandidates` | 活动/回收站位置、理由、确认前零写入 |
-| 完整备份与旧版恢复 | Schema v6 精确保真软删除、复制来源、记录历史和出生时间候选 | `CaseBackupService` | 旧备份默认空历史/空候选、v1→v6 迁移和往返 |
+| 完整备份与旧版恢复 | Schema v7 精确保真软删除、复制来源、记录历史和出生时间候选 | `CaseBackupService` | 旧备份默认空历史/空候选、v1→v7 迁移和往返 |
 
 ## 变更门禁
 

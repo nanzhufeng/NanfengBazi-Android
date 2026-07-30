@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
-    fun `v1 命例迁移到 v6 时补充管理历史和时间候选字段且保留原值`() {
+    fun `v1 命例迁移到 v7 时补充管理历史时间候选和导入会话且保留原值`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -63,6 +63,7 @@ class DatabaseMigrationTest {
             DatabaseMigrations.MIGRATION_3_4,
             DatabaseMigrations.MIGRATION_4_5,
             DatabaseMigrations.MIGRATION_5_6,
+            DatabaseMigrations.MIGRATION_6_7,
         )
             .allowMainThreadQueries()
             .build()
@@ -102,6 +103,12 @@ class DatabaseMigrationTest {
             }
             migrated.openHelper.readableDatabase.query(
                 "SELECT COUNT(*) FROM case_event_revisions",
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "SELECT COUNT(*) FROM import_sessions",
             ).use { cursor ->
                 cursor.moveToFirst()
                 assertEquals(0, cursor.getInt(0))

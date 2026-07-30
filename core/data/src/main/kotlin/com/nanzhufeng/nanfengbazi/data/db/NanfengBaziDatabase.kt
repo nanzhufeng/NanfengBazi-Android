@@ -19,15 +19,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CaseTagEntity::class,
         CaseGroupCrossRefEntity::class,
         CaseTagCrossRefEntity::class,
+        ImportSessionEntity::class,
     ],
     version = NanfengBaziDatabase.SCHEMA_VERSION,
     exportSchema = true,
 )
 abstract class NanfengBaziDatabase : RoomDatabase() {
     internal abstract fun caseDao(): CaseDao
+    internal abstract fun importSessionDao(): ImportSessionDao
 
     companion object {
-        const val SCHEMA_VERSION = 6
+        const val SCHEMA_VERSION = 7
     }
 }
 
@@ -153,6 +155,32 @@ object DatabaseMigrations {
             db.execSQL(
                 "ALTER TABLE cases ADD COLUMN birthTimeCandidatesJson " +
                     "TEXT NOT NULL DEFAULT '[]'",
+            )
+        }
+    }
+
+    val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS import_sessions (
+                    id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    sessionJson TEXT NOT NULL,
+                    createdAtEpochMillis INTEGER NOT NULL,
+                    updatedAtEpochMillis INTEGER NOT NULL,
+                    revision INTEGER NOT NULL,
+                    PRIMARY KEY(id)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_import_sessions_status " +
+                    "ON import_sessions(status)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_import_sessions_updatedAtEpochMillis " +
+                    "ON import_sessions(updatedAtEpochMillis)",
             )
         }
     }
