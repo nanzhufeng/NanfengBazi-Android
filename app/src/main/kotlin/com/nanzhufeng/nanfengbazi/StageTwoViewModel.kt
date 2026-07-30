@@ -1811,6 +1811,17 @@ class StageTwoViewModel(
                 is CreateCaseResult.ValidationFailed -> mutableState.update {
                     it.copy(saving = false, formError = result.message)
                 }
+                is CreateCaseResult.TimeZoneChoiceRequired -> mutableState.update {
+                    it.copy(
+                        form = it.form.copy(
+                            resolvedUtcOffsetSeconds = null,
+                            availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                        ),
+                        saving = false,
+                        formError = "该出生时间在 ${result.timeZoneId} 出现两次。" +
+                            "请选择实际 UTC offset 后再次保存。",
+                    )
+                }
                 is CreateCaseResult.CalculationFailed -> mutableState.update {
                     it.copy(
                         saving = false,
@@ -2235,6 +2246,17 @@ class StageTwoViewModel(
                     mutationError = "发现疑似重复命例。请核对后决定是否仍保存。",
                 )
             }
+            is CaseMutationResult.TimeZoneChoiceRequired -> mutableState.update {
+                it.copy(
+                    editForm = it.editForm.copy(
+                        resolvedUtcOffsetSeconds = null,
+                        availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                    ),
+                    mutationSaving = false,
+                    mutationError = "该出生时间在 ${result.timeZoneId} 出现两次。" +
+                        "请选择实际 UTC offset 后再次保存。",
+                )
+            }
             CaseMutationResult.NotFound -> mutableState.update {
                 it.copy(
                     mutationSaving = false,
@@ -2336,5 +2358,10 @@ private fun BaziCase.toEditableForm(): CaseFormState {
             is BirthCalendarInput.Lunar -> CalendarSystem.LUNAR
         },
         isLeapMonth = (calendar as? BirthCalendarInput.Lunar)?.dateTime?.isLeapMonth == true,
+        locationName = birthInput.locationName.orEmpty(),
+        longitude = birthInput.longitude?.toString().orEmpty(),
+        latitude = birthInput.latitude?.toString().orEmpty(),
+        timeZoneId = birthInput.timeZoneId,
+        resolvedUtcOffsetSeconds = birthInput.resolvedUtcOffsetSeconds,
     )
 }

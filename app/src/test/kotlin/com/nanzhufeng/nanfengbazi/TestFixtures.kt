@@ -35,6 +35,7 @@ internal fun validForm() = CaseFormState(
     hour = "10",
     minute = "30",
     second = "0",
+    locationName = "江苏省苏州市",
 )
 
 internal fun calculationResult(input: BirthInput): CalculationResult = CalculationResult(

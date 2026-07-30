@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi.engine.tyme
 
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
@@ -85,6 +86,53 @@ class TymeBaziEngineTest {
         )
         assertEquals(2, result.calendarConversion?.lunarDateTime?.month)
         assertTrue(result.calendarConversion?.lunarDateTime?.isLeapMonth == true)
+    }
+
+    @Test
+    fun `计算快照保存解析后的 offset 和时区数据版本`() = runTest {
+        val result = engine.calculate(
+            solarInput(2024, 1, 15, 12, 0, 0).copy(
+                timeZoneId = "America/New_York",
+            ),
+            CalculationProfile.tymeDefault(),
+        )
+
+        assertEquals(-18_000, result.normalizedInput.resolvedUtcOffsetSeconds)
+        assertTrue(result.normalizedInput.timeZoneDataVersion.orEmpty().isNotBlank())
+    }
+
+    @Test
+    fun `夏令时重叠要求选择 offset 且选择后可计算`() = runTest {
+        val input = solarInput(2024, 11, 3, 1, 30, 0).copy(
+            timeZoneId = "America/New_York",
+        )
+
+        val error = assertThrows(TimeZoneChoiceRequiredException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                engine.calculate(input, CalculationProfile.tymeDefault())
+            }
+        }
+        assertEquals(listOf(-14_400, -18_000), error.validUtcOffsetSeconds)
+
+        val resolved = engine.calculate(
+            input.copy(resolvedUtcOffsetSeconds = -18_000),
+            CalculationProfile.tymeDefault(),
+        )
+        assertEquals(-18_000, resolved.normalizedInput.resolvedUtcOffsetSeconds)
+    }
+
+    @Test
+    fun `夏令时不存在时刻明确拒绝计算`() {
+        val input = solarInput(2024, 3, 10, 2, 30, 0).copy(
+            timeZoneId = "America/New_York",
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                engine.calculate(input, CalculationProfile.tymeDefault())
+            }
+        }
+        assertTrue(error.message.orEmpty().contains("不存在"))
     }
 
     @Test

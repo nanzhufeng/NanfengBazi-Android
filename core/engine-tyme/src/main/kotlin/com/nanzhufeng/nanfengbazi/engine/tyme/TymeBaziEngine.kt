@@ -1,6 +1,9 @@
 package com.nanzhufeng.nanfengbazi.engine.tyme
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolution
+import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolver
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
@@ -39,6 +42,7 @@ class TymeBaziEngine(
     ): CalculationResult {
         validateSupported(input, profile)
         val resolved = resolveCalendar(input.calendarInput)
+        val normalizedInput = resolveTimeZone(input, resolved.solar.toDomain())
 
         return ChildLimitProviderGuard.withProvider(profile.luckStartRule) {
             val solar = resolved.solar
@@ -66,7 +70,7 @@ class TymeBaziEngine(
                 .toList()
 
             CalculationResult(
-                normalizedInput = input,
+                normalizedInput = normalizedInput,
                 profile = profile,
                 fourPillars = FourPillars(
                     year = eightChar.year.name,
@@ -106,6 +110,38 @@ class TymeBaziEngine(
                 ),
             )
         }
+    }
+
+    private fun resolveTimeZone(
+        input: BirthInput,
+        solarDateTime: CivilDateTime,
+    ): BirthInput = when (
+        val resolution = BirthTimeZoneResolver.resolve(
+            localDateTime = solarDateTime,
+            timeZoneId = input.timeZoneId,
+            selectedUtcOffsetSeconds = input.resolvedUtcOffsetSeconds,
+        )
+    ) {
+        is BirthTimeZoneResolution.Resolved -> input.copy(
+            resolvedUtcOffsetSeconds = resolution.utcOffsetSeconds,
+            timeZoneDataVersion = resolution.timeZoneDataVersion,
+        )
+        is BirthTimeZoneResolution.ChoiceRequired -> throw TimeZoneChoiceRequiredException(
+            timeZoneId = input.timeZoneId,
+            validUtcOffsetSeconds = resolution.validUtcOffsetSeconds,
+            timeZoneDataVersion = resolution.timeZoneDataVersion,
+        )
+        is BirthTimeZoneResolution.Nonexistent -> throw IllegalArgumentException(
+            "该出生时间在 ${input.timeZoneId} 的夏令时切换中不存在；" +
+                "当地时间从 ${resolution.gapStartsAt.display()} 跳到 " +
+                "${resolution.gapEndsAt.display()}，请核对原始时间。",
+        )
+        is BirthTimeZoneResolution.InvalidZone -> throw IllegalArgumentException(
+            "时区标识 ${resolution.timeZoneId} 无效，请填写 IANA 时区，例如 Asia/Shanghai。",
+        )
+        is BirthTimeZoneResolution.InvalidOffsetSelection -> throw IllegalArgumentException(
+            "所选 UTC offset 与 ${input.timeZoneId} 在该出生时间的规则不一致，请重新确认。",
+        )
     }
 
     private fun validateSupported(
@@ -191,6 +227,9 @@ private fun SolarTime.toDomain(): CivilDateTime = CivilDateTime(
     minute = minute,
     second = second,
 )
+
+private fun CivilDateTime.display(): String =
+    "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
 
 private fun LunarHour.toDomain(): LunarDateTime {
     val month = lunarDay.lunarMonth

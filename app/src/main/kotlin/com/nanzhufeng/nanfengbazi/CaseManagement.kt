@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
@@ -37,6 +38,11 @@ sealed interface CaseMutationResult {
     data class ValidationFailed(val message: String) : CaseMutationResult
     data class DuplicateCandidates(
         val candidates: List<DuplicateCaseCandidate>,
+    ) : CaseMutationResult
+    data class TimeZoneChoiceRequired(
+        val timeZoneId: String,
+        val validUtcOffsetSeconds: List<Int>,
+        val timeZoneDataVersion: String,
     ) : CaseMutationResult
     data object NotFound : CaseMutationResult
     data class RevisionConflict(val actualRevision: Long) : CaseMutationResult
@@ -74,6 +80,12 @@ class EditCaseUseCase(
             baziEngine.calculate(valid.birthInput, profile)
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (error: TimeZoneChoiceRequiredException) {
+            return CaseMutationResult.TimeZoneChoiceRequired(
+                timeZoneId = error.timeZoneId,
+                validUtcOffsetSeconds = error.validUtcOffsetSeconds,
+                timeZoneDataVersion = error.timeZoneDataVersion,
+            )
         } catch (error: Exception) {
             val message = if (error is IllegalArgumentException) {
                 error.message?.takeIf { it.isNotBlank() }
@@ -86,7 +98,7 @@ class EditCaseUseCase(
         if (!allowDuplicate) {
             val candidates = try {
                 caseRepository.findDuplicateCandidates(
-                    birthInput = valid.birthInput,
+                    birthInput = calculation.normalizedInput,
                     fourPillars = calculation.fourPillars,
                     canonicalSolarDateTime = calculation.calendarConversion?.solarDateTime,
                     excludeCaseId = caseId,
@@ -109,8 +121,8 @@ class EditCaseUseCase(
                 FieldValueState.CLEARED,
                 -> ExplicitText.cleared()
             },
-            sexForFortuneDirection = valid.birthInput.sexForFortuneDirection,
-            birthInput = valid.birthInput,
+            sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
+            birthInput = calculation.normalizedInput,
             calculationSnapshots = existing.calculationSnapshots
                 .map { it.copy(adopted = false) } +
                 CaseCalculationSnapshot(

@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,6 +20,24 @@ class CaseFormValidatorTest {
         assertEquals(
             CaseFormValidation.Invalid("请选择性别。"),
             noSex,
+        )
+    }
+
+    @Test
+    fun `出生地区必填且经纬度必须成对有效`() {
+        assertEquals(
+            CaseFormValidation.Invalid("请填写出生地区。"),
+            CaseFormValidator.validate(validForm().copy(locationName = " ")),
+        )
+        assertEquals(
+            CaseFormValidation.Invalid("经度和纬度必须同时填写或同时留空。"),
+            CaseFormValidator.validate(validForm().copy(longitude = "120.6")),
+        )
+        assertEquals(
+            CaseFormValidation.Invalid("纬度必须在 -90 到 90 之间。"),
+            CaseFormValidator.validate(
+                validForm().copy(longitude = "120.6", latitude = "91"),
+            ),
         )
     }
 
@@ -44,6 +63,24 @@ class CaseFormValidatorTest {
         assertEquals(2000, solar.dateTime.year)
         assertEquals(29, solar.dateTime.day)
         assertEquals("合成命例甲", valid.alias)
+        assertEquals("江苏省苏州市", valid.birthInput.locationName)
+        assertEquals("Asia/Shanghai", valid.birthInput.timeZoneId)
+    }
+
+    @Test
+    fun `手工经纬度记录来源且保留用户选择的 offset`() {
+        val result = CaseFormValidator.validate(
+            validForm().copy(
+                longitude = "120.5853",
+                latitude = "31.2989",
+                resolvedUtcOffsetSeconds = 28_800,
+            ),
+        ) as CaseFormValidation.Valid
+
+        assertEquals(120.5853, result.birthInput.longitude)
+        assertEquals(31.2989, result.birthInput.latitude)
+        assertEquals(CoordinateSource.USER_ENTERED, result.birthInput.coordinateSource)
+        assertEquals(28_800, result.birthInput.resolvedUtcOffsetSeconds)
     }
 
     @Test

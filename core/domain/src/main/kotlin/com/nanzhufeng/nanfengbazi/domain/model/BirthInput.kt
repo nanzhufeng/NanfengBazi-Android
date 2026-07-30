@@ -66,6 +66,11 @@ enum class TimePrecision {
 }
 
 @Serializable
+enum class CoordinateSource {
+    USER_ENTERED,
+}
+
+@Serializable
 data class BirthInput(
     val calendarInput: BirthCalendarInput,
     val sexForFortuneDirection: SexForFortuneDirection,
@@ -76,6 +81,7 @@ data class BirthInput(
     val locationName: String? = null,
     val longitude: Double? = null,
     val latitude: Double? = null,
+    val coordinateSource: CoordinateSource? = null,
     val useTrueSolarTime: Boolean = false,
     val sourceNote: String? = null,
 ) {

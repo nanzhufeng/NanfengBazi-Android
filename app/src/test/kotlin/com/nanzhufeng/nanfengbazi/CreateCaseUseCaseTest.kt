@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import java.time.Clock
 import java.time.ZoneOffset
@@ -36,6 +37,57 @@ class CreateCaseUseCaseTest {
             saved.calculationSnapshots.single().result.fourPillars,
         )
         assertTrue(saved.calculationSnapshots.single().adopted)
+    }
+
+    @Test
+    fun `保存使用引擎规范化后的时区证据而非未解析输入`() = runTest {
+        val repository = FakeCaseRepository()
+        val engine = BaziEngine { input, _ ->
+            calculationResult(
+                input.copy(
+                    resolvedUtcOffsetSeconds = 28_800,
+                    timeZoneDataVersion = "tzdb:test",
+                ),
+            )
+        }
+        val ids = ArrayDeque(listOf("normalized-case", "normalized-snapshot"))
+        val result = CreateCaseUseCase(
+            baziEngine = engine,
+            caseRepository = repository,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )(validForm())
+
+        assertEquals(CreateCaseResult.Created("normalized-case"), result)
+        val saved = repository.stored.getValue("normalized-case")
+        assertEquals(28_800, saved.birthInput.resolvedUtcOffsetSeconds)
+        assertEquals("tzdb:test", saved.birthInput.timeZoneDataVersion)
+        assertEquals(saved.birthInput, saved.calculationSnapshots.single().result.normalizedInput)
+    }
+
+    @Test
+    fun `夏令时重叠以结构化候选返回且不写库`() = runTest {
+        val repository = FakeCaseRepository()
+        val engine = BaziEngine { _, _ ->
+            throw TimeZoneChoiceRequiredException(
+                timeZoneId = "America/New_York",
+                validUtcOffsetSeconds = listOf(-14_400, -18_000),
+                timeZoneDataVersion = "tzdb:test",
+            )
+        }
+
+        val result = CreateCaseUseCase(engine, repository)(
+            validForm().copy(timeZoneId = "America/New_York"),
+        )
+
+        assertEquals(
+            CreateCaseResult.TimeZoneChoiceRequired(
+                timeZoneId = "America/New_York",
+                validUtcOffsetSeconds = listOf(-14_400, -18_000),
+                timeZoneDataVersion = "tzdb:test",
+            ),
+            result,
+        )
+        assertTrue(repository.stored.isEmpty())
     }
 
     @Test

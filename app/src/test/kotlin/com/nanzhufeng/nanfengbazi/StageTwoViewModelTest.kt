@@ -45,6 +45,8 @@ import java.nio.file.Path
 import java.time.Clock
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
@@ -118,6 +120,55 @@ class StageTwoViewModelTest {
         assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
         assertEquals(1, viewModel.state.value.cases.size)
         assertEquals("命例已完成排盘并保存。", viewModel.state.value.message)
+    }
+
+    @Test
+    fun `夏令时重叠在表单展示候选并于选择后保存`() = runTest {
+        val repository = FakeCaseRepository()
+        val engine = BaziEngine { input, _ ->
+            val selected = input.resolvedUtcOffsetSeconds
+                ?: throw TimeZoneChoiceRequiredException(
+                    "America/New_York",
+                    listOf(-14_400, -18_000),
+                    "tzdb:test",
+                )
+            calculationResult(
+                input.copy(
+                    resolvedUtcOffsetSeconds = selected,
+                    timeZoneDataVersion = "tzdb:test",
+                ),
+            )
+        }
+        val viewModel = createViewModel(repository, engine = engine)
+        viewModel.openCreate()
+        viewModel.updateForm {
+            validForm().copy(
+                year = "2024",
+                month = "11",
+                day = "3",
+                hour = "1",
+                minute = "30",
+                timeZoneId = "America/New_York",
+            )
+        }
+
+        viewModel.submitCase()
+
+        assertEquals(
+            listOf(-14_400, -18_000),
+            viewModel.state.value.form.availableUtcOffsetSeconds,
+        )
+        assertTrue(viewModel.state.value.formError.orEmpty().contains("出现两次"))
+        assertTrue(repository.stored.isEmpty())
+
+        viewModel.updateForm {
+            it.copy(resolvedUtcOffsetSeconds = -18_000)
+        }
+        viewModel.submitCase()
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(-18_000, repository.stored.values.single().birthInput.resolvedUtcOffsetSeconds)
+        assertEquals("tzdb:test", repository.stored.values.single().birthInput.timeZoneDataVersion)
     }
 
     @Test
@@ -672,8 +723,8 @@ class StageTwoViewModelTest {
         bundleOperations: SingleCaseBundleOperations? = null,
         backupOperations: CaseBackupOperations? = null,
         backupRoot: Path? = null,
+        engine: BaziEngine = RecordingEngine(),
     ): StageTwoViewModel {
-        val engine = RecordingEngine()
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
             .map { "generated-$it" }

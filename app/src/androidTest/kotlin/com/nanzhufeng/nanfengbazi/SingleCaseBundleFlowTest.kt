@@ -56,6 +56,7 @@ class SingleCaseBundleFlowTest {
                         day = "29",
                         hour = "10",
                         minute = "30",
+                        locationName = "江苏省苏州市",
                     ),
                     allowDuplicate = true,
                 )

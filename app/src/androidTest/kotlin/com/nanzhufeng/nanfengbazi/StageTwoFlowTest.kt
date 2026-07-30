@@ -58,6 +58,9 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("birth_day").performTextInput("1")
         composeRule.onNodeWithTag("birth_hour").performTextInput("13")
         composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省苏州市")
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
@@ -89,6 +92,69 @@ class StageTwoFlowTest {
     }
 
     @Test
+    fun dstOverlapRequiresOffsetChoiceAndPersistsEvidence() {
+        val alias = "Stage4时区样例-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("2024")
+        composeRule.onNodeWithTag("birth_month").performTextInput("11")
+        composeRule.onNodeWithTag("birth_day").performTextInput("3")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("1")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("30")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("美国纽约")
+        composeRule.onNodeWithTag("birth_time_zone")
+            .performScrollTo()
+            .performTextReplacement("America/New_York")
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("birth_utc_offset_-18000"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("birth_utc_offset_-14400")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("birth_utc_offset_-18000")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("别名：$alias").performClick()
+
+        composeRule.onNodeWithText("America/New_York")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("UTC-05:00")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("时区数据版本")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun createSaveSearchAndOpenDetail() {
         val alias = "Stage2合成样例-${System.currentTimeMillis()}"
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -104,6 +170,9 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("birth_day").performTextInput("29")
         composeRule.onNodeWithTag("birth_hour").performTextInput("10")
         composeRule.onNodeWithTag("birth_minute").performTextInput("30")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省苏州市")
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))

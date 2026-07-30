@@ -1817,7 +1817,7 @@ internal fun CaseFormScreen(
 
             SectionHeading(
                 "出生时间",
-                "支持公历与农历（含闰月），统一按北京时间民用时计算；暂不做真太阳时校正。",
+                "支持公历与农历（含闰月），按所选 IANA 时区解析民用时；暂不做真太阳时校正。",
             )
             Text(
                 "历法 *",
@@ -1835,7 +1835,7 @@ internal fun CaseFormScreen(
                             it.copy(
                                 calendarSystem = CalendarSystem.SOLAR,
                                 isLeapMonth = false,
-                            )
+                            ).clearTimeZoneResolution()
                         }
                     },
                 )
@@ -1845,7 +1845,10 @@ internal fun CaseFormScreen(
                     enabled = !saving,
                     tag = "birth_calendar_lunar",
                     onClick = {
-                        onFormChange { it.copy(calendarSystem = CalendarSystem.LUNAR) }
+                        onFormChange {
+                            it.copy(calendarSystem = CalendarSystem.LUNAR)
+                                .clearTimeZoneResolution()
+                        }
                     },
                 )
                 if (form.calendarSystem == CalendarSystem.LUNAR) {
@@ -1855,7 +1858,10 @@ internal fun CaseFormScreen(
                         enabled = !saving,
                         tag = "birth_lunar_leap_month",
                         onClick = {
-                            onFormChange { it.copy(isLeapMonth = !it.isLeapMonth) }
+                            onFormChange {
+                                it.copy(isLeapMonth = !it.isLeapMonth)
+                                    .clearTimeZoneResolution()
+                            }
                         },
                     )
                 }
@@ -1863,13 +1869,19 @@ internal fun CaseFormScreen(
             NumericFieldRow(
                 values = listOf(
                     NumericField("年", form.year, "birth_year") {
-                        onFormChange { form -> form.copy(year = it) }
+                        onFormChange { form ->
+                            form.copy(year = it).clearTimeZoneResolution()
+                        }
                     },
                     NumericField("月", form.month, "birth_month") {
-                        onFormChange { form -> form.copy(month = it) }
+                        onFormChange { form ->
+                            form.copy(month = it).clearTimeZoneResolution()
+                        }
                     },
                     NumericField("日", form.day, "birth_day") {
-                        onFormChange { form -> form.copy(day = it) }
+                        onFormChange { form ->
+                            form.copy(day = it).clearTimeZoneResolution()
+                        }
                     },
                 ),
                 enabled = !saving,
@@ -1877,17 +1889,110 @@ internal fun CaseFormScreen(
             NumericFieldRow(
                 values = listOf(
                     NumericField("时", form.hour, "birth_hour") {
-                        onFormChange { form -> form.copy(hour = it) }
+                        onFormChange { form ->
+                            form.copy(hour = it).clearTimeZoneResolution()
+                        }
                     },
                     NumericField("分", form.minute, "birth_minute") {
-                        onFormChange { form -> form.copy(minute = it) }
+                        onFormChange { form ->
+                            form.copy(minute = it).clearTimeZoneResolution()
+                        }
                     },
                     NumericField("秒", form.second, "birth_second") {
-                        onFormChange { form -> form.copy(second = it) }
+                        onFormChange { form ->
+                            form.copy(second = it).clearTimeZoneResolution()
+                        }
                     },
                 ),
                 enabled = !saving,
             )
+            SectionHeading(
+                "出生地区与时区",
+                "地区必填；经纬度可稍后补录。时区使用 IANA 标识，例如 Asia/Shanghai。",
+            )
+            OutlinedTextField(
+                value = form.locationName,
+                onValueChange = { value ->
+                    onFormChange { it.copy(locationName = value) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("birth_location"),
+                label = { Text("出生地区 *") },
+                singleLine = true,
+                enabled = !saving,
+            )
+            OutlinedTextField(
+                value = form.timeZoneId,
+                onValueChange = { value ->
+                    onFormChange {
+                        it.copy(timeZoneId = value).clearTimeZoneResolution()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .testTag("birth_time_zone"),
+                label = { Text("IANA 时区 *") },
+                supportingText = { Text("中国大陆通常为 Asia/Shanghai") },
+                singleLine = true,
+                enabled = !saving,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = form.longitude,
+                    onValueChange = { value ->
+                        onFormChange { it.copy(longitude = value) }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("birth_longitude"),
+                    label = { Text("经度（可选）") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    enabled = !saving,
+                )
+                OutlinedTextField(
+                    value = form.latitude,
+                    onValueChange = { value ->
+                        onFormChange { it.copy(latitude = value) }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("birth_latitude"),
+                    label = { Text("纬度（可选）") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    enabled = !saving,
+                )
+            }
+            if (form.availableUtcOffsetSeconds.isNotEmpty()) {
+                Text(
+                    "该当地时间出现两次，请根据原始记录选择 UTC offset：",
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    form.availableUtcOffsetSeconds.forEach { offsetSeconds ->
+                        SexButton(
+                            text = formatUtcOffset(offsetSeconds),
+                            selected = form.resolvedUtcOffsetSeconds == offsetSeconds,
+                            enabled = !saving,
+                            tag = "birth_utc_offset_$offsetSeconds",
+                            onClick = {
+                                onFormChange {
+                                    it.copy(resolvedUtcOffsetSeconds = offsetSeconds)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
             if (error != null) {
                 Card(
                     modifier = Modifier
@@ -2225,7 +2330,28 @@ private fun CaseDetailContent(
             )
             DetailRow("性别", case.sexForFortuneDirection.displayName())
             DetailRow("历法与时间", case.birthInput.displayDateTime())
+            DetailRow("出生地区", case.birthInput.locationName ?: "未提供")
+            DetailRow(
+                "经纬度",
+                if (case.birthInput.longitude != null && case.birthInput.latitude != null) {
+                    "${case.birthInput.longitude}, ${case.birthInput.latitude}"
+                } else {
+                    "未提供"
+                },
+            )
+            if (case.birthInput.coordinateSource != null) {
+                DetailRow("坐标来源", "用户录入")
+            }
             DetailRow("时区", case.birthInput.timeZoneId)
+            DetailRow(
+                "UTC offset",
+                case.birthInput.resolvedUtcOffsetSeconds?.let(::formatUtcOffset)
+                    ?: "旧数据未解析",
+            )
+            DetailRow(
+                "时区数据版本",
+                case.birthInput.timeZoneDataVersion ?: "旧数据未记录",
+            )
             DetailRow("时间精度", case.birthInput.timePrecision.name)
             DetailRow("来源", case.sourceType.displayName())
             case.copiedFromCaseId?.let { sourceId ->
@@ -2644,6 +2770,19 @@ private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateTime()
 
 private fun CivilDateTime.display(): String =
     "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
+
+private fun formatUtcOffset(totalSeconds: Int): String {
+    val sign = if (totalSeconds >= 0) "+" else "-"
+    val absolute = kotlin.math.abs(totalSeconds)
+    val hours = absolute / 3_600
+    val minutes = absolute % 3_600 / 60
+    val seconds = absolute % 60
+    return if (seconds == 0) {
+        "UTC$sign%02d:%02d".format(hours, minutes)
+    } else {
+        "UTC$sign%02d:%02d:%02d".format(hours, minutes, seconds)
+    }
+}
 
 private fun FourPillars.display(): String = "$year $month $day $hour"
 

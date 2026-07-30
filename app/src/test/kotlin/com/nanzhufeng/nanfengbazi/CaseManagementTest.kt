@@ -1,5 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
+import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
@@ -54,6 +56,49 @@ class CaseManagementTest {
         assertFalse(saved.calculationSnapshots.first().adopted)
         assertTrue(saved.calculationSnapshots.last().adopted)
         assertEquals(1, engine.calls)
+    }
+
+    @Test
+    fun `编辑保存采用规范化时区证据且夏令时重叠不会写库`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-zone"] = sampleStoredCase("case-zone")
+        }
+        val normalizedEngine = BaziEngine { input, _ ->
+            calculationResult(
+                input.copy(
+                    resolvedUtcOffsetSeconds = 28_800,
+                    timeZoneDataVersion = "tzdb:test",
+                ),
+            )
+        }
+        val saved = EditCaseUseCase(
+            normalizedEngine,
+            repository,
+            fixedClock,
+            IdGenerator { "snapshot-zone" },
+        )("case-zone", 1, validForm())
+
+        assertEquals(CaseMutationResult.Saved("case-zone", 2), saved)
+        assertEquals(
+            "tzdb:test",
+            repository.stored.getValue("case-zone").birthInput.timeZoneDataVersion,
+        )
+
+        val choiceEngine = BaziEngine { _, _ ->
+            throw TimeZoneChoiceRequiredException(
+                "America/New_York",
+                listOf(-14_400, -18_000),
+                "tzdb:test",
+            )
+        }
+        val choice = EditCaseUseCase(choiceEngine, repository)(
+            "case-zone",
+            2,
+            validForm().copy(timeZoneId = "America/New_York"),
+        )
+
+        assertTrue(choice is CaseMutationResult.TimeZoneChoiceRequired)
+        assertEquals(2L, repository.stored.getValue("case-zone").revision)
     }
 
     @Test

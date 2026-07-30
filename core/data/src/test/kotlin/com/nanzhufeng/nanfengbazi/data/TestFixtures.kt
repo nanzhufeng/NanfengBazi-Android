@@ -17,6 +17,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
@@ -42,6 +43,11 @@ internal fun sampleCase(
         sexForFortuneDirection = SexForFortuneDirection.MAN,
         timePrecision = TimePrecision.EXACT_TO_SECOND,
         locationName = "脱敏测试地区",
+        longitude = 120.5853,
+        latitude = 31.2989,
+        coordinateSource = CoordinateSource.USER_ENTERED,
+        resolvedUtcOffsetSeconds = 32_400,
+        timeZoneDataVersion = "tzdb:fixture",
     )
     val profile = CalculationProfile.tymeDefault()
     val result = CalculationResult(

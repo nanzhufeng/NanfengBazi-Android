@@ -4,6 +4,7 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -12,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
@@ -34,6 +36,17 @@ data class CaseFormState(
     val second: String = "0",
     val calendarSystem: CalendarSystem = CalendarSystem.SOLAR,
     val isLeapMonth: Boolean = false,
+    val locationName: String = "",
+    val longitude: String = "",
+    val latitude: String = "",
+    val timeZoneId: String = "Asia/Shanghai",
+    val resolvedUtcOffsetSeconds: Int? = null,
+    val availableUtcOffsetSeconds: List<Int> = emptyList(),
+)
+
+internal fun CaseFormState.clearTimeZoneResolution(): CaseFormState = copy(
+    resolvedUtcOffsetSeconds = null,
+    availableUtcOffsetSeconds = emptyList(),
 )
 
 sealed interface CaseFormValidation {
@@ -57,6 +70,40 @@ object CaseFormValidator {
         }
         val sex = form.sex
             ?: return CaseFormValidation.Invalid("请选择性别。")
+        val locationName = form.locationName.trim()
+        if (locationName.isEmpty()) {
+            return CaseFormValidation.Invalid("请填写出生地区。")
+        }
+        if (locationName.length > 120) {
+            return CaseFormValidation.Invalid("出生地区不能超过 120 个字符。")
+        }
+        val timeZoneId = form.timeZoneId.trim()
+        if (timeZoneId.isEmpty()) {
+            return CaseFormValidation.Invalid("请填写 IANA 时区。")
+        }
+        val longitudeRaw = form.longitude.trim()
+        val latitudeRaw = form.latitude.trim()
+        if ((longitudeRaw.isEmpty()) != (latitudeRaw.isEmpty())) {
+            return CaseFormValidation.Invalid("经度和纬度必须同时填写或同时留空。")
+        }
+        val longitude = longitudeRaw.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+            ?: if (longitudeRaw.isNotEmpty()) {
+                return CaseFormValidation.Invalid("经度必须是数字。")
+            } else {
+                null
+            }
+        val latitude = latitudeRaw.takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+            ?: if (latitudeRaw.isNotEmpty()) {
+                return CaseFormValidation.Invalid("纬度必须是数字。")
+            } else {
+                null
+            }
+        if (longitude != null && longitude !in -180.0..180.0) {
+            return CaseFormValidation.Invalid("经度必须在 -180 到 180 之间。")
+        }
+        if (latitude != null && latitude !in -90.0..90.0) {
+            return CaseFormValidation.Invalid("纬度必须在 -90 到 90 之间。")
+        }
         val values = listOf(
             "年份" to form.year,
             "月份" to form.month,
@@ -115,6 +162,16 @@ object CaseFormValidator {
                 } else {
                     TimePrecision.EXACT_TO_SECOND
                 },
+                timeZoneId = timeZoneId,
+                resolvedUtcOffsetSeconds = form.resolvedUtcOffsetSeconds,
+                locationName = locationName,
+                longitude = longitude,
+                latitude = latitude,
+                coordinateSource = if (longitude != null) {
+                    CoordinateSource.USER_ENTERED
+                } else {
+                    null
+                },
             )
         } catch (_: DateTimeException) {
             return CaseFormValidation.Invalid("出生日期或时间无效，请检查年月日和时分秒。")
@@ -136,6 +193,11 @@ sealed interface CreateCaseResult {
     data class Created(val caseId: String) : CreateCaseResult
     data class DuplicateCandidates(
         val candidates: List<DuplicateCaseCandidate>,
+    ) : CreateCaseResult
+    data class TimeZoneChoiceRequired(
+        val timeZoneId: String,
+        val validUtcOffsetSeconds: List<Int>,
+        val timeZoneDataVersion: String,
     ) : CreateCaseResult
     data class ValidationFailed(val message: String) : CreateCaseResult
     data class CalculationFailed(val message: String) : CreateCaseResult
@@ -173,6 +235,12 @@ class CreateCaseUseCase(
             baziEngine.calculate(valid.birthInput, profile)
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (error: TimeZoneChoiceRequiredException) {
+            return CreateCaseResult.TimeZoneChoiceRequired(
+                timeZoneId = error.timeZoneId,
+                validUtcOffsetSeconds = error.validUtcOffsetSeconds,
+                timeZoneDataVersion = error.timeZoneDataVersion,
+            )
         } catch (error: Exception) {
             return CreateCaseResult.CalculationFailed(
                 if (error is IllegalArgumentException) {
@@ -186,7 +254,7 @@ class CreateCaseUseCase(
         if (!allowDuplicate) {
             val candidates = try {
                 caseRepository.findDuplicateCandidates(
-                    birthInput = valid.birthInput,
+                    birthInput = calculation.normalizedInput,
                     fourPillars = calculation.fourPillars,
                     canonicalSolarDateTime = calculation.calendarConversion?.solarDateTime,
                 )
@@ -207,9 +275,9 @@ class CreateCaseUseCase(
             id = caseId,
             alias = valid.alias,
             name = valid.name?.let(ExplicitText::present) ?: ExplicitText.absent(),
-            sexForFortuneDirection = valid.birthInput.sexForFortuneDirection,
+            sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
             sourceType = CaseSourceType.MANUAL,
-            birthInput = valid.birthInput,
+            birthInput = calculation.normalizedInput,
             calculationSnapshots = listOf(
                 CaseCalculationSnapshot(
                     id = idGenerator.nextId(),
