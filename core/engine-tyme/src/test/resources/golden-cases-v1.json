@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "tyme-public-eight-char-19860529",
+      "source": "Tyme4j public EightCharTest sample",
+      "engineVersion": "1.5.1",
+      "ruleVersion": "stage0-v1",
+      "input": {
+        "calendar": "solar",
+        "dateTime": "1986-05-29T13:37:00",
+        "sexForFortuneDirection": "MAN"
+      },
+      "profile": "tyme-default-v1",
+      "expected": {
+        "yearPillar": "丙寅",
+        "monthPillar": "癸巳",
+        "dayPillar": "癸酉",
+        "hourPillar": "己未",
+        "ownSign": "癸巳",
+        "bodySign": "辛丑",
+        "fetalOrigin": "甲申",
+        "fetalBreath": "戊辰"
+      }
+    },
+    {
+      "id": "spring-boundary-2025",
+      "source": "Artificial boundary generated from Tyme4j SolarTerm index 3",
+      "engineVersion": "1.5.1",
+      "ruleVersion": "stage0-v1",
+      "input": {
+        "relation": "one second before and exactly at Spring term"
+      },
+      "profile": "tyme-default-v1",
+      "expected": {
+        "yearPillarBefore": "甲辰",
+        "yearPillarAt": "乙巳"
+      }
+    }
+  ]
+}
+
