@@ -535,6 +535,13 @@ class StageTwoViewModelTest {
             backupRoot = root,
         )
         viewModel.previewFullBackup { ByteArrayInputStream("zip".encodeToByteArray()) }
+        viewModel.skipAllFullBackupCases()
+        assertEquals(2, viewModel.state.value.fullBackupDecisions.size)
+        assertTrue(
+            viewModel.state.value.fullBackupDecisions.values.all {
+                it.action == BackupCaseRestoreAction.SKIP
+            },
+        )
         viewModel.chooseFullBackupDecision("backup-new", BackupCaseRestoreAction.IMPORT_AS_IS)
         viewModel.prepareFullBackupCaseMerge("backup-conflict", "local-target")
         assertEquals("local-target", viewModel.state.value.fullBackupMergePreparation?.targetCaseId)

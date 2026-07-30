@@ -471,12 +471,13 @@ fun NanfengBaziApp(
                         !state.fullBackupRestorePasswordVisible
                 }
                 ?.let { preview ->
-                FullBackupPreviewDialog(
+                FullBackupRestoreWorkspace(
                     preview = preview,
                     decisions = state.fullBackupDecisions,
                     preparedPlan = state.fullBackupRestorePlan,
                     busy = state.fullBackupBusy,
                     onChooseDecision = viewModel::chooseFullBackupDecision,
+                    onSkipAll = viewModel::skipAllFullBackupCases,
                     onPrepareMerge = viewModel::prepareFullBackupCaseMerge,
                     onPreparePlan = viewModel::prepareFullBackupRestorePlan,
                     onRequestRestore = viewModel::requestFullBackupRestore,
@@ -523,13 +524,15 @@ fun NanfengBaziApp(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FullBackupPreviewDialog(
+private fun FullBackupRestoreWorkspace(
     preview: RestorePreview,
     decisions: Map<String, BackupCaseRestoreDecision>,
     preparedPlan: BackupRestorePlan?,
     busy: Boolean,
     onChooseDecision: (String, BackupCaseRestoreAction) -> Unit,
+    onSkipAll: () -> Unit,
     onPrepareMerge: (String, String) -> Unit,
     onPreparePlan: () -> Unit,
     onRequestRestore: () -> Unit,
@@ -538,53 +541,168 @@ private fun FullBackupPreviewDialog(
     val manifest = preview.manifest
     val conflictedCases = preview.cases.filter { it.conflicts.isNotEmpty() }
     val conflictCandidateCount = conflictedCases.sumOf { it.conflicts.size }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("完整备份只读预览") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .testTag("full_backup_preview"),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text("来源 App：${manifest.appVersion}")
-                Text("格式版本：${manifest.formatVersion}")
-                Text("数据库 Schema：${manifest.databaseSchemaVersion}")
-                Text("创建时间：${manifest.createdAt}")
-                Text("文件保护：${if (manifest.encrypted) "密码加密" else "未加密"}")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Text("命例：${manifest.counts.cases}")
-                Text("计算快照：${manifest.counts.snapshots}")
-                Text(
-                    "文本记录：${manifest.counts.textRecords}，" +
-                        "历史：${manifest.counts.textRecordRevisions}",
-                )
-                Text(
-                    "关键事件：${manifest.counts.events}，" +
-                        "历史：${manifest.counts.eventRevisions}",
-                )
-                Text("附件：${manifest.counts.attachments}")
-                Text("已校验文件：${preview.sourceFileCount}")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Text("逐命例检查：${preview.cases.size} 个")
-                if (conflictedCases.isEmpty()) {
-                    Text("当前库未发现稳定 ID、出生输入或四柱冲突。")
-                } else {
-                    Text(
-                        "发现 ${conflictedCases.size} 个来源命例、" +
-                            "$conflictCandidateCount 个本地冲突候选。",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("full_backup_conflict_summary"),
-                    )
-                    conflictedCases.take(MAX_FULL_BACKUP_CONFLICT_CASES).forEach { sourceCase ->
+    val selectedCount = decisions.size
+    BackHandler(enabled = !busy, onBack = onDismiss)
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("full_backup_preview"),
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("完整备份恢复工作台")
                         Text(
-                            "来源：${sourceCase.sourceAlias}" +
-                                (if (sourceCase.isTrashed) "（回收站）" else ""),
+                            "已决策 $selectedCount / ${preview.cases.size}",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                },
+                navigationIcon = {
+                    TextButton(
+                        onClick = onDismiss,
+                        enabled = !busy,
+                        modifier = Modifier.testTag("close_full_backup_preview"),
+                    ) {
+                        Text("关闭")
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            Surface(tonalElevation = 4.dp) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    preparedPlan?.let {
+                        Text(
+                            "方案已通过复核，尚未写入数据。",
+                            modifier = Modifier.testTag("full_backup_plan_ready"),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(
+                            onClick = onPreparePlan,
+                            enabled = !busy && selectedCount == preview.cases.size,
+                            modifier = Modifier.testTag("prepare_full_backup_plan"),
+                        ) {
+                            Text(if (preparedPlan == null) "检查恢复方案" else "重新检查方案")
+                        }
+                        if (preparedPlan != null) {
+                            Button(
+                                onClick = onRequestRestore,
+                                enabled = !busy,
+                                modifier = Modifier.testTag("request_full_backup_restore"),
+                            ) {
+                                Text("核对后执行恢复")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .testTag("full_backup_case_list"),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("备份概览", fontWeight = FontWeight.SemiBold)
+                        Text("来源 App：${manifest.appVersion}")
+                        Text("格式 / Schema：${manifest.formatVersion} / " +
+                            manifest.databaseSchemaVersion)
+                        Text("创建时间：${manifest.createdAt}")
+                        Text("文件保护：${if (manifest.encrypted) "密码加密" else "未加密"}")
+                        Text(
+                            "命例 ${manifest.counts.cases} · 快照 ${manifest.counts.snapshots} · " +
+                                "记录 ${manifest.counts.textRecords} · 事件 " +
+                                "${manifest.counts.events} · 附件 ${manifest.counts.attachments}",
+                        )
+                        Text("已校验文件：${preview.sourceFileCount}")
+                        if (conflictedCases.isEmpty()) {
+                            Text("当前库未发现稳定 ID、出生输入或四柱冲突。")
+                        } else {
+                            Text(
+                                "发现 ${conflictedCases.size} 个来源命例、" +
+                                    "$conflictCandidateCount 个本地冲突候选。",
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.testTag("full_backup_conflict_summary"),
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = onSkipAll,
+                            enabled = !busy && preview.cases.isNotEmpty(),
+                            modifier = Modifier.testTag("skip_all_full_backup_cases"),
+                        ) {
+                            Text("明确将全部命例设为跳过")
+                        }
+                        Text(
+                            "批量跳过只设置逐例决策，不会立即执行恢复。",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+            item {
+                Text("逐例恢复决策", fontWeight = FontWeight.SemiBold)
+            }
+            items(
+                items = preview.cases,
+                key = { it.sourceCaseId },
+            ) { sourceCase ->
+                val selected = decisions[sourceCase.sourceCaseId]?.action
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("full_backup_case_${sourceCase.sourceCaseId}"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            sourceCase.sourceAlias +
+                                (if (sourceCase.isTrashed) "（来源已删除）" else ""),
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.testTag(
-                                "full_backup_conflict_${sourceCase.sourceCaseId}",
-                            ),
+                            modifier = if (sourceCase.conflicts.isNotEmpty()) {
+                                Modifier.testTag(
+                                    "full_backup_conflict_${sourceCase.sourceCaseId}",
+                                )
+                            } else {
+                                Modifier
+                            },
+                        )
+                        Text(
+                            "来源 ID：${sourceCase.sourceCaseId}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            "当前决策：${selected?.label ?: "尚未选择"}",
+                            color = if (selected == null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
                         )
                         sourceCase.conflicts.forEach { conflict ->
                             Text(
@@ -592,130 +710,92 @@ private fun FullBackupPreviewDialog(
                                     (if (conflict.isTrashed) "（回收站）" else "") +
                                     "；${conflict.reasons.joinToString("、") { it.label }}" +
                                     "；修订 ${conflict.localRevision}",
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                    }
-                    if (conflictedCases.size > MAX_FULL_BACKUP_CONFLICT_CASES) {
-                        Text(
-                            "另有 ${conflictedCases.size - MAX_FULL_BACKUP_CONFLICT_CASES} 个" +
-                                "冲突命例未在此摘要展开。",
-                        )
-                    }
-                }
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Text("逐例恢复决策", fontWeight = FontWeight.SemiBold)
-                preview.cases.forEach { sourceCase ->
-                    val selected = decisions[sourceCase.sourceCaseId]?.action
-                    Text("${sourceCase.sourceAlias}：${selected?.label ?: "尚未选择"}")
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (sourceCase.conflicts.isEmpty()) {
-                            OutlinedButton(
-                                onClick = {
-                                    onChooseDecision(
-                                        sourceCase.sourceCaseId,
-                                        BackupCaseRestoreAction.IMPORT_AS_IS,
-                                    )
-                                },
-                                enabled = !busy,
-                                modifier = Modifier.testTag(
-                                    "full_backup_import_${sourceCase.sourceCaseId}",
-                                ),
-                            ) { Text("按原 ID 导入") }
-                        } else {
-                            OutlinedButton(
-                                onClick = {
-                                    onChooseDecision(
-                                        sourceCase.sourceCaseId,
-                                        BackupCaseRestoreAction.KEEP_BOTH,
-                                    )
-                                },
-                                enabled = !busy,
-                                modifier = Modifier.testTag(
-                                    "full_backup_keep_${sourceCase.sourceCaseId}",
-                                ),
-                            ) { Text("保留两份") }
-                            sourceCase.conflicts
-                                .filterNot { it.isTrashed }
-                                .forEach { conflict ->
-                                    OutlinedButton(
-                                        onClick = {
-                                            onPrepareMerge(
-                                                sourceCase.sourceCaseId,
-                                                conflict.localCaseId,
-                                            )
-                                        },
-                                        enabled = !busy,
-                                        modifier = Modifier
-                                            .testTag("full_backup_merge_candidate")
-                                            .semantics {
-                                                contentDescription =
-                                                    "来源 ${sourceCase.sourceCaseId} 合并到" +
-                                                        " ${conflict.localCaseId}"
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            if (sourceCase.conflicts.isEmpty()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onChooseDecision(
+                                            sourceCase.sourceCaseId,
+                                            BackupCaseRestoreAction.IMPORT_AS_IS,
+                                        )
+                                    },
+                                    enabled = !busy,
+                                    modifier = Modifier.testTag(
+                                        "full_backup_import_${sourceCase.sourceCaseId}",
+                                    ),
+                                ) { Text("按原 ID 导入") }
+                            } else {
+                                OutlinedButton(
+                                    onClick = {
+                                        onChooseDecision(
+                                            sourceCase.sourceCaseId,
+                                            BackupCaseRestoreAction.KEEP_BOTH,
+                                        )
+                                    },
+                                    enabled = !busy,
+                                    modifier = Modifier.testTag(
+                                        "full_backup_keep_${sourceCase.sourceCaseId}",
+                                    ),
+                                ) { Text("保留两份") }
+                                sourceCase.conflicts
+                                    .filterNot { it.isTrashed }
+                                    .forEach { conflict ->
+                                        OutlinedButton(
+                                            onClick = {
+                                                onPrepareMerge(
+                                                    sourceCase.sourceCaseId,
+                                                    conflict.localCaseId,
+                                                )
                                             },
-                                    ) {
-                                        Text("范围合并到 ${conflict.localAlias}")
+                                            enabled = !busy,
+                                            modifier = Modifier
+                                                .testTag("full_backup_merge_candidate")
+                                                .semantics {
+                                                    contentDescription =
+                                                        "来源 ${sourceCase.sourceCaseId} 合并到" +
+                                                            " ${conflict.localCaseId}"
+                                                },
+                                        ) {
+                                            Text("范围合并到 ${conflict.localAlias}")
+                                        }
                                     }
-                                }
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                onChooseDecision(
-                                    sourceCase.sourceCaseId,
-                                    BackupCaseRestoreAction.SKIP,
-                                )
-                            },
-                            enabled = !busy,
-                            modifier = Modifier
-                                .testTag("full_backup_skip_${sourceCase.sourceCaseId}")
-                                .semantics {
-                                    contentDescription =
-                                        "跳过完整备份来源 ${sourceCase.sourceCaseId}"
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    onChooseDecision(
+                                        sourceCase.sourceCaseId,
+                                        BackupCaseRestoreAction.SKIP,
+                                    )
                                 },
-                        ) { Text("跳过") }
+                                enabled = !busy,
+                                modifier = Modifier
+                                    .testTag("full_backup_skip_${sourceCase.sourceCaseId}")
+                                    .semantics {
+                                        contentDescription =
+                                            "跳过完整备份来源 ${sourceCase.sourceCaseId}"
+                                    },
+                            ) { Text("跳过") }
+                        }
                     }
                 }
-                preparedPlan?.let {
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        "恢复方案已通过过期与范围检查，尚未写入数据。",
-                        modifier = Modifier.testTag("full_backup_plan_ready"),
+                        "已验证文件保护、ZIP 路径、大小、哈希、数据引用、附件一致性和当前库" +
+                            "冲突。只有底部“核对后执行恢复”会进入最终确认。",
+                        modifier = Modifier.padding(16.dp),
                     )
-                    Button(
-                        onClick = onRequestRestore,
-                        enabled = !busy,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("request_full_backup_restore"),
-                    ) {
-                        Text("核对后执行恢复")
-                    }
                 }
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Text(
-                    "本页面已验证文件保护、ZIP 路径、大小、哈希、数据引用、附件一致性和" +
-                        "当前库冲突候选；本页只生成恢复方案，不会写入或覆盖数据库。",
-                )
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onPreparePlan,
-                enabled = !busy && decisions.size == preview.cases.size,
-                modifier = Modifier.testTag("prepare_full_backup_plan"),
-            ) {
-                Text(if (preparedPlan == null) "检查恢复方案" else "重新检查方案")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                enabled = !busy,
-                modifier = Modifier.testTag("close_full_backup_preview"),
-            ) { Text("关闭") }
-        },
-    )
+        }
+    }
 }
 
 private val BackupCaseRestoreAction.label: String
@@ -880,8 +960,6 @@ private val BackupCaseConflictReason.label: String
         BackupCaseConflictReason.SAME_BIRTH_INPUT -> "出生输入相同"
         BackupCaseConflictReason.SAME_FOUR_PILLARS -> "四柱相同"
     }
-
-private const val MAX_FULL_BACKUP_CONFLICT_CASES = 20
 
 @Composable
 private fun SingleCasePreviewDialog(

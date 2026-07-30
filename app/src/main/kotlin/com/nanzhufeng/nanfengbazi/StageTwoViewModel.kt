@@ -604,6 +604,27 @@ class StageTwoViewModel(
         }
     }
 
+    fun skipAllFullBackupCases() {
+        if (mutableState.value.fullBackupBusy) return
+        val preview = mutableState.value.fullBackupPreview ?: return
+        val decisions = preview.cases.associate { source ->
+            source.sourceCaseId to BackupCaseRestoreDecision(
+                sourceCaseId = source.sourceCaseId,
+                action = BackupCaseRestoreAction.SKIP,
+            )
+        }
+        mutableState.update {
+            it.copy(
+                fullBackupDecisions = decisions,
+                fullBackupMergePreparation = null,
+                fullBackupMergeModules = emptySet(),
+                fullBackupMergeFieldChoices = emptyMap(),
+                fullBackupRestorePlan = null,
+                fullBackupError = null,
+            )
+        }
+    }
+
     fun prepareFullBackupRestorePlan() {
         val service = caseBackupService ?: return
         val preview = mutableState.value.fullBackupPreview ?: return
