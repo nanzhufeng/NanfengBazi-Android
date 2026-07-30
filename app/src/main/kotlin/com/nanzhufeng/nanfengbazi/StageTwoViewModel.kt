@@ -3,6 +3,11 @@ package com.nanzhufeng.nanfengbazi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
@@ -14,14 +19,19 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
+import java.io.InputStream
+import java.io.OutputStream
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 sealed interface AppDestination {
     data object CaseList : AppDestination
@@ -111,6 +121,10 @@ data class StageTwoUiState(
     val mutationSaving: Boolean = false,
     val mutationError: String? = null,
     val deleteConfirmationVisible: Boolean = false,
+    val singleCaseExportConfirmationVisible: Boolean = false,
+    val singleCaseExchangeBusy: Boolean = false,
+    val singleCasePreview: SingleCasePreview? = null,
+    val singleCaseExchangeError: String? = null,
     val message: String? = null,
 )
 
@@ -124,6 +138,9 @@ class StageTwoViewModel(
     private val caseLifecycle: CaseLifecycleUseCase = CaseLifecycleUseCase(caseRepository),
     private val navigator: StageTwoNavigator = StageTwoNavigator(),
     private val clock: Clock = Clock.systemUTC(),
+    private val singleCaseExchange: SingleCaseExchangeService =
+        SingleCaseExchangeService(caseRepository, clock),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(StageTwoUiState())
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
@@ -177,6 +194,128 @@ class StageTwoViewModel(
                 }
             }
         }
+    }
+
+    fun requestSingleCaseExport() {
+        if (mutableState.value.detail == null || mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(
+                singleCaseExportConfirmationVisible = true,
+                singleCaseExchangeError = null,
+            )
+        }
+    }
+
+    fun cancelSingleCaseExport() {
+        mutableState.update { it.copy(singleCaseExportConfirmationVisible = false) }
+    }
+
+    fun confirmSingleCaseExport(): String? {
+        val detail = mutableState.value.detail ?: return null
+        mutableState.update {
+            it.copy(
+                singleCaseExportConfirmationVisible = false,
+                singleCaseExchangeError = null,
+            )
+        }
+        return singleCaseExchange.suggestedFileName(detail)
+    }
+
+    fun exportCurrentCase(openOutput: () -> OutputStream?) {
+        val caseId = mutableState.value.detail?.id ?: return
+        if (mutableState.value.singleCaseExchangeBusy) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    val output = openOutput()
+                        ?: return@withContext SingleCaseExportResult.Rejected(
+                            code = "OUTPUT_OPEN_FAILED",
+                            message = "无法创建目标文件。",
+                        )
+                    output.use {
+                        singleCaseExchange.export(
+                            caseId = caseId,
+                            output = it,
+                            appVersion = BuildConfig.VERSION_NAME,
+                            protection =
+                                SingleCaseProtection.UnencryptedSensitiveDataConfirmed,
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SingleCaseExportResult.Rejected(
+                    code = "OUTPUT_OPEN_FAILED",
+                    message = "无法创建或写入目标文件。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is SingleCaseExportResult.Success -> it.copy(
+                        singleCaseExchangeBusy = false,
+                        message = "单命例 JSON 已导出，图片仅保留引用信息。",
+                    )
+                    is SingleCaseExportResult.Rejected -> it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCaseExchangeError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun previewSingleCase(openInput: () -> InputStream?) {
+        if (mutableState.value.singleCaseExchangeBusy) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    singleCaseExchangeBusy = true,
+                    singleCasePreview = null,
+                    singleCaseExchangeError = null,
+                )
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    val input = openInput()
+                        ?: return@withContext SingleCasePreviewResult.Rejected(
+                            code = "INPUT_OPEN_FAILED",
+                            message = "无法打开所选文件。",
+                        )
+                    input.use { singleCaseExchange.preview(it) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SingleCasePreviewResult.Rejected(
+                    code = "INPUT_OPEN_FAILED",
+                    message = "无法读取所选文件。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is SingleCasePreviewResult.Success -> it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCasePreview = result.preview,
+                    )
+                    is SingleCasePreviewResult.Rejected -> it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCaseExchangeError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissSingleCasePreview() {
+        mutableState.update { it.copy(singleCasePreview = null) }
+    }
+
+    fun dismissSingleCaseExchangeError() {
+        mutableState.update { it.copy(singleCaseExchangeError = null) }
     }
 
     fun updateQuery(query: String) {

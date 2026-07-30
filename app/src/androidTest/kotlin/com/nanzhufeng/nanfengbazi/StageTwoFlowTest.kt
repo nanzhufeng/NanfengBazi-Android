@@ -13,6 +13,11 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
+import java.util.regex.Pattern
 import org.junit.Rule
 import org.junit.Test
 
@@ -23,7 +28,9 @@ class StageTwoFlowTest {
     @Test
     fun createSaveSearchAndOpenDetail() {
         val alias = "Stage2合成样例-${System.currentTimeMillis()}"
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("import_single_case_button").assertIsDisplayed()
         composeRule.onNodeWithTag("new_case_button").performClick()
 
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
@@ -56,7 +63,12 @@ class StageTwoFlowTest {
             ).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("case_search").performTextInput(alias)
-        composeRule.onNodeWithText("别名：$alias").assertIsDisplayed().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithText("别名：$alias").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onNodeWithText("别名：$alias").performClick()
 
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -194,6 +206,28 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
 
+        composeRule.onNodeWithTag("export_single_case_button").performScrollTo().performClick()
+        composeRule.onNodeWithText("导出未加密单命例？").assertIsDisplayed()
+        composeRule.onNodeWithTag("confirm_single_case_export").performClick()
+        val saveButton = device.wait(
+            Until.findObject(
+                By.text(Pattern.compile("(?i)save|保存")),
+            ),
+            10_000,
+        )
+        checkNotNull(saveButton) { "系统创建文档页面未出现保存按钮" }
+        saveButton.click()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasText("单命例 JSON 已导出，图片仅保留引用信息。"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasText("单命例 JSON 已导出，图片仅保留引用信息。"),
+            ).fetchSemanticsNodes().isEmpty()
+        }
+
         composeRule.onNodeWithTag("duplicate_case_button").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("复制来源")).fetchSemanticsNodes().isNotEmpty()
@@ -219,5 +253,24 @@ class StageTwoFlowTest {
         }
         composeRule.onNodeWithTag("visibility_active").assertIsDisplayed()
         composeRule.onNodeWithText("别名：$editedAlias（副本）").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        val exportedFileName = "${editedAlias.take(48)}_南枫八字命例.json"
+        val exportedFile = device.wait(
+            Until.findObject(By.text(exportedFileName)),
+            10_000,
+        )
+        checkNotNull(exportedFile) { "系统打开文档页面未找到刚导出的单命例 JSON" }
+        exportedFile.click()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("single_case_preview"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("单命例导入预览").assertIsDisplayed()
+        composeRule.onNodeWithText("稳定 ID 已存在", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("close_single_case_preview").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
     }
 }

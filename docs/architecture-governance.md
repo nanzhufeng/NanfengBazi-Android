@@ -95,7 +95,7 @@
 
 | 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
 |---|---|---|---|
-| 单命例 JSON 导出 | v1 严格封套、明文风险确认、载荷与文件哈希 | `SingleCaseExchangeService.export` | 聚合往返、文件名、密码未实现零输出 |
-| 单命例只读预览 | 16 MiB 上限、格式/Schema/哈希/领域校验 | `SingleCaseExchangeService.preview` | 非法文件拒绝且数据库零写入 |
+| 单命例 JSON 导出 | v1 严格封套、明文风险确认、载荷/文件哈希和系统创建文档 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.export` | 聚合往返、真实文件、密码未实现零输出 |
+| 单命例只读预览 | 系统打开文档、16 MiB 上限、格式/Schema/哈希/领域校验和预览弹窗 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.preview` | 同一真实文件读回、冲突显示且数据库零写入 |
 | 本地冲突候选 | 稳定 ID、出生输入、四柱和回收站位置 | `CaseRepository` 查询，由预览服务合并 | 同一候选理由合并且不修改本地命例 |
 | 附件二进制 | 单 JSON 不携带，仅保留引用元数据 | `REFERENCES_ONLY` | 预览明确 `containsAttachmentBinaries=false` |

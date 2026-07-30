@@ -12,8 +12,8 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.3.0-alpha06"
+        versionCode = 9
+        versionName = "0.3.0-alpha07"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -38,6 +38,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -49,7 +50,7 @@ android {
 }
 
 base {
-    archivesName.set("NanfengBazi-Android-v0.3.0-alpha06")
+    archivesName.set("NanfengBazi-Android-v0.3.0-alpha07")
 }
 
 dependencies {
@@ -74,5 +75,6 @@ dependencies {
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

@@ -72,6 +72,8 @@ class SingleCaseExchangeService(
         }
     }
 
+    fun suggestedFileName(case: BaziCase): String = buildSuggestedFileName(case)
+
     suspend fun preview(input: InputStream): SingleCasePreviewResult {
         val bytes = try {
             input.readBounded(MAX_DOCUMENT_BYTES)
@@ -219,7 +221,7 @@ private fun BaziCase.counts() = SingleCaseCounts(
 private fun canonicalPayload(case: BaziCase): ByteArray =
     DomainJson.encodeToString(BaziCase.serializer(), case).encodeToByteArray()
 
-private fun suggestedFileName(case: BaziCase): String {
+private fun buildSuggestedFileName(case: BaziCase): String {
     val safeAlias = case.alias
         .trim()
         .replace(INVALID_FILE_NAME_PATTERN, "_")

@@ -64,9 +64,15 @@ import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 
 @Composable
-fun NanfengBaziApp(viewModel: StageTwoViewModel) {
+fun NanfengBaziApp(
+    viewModel: StageTwoViewModel,
+    onCreateSingleCaseDocument: (String) -> Unit = {},
+    onOpenSingleCaseDocument: () -> Unit = {},
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
@@ -94,6 +100,7 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         onSelectVisibility = viewModel::selectVisibility,
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
+                        onImportSingleCase = onOpenSingleCaseDocument,
                         onOpenCase = viewModel::openDetail,
                         modifier = Modifier.padding(padding),
                     )
@@ -115,6 +122,7 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         onAddEvent = { viewModel.openEvent() },
                         onEditEvent = viewModel::openEvent,
                         onDuplicate = viewModel::duplicateCase,
+                        onExportSingleCase = viewModel::requestSingleCaseExport,
                         onMoveToTrash = viewModel::requestMoveToTrash,
                         onRestore = viewModel::restoreCase,
                         modifier = Modifier.padding(padding),
@@ -187,8 +195,128 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                     },
                 )
             }
+            if (state.singleCaseExportConfirmationVisible) {
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelSingleCaseExport,
+                    title = { Text("导出未加密单命例？") },
+                    text = {
+                        Text(
+                            "JSON 可能包含出生资料、健康、婚姻、财务、反馈和分析。" +
+                                "本文件只保存图片引用信息，不包含图片二进制。请妥善保管。",
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.confirmSingleCaseExport()?.let(
+                                    onCreateSingleCaseDocument,
+                                )
+                            },
+                            modifier = Modifier.testTag("confirm_single_case_export"),
+                        ) {
+                            Text("选择保存位置")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = viewModel::cancelSingleCaseExport) {
+                            Text("取消")
+                        }
+                    },
+                )
+            }
+            state.singleCasePreview?.let { preview ->
+                SingleCasePreviewDialog(
+                    preview = preview,
+                    onDismiss = viewModel::dismissSingleCasePreview,
+                )
+            }
+            state.singleCaseExchangeError?.let { error ->
+                AlertDialog(
+                    onDismissRequest = viewModel::dismissSingleCaseExchangeError,
+                    title = { Text("文件处理失败") },
+                    text = { Text(error, modifier = Modifier.testTag("single_case_error")) },
+                    confirmButton = {
+                        TextButton(onClick = viewModel::dismissSingleCaseExchangeError) {
+                            Text("知道了")
+                        }
+                    },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun SingleCasePreviewDialog(
+    preview: SingleCasePreview,
+    onDismiss: () -> Unit,
+) {
+    val sourceCase = preview.document.caseData
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("单命例导入预览") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .testTag("single_case_preview"),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("别名：${sourceCase.alias}", fontWeight = FontWeight.SemiBold)
+                Text("稳定 ID：${sourceCase.id}")
+                Text(
+                    "来源：App ${preview.document.appVersion} / " +
+                        "Schema ${preview.document.databaseSchemaVersion}",
+                )
+                Text("导出时间：${preview.document.exportedAt}")
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text("计算快照：${preview.counts.calculationSnapshots}")
+                Text(
+                    "文本记录：${preview.counts.textRecords}，" +
+                        "历史：${preview.counts.textRecordRevisions}",
+                )
+                Text(
+                    "关键事件：${preview.counts.events}，" +
+                        "历史：${preview.counts.eventRevisions}",
+                )
+                Text(
+                    "图片引用：${preview.counts.attachmentReferences}，" +
+                        "字段证据：${preview.counts.fieldEvidence}",
+                )
+                Text(
+                    "此 JSON 不包含图片二进制，当前仅完成只读预览，不会写入数据库。",
+                    color = MaterialTheme.colorScheme.error,
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                if (preview.conflicts.isEmpty()) {
+                    Text("本地未发现稳定 ID、出生输入或四柱冲突。")
+                } else {
+                    Text("本地冲突候选", fontWeight = FontWeight.SemiBold)
+                    preview.conflicts.forEach { conflict ->
+                        val location = if (conflict.isTrashed) "回收站" else "活动命例"
+                        Text(
+                            "• ${conflict.alias}（$location）：" +
+                                conflict.reasons.joinToString("、") { it.displayName() },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("close_single_case_preview"),
+            ) {
+                Text("关闭预览")
+            }
+        },
+    )
+}
+
+private fun SingleCaseConflictReason.displayName(): String = when (this) {
+    SingleCaseConflictReason.STABLE_ID_EXISTS -> "稳定 ID 已存在"
+    SingleCaseConflictReason.SAME_BIRTH_INPUT -> "出生输入相同"
+    SingleCaseConflictReason.SAME_FOUR_PILLARS -> "采用四柱相同"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -202,6 +330,7 @@ private fun CaseListScreen(
     onSelectVisibility: (CaseVisibility) -> Unit,
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
+    onImportSingleCase: () -> Unit,
     onOpenCase: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -222,9 +351,17 @@ private fun CaseListScreen(
                 }
             },
             actions = {
+                TextButton(
+                    onClick = onImportSingleCase,
+                    enabled = !state.singleCaseExchangeBusy,
+                    modifier = Modifier.testTag("import_single_case_button"),
+                ) {
+                    Text(if (state.singleCaseExchangeBusy) "读取中…" else "导入预览")
+                }
                 if (state.visibility == CaseVisibility.ACTIVE) {
                     Button(
                         onClick = onCreate,
+                        enabled = !state.singleCaseExchangeBusy,
                         modifier = Modifier
                             .padding(end = 12.dp)
                             .testTag("new_case_button"),
@@ -813,6 +950,7 @@ private fun CaseDetailScreen(
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
+    onExportSingleCase: () -> Unit,
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
     modifier: Modifier = Modifier,
@@ -846,8 +984,10 @@ private fun CaseDetailScreen(
                 onAddEvent = onAddEvent,
                 onEditEvent = onEditEvent,
                 onDuplicate = onDuplicate,
+                onExportSingleCase = onExportSingleCase,
                 onMoveToTrash = onMoveToTrash,
                 onRestore = onRestore,
+                singleCaseExchangeBusy = state.singleCaseExchangeBusy,
             )
         }
     }
@@ -863,8 +1003,10 @@ private fun CaseDetailContent(
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
+    onExportSingleCase: () -> Unit,
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
+    singleCaseExchangeBusy: Boolean,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     Column(
@@ -919,6 +1061,16 @@ private fun CaseDetailContent(
                 ) {
                     Text("移入回收站")
                 }
+            }
+            OutlinedButton(
+                onClick = onExportSingleCase,
+                enabled = !singleCaseExchangeBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp)
+                    .testTag("export_single_case_button"),
+            ) {
+                Text(if (singleCaseExchangeBusy) "正在导出…" else "导出单命例 JSON")
             }
         } else {
             Button(

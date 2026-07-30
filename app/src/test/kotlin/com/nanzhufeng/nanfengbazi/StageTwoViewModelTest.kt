@@ -1,5 +1,8 @@
 package com.nanzhufeng.nanfengbazi
 
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.time.Clock
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
@@ -20,6 +23,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -289,8 +293,40 @@ class StageTwoViewModelTest {
         assertEquals("case-source", viewModel.state.value.detail?.copiedFromCaseId)
     }
 
+    @Test
+    fun `单命例明文确认后导出并只读预览`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-exchange"] = sampleStoredCase("case-exchange")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-exchange")
+        viewModel.requestSingleCaseExport()
+
+        assertTrue(viewModel.state.value.singleCaseExportConfirmationVisible)
+        val fileName = viewModel.confirmSingleCaseExport()
+        assertEquals("合成命例甲_南枫八字命例.json", fileName)
+
+        val output = ByteArrayOutputStream()
+        viewModel.exportCurrentCase { output }
+
+        assertTrue(output.size() > 0)
+        assertEquals(
+            "单命例 JSON 已导出，图片仅保留引用信息。",
+            viewModel.state.value.message,
+        )
+        val beforePreview = repository.stored.toMap()
+
+        viewModel.previewSingleCase { ByteArrayInputStream(output.toByteArray()) }
+
+        assertEquals("case-exchange", viewModel.state.value.singleCasePreview?.document?.caseData?.id)
+        assertTrue(viewModel.state.value.singleCasePreview?.conflicts?.isNotEmpty() == true)
+        assertEquals(beforePreview, repository.stored)
+        assertNull(viewModel.state.value.singleCaseExchangeError)
+    }
+
     private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
         val engine = RecordingEngine()
+        val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
             .map { "generated-$it" }
             .iterator()
@@ -299,35 +335,38 @@ class StageTwoViewModelTest {
             createCase = CreateCaseUseCase(
                 baziEngine = engine,
                 caseRepository = repository,
-                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                clock = fixedClock,
                 idGenerator = IdGenerator { ids.next() },
             ),
             editCase = EditCaseUseCase(
                 baziEngine = engine,
                 caseRepository = repository,
-                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                clock = fixedClock,
                 idGenerator = IdGenerator { ids.next() },
             ),
             caseMetadata = CaseMetadataUseCase(
                 caseRepository = repository,
-                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                clock = fixedClock,
                 idGenerator = IdGenerator { ids.next() },
             ),
             textRecords = TextRecordUseCase(
                 caseRepository = repository,
-                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                clock = fixedClock,
                 idGenerator = IdGenerator { ids.next() },
             ),
             caseEvents = CaseEventUseCase(
                 caseRepository = repository,
-                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                clock = fixedClock,
                 idGenerator = IdGenerator { ids.next() },
             ),
             caseLifecycle = CaseLifecycleUseCase(
                 caseRepository = repository,
-                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                clock = fixedClock,
                 idGenerator = IdGenerator { ids.next() },
             ),
+            clock = fixedClock,
+            singleCaseExchange = SingleCaseExchangeService(repository, fixedClock),
+            ioDispatcher = dispatcher,
         )
     }
 }
