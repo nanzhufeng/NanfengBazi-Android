@@ -31,7 +31,8 @@
 
 ## 模块边界
 
-- `app`：当前只有占位界面，不承载业务计算或数据写入。
+- `app`：组合 `core:data` 与 `core:engine-tyme`，承载手动录入用例、ViewModel、
+  手机单列导航和展示；不得复制计算或持久化规则。
 - `core:domain`：纯 Kotlin 领域模型和端口，不依赖 Android 或第三方历法库。
 - `core:engine-tyme`：Tyme4j 适配器及状态隔离。
 - `core:data`：Room、仓储实现、JSON/ZIP 协议、恢复校验和附件提交。
@@ -47,6 +48,18 @@
 | 完整恢复 | 仅支持空库 | `restoreIntoEmptyStore` | 路径安全、哈希、引用、失败回滚 |
 | 列表、详情、搜索 | 仓储查询已实现；UI 不存在 | `CaseRepository` | 别名/姓名检索与事实往返 |
 | 真机和系统文件选择 | 不存在 | 不适用 | 本阶段不验收 |
+
+## Stage 2 入口矩阵
+
+| 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
+|---|---|---|---|
+| 手动新建 | 已接通公历民用时最小表单 | `CreateCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 表单、计算、冲突和异常契约 |
+| 命例列表与搜索 | 已显示姓名/别名、性别、出生时间和四柱 | `CaseRepository.search` | Room 查询与 ViewModel 搜索 |
+| 命例详情 | 已区分原始录入和计算结果 | `CaseRepository.findById` | 导航与详情读取 |
+| 编辑、删除、复制 | 不存在 | 后续仍须经过 `CaseRepository` | 本阶段不验收 |
+| 问真截图导入 | 不存在 | 未来输入适配器提交标准草稿 | 本阶段不验收 |
+| 完整备份与空库恢复 | 精确保真，不受 UI 接线影响 | `CaseBackupService` | Stage 1 回归测试 |
+| 非空库恢复与密码加密 | 不存在 | 待设计 | 禁止静默降级 |
 
 ## 变更门禁
 

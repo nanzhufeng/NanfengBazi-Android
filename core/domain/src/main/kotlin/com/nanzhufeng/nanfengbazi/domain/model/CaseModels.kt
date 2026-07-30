@@ -282,6 +282,8 @@ data class CaseSummary(
     val name: ExplicitText,
     val sexForFortuneDirection: SexForFortuneDirection,
     val sourceType: CaseSourceType,
+    val birthInput: BirthInput,
+    val fourPillars: FourPillars?,
     @Serializable(with = InstantIsoSerializer::class)
     val updatedAt: Instant,
     val revision: Long,

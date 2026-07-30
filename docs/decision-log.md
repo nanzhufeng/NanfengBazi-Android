@@ -50,3 +50,20 @@
 - 决策：Stage 1 使用已通过迁移和恢复测试的 Room 2.6.1，不在本阶段升级到 2.8.4。
 - 原因：Room 2.8.4 的 KSP Schema 导出与当前 Kotlin 2.0.20 序列化处理链发生 ABI
   冲突；单独升级 Room 会把当前任务扩大为 Kotlin/KSP/AGP 工具链迁移。
+
+## D-009 Stage 2 使用轻量组合根
+
+- 状态：已接受
+- 决策：`NanfengBaziApplication` 的 `DefaultAppContainer` 负责组装 Room
+  `CaseRepository` 和 Tyme4j `BaziEngine`；页面只依赖 `StageTwoViewModel`，
+  手动新建由 `CreateCaseUseCase` 串联校验、计算和保存。
+- 原因：项目当前没有既有依赖注入框架；轻量组合根能保持唯一业务入口，同时避免
+  为最小闭环引入额外框架和维护成本。
+
+## D-010 Stage 2 只开放已支持的公历民用时
+
+- 状态：已接受，能力扩展时复评
+- 决策：Stage 2 表单只暴露公历、北京时间民用时和手动命例；农历、地区经纬度与
+  真太阳时在领域与引擎完成对应能力前不做静态入口或静默降级。
+- 原因：真实可操作且失败可解释优先于展示未接通的 v1.0 字段；最终范围不缩小，
+  未实现项进入逐条需求差距清单继续推进。

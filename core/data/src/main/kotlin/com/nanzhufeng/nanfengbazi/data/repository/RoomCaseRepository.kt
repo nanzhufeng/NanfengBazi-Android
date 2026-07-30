@@ -95,7 +95,20 @@ class RoomCaseRepository(
     }
 
     override suspend fun search(query: String): List<CaseSummary> =
-        dao.searchCases(query.trim()).map { it.toSummary() }
+        database.withTransaction {
+            dao.searchCases(query.trim()).map { entity ->
+                val adoptedSnapshot = dao.calculationSnapshots(entity.id)
+                    .asReversed()
+                    .firstOrNull { it.adopted }
+                    ?.let {
+                        DomainJson.decodeFromString(
+                            CaseCalculationSnapshot.serializer(),
+                            it.resultJson,
+                        )
+                    }
+                entity.toSummary(adoptedSnapshot)
+            }
+        }
 
     private suspend fun deleteChildren(caseId: String) {
         dao.deleteFieldEvidence(caseId)
@@ -274,12 +287,16 @@ private fun CaseEntity.toDomain(
     revision = revision,
 )
 
-private fun CaseEntity.toSummary(): CaseSummary = CaseSummary(
+private fun CaseEntity.toSummary(
+    adoptedSnapshot: CaseCalculationSnapshot?,
+): CaseSummary = CaseSummary(
     id = id,
     alias = alias,
     name = ExplicitText(FieldValueState.valueOf(nameState), nameValue),
     sexForFortuneDirection = SexForFortuneDirection.valueOf(sexForFortuneDirection),
     sourceType = CaseSourceType.valueOf(sourceType),
+    birthInput = DomainJson.decodeFromString(BirthInput.serializer(), birthInputJson),
+    fourPillars = adoptedSnapshot?.result?.fourPillars,
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
     revision = revision,
 )

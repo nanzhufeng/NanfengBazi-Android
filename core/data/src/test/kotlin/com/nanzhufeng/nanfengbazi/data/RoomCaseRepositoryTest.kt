@@ -45,8 +45,14 @@ class RoomCaseRepositoryTest {
 
         val restored = repository.findById(source.id)
         assertEquals(source.copy(revision = 1), restored)
-        assertEquals(listOf("case-1"), repository.search("测试甲").map { it.id })
+        val nameResults = repository.search("测试甲")
+        assertEquals(listOf("case-1"), nameResults.map { it.id })
         assertEquals(listOf("case-1"), repository.search("脱敏案例").map { it.id })
+        assertEquals(source.birthInput, nameResults.single().birthInput)
+        assertEquals(
+            source.calculationSnapshots.single().result.fourPillars,
+            nameResults.single().fourPillars,
+        )
     }
 
     @Test
