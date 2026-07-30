@@ -92,8 +92,14 @@ internal class FakeCaseRepository : CaseRepository {
         lastExpectedRevision = expectedRevision
         val override = writeOverride
         if (override != null) return override
-        stored[case.id] = case.copy(revision = 1)
-        return CaseWriteResult.Created(case.id, 1)
+        val current = stored[case.id]
+        val nextRevision = (current?.revision ?: 0) + 1
+        stored[case.id] = case.copy(revision = nextRevision)
+        return if (current == null) {
+            CaseWriteResult.Created(case.id, nextRevision)
+        } else {
+            CaseWriteResult.Updated(case.id, nextRevision)
+        }
     }
 
     override suspend fun findById(id: String): BaziCase? {

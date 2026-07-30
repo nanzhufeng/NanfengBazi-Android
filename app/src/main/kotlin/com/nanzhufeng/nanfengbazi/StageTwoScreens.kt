@@ -47,8 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
@@ -66,7 +68,7 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
         }
     }
     BackHandler(enabled = state.destination != AppDestination.CaseList) {
-        viewModel.backToList()
+        viewModel.navigateBack()
     }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -92,6 +94,41 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                     is AppDestination.CaseDetail -> CaseDetailScreen(
                         state = state,
                         onBack = viewModel::backToList,
+                        onEditCase = viewModel::openEditCase,
+                        onAddRecord = { viewModel.openTextRecord() },
+                        onEditRecord = viewModel::openTextRecord,
+                        onAddEvent = { viewModel.openEvent() },
+                        onEditEvent = viewModel::openEvent,
+                        modifier = Modifier.padding(padding),
+                    )
+                    is AppDestination.EditCase -> CaseFormScreen(
+                        title = "编辑命例",
+                        screenTag = "edit_case_screen",
+                        form = state.editForm,
+                        error = state.mutationError,
+                        saving = state.mutationSaving,
+                        submitLabel = "重新排盘并保存",
+                        onBack = viewModel::navigateBack,
+                        onFormChange = viewModel::updateEditForm,
+                        onSubmit = viewModel::saveEditedCase,
+                        modifier = Modifier.padding(padding),
+                    )
+                    is AppDestination.EditTextRecord -> TextRecordEditorScreen(
+                        state = state,
+                        destination = state.destination as AppDestination.EditTextRecord,
+                        onBack = viewModel::navigateBack,
+                        onDraftChange = viewModel::updateRecordDraft,
+                        onSave = viewModel::saveTextRecord,
+                        onDelete = viewModel::deleteTextRecord,
+                        modifier = Modifier.padding(padding),
+                    )
+                    is AppDestination.EditEvent -> EventEditorScreen(
+                        state = state,
+                        destination = state.destination as AppDestination.EditEvent,
+                        onBack = viewModel::navigateBack,
+                        onDraftChange = viewModel::updateEventDraft,
+                        onSave = viewModel::saveEvent,
+                        onDelete = viewModel::deleteEvent,
                         modifier = Modifier.padding(padding),
                     )
                 }
@@ -254,13 +291,41 @@ private fun CreateCaseScreen(
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    CaseFormScreen(
+        title = "新建命例",
+        screenTag = "create_case_screen",
+        form = state.form,
+        error = state.formError,
+        saving = state.saving,
+        submitLabel = "排盘并保存",
+        onBack = onBack,
+        onFormChange = onFormChange,
+        onSubmit = onSubmit,
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CaseFormScreen(
+    title: String,
+    screenTag: String,
+    form: CaseFormState,
+    error: String?,
+    saving: Boolean,
+    submitLabel: String,
+    onBack: () -> Unit,
+    onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .testTag("create_case_screen"),
+            .testTag(screenTag),
     ) {
         TopAppBar(
-            title = { Text("新建命例") },
+            title = { Text(title) },
             navigationIcon = {
                 TextButton(onClick = onBack) {
                     Text("返回")
@@ -275,17 +340,17 @@ private fun CreateCaseScreen(
         ) {
             SectionHeading("身份信息", "别名用于本地识别；姓名可以留空。")
             OutlinedTextField(
-                value = state.form.alias,
+                value = form.alias,
                 onValueChange = { value -> onFormChange { it.copy(alias = value) } },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("case_alias"),
                 label = { Text("命例别名 *") },
                 singleLine = true,
-                enabled = !state.saving,
+                enabled = !saving,
             )
             OutlinedTextField(
-                value = state.form.name,
+                value = form.name,
                 onValueChange = { value -> onFormChange { it.copy(name = value) } },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -293,7 +358,7 @@ private fun CreateCaseScreen(
                     .testTag("case_name"),
                 label = { Text("姓名（可选）") },
                 singleLine = true,
-                enabled = !state.saving,
+                enabled = !saving,
             )
             Text(
                 "性别 *",
@@ -303,8 +368,8 @@ private fun CreateCaseScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SexButton(
                     text = "男",
-                    selected = state.form.sex == SexForFortuneDirection.MAN,
-                    enabled = !state.saving,
+                    selected = form.sex == SexForFortuneDirection.MAN,
+                    enabled = !saving,
                     tag = "sex_man",
                     onClick = {
                         onFormChange { it.copy(sex = SexForFortuneDirection.MAN) }
@@ -312,8 +377,8 @@ private fun CreateCaseScreen(
                 )
                 SexButton(
                     text = "女",
-                    selected = state.form.sex == SexForFortuneDirection.WOMAN,
-                    enabled = !state.saving,
+                    selected = form.sex == SexForFortuneDirection.WOMAN,
+                    enabled = !saving,
                     tag = "sex_woman",
                     onClick = {
                         onFormChange { it.copy(sex = SexForFortuneDirection.WOMAN) }
@@ -327,33 +392,33 @@ private fun CreateCaseScreen(
             )
             NumericFieldRow(
                 values = listOf(
-                    NumericField("年", state.form.year, "birth_year") {
+                    NumericField("年", form.year, "birth_year") {
                         onFormChange { form -> form.copy(year = it) }
                     },
-                    NumericField("月", state.form.month, "birth_month") {
+                    NumericField("月", form.month, "birth_month") {
                         onFormChange { form -> form.copy(month = it) }
                     },
-                    NumericField("日", state.form.day, "birth_day") {
+                    NumericField("日", form.day, "birth_day") {
                         onFormChange { form -> form.copy(day = it) }
                     },
                 ),
-                enabled = !state.saving,
+                enabled = !saving,
             )
             NumericFieldRow(
                 values = listOf(
-                    NumericField("时", state.form.hour, "birth_hour") {
+                    NumericField("时", form.hour, "birth_hour") {
                         onFormChange { form -> form.copy(hour = it) }
                     },
-                    NumericField("分", state.form.minute, "birth_minute") {
+                    NumericField("分", form.minute, "birth_minute") {
                         onFormChange { form -> form.copy(minute = it) }
                     },
-                    NumericField("秒", state.form.second, "birth_second") {
+                    NumericField("秒", form.second, "birth_second") {
                         onFormChange { form -> form.copy(second = it) }
                     },
                 ),
-                enabled = !state.saving,
+                enabled = !saving,
             )
-            if (state.formError != null) {
+            if (error != null) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -364,7 +429,7 @@ private fun CreateCaseScreen(
                     ),
                 ) {
                     Text(
-                        state.formError,
+                        error,
                         modifier = Modifier.padding(14.dp),
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )
@@ -372,14 +437,14 @@ private fun CreateCaseScreen(
             }
             Button(
                 onClick = onSubmit,
-                enabled = !state.saving,
+                enabled = !saving,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 20.dp, bottom = 28.dp)
                     .height(52.dp)
                     .testTag("save_case"),
             ) {
-                if (state.saving) {
+                if (saving) {
                     CircularProgressIndicator(
                         modifier = Modifier.width(22.dp),
                         strokeWidth = 2.dp,
@@ -387,7 +452,7 @@ private fun CreateCaseScreen(
                     Spacer(Modifier.width(10.dp))
                     Text("正在排盘并保存…")
                 } else {
-                    Text("排盘并保存")
+                    Text(submitLabel)
                 }
             }
         }
@@ -460,6 +525,11 @@ private fun SexButton(
 private fun CaseDetailScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
+    onEditCase: () -> Unit,
+    onAddRecord: () -> Unit,
+    onEditRecord: (String) -> Unit,
+    onAddEvent: () -> Unit,
+    onEditEvent: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -482,13 +552,27 @@ private fun CaseDetailScreen(
                 actionLabel = "返回列表",
                 onAction = onBack,
             )
-            state.detail != null -> CaseDetailContent(state.detail)
+            state.detail != null -> CaseDetailContent(
+                case = state.detail,
+                onEditCase = onEditCase,
+                onAddRecord = onAddRecord,
+                onEditRecord = onEditRecord,
+                onAddEvent = onAddEvent,
+                onEditEvent = onEditEvent,
+            )
         }
     }
 }
 
 @Composable
-private fun CaseDetailContent(case: BaziCase) {
+private fun CaseDetailContent(
+    case: BaziCase,
+    onEditCase: () -> Unit,
+    onAddRecord: () -> Unit,
+    onEditRecord: (String) -> Unit,
+    onAddEvent: () -> Unit,
+    onEditEvent: (String) -> Unit,
+) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     Column(
         modifier = Modifier
@@ -496,6 +580,15 @@ private fun CaseDetailContent(case: BaziCase) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
+        Button(
+            onClick = onEditCase,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp)
+                .testTag("edit_case_button"),
+        ) {
+            Text("编辑资料并重新排盘")
+        }
         DetailSection("原始录入信息") {
             DetailRow("命例别名", case.alias)
             DetailRow(
@@ -539,6 +632,100 @@ private fun CaseDetailContent(case: BaziCase) {
                     "大运",
                     adopted.result.decadeFortunes.joinToString("、") { it.name },
                 )
+            }
+        }
+        DetailSection("分析与记录") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onAddRecord,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("add_record_button"),
+                ) {
+                    Text("新增记录")
+                }
+                OutlinedButton(
+                    onClick = onAddEvent,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("add_event_button"),
+                ) {
+                    Text("新增事件")
+                }
+            }
+            if (case.textRecords.isEmpty()) {
+                Text(
+                    "暂无笔记、反馈或点评。",
+                    modifier = Modifier.padding(top = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                case.textRecords.forEach { record ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .clickable { onEditRecord(record.id) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                record.type.displayName(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                record.content,
+                                modifier = Modifier.padding(top = 4.dp),
+                                maxLines = 4,
+                            )
+                        }
+                    }
+                }
+            }
+            if (case.events.isEmpty()) {
+                Text(
+                    "暂无关键事件。",
+                    modifier = Modifier.padding(top = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                case.events.forEach { event ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .clickable { onEditEvent(event.id) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                event.displayDate(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                event.rawText,
+                                modifier = Modifier.padding(top = 4.dp),
+                                maxLines = 4,
+                            )
+                            if (event.status != null) {
+                                Text(
+                                    "状态：${event.status}",
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -646,6 +833,20 @@ private fun CaseSourceType.displayName(): String = when (this) {
     CaseSourceType.MANUAL -> "手动录入"
     CaseSourceType.WENZHEN_SCREENSHOT -> "问真截图迁移"
     CaseSourceType.BACKUP_RESTORE -> "备份恢复"
+}
+
+internal fun CaseTextRecordType.displayName(): String = when (this) {
+    CaseTextRecordType.NOTE -> "普通笔记"
+    CaseTextRecordType.OWNER_FEEDBACK -> "命主反馈"
+    CaseTextRecordType.MASTER_COMMENTARY -> "师傅点评"
+    CaseTextRecordType.ANALYSIS -> "分析记录"
+}
+
+private fun CaseEvent.displayDate(): String = when {
+    year == null -> "日期待核对"
+    month == null -> "${year}年"
+    day == null -> "${year}年${month}月"
+    else -> "${year}年${month}月${day}日"
 }
 
 private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateTime(): String =

@@ -12,7 +12,7 @@
 
 ## 当前边界
 
-- 当前阶段已完成 Stage 2：手机单列手动录入、排盘、保存、列表、搜索和详情闭环。
+- 当前阶段已完成 Stage 3A 首个增量：Stage 2 闭环加命例编辑重算、文本记录和关键事件管理。
 - 唯一计算入口是 `BaziEngine.calculate()`；界面层不得直接调用历法库。
 - Tyme4j 的全局 `ChildLimit.provider` 只能由 `engine-tyme` 适配器访问。
 - 命例写入只能通过 `CaseRepository`；完整恢复只能通过 `CaseBackupService`。

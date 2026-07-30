@@ -15,6 +15,11 @@ class StageTwoNavigatorTest {
             AppDestination.CaseDetail("case-1"),
             navigator.openDetail("case-1"),
         )
+        assertEquals(
+            AppDestination.EditTextRecord("case-1", null),
+            navigator.openTextRecord("case-1", null),
+        )
+        assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
         assertEquals(AppDestination.CaseList, navigator.backToList())
     }
 }

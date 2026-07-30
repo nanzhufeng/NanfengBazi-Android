@@ -12,8 +12,8 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0-alpha01"
+        versionCode = 3
+        versionName = "0.3.0-alpha01"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -49,7 +49,7 @@ android {
 }
 
 base {
-    archivesName.set("NanfengBazi-Android-v0.2.0-alpha01")
+    archivesName.set("NanfengBazi-Android-v0.3.0-alpha01")
 }
 
 dependencies {

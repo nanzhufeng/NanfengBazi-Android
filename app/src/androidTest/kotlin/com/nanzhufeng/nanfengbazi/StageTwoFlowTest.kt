@@ -2,12 +2,14 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import org.junit.Rule
 import org.junit.Test
 
@@ -43,5 +45,61 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("原始录入信息").assertIsDisplayed()
         composeRule.onNodeWithText("计算结果").assertIsDisplayed()
         composeRule.onNodeWithText("Tyme4j").assertIsDisplayed()
+
+        val editedAlias = "$alias-已编辑"
+        composeRule.onNodeWithTag("edit_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextReplacement(editedAlias)
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(editedAlias).assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasText("命例资料已重新排盘并保存；旧计算快照仍保留。"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(
+                hasText("命例资料已重新排盘并保存；旧计算快照仍保留。"),
+            ).fetchSemanticsNodes().isEmpty()
+        }
+
+        composeRule.onNodeWithTag("add_record_button").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("record_editor_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("record_content").performTextInput("Stage3 合成笔记")
+        composeRule.onNodeWithTag("save_record").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Stage3 合成笔记").performScrollTo().assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("记录已保存。"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("记录已保存。")).fetchSemanticsNodes().isEmpty()
+        }
+
+        composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("event_editor_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("event_year").performTextInput("2024")
+        composeRule.onNodeWithTag("event_content").performTextInput("Stage3 合成关键事件")
+        composeRule.onNodeWithTag("save_event").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Stage3 合成关键事件")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 }

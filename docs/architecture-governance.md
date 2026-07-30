@@ -61,6 +61,16 @@
 | 完整备份与空库恢复 | 精确保真，不受 UI 接线影响 | `CaseBackupService` | Stage 1 回归测试 |
 | 非空库恢复与密码加密 | 不存在 | 待设计 | 禁止静默降级 |
 
+## Stage 3A 增量入口矩阵
+
+| 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
+|---|---|---|---|
+| 编辑身份与出生资料 | 已接通，保存前按期望修订号读取并重新计算 | `EditCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 旧修订在重算前拒绝；旧快照保留、新快照采用 |
+| 文本记录增改删 | 已支持笔记、反馈、师傅点评和分析 | `TextRecordUseCase` → `CaseRepository.save` | 身份、创建时间、顺序和修订回归 |
+| 关键事件增改删 | 已支持未知/年/月/日精度与状态 | `CaseEventUseCase` → `CaseRepository.save` | 日期校验、精度和顺序回归 |
+| 整例删除 | 不存在 | 待附件删除与恢复策略确认 | 禁止无恢复边界直接删除 |
+| 备份/恢复 | 精确保真通道 | `CaseBackupService` | 新增记录和事件仍由 Stage 1 全量回归覆盖 |
+
 ## 变更门禁
 
 下列变更必须同步更新规则文档、黄金样本和测试：

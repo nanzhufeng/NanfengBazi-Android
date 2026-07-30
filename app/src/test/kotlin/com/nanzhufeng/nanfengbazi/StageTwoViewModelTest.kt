@@ -2,6 +2,8 @@ package com.nanzhufeng.nanfengbazi
 
 import java.time.Clock
 import java.time.ZoneOffset
+import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -81,6 +83,84 @@ class StageTwoViewModelTest {
         assertEquals("合成命例甲", viewModel.state.value.detail?.alias)
     }
 
+    @Test
+    fun `编辑命例成功后返回详情并刷新修订`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-edit"] = sampleStoredCase("case-edit")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-edit")
+        viewModel.openEditCase()
+        viewModel.updateEditForm { it.copy(alias = "合成命例已编辑", hour = "12") }
+
+        viewModel.saveEditedCase()
+
+        assertEquals(
+            AppDestination.CaseDetail("case-edit"),
+            viewModel.state.value.destination,
+        )
+        assertEquals("合成命例已编辑", viewModel.state.value.detail?.alias)
+        assertEquals(2L, viewModel.state.value.detail?.revision)
+        assertEquals(2, viewModel.state.value.detail?.calculationSnapshots?.size)
+    }
+
+    @Test
+    fun `记录与事件保存后读取同一详情事实`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-records"] = sampleStoredCase("case-records")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-records")
+        viewModel.openTextRecord()
+        viewModel.updateRecordDraft {
+            TextRecordDraft(CaseTextRecordType.OWNER_FEEDBACK, "合成命主反馈")
+        }
+        viewModel.saveTextRecord(null)
+
+        assertEquals(1, viewModel.state.value.detail?.textRecords?.size)
+        assertEquals(
+            AppDestination.CaseDetail("case-records"),
+            viewModel.state.value.destination,
+        )
+
+        viewModel.openEvent()
+        viewModel.updateEventDraft {
+            EventDraft("2024", "6", "", "待核对", "合成关键事件")
+        }
+        viewModel.saveEvent(null)
+
+        assertEquals(1, viewModel.state.value.detail?.events?.size)
+        assertEquals(3L, viewModel.state.value.detail?.revision)
+    }
+
+    @Test
+    fun `保存冲突保留编辑输入并停留当前页`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-conflict"] = sampleStoredCase("case-conflict")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-conflict")
+        viewModel.openTextRecord()
+        viewModel.updateRecordDraft { it.copy(content = "未保存但必须保留的合成输入") }
+        repository.writeOverride = CaseWriteResult.RevisionConflict(
+            "case-conflict",
+            1,
+            2,
+        )
+
+        viewModel.saveTextRecord(null)
+
+        assertEquals(
+            AppDestination.EditTextRecord("case-conflict", null),
+            viewModel.state.value.destination,
+        )
+        assertEquals(
+            "未保存但必须保留的合成输入",
+            viewModel.state.value.recordDraft.content,
+        )
+        assertNotNull(viewModel.state.value.mutationError)
+    }
+
     private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
         val engine = RecordingEngine()
         val ids = generateSequence(1) { it + 1 }
@@ -90,6 +170,22 @@ class StageTwoViewModelTest {
             caseRepository = repository,
             createCase = CreateCaseUseCase(
                 baziEngine = engine,
+                caseRepository = repository,
+                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                idGenerator = IdGenerator { ids.next() },
+            ),
+            editCase = EditCaseUseCase(
+                baziEngine = engine,
+                caseRepository = repository,
+                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                idGenerator = IdGenerator { ids.next() },
+            ),
+            textRecords = TextRecordUseCase(
+                caseRepository = repository,
+                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                idGenerator = IdGenerator { ids.next() },
+            ),
+            caseEvents = CaseEventUseCase(
                 caseRepository = repository,
                 clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
                 idGenerator = IdGenerator { ids.next() },
