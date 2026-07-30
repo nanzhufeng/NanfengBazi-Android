@@ -75,6 +75,7 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparation
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 
 @Composable
 fun NanfengBaziApp(
@@ -82,6 +83,8 @@ fun NanfengBaziApp(
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
+    onCreateFullBackupDocument: (String) -> Unit = {},
+    onOpenFullBackupDocument: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -111,6 +114,8 @@ fun NanfengBaziApp(
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
                         onImportSingleCase = onOpenSingleCaseDocument,
+                        onExportFullBackup = viewModel::requestFullBackupExport,
+                        onPreviewFullBackup = onOpenFullBackupDocument,
                         onOpenCase = viewModel::openDetail,
                         modifier = Modifier.padding(padding),
                     )
@@ -200,6 +205,36 @@ fun NanfengBaziApp(
                     },
                     dismissButton = {
                         TextButton(onClick = viewModel::cancelMoveToTrash) {
+                            Text("取消")
+                        }
+                    },
+                )
+            }
+            if (state.fullBackupExportConfirmationVisible) {
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelFullBackupExport,
+                    title = { Text("导出完整未加密备份？") },
+                    text = {
+                        Text(
+                            "ZIP 会包含全部命例、出生资料、健康/婚姻/财务记录、" +
+                                "版本历史和来源图片附件。当前完整备份尚不支持密码加密，" +
+                                "请只保存到可信位置。",
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.confirmFullBackupExport()?.let(
+                                    onCreateFullBackupDocument,
+                                )
+                            },
+                            modifier = Modifier.testTag("confirm_full_backup_export"),
+                        ) {
+                            Text("确认并选择位置")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = viewModel::cancelFullBackupExport) {
                             Text("取消")
                         }
                     },
@@ -301,6 +336,12 @@ fun NanfengBaziApp(
                     onDismiss = viewModel::cancelSingleCaseMerge,
                 )
             }
+            state.fullBackupPreview?.let { preview ->
+                FullBackupPreviewDialog(
+                    preview = preview,
+                    onDismiss = viewModel::dismissFullBackupPreview,
+                )
+            }
             state.singleCaseExchangeError?.let { error ->
                 AlertDialog(
                     onDismissRequest = viewModel::dismissSingleCaseExchangeError,
@@ -313,8 +354,72 @@ fun NanfengBaziApp(
                     },
                 )
             }
+            state.fullBackupError?.let { error ->
+                AlertDialog(
+                    onDismissRequest = viewModel::dismissFullBackupError,
+                    title = { Text("完整备份处理失败") },
+                    text = { Text(error, modifier = Modifier.testTag("full_backup_error")) },
+                    confirmButton = {
+                        TextButton(onClick = viewModel::dismissFullBackupError) {
+                            Text("知道了")
+                        }
+                    },
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun FullBackupPreviewDialog(
+    preview: RestorePreview,
+    onDismiss: () -> Unit,
+) {
+    val manifest = preview.manifest
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("完整备份只读预览") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .testTag("full_backup_preview"),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("来源 App：${manifest.appVersion}")
+                Text("格式版本：${manifest.formatVersion}")
+                Text("数据库 Schema：${manifest.databaseSchemaVersion}")
+                Text("创建时间：${manifest.createdAt}")
+                Text("文件保护：${if (manifest.encrypted) "密码加密" else "未加密"}")
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text("命例：${manifest.counts.cases}")
+                Text("计算快照：${manifest.counts.snapshots}")
+                Text(
+                    "文本记录：${manifest.counts.textRecords}，" +
+                        "历史：${manifest.counts.textRecordRevisions}",
+                )
+                Text(
+                    "关键事件：${manifest.counts.events}，" +
+                        "历史：${manifest.counts.eventRevisions}",
+                )
+                Text("附件：${manifest.counts.attachments}")
+                Text("已校验文件：${preview.sourceFileCount}")
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    "本页面只验证 ZIP 路径、大小、哈希、数据引用和附件一致性，" +
+                        "不会写入或覆盖当前数据库。恢复将在非空库冲突方案完成后另行开放。",
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("close_full_backup_preview"),
+            ) {
+                Text("关闭")
+            }
+        },
+    )
 }
 
 @Composable
@@ -670,6 +775,8 @@ private fun CaseListScreen(
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
     onImportSingleCase: () -> Unit,
+    onExportFullBackup: () -> Unit,
+    onPreviewFullBackup: () -> Unit,
     onOpenCase: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -690,13 +797,6 @@ private fun CaseListScreen(
                 }
             },
             actions = {
-                TextButton(
-                    onClick = onImportSingleCase,
-                    enabled = !state.singleCaseExchangeBusy,
-                    modifier = Modifier.testTag("import_single_case_button"),
-                ) {
-                    Text(if (state.singleCaseExchangeBusy) "读取中…" else "导入预览")
-                }
                 if (state.visibility == CaseVisibility.ACTIVE) {
                     Button(
                         onClick = onCreate,
@@ -710,6 +810,35 @@ private fun CaseListScreen(
                 }
             },
         )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onImportSingleCase,
+                enabled = !state.singleCaseExchangeBusy && !state.fullBackupBusy,
+                modifier = Modifier.testTag("import_single_case_button"),
+            ) {
+                Text(if (state.singleCaseExchangeBusy) "读取中…" else "导入单命例")
+            }
+            OutlinedButton(
+                onClick = onExportFullBackup,
+                enabled = !state.fullBackupBusy && !state.singleCaseExchangeBusy,
+                modifier = Modifier.testTag("export_full_backup_button"),
+            ) {
+                Text(if (state.fullBackupBusy) "处理中…" else "导出完整备份")
+            }
+            OutlinedButton(
+                onClick = onPreviewFullBackup,
+                enabled = !state.fullBackupBusy && !state.singleCaseExchangeBusy,
+                modifier = Modifier.testTag("preview_full_backup_button"),
+            ) {
+                Text("检查完整备份")
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()

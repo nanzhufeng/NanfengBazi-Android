@@ -362,5 +362,35 @@ class StageTwoFlowTest {
             .assertIsDisplayed()
         composeRule.onNodeWithTag("skip_single_case_import").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("export_full_backup_button").performClick()
+        composeRule.onNodeWithTag("confirm_full_backup_export").performClick()
+        val backupSaveButton = device.wait(
+            Until.findObject(By.text(Pattern.compile("(?i)save|保存"))),
+            10_000,
+        )
+        checkNotNull(backupSaveButton) { "完整备份导出未进入系统创建文档页面" }
+        backupSaveButton.click()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasText("完整未加密备份已导出", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("preview_full_backup_button").performClick()
+        val backupFile = device.wait(
+            Until.findObject(By.text(Pattern.compile("南枫八字备份_.*\\.zip"))),
+            10_000,
+        )
+        checkNotNull(backupFile) { "系统打开文档页面未找到完整备份 ZIP" }
+        backupFile.click()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasTestTag("full_backup_preview"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("文件保护：未加密")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("close_full_backup_preview").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
     }
 }

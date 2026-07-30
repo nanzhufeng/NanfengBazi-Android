@@ -3,6 +3,11 @@ package com.nanzhufeng.nanfengbazi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
+import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
+import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
@@ -29,6 +34,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Path
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -139,6 +145,10 @@ data class StageTwoUiState(
     val singleCaseMergeModules: Set<SingleCaseMergeModule> = emptySet(),
     val singleCaseFieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
     val singleCaseExchangeError: String? = null,
+    val fullBackupExportConfirmationVisible: Boolean = false,
+    val fullBackupBusy: Boolean = false,
+    val fullBackupPreview: RestorePreview? = null,
+    val fullBackupError: String? = null,
     val message: String? = null,
 )
 
@@ -154,6 +164,9 @@ class StageTwoViewModel(
     private val clock: Clock = Clock.systemUTC(),
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
+    private val caseBackupService: CaseBackupOperations? = null,
+    private val backupAttachmentRoot: Path? = null,
+    private val backupWorkRoot: Path? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(StageTwoUiState())
@@ -209,6 +222,150 @@ class StageTwoViewModel(
                 }
             }
         }
+    }
+
+    fun requestFullBackupExport() {
+        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(
+                fullBackupExportConfirmationVisible = true,
+                fullBackupError = null,
+            )
+        }
+    }
+
+    fun cancelFullBackupExport() {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update { it.copy(fullBackupExportConfirmationVisible = false) }
+    }
+
+    fun confirmFullBackupExport(): String? {
+        val service = caseBackupService
+        if (service == null || backupAttachmentRoot == null) {
+            mutableState.update {
+                it.copy(
+                    fullBackupExportConfirmationVisible = false,
+                    fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。",
+                )
+            }
+            return null
+        }
+        mutableState.update {
+            it.copy(
+                fullBackupExportConfirmationVisible = false,
+                fullBackupError = null,
+            )
+        }
+        return service.suggestedFileName()
+    }
+
+    fun exportFullBackup(openOutput: () -> OutputStream?) {
+        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) return
+        val service = caseBackupService
+        val attachmentRoot = backupAttachmentRoot
+        if (service == null || attachmentRoot == null) {
+            mutableState.update {
+                it.copy(fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。")
+            }
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(fullBackupBusy = true, fullBackupError = null) }
+            val result = try {
+                withContext(ioDispatcher) {
+                    val output = openOutput()
+                        ?: return@withContext BackupExportResult.Rejected(
+                            code = "OUTPUT_OPEN_FAILED",
+                            message = "无法创建完整备份文件。",
+                        )
+                    service.export(
+                        output = output,
+                        attachmentRoot = attachmentRoot,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                BackupExportResult.Rejected(
+                    code = "OUTPUT_OPEN_FAILED",
+                    message = "无法创建或写入完整备份文件。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is BackupExportResult.Success -> it.copy(
+                        fullBackupBusy = false,
+                        message = "完整未加密备份已导出：${result.counts.cases} 个命例、" +
+                            "${result.counts.attachments} 个附件。",
+                    )
+                    is BackupExportResult.Rejected -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun previewFullBackup(openInput: () -> InputStream?) {
+        if (mutableState.value.fullBackupBusy || mutableState.value.singleCaseExchangeBusy) return
+        val service = caseBackupService
+        val workRoot = backupWorkRoot
+        if (service == null || workRoot == null) {
+            mutableState.update {
+                it.copy(fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。")
+            }
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    fullBackupBusy = true,
+                    fullBackupPreview = null,
+                    fullBackupError = null,
+                )
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    val input = openInput()
+                        ?: return@withContext BackupPreviewResult.Rejected(
+                            code = "INPUT_OPEN_FAILED",
+                            message = "无法打开所选完整备份文件。",
+                        )
+                    input.use { service.preview(it, workRoot) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                BackupPreviewResult.Rejected(
+                    code = "INPUT_OPEN_FAILED",
+                    message = "无法读取所选完整备份文件。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is BackupPreviewResult.Success -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupPreview = result.preview,
+                    )
+                    is BackupPreviewResult.Rejected -> it.copy(
+                        fullBackupBusy = false,
+                        fullBackupError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissFullBackupPreview() {
+        if (mutableState.value.fullBackupBusy) return
+        mutableState.update { it.copy(fullBackupPreview = null) }
+    }
+
+    fun dismissFullBackupError() {
+        mutableState.update { it.copy(fullBackupError = null) }
     }
 
     fun requestSingleCaseExport() {
@@ -1218,6 +1375,9 @@ class StageTwoViewModel(
                 textRecords = TextRecordUseCase(container.caseRepository),
                 caseEvents = CaseEventUseCase(container.caseRepository),
                 caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
+                caseBackupService = container.caseBackupService,
+                backupAttachmentRoot = container.backupAttachmentRoot,
+                backupWorkRoot = container.backupWorkRoot,
             ) as T
         }
     }

@@ -43,6 +43,24 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            val createFullBackupDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.CreateDocument("application/zip"),
+            ) { uri ->
+                if (uri != null) {
+                    viewModel.exportFullBackup {
+                        contentResolver.openOutputStream(uri, "w")
+                    }
+                }
+            }
+            val openFullBackupDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                if (uri != null) {
+                    viewModel.previewFullBackup {
+                        contentResolver.openInputStream(uri)
+                    }
+                }
+            }
             NanfengBaziApp(
                 viewModel = viewModel,
                 onCreateSingleCaseDocument = createSingleCaseDocument::launch,
@@ -60,6 +78,12 @@ class MainActivity : ComponentActivity() {
                     } else {
                         password.fill('\u0000')
                     }
+                },
+                onCreateFullBackupDocument = createFullBackupDocument::launch,
+                onOpenFullBackupDocument = {
+                    openFullBackupDocument.launch(
+                        arrayOf("application/zip", "application/octet-stream"),
+                    )
                 },
             )
         }

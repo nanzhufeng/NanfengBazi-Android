@@ -16,18 +16,36 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Clock
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.encodeToString
 
+interface CaseBackupOperations {
+    suspend fun export(
+        output: OutputStream,
+        attachmentRoot: Path,
+        appVersion: String,
+        protection: BackupProtection,
+    ): BackupExportResult
+
+    fun suggestedFileName(): String
+
+    suspend fun preview(
+        input: InputStream,
+        workRoot: Path,
+    ): BackupPreviewResult
+}
+
 class CaseBackupService(
     private val database: NanfengBaziDatabase,
     private val clock: Clock = Clock.systemUTC(),
-) {
+) : CaseBackupOperations {
     private val dao = database.caseDao()
 
-    suspend fun export(
+    override suspend fun export(
         output: OutputStream,
         attachmentRoot: Path,
         appVersion: String,
@@ -75,6 +93,29 @@ class CaseBackupService(
             BackupExportResult.Rejected(
                 code = "EXPORT_IO_ERROR",
                 message = "备份导出失败，请保留诊断代码并重试。",
+            )
+        }
+    }
+
+    override fun suggestedFileName(): String =
+        "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(ZoneId.systemDefault()))}.zip"
+
+    override suspend fun preview(
+        input: InputStream,
+        workRoot: Path,
+    ): BackupPreviewResult {
+        return try {
+            Files.createDirectories(workRoot)
+            val stagingRoot = Files.createTempDirectory(workRoot, "nanfeng-bazi-preview-")
+            try {
+                inspectBackup(input, stagingRoot)
+            } finally {
+                deleteRecursively(stagingRoot)
+            }
+        } catch (_: Exception) {
+            BackupPreviewResult.Rejected(
+                code = "PREVIEW_FAILED",
+                message = "无法验证该完整备份；文件可能损坏或内容不受支持。",
             )
         }
     }
@@ -184,6 +225,36 @@ class CaseBackupService(
         caseGroupCrossRefs = dao.allCaseGroupCrossRefs(),
         caseTagCrossRefs = dao.allCaseTagCrossRefs(),
     )
+
+    private fun inspectBackup(
+        input: InputStream,
+        stagingRoot: Path,
+    ): BackupPreviewResult {
+        val extracted = extractSafely(input, stagingRoot)
+            ?: return BackupPreviewResult.Rejected(
+                code = "INVALID_ZIP",
+                message = "备份压缩包路径、数量或展开大小不符合安全限制。",
+            )
+        val manifestPath = extracted[MANIFEST_PATH]
+            ?: return BackupPreviewResult.Rejected(
+                code = "MANIFEST_MISSING",
+                message = "备份缺少 manifest.json。",
+            )
+        val manifest = DomainJson.decodeFromString<BackupManifest>(readUtf8(manifestPath))
+        validateExtracted(manifest, extracted)?.let { error ->
+            return BackupPreviewResult.Rejected(error.first, error.second)
+        }
+        val snapshot = parseSnapshot(extracted)
+        validateReferences(snapshot, extracted, manifest)?.let { error ->
+            return BackupPreviewResult.Rejected(error.first, error.second)
+        }
+        return BackupPreviewResult.Success(
+            RestorePreview(
+                manifest = manifest,
+                sourceFileCount = extracted.size,
+            ),
+        )
+    }
 
     private fun buildEntrySources(
         snapshot: RoomDataSnapshot,
@@ -580,6 +651,7 @@ class CaseBackupService(
         private const val MAX_JSON_BYTES = 16L * 1024 * 1024
         private const val MAX_SINGLE_ENTRY_BYTES = 512L * 1024 * 1024
         private const val MAX_TOTAL_BYTES = 2L * 1024 * 1024 * 1024
+        private val FILE_NAME_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm")
     }
 }
 

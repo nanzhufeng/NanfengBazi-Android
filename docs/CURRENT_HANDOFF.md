@@ -1,12 +1,12 @@
-# 当前交接：Stage 3B 单命例密码保护第五增量
+# 当前交接：Stage 3B 完整 ZIP 系统文件第六增量
 
 更新日期：2026-07-30
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2 与 Stage 3A 已有当前实现和证据，Stage 3B 正在进行。
-- 本增量完成单命例密码容器、导出/导入密码交互、参数防降级和真实系统文件往返。
-- v1.0 总方案仍未完成；附件事务、完整 ZIP 密码加密/UI、非空恢复和进程恢复仍待落地。
+- 本增量完成完整 ZIP 未加密风险确认、Android 系统文件导出和严格零写入预览。
+- v1.0 总方案仍未完成；附件事务、完整 ZIP 密码加密、非空恢复和进程恢复仍待落地。
 - 未使用真实问真资料、真实姓名或用户截图；未安装或操作 OPPO 真机，未 push、未发布。
 
 ## 本增量实现
@@ -30,9 +30,14 @@
   不受支持参数统一安全拒绝，解密后继续执行原格式、Schema、哈希和领域校验；
 - 密码不会写入文件、Room 或持久状态；服务与 ViewModel 的私有字符数组用后清零；
 - 明文导出风险确认继续保留，单命例密码保护不代表完整 ZIP 已支持加密；
+- 列表页新增“导出完整备份”和“检查完整备份”，使用系统创建/打开文档，不申请宽泛权限；
+- 完整 ZIP 导出确认明确包含全部命例、敏感记录、版本历史和来源图片附件；
+- 完整 ZIP 预览在私有临时区校验路径安全、条目/展开上限、文件 SHA-256、Schema、计数、
+  领域引用和附件元数据，完成后清理临时文件；
+- 预览不检查当前库是否为空、不写数据库且不提供恢复按钮；空库恢复服务仍保持原边界；
 - 错误弹窗保留协议错误代码，导出成功明确图片仅保留引用；
 - 启用 App `BuildConfig.VERSION_NAME`，导出文件记录真实当前版本；
-- Debug 版本升级到 `0.3.0-alpha10`。
+- Debug 版本升级到 `0.3.0-alpha11`。
 
 ## 所有者与边界
 
@@ -55,7 +60,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test assembleDebug lintDebug --warning-mode all
 ```
 
-- 本地自动化：76 条唯一单元契约；Debug/Release 变体合计 139 次执行，0 失败；
+- 本地自动化：78 条唯一单元契约；Debug/Release 变体合计 143 次执行，0 失败；
 - 覆盖领域、引擎、Room v5 往返、v1→v5 迁移、旧 Schema v2 备份恢复、历史基线补建、
   删除保留历史、单命例往返/哈希/版本/大小/明文确认/冲突零写入、生命周期用例、
   重复确认、ViewModel 和导航；
@@ -67,18 +72,19 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     →Android 创建文档并保存 JSON→复制→移入回收站→检索→恢复→Android 打开同一
     JSON→冲突预览→为本地副本选择记录/事件模块并原子合并→再次打开同一 JSON
     →保留两份提交→列表读回第二份→从详情选择密码保护导出→Android 创建文档保存
-    加密 JSON→Android 打开同一文件→正确密码预览→跳过零写入；
+    加密 JSON→Android 打开同一文件→正确密码预览→跳过零写入→确认完整 ZIP 风险
+    →Android 创建文档保存 ZIP→Android 打开同一 ZIP→只读校验计数→关闭零写入；
   - Compose + UiAutomator 1/1 通过，真实经过系统 DocumentsUI，不是内存流替代；
 - OPPO 设备虽然连接，但未安装、未操作；以上证据不能替代真机验收；
 - 真实问真迁移：未执行。
 
 ## APK
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha10-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha11-debug.apk`
 
-大小：10,028,481 bytes
+大小：9,781,086 bytes
 
-SHA-256：`0ca5fc0fc14e6705e2275f79082b8b4d97441a05a6aae6a26b166926d56ff2c3`
+SHA-256：`1aba1d124b21eb48822360bc56342242a869aae152975c44e4ac46d55c6de10c`
 
 该 APK 是 Debug 验收构建，不是正式签名 Release。
 
@@ -90,15 +96,15 @@ SHA-256：`0ca5fc0fc14e6705e2275f79082b8b4d97441a05a6aae6a26b166926d56ff2c3`
 - `REFERENCES_ONLY` 不携带附件二进制，当前带附件引用命例会拒绝提交；
 - 逐字段采用当前覆盖命例标量资料；附件、字段证据和采用盘切换仍需专门事务语义；
 - 完整 ZIP 加密、附件事务、完整备份非空库两阶段提交和进程强杀恢复仍未实现；
-- 没有进程重启、OPPO Find N5、真实 ZIP 或真实问真样本证据。
+- 没有进程重启、OPPO Find N5、含附件 ZIP 恢复或真实问真样本证据。
 
 ## 下一安全增量
 
 继续 Stage 3B：
 
-1. 接通完整 ZIP 的系统文件 UI、明文风险确认和只读预览；
-2. 设计完整 ZIP 独立密码容器、非空库预演和范围化冲突方案；
-3. 再补附件事务和进程重启恢复日志。
+1. 设计完整 ZIP 独立密码容器，复用已固定的 KDF/AEAD 安全边界但保持协议独立；
+2. 实现非空库临时库预演、逐命例冲突方案和两阶段提交；
+3. 再补附件事务、含附件系统 ZIP 和进程重启恢复日志。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；任何单阶段完成都不能
 表述为全项目落地。

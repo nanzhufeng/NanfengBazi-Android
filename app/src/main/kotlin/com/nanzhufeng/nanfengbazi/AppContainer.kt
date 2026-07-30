@@ -2,16 +2,22 @@ package com.nanzhufeng.nanfengbazi
 
 import android.app.Application
 import androidx.room.Room
+import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
+import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.DatabaseMigrations
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
+import java.nio.file.Path
 
 interface AppContainer {
     val caseRepository: CaseRepository
     val baziEngine: BaziEngine
+    val caseBackupService: CaseBackupOperations
+    val backupAttachmentRoot: Path
+    val backupWorkRoot: Path
 }
 
 class DefaultAppContainer(
@@ -32,6 +38,9 @@ class DefaultAppContainer(
 
     override val caseRepository: CaseRepository = RoomCaseRepository(database)
     override val baziEngine: BaziEngine = TymeBaziEngine()
+    override val caseBackupService: CaseBackupOperations = CaseBackupService(database)
+    override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
+    override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")
 
     private companion object {
         const val DATABASE_NAME = "nanfeng-bazi.db"

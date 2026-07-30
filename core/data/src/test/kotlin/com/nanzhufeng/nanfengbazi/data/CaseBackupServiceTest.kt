@@ -7,6 +7,7 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
+import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
@@ -129,6 +130,44 @@ class CaseBackupServiceTest {
     }
 
     @Test
+    fun `完整备份预览校验附件与清单但不写数据库`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-preview-")
+        val attachmentBytes = "脱敏预览附件".encodeToByteArray()
+        val attachmentRoot = root.resolve("attachments")
+        val attachmentFile = attachmentRoot.resolve("case-1/source/screen.png")
+        Files.createDirectories(attachmentFile.parent)
+        Files.write(attachmentFile, attachmentBytes)
+
+        withDatabase { database ->
+            RoomCaseRepository(database).save(sampleCase(attachmentBytes), null)
+            val service = CaseBackupService(database, fixedClock)
+            val bytes = ByteArrayOutputStream().also { output ->
+                assertTrue(
+                    service.export(
+                        output = output,
+                        attachmentRoot = attachmentRoot,
+                        appVersion = "0.3.0-test",
+                        protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                    ) is BackupExportResult.Success,
+                )
+            }.toByteArray()
+            val before = database.caseDao().allCases()
+
+            val result = service.preview(
+                input = ByteArrayInputStream(bytes),
+                workRoot = root.resolve("work"),
+            )
+
+            assertTrue(result is BackupPreviewResult.Success)
+            result as BackupPreviewResult.Success
+            assertEquals(1, result.preview.manifest.counts.cases)
+            assertEquals(1, result.preview.manifest.counts.attachments)
+            assertEquals(11, result.preview.sourceFileCount)
+            assertEquals(before, database.caseDao().allCases())
+        }
+    }
+
+    @Test
     fun `文件被篡改时拒绝恢复且数据库保持为空`() = runTest {
         val root = Files.createTempDirectory("nanfeng-backup-tamper-")
         val sourceAttachments = root.resolve("source")
@@ -151,7 +190,19 @@ class CaseBackupServiceTest {
         val tampered = tamperCasesJson(backupBytes)
 
         withDatabase { destination ->
-            val result = CaseBackupService(destination, fixedClock).restoreIntoEmptyStore(
+            val service = CaseBackupService(destination, fixedClock)
+            val preview = service.preview(
+                ByteArrayInputStream(tampered),
+                root.resolve("preview-work"),
+            )
+            assertTrue(preview is BackupPreviewResult.Rejected)
+            assertEquals(
+                "FILE_HASH_MISMATCH",
+                (preview as BackupPreviewResult.Rejected).code,
+            )
+            assertNull(RoomCaseRepository(destination).findById("case-1"))
+
+            val result = service.restoreIntoEmptyStore(
                 ByteArrayInputStream(tampered),
                 root.resolve("work"),
                 root.resolve("destination"),

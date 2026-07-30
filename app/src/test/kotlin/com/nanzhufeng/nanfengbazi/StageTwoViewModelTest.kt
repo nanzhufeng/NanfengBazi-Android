@@ -1,5 +1,12 @@
 package com.nanzhufeng.nanfengbazi
 
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCounts
+import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
+import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
+import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
+import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
@@ -7,6 +14,10 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Clock
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
@@ -438,7 +449,37 @@ class StageTwoViewModelTest {
         assertTrue(emptyPassword.all { it == '\u0000' })
     }
 
-    private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
+    @Test
+    fun `完整备份确认导出与只读预览均通过备份唯一入口`() = runTest {
+        val backup = RecordingBackupOperations()
+        val root = Files.createTempDirectory("nanfeng-viewmodel-backup-")
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            backupOperations = backup,
+            backupRoot = root,
+        )
+
+        viewModel.requestFullBackupExport()
+        assertTrue(viewModel.state.value.fullBackupExportConfirmationVisible)
+        assertEquals("南枫八字备份_测试.zip", viewModel.confirmFullBackupExport())
+        val output = ByteArrayOutputStream()
+        viewModel.exportFullBackup { output }
+
+        assertTrue(backup.exportCalled)
+        assertEquals("zip", output.toByteArray().decodeToString())
+        assertTrue(viewModel.state.value.message?.contains("完整未加密备份已导出") == true)
+
+        viewModel.previewFullBackup { ByteArrayInputStream(output.toByteArray()) }
+        assertTrue(backup.previewCalled)
+        assertEquals(2, viewModel.state.value.fullBackupPreview?.manifest?.counts?.cases)
+        assertNull(viewModel.state.value.fullBackupError)
+    }
+
+    private fun createViewModel(
+        repository: FakeCaseRepository,
+        backupOperations: CaseBackupOperations? = null,
+        backupRoot: Path? = null,
+    ): StageTwoViewModel {
         val engine = RecordingEngine()
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
@@ -485,7 +526,63 @@ class StageTwoViewModelTest {
                 idGenerator = { ids.next() },
                 passwordKdfIterations = 100_000,
             ),
+            caseBackupService = backupOperations,
+            backupAttachmentRoot = backupRoot?.resolve("attachments"),
+            backupWorkRoot = backupRoot?.resolve("work"),
             ioDispatcher = dispatcher,
+        )
+    }
+
+    private class RecordingBackupOperations : CaseBackupOperations {
+        var exportCalled = false
+        var previewCalled = false
+
+        override suspend fun export(
+            output: OutputStream,
+            attachmentRoot: Path,
+            appVersion: String,
+            protection: BackupProtection,
+        ): BackupExportResult {
+            exportCalled = true
+            output.write("zip".encodeToByteArray())
+            return BackupExportResult.Success(
+                counts = counts(),
+                fileCount = 10,
+            )
+        }
+
+        override fun suggestedFileName(): String = "南枫八字备份_测试.zip"
+
+        override suspend fun preview(
+            input: InputStream,
+            workRoot: Path,
+        ): BackupPreviewResult {
+            previewCalled = true
+            input.readBytes()
+            return BackupPreviewResult.Success(
+                RestorePreview(
+                    manifest = BackupManifest(
+                        formatVersion = 1,
+                        appVersion = "0.3.0-test",
+                        databaseSchemaVersion = 5,
+                        createdAt = FixedInstant.toString(),
+                        encrypted = false,
+                        engineVersions = emptyList(),
+                        ruleVersions = emptyList(),
+                        counts = counts(),
+                        files = emptyList(),
+                    ),
+                    sourceFileCount = 10,
+                ),
+            )
+        }
+
+        private fun counts() = BackupCounts(
+            cases = 2,
+            snapshots = 2,
+            textRecords = 3,
+            events = 1,
+            attachments = 0,
         )
     }
 }

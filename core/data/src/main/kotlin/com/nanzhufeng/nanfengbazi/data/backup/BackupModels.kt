@@ -71,6 +71,17 @@ data class RestorePreview(
     val sourceFileCount: Int,
 )
 
+sealed interface BackupPreviewResult {
+    data class Success(
+        val preview: RestorePreview,
+    ) : BackupPreviewResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : BackupPreviewResult
+}
+
 sealed interface BackupRestoreResult {
     data class Success(
         val preview: RestorePreview,
