@@ -40,6 +40,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
@@ -136,6 +137,8 @@ data class StageTwoUiState(
     val form: CaseFormState = CaseFormState(),
     val formError: String? = null,
     val saving: Boolean = false,
+    val previewing: Boolean = false,
+    val instantCalculation: CalculationResult? = null,
     val duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     val detail: BaziCase? = null,
     val detailLoading: Boolean = false,
@@ -1774,6 +1777,8 @@ class StageTwoViewModel(
                 destination = navigator.openCreate(),
                 formError = null,
                 duplicateCandidates = emptyList(),
+                previewing = false,
+                instantCalculation = null,
                 message = null,
             )
         }
@@ -1785,12 +1790,74 @@ class StageTwoViewModel(
                 form = transform(it.form),
                 formError = null,
                 duplicateCandidates = emptyList(),
+                instantCalculation = null,
             )
         }
     }
 
+    fun previewCase() {
+        val current = mutableState.value
+        if (current.saving || current.previewing) return
+        val form = current.form
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    previewing = true,
+                    formError = null,
+                    duplicateCandidates = emptyList(),
+                    instantCalculation = null,
+                )
+            }
+            when (val result = createCase.preview(form)) {
+                is PreviewCaseResult.Calculated -> mutableState.update {
+                    if (it.form == form && it.destination == AppDestination.CreateCase) {
+                        it.copy(
+                            previewing = false,
+                            instantCalculation = result.calculation,
+                        )
+                    } else {
+                        it.copy(previewing = false)
+                    }
+                }
+                is PreviewCaseResult.ValidationFailed -> mutableState.update {
+                    if (it.form == form && it.destination == AppDestination.CreateCase) {
+                        it.copy(previewing = false, formError = result.message)
+                    } else {
+                        it.copy(previewing = false)
+                    }
+                }
+                is PreviewCaseResult.CalculationFailed -> mutableState.update {
+                    if (it.form == form && it.destination == AppDestination.CreateCase) {
+                        it.copy(
+                            previewing = false,
+                            formError =
+                                "排盘失败：${result.message} 输入内容已保留，可修改后重试。",
+                        )
+                    } else {
+                        it.copy(previewing = false)
+                    }
+                }
+                is PreviewCaseResult.TimeZoneChoiceRequired -> mutableState.update {
+                    if (it.form == form && it.destination == AppDestination.CreateCase) {
+                        it.copy(
+                            form = it.form.copy(
+                                resolvedUtcOffsetSeconds = null,
+                                availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                            ),
+                            previewing = false,
+                            formError = "该出生时间在 ${result.timeZoneId} 出现两次。" +
+                                "请选择实际 UTC offset 后再次即时排盘或保存。",
+                        )
+                    } else {
+                        it.copy(previewing = false)
+                    }
+                }
+            }
+        }
+    }
+
     fun submitCase(allowDuplicate: Boolean = false) {
-        if (mutableState.value.saving) return
+        if (mutableState.value.saving || mutableState.value.previewing) return
         val form = mutableState.value.form
         viewModelScope.launch {
             mutableState.update { it.copy(saving = true, formError = null) }
@@ -1802,6 +1869,7 @@ class StageTwoViewModel(
                             query = "",
                             form = CaseFormState(),
                             saving = false,
+                            instantCalculation = null,
                             duplicateCandidates = emptyList(),
                             message = "命例已完成排盘并保存。",
                         )
@@ -2198,6 +2266,8 @@ class StageTwoViewModel(
                 detail = null,
                 detailError = null,
                 formError = null,
+                previewing = false,
+                instantCalculation = null,
             )
         }
     }

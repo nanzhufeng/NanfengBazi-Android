@@ -31,6 +31,46 @@ class StageTwoFlowTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
+    fun instantChartShowsResultWithoutSavingCase() {
+        val alias = "Stage4即时排盘-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("1992")
+        composeRule.onNodeWithTag("birth_month").performTextInput("8")
+        composeRule.onNodeWithTag("birth_day").performTextInput("24")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("12")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省宿迁市泗阳县")
+        composeRule.onNodeWithTag("preview_case").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("instant_calculation_preview"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("instant_calculation_preview")
+            .performScrollTo()
+            .assertIsDisplayed()
+        check(
+            composeRule.onAllNodes(hasText("即时排盘结果（未保存）"))
+                .fetchSemanticsNodes().isNotEmpty(),
+        ) {
+            "即时排盘预览应明确标注未保存"
+        }
+        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithTag("case_search").performTextInput(alias)
+        check(
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isEmpty(),
+        ) {
+            "即时排盘不应创建可搜索的命例"
+        }
+    }
+
+    @Test
     fun lunarInputShowsLeapMonthChoice() {
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("new_case_button").performClick()

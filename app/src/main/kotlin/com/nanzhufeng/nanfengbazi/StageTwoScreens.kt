@@ -63,6 +63,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -147,6 +148,7 @@ fun NanfengBaziApp(
                         state = state,
                         onBack = viewModel::backToList,
                         onFormChange = viewModel::updateForm,
+                        onPreview = viewModel::previewCase,
                         onSubmit = { viewModel.submitCase() },
                         onConfirmDuplicate = { viewModel.submitCase(allowDuplicate = true) },
                         modifier = Modifier.padding(padding),
@@ -1719,6 +1721,7 @@ private fun CreateCaseScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onPreview: () -> Unit,
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1729,9 +1732,12 @@ private fun CreateCaseScreen(
         form = state.form,
         error = state.formError,
         saving = state.saving,
+        previewing = state.previewing,
+        instantCalculation = state.instantCalculation,
         submitLabel = "排盘并保存",
         onBack = onBack,
         onFormChange = onFormChange,
+        onPreview = onPreview,
         onSubmit = onSubmit,
         duplicateCandidates = state.duplicateCandidates,
         onConfirmDuplicate = onConfirmDuplicate,
@@ -1747,11 +1753,14 @@ internal fun CaseFormScreen(
     form: CaseFormState,
     error: String?,
     saving: Boolean,
+    modifier: Modifier = Modifier,
+    previewing: Boolean = false,
+    instantCalculation: CalculationResult? = null,
     submitLabel: String,
     onBack: () -> Unit,
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onPreview: (() -> Unit)? = null,
     onSubmit: () -> Unit,
-    modifier: Modifier = Modifier,
     duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     onConfirmDuplicate: (() -> Unit)? = null,
 ) {
@@ -2049,19 +2058,50 @@ internal fun CaseFormScreen(
                     )
                 }
             }
+            if (instantCalculation != null) {
+                InstantCalculationPreviewCard(
+                    calculation = instantCalculation,
+                    sex = form.sex ?: instantCalculation.normalizedInput.sexForFortuneDirection,
+                )
+            }
             if (duplicateCandidates.isNotEmpty() && onConfirmDuplicate != null) {
                 DuplicateCandidatesCard(
                     candidates = duplicateCandidates,
-                    saving = saving,
+                    saving = saving || previewing,
                     onConfirm = onConfirmDuplicate,
                 )
             }
+            if (onPreview != null) {
+                OutlinedButton(
+                    onClick = onPreview,
+                    enabled = !saving && !previewing,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 20.dp)
+                        .height(52.dp)
+                        .testTag("preview_case"),
+                ) {
+                    if (previewing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.width(22.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text("正在即时排盘…")
+                    } else {
+                        Text("即时排盘（不保存）")
+                    }
+                }
+            }
             Button(
                 onClick = onSubmit,
-                enabled = !saving,
+                enabled = !saving && !previewing,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 20.dp, bottom = 28.dp)
+                    .padding(
+                        top = if (onPreview == null) 20.dp else 10.dp,
+                        bottom = 28.dp,
+                    )
                     .height(52.dp)
                     .testTag("save_case"),
             ) {
@@ -2076,6 +2116,75 @@ internal fun CaseFormScreen(
                     Text(submitLabel)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InstantCalculationPreviewCard(
+    calculation: CalculationResult,
+    sex: SexForFortuneDirection,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp)
+            .testTag("instant_calculation_preview"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "即时排盘结果（未保存）",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "修改任一输入会清除此结果；只有点击“排盘并保存”才会写入本机命例库。",
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DetailRow("四柱", calculation.fourPillars.display())
+            calculation.basicChartDetails?.let {
+                BasicChartDetailsView(details = it, sex = sex)
+            }
+            calculation.calendarConversion?.let { conversion ->
+                DetailRow("换算公历", conversion.solarDateTime.display())
+                val lunar = conversion.lunarDateTime
+                DetailRow(
+                    "换算农历",
+                    "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}" +
+                        "${lunar.month}月${lunar.day}日 " +
+                        "%02d:%02d:%02d".format(
+                            lunar.hour,
+                            lunar.minute,
+                            lunar.second,
+                        ),
+                )
+            }
+            calculation.trueSolarTimeEvidence?.let {
+                DetailRow("真太阳时", it.trueSolarDateTime.display())
+            }
+            DetailRow("胎元", calculation.fetalOrigin)
+            DetailRow("胎息", calculation.fetalBreath)
+            DetailRow("命宫", calculation.ownSign)
+            DetailRow("身宫", calculation.bodySign)
+            DetailRow(
+                "起运方向",
+                if (calculation.fortuneStart.direction.name == "FORWARD") "顺排" else "逆排",
+            )
+            DetailRow(
+                "起运年龄",
+                "${calculation.fortuneStart.years} 年 " +
+                    "${calculation.fortuneStart.months} 月 " +
+                    "${calculation.fortuneStart.days} 日 " +
+                    "${calculation.fortuneStart.hours} 时 " +
+                    "${calculation.fortuneStart.minutes} 分",
+            )
+            DetailRow("精确交运时间", calculation.fortuneStart.endAt.display())
+            DecadeFortuneDetailsView(calculation.decadeFortunes)
         }
     }
 }

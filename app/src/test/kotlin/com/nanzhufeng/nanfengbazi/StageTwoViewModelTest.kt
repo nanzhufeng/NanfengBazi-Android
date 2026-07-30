@@ -123,6 +123,24 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `即时排盘不写库且任一输入变化清除旧结果`() = runTest {
+        val repository = FakeCaseRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.openCreate()
+        viewModel.updateForm { validForm().copy(alias = "") }
+
+        viewModel.previewCase()
+
+        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertNotNull(viewModel.state.value.instantCalculation)
+        assertTrue(repository.stored.isEmpty())
+
+        viewModel.updateForm { it.copy(minute = "38") }
+
+        assertNull(viewModel.state.value.instantCalculation)
+    }
+
+    @Test
     fun `夏令时重叠在表单展示候选并于选择后保存`() = runTest {
         val repository = FakeCaseRepository()
         val engine = BaziEngine { input, _ ->

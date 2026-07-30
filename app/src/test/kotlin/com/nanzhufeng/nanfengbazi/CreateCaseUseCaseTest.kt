@@ -14,6 +14,21 @@ import org.junit.Test
 
 class CreateCaseUseCaseTest {
     @Test
+    fun `即时排盘允许空别名且不检查重复不写仓储`() = runTest {
+        val engine = RecordingEngine()
+        val repository = FakeCaseRepository().apply {
+            stored["existing"] = sampleStoredCase("existing")
+        }
+        val useCase = CreateCaseUseCase(engine, repository)
+
+        val result = useCase.preview(validForm().copy(alias = ""))
+
+        assertTrue(result is PreviewCaseResult.Calculated)
+        assertEquals(1, engine.calls)
+        assertEquals(setOf("existing"), repository.stored.keys)
+    }
+
+    @Test
     fun `有效表单通过唯一引擎计算并由仓储保存`() = runTest {
         val engine = RecordingEngine()
         val repository = FakeCaseRepository()

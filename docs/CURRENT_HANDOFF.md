@@ -1,17 +1,17 @@
-# 当前交接：Stage 4A 岁运展示第五增量
+# 当前交接：Stage 4A 即时排盘第六增量
 
 更新日期：2026-07-31
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2、Stage 3A、Stage 3B 均已完成当前实现与自动化证据。
-- Stage 4A 前五项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
+- Stage 4A 前六项增量已完成：公历、农历、闰月、出生地区、手工经纬度、IANA 时区和
   真太阳时可以在新建和编辑中录入；唯一计算链会固化标准历法转换、历史 UTC offset、
-  tzdb 版本、完整真太阳时校正证据、四柱基础排盘及岁运明细。
+  tzdb 版本、完整真太阳时校正证据、四柱基础排盘及岁运明细，并支持零写入即时排盘。
 - 夏令时回拨重叠时刻必须由用户在两个有效 offset 中明确选择；跳时产生的不存在时刻
   明确失败且零写入。
-- 下一安全增量是补齐即时不保存排盘、时间候选/精度来源及详细交运展示，再进入
-  Stage 4B 的 50+ 黄金样本门禁。
+- 下一安全增量是补齐时间候选、精度与来源的显式输入语义，再进入 Stage 4B 的
+  50+ 黄金样本门禁。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -102,6 +102,15 @@
   不再仅输出一行干支摘要。
 - 页面只读取版本化 `CalculationResult`，没有在 UI 重新推算交运或大运。
 
+### 即时排盘但不保存
+
+- 新建页增加“即时排盘（不保存）”，可在别名为空时直接查看四柱、基础盘、历法换算、
+  真太阳时、胎元胎息、命身宫、精确交运和前八步大运。
+- 即时排盘与保存共用 `CreateCaseUseCase` 内的同一计算准备链和唯一 `BaziEngine`；
+  预览不查询重复命例、不构造 `BaziCase`、不调用 Room 写入。
+- 页面明确显示“未保存”；修改任一输入立即清除旧结果。协程返回时还会复核页面与完整
+  表单身份，防止慢结果覆盖新输入或离开页面后的状态。
+
 ## 所有者与边界
 
 - 唯一计算入口：`BaziEngine.calculate()`。
@@ -121,7 +130,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 129 条唯一单元契约；Debug/Release 变体合计 225 次执行，0 失败、0 跳过。
+- 131 条唯一单元契约；Debug/Release 变体合计 229 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -141,11 +150,13 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - 基础排盘必须且只能包含年、月、日、时四柱，旧快照缺失明细继续兼容；
   - 泗阳问真样例的生肖、星座、主星、藏干副星、长生、自坐、旬空、纳音和节气；
   - 已采用快照的生肖经 Room 往返进入命例摘要。
+  - 空别名可即时排盘且不检查重复、不写仓储；
+  - 即时结果在任一输入变化后清除，慢结果不得回填新表单或已离开的页面。
 - App 与 `core:data` Lint 均 0 错误；仅有 9 + 5 条依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - API 35 模拟器 `ExpenseCapture_API35`：
-  - Stage 4A 页面链 5/5 通过：历法切换、农历保存与换算、DST 重叠选择与证据落库、
-    真太阳时跨时辰与完整审计详情、既有新建/搜索/详情/编辑长流程；
+  - Stage 4A 页面链 6/6 通过：即时排盘零写入、历法切换、农历保存与换算、DST 重叠
+    选择与证据落库、真太阳时跨时辰与完整审计详情、既有新建/搜索/详情/编辑长流程；
   - alpha27 精确交运与前八步大运详情目标流程 1/1 通过；
   - DST 详情真实显示 `America/New_York`、`UTC-05:00` 与 tzdb 版本字段；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
@@ -155,17 +166,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha27-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha28-debug.apk`
 
-- 大小：10,059,745 bytes
-- SHA-256：`8534e4e209fd25bc907052fea9edd3ea602c1b036902d625d5e6d067addf177a`
+- 大小：10,444,281 bytes
+- SHA-256：`086b28d4614668af7c33a79c073faf07f0fba85665fc1fb9b8acddf799c1844e`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha27-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha28-release-unsigned.apk`
 
-- 大小：6,861,723 bytes
-- SHA-256：`ce31e4d195ba1acb258c484524b474879c87f5bfebc8f30df9a047d31c4e20c9`
+- 大小：6,867,155 bytes
+- SHA-256：`42b9381be611e0f895f6b7370123469edef5463c08b8ebde418c90f8ffdbff9f`
 
 ## 当前限制与风险
 
@@ -182,10 +193,9 @@ Debug 验收构建：
 
 继续 Stage 4A，优先顺序：
 
-1. 接通“即时排盘、不保存”以及时间候选、精度和来源的显式输入语义；
-2. 展示精确交运时间与每步大运起止年龄/年份，避免只显示干支摘要；
-3. 进入 Stage 4B，扩充至少 50 个公开/合成黄金样本及独立差分证据；
-4. Stage 5B 前继续把问真跨日、跨时辰和节气边界保留为真实样本验收项。
+1. 接通时间候选、精度和来源的显式输入语义；
+2. 进入 Stage 4B，扩充至少 50 个公开/合成黄金样本及独立差分证据；
+3. Stage 5B 前继续把问真跨日、跨时辰和节气边界保留为真实样本验收项。
 
-`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 4A 第四增量完成不等于
+`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 4A 第六增量完成不等于
 整个产品已经落地。

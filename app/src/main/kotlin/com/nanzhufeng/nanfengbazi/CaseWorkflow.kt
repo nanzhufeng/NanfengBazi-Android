@@ -9,6 +9,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
@@ -62,9 +63,12 @@ sealed interface CaseFormValidation {
 }
 
 object CaseFormValidator {
-    fun validate(form: CaseFormState): CaseFormValidation {
+    fun validate(
+        form: CaseFormState,
+        requireAlias: Boolean = true,
+    ): CaseFormValidation {
         val alias = form.alias.trim()
-        if (alias.isEmpty()) {
+        if (requireAlias && alias.isEmpty()) {
             return CaseFormValidation.Invalid("请填写命例别名。")
         }
         if (alias.length > 60) {
@@ -212,6 +216,23 @@ sealed interface CreateCaseResult {
     data class StorageFailed(val message: String) : CreateCaseResult
 }
 
+sealed interface PreviewCaseResult {
+    data class Calculated(
+        val alias: String,
+        val name: String?,
+        val calculation: CalculationResult,
+    ) : PreviewCaseResult
+
+    data class TimeZoneChoiceRequired(
+        val timeZoneId: String,
+        val validUtcOffsetSeconds: List<Int>,
+        val timeZoneDataVersion: String,
+    ) : PreviewCaseResult
+
+    data class ValidationFailed(val message: String) : PreviewCaseResult
+    data class CalculationFailed(val message: String) : PreviewCaseResult
+}
+
 fun interface IdGenerator {
     fun nextId(): String
 }
@@ -226,43 +247,30 @@ class CreateCaseUseCase(
     private val clock: Clock = Clock.systemUTC(),
     private val idGenerator: IdGenerator = UuidGenerator(),
 ) {
+    suspend fun preview(form: CaseFormState): PreviewCaseResult =
+        calculate(form = form, requireAlias = false)
+
     suspend operator fun invoke(
         form: CaseFormState,
         allowDuplicate: Boolean = false,
     ): CreateCaseResult {
-        val valid = when (val validation = CaseFormValidator.validate(form)) {
-            is CaseFormValidation.Invalid -> {
-                return CreateCaseResult.ValidationFailed(validation.message)
+        val prepared = when (val preview = calculate(form = form, requireAlias = true)) {
+            is PreviewCaseResult.Calculated -> preview
+            is PreviewCaseResult.ValidationFailed -> {
+                return CreateCaseResult.ValidationFailed(preview.message)
             }
-            is CaseFormValidation.Valid -> validation
+            is PreviewCaseResult.CalculationFailed -> {
+                return CreateCaseResult.CalculationFailed(preview.message)
+            }
+            is PreviewCaseResult.TimeZoneChoiceRequired -> {
+                return CreateCaseResult.TimeZoneChoiceRequired(
+                    timeZoneId = preview.timeZoneId,
+                    validUtcOffsetSeconds = preview.validUtcOffsetSeconds,
+                    timeZoneDataVersion = preview.timeZoneDataVersion,
+                )
+            }
         }
-        val profile = CalculationProfile.tymeDefault(
-            solarTimeMode = if (valid.birthInput.useTrueSolarTime) {
-                SolarTimeMode.TRUE_SOLAR_TIME
-            } else {
-                SolarTimeMode.CIVIL_TIME
-            },
-        )
-        val calculation = try {
-            baziEngine.calculate(valid.birthInput, profile)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: TimeZoneChoiceRequiredException) {
-            return CreateCaseResult.TimeZoneChoiceRequired(
-                timeZoneId = error.timeZoneId,
-                validUtcOffsetSeconds = error.validUtcOffsetSeconds,
-                timeZoneDataVersion = error.timeZoneDataVersion,
-            )
-        } catch (error: Exception) {
-            return CreateCaseResult.CalculationFailed(
-                if (error is IllegalArgumentException) {
-                    error.message?.takeIf { it.isNotBlank() }
-                        ?: "当前出生资料或计算口径不受支持。"
-                } else {
-                    "计算引擎暂时无法完成排盘，请稍后重试。"
-                },
-            )
-        }
+        val calculation = prepared.calculation
         if (!allowDuplicate) {
             val candidates = try {
                 caseRepository.findDuplicateCandidates(
@@ -285,8 +293,8 @@ class CreateCaseUseCase(
         val caseId = idGenerator.nextId()
         val case = BaziCase(
             id = caseId,
-            alias = valid.alias,
-            name = valid.name?.let(ExplicitText::present) ?: ExplicitText.absent(),
+            alias = prepared.alias,
+            name = prepared.name?.let(ExplicitText::present) ?: ExplicitText.absent(),
             sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
             sourceType = CaseSourceType.MANUAL,
             birthInput = calculation.normalizedInput,
@@ -316,5 +324,54 @@ class CreateCaseUseCase(
                 "命例未保存，数据库暂时不可用。请稍后重试；原始输入仍保留在当前页面。",
             )
         }
+    }
+
+    private suspend fun calculate(
+        form: CaseFormState,
+        requireAlias: Boolean,
+    ): PreviewCaseResult {
+        val valid = when (
+            val validation = CaseFormValidator.validate(
+                form = form,
+                requireAlias = requireAlias,
+            )
+        ) {
+            is CaseFormValidation.Invalid -> {
+                return PreviewCaseResult.ValidationFailed(validation.message)
+            }
+            is CaseFormValidation.Valid -> validation
+        }
+        val profile = CalculationProfile.tymeDefault(
+            solarTimeMode = if (valid.birthInput.useTrueSolarTime) {
+                SolarTimeMode.TRUE_SOLAR_TIME
+            } else {
+                SolarTimeMode.CIVIL_TIME
+            },
+        )
+        val calculation = try {
+            baziEngine.calculate(valid.birthInput, profile)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: TimeZoneChoiceRequiredException) {
+            return PreviewCaseResult.TimeZoneChoiceRequired(
+                timeZoneId = error.timeZoneId,
+                validUtcOffsetSeconds = error.validUtcOffsetSeconds,
+                timeZoneDataVersion = error.timeZoneDataVersion,
+            )
+        } catch (error: Exception) {
+            return PreviewCaseResult.CalculationFailed(
+                if (error is IllegalArgumentException) {
+                    error.message?.takeIf { it.isNotBlank() }
+                        ?: "当前出生资料或计算口径不受支持。"
+                } else {
+                    "计算引擎暂时无法完成排盘，请稍后重试。"
+                },
+            )
+        }
+        return PreviewCaseResult.Calculated(
+            alias = valid.alias,
+            name = valid.name,
+            calculation = calculation,
+        )
     }
 }
