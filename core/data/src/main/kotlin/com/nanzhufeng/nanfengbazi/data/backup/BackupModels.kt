@@ -1,0 +1,122 @@
+package com.nanzhufeng.nanfengbazi.data.backup
+
+import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEventEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseGroupCrossRefEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseGroupEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseTagCrossRefEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseTagEntity
+import com.nanzhufeng.nanfengbazi.data.db.FieldEvidenceEntity
+import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
+import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class BackupManifest(
+    val formatVersion: Int,
+    val appVersion: String,
+    val databaseSchemaVersion: Int,
+    val createdAt: String,
+    val encrypted: Boolean,
+    val encryptionParametersVersion: Int? = null,
+    val engineVersions: List<String>,
+    val ruleVersions: List<String>,
+    val counts: BackupCounts,
+    val files: List<BackupFileManifest>,
+)
+
+@Serializable
+data class BackupCounts(
+    val cases: Int,
+    val snapshots: Int,
+    val textRecords: Int,
+    val events: Int,
+    val attachments: Int,
+)
+
+@Serializable
+data class BackupFileManifest(
+    val path: String,
+    val byteSize: Long,
+    val sha256: String,
+)
+
+sealed interface BackupProtection {
+    data object UnencryptedSensitiveDataConfirmed : BackupProtection
+
+    data class PasswordProtected(
+        val password: CharArray,
+    ) : BackupProtection
+}
+
+sealed interface BackupExportResult {
+    data class Success(
+        val counts: BackupCounts,
+        val fileCount: Int,
+    ) : BackupExportResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : BackupExportResult
+}
+
+data class RestorePreview(
+    val manifest: BackupManifest,
+    val sourceFileCount: Int,
+)
+
+sealed interface BackupRestoreResult {
+    data class Success(
+        val preview: RestorePreview,
+    ) : BackupRestoreResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : BackupRestoreResult
+}
+
+@Serializable
+internal data class CasesFile(
+    val cases: List<CaseEntity>,
+)
+
+@Serializable
+internal data class SnapshotsFile(
+    val snapshots: List<CalculationSnapshotEntity>,
+)
+
+@Serializable
+internal data class TextRecordsFile(
+    val records: List<TextRecordEntity>,
+)
+
+@Serializable
+internal data class EventsFile(
+    val events: List<CaseEventEntity>,
+)
+
+@Serializable
+internal data class GroupsFile(
+    val groups: List<CaseGroupEntity>,
+    val crossRefs: List<CaseGroupCrossRefEntity>,
+)
+
+@Serializable
+internal data class TagsFile(
+    val tags: List<CaseTagEntity>,
+    val crossRefs: List<CaseTagCrossRefEntity>,
+)
+
+@Serializable
+internal data class ImportsFile(
+    val attachments: List<SourceAttachmentEntity>,
+    val fieldEvidence: List<FieldEvidenceEntity>,
+)
+
+@Serializable
+internal data class SettingsFile(
+    val schemaVersion: Int = 1,
+)

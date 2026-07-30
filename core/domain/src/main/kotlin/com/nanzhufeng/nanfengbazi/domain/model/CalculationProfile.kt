@@ -1,27 +1,35 @@
 package com.nanzhufeng.nanfengbazi.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class YearBoundaryRule {
     SPRING_EXACT,
 }
 
+@Serializable
 enum class MonthBoundaryRule {
     SOLAR_TERM_EXACT,
 }
 
+@Serializable
 enum class RatHourRule {
     TYME_DEFAULT,
 }
 
+@Serializable
 enum class SolarTimeMode {
     CIVIL_TIME,
     TRUE_SOLAR_TIME,
 }
 
+@Serializable
 enum class LuckStartRule {
     TYME_DEFAULT,
     CHINA_95,
 }
 
+@Serializable
 data class CalculationProfile(
     val id: String,
     val engineVersion: String,
@@ -49,4 +57,3 @@ data class CalculationProfile(
         )
     }
 }
-

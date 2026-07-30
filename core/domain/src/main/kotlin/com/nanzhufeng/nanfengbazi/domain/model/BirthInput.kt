@@ -1,5 +1,8 @@
 package com.nanzhufeng.nanfengbazi.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class CivilDateTime(
     val year: Int,
     val month: Int,
@@ -18,6 +21,7 @@ data class CivilDateTime(
     }
 }
 
+@Serializable
 data class LunarDateTime(
     val year: Int,
     val month: Int,
@@ -28,17 +32,22 @@ data class LunarDateTime(
     val isLeapMonth: Boolean,
 )
 
+@Serializable
 sealed interface BirthCalendarInput {
+    @Serializable
     data class Solar(val dateTime: CivilDateTime) : BirthCalendarInput
 
+    @Serializable
     data class Lunar(val dateTime: LunarDateTime) : BirthCalendarInput
 }
 
+@Serializable
 enum class SexForFortuneDirection {
     WOMAN,
     MAN,
 }
 
+@Serializable
 enum class TimePrecision {
     EXACT_TO_SECOND,
     EXACT_TO_MINUTE,
@@ -47,6 +56,7 @@ enum class TimePrecision {
     UNKNOWN,
 }
 
+@Serializable
 data class BirthInput(
     val calendarInput: BirthCalendarInput,
     val sexForFortuneDirection: SexForFortuneDirection,
@@ -69,4 +79,3 @@ data class BirthInput(
         latitude?.let { require(it in -90.0..90.0) { "纬度超出范围" } }
     }
 }
-

@@ -17,5 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "nanfeng-bazi"
 include(":app")
 include(":core:domain")
+include(":core:data")
 include(":core:engine-tyme")
-
