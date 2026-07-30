@@ -17,6 +17,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
@@ -192,29 +193,66 @@ class ScreenshotImportCommitter(
         val sourcePillars = (adopted(FIELD_FOUR_PILLARS) as? TypedFieldValue.FourPillarsValue)
             ?.value
             ?: return PreparedCaseResult.Invalid("请先确认四柱。")
+        val exactSolarDateTime =
+            (adopted(FIELD_SOLAR_DATETIME) as? TypedFieldValue.DateTimeValue)?.value
+        if (
+            exactSolarDateTime != null &&
+            (
+                exactSolarDateTime.year != solarDate.year ||
+                    exactSolarDateTime.month != solarDate.monthValue ||
+                    exactSolarDateTime.day != solarDate.dayOfMonth
+                )
+        ) {
+            return PreparedCaseResult.Invalid("公历日期与公历时间不是同一天，请返回核对。")
+        }
         val representativeHour = sourcePillars.hour
             .lastOrNull()
             ?.let(HOUR_BY_BRANCH::get)
             ?: return PreparedCaseResult.Invalid("无法从时柱确定对应时辰，请人工补充出生时间。")
+        val latitude = (adopted(FIELD_LATITUDE) as? TypedFieldValue.DecimalNumber)
+            ?.canonicalValue
+            ?.toDoubleOrNull()
+        val longitude = (adopted(FIELD_LONGITUDE) as? TypedFieldValue.DecimalNumber)
+            ?.canonicalValue
+            ?.toDoubleOrNull()
+        val hasCoordinates = latitude != null && longitude != null
+        val locationName = (adopted(FIELD_LOCATION) as? TypedFieldValue.Text)
+            ?.value
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+        val birthDateTime = exactSolarDateTime ?: CivilDateTime(
+            year = solarDate.year,
+            month = solarDate.monthValue,
+            day = solarDate.dayOfMonth,
+            hour = representativeHour,
+            minute = 0,
+            second = 0,
+        )
         val birthInput = BirthInput(
             calendarInput = BirthCalendarInput.Solar(
-                CivilDateTime(
-                    year = solarDate.year,
-                    month = solarDate.monthValue,
-                    day = solarDate.dayOfMonth,
-                    hour = representativeHour,
-                    minute = 0,
-                    second = 0,
-                ),
+                birthDateTime,
             ),
             sexForFortuneDirection = sex,
-            timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+            timePrecision = if (exactSolarDateTime == null) {
+                TimePrecision.DOUBLE_HOUR_ONLY
+            } else {
+                TimePrecision.EXACT_TO_SECOND
+            },
             timeZoneId = "Asia/Shanghai",
             resolvedUtcOffsetSeconds = 8 * 60 * 60,
             timeZoneDataVersion = TIME_ZONE_EVIDENCE_VERSION,
+            locationName = locationName,
+            longitude = longitude.takeIf { hasCoordinates },
+            latitude = latitude.takeIf { hasCoordinates },
+            coordinateSource = CoordinateSource.USER_ENTERED.takeIf { hasCoordinates },
             useTrueSolarTime = false,
             timeSourceType = TimeSourceType.WENZHEN_SCREENSHOT,
-            sourceNote = "由问真截图时柱推定对应时辰代表时刻，并与来源四柱复核。",
+            sourceNote = if (exactSolarDateTime == null) {
+                "由问真截图时柱推定对应时辰代表时刻，并与来源四柱复核。"
+            } else {
+                "采用问真基本资料页公历时间，并与来源四柱复核；真太阳时仅保留为证据，" +
+                    "不重复校正。"
+            },
         )
         val calculation = try {
             baziEngine.calculate(birthInput, CalculationProfile.tymeDefault())
@@ -252,7 +290,12 @@ class ScreenshotImportCommitter(
         val case = BaziCase(
             id = caseId,
             alias = alias,
-            name = ExplicitText.absent(),
+            name = (adopted(FIELD_NAME) as? TypedFieldValue.Text)
+                ?.value
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?.let(ExplicitText::present)
+                ?: ExplicitText.absent(),
             sexForFortuneDirection = sex,
             sourceType = CaseSourceType.WENZHEN_SCREENSHOT,
             birthInput = normalizedBirthInput,
@@ -487,8 +530,13 @@ class ScreenshotImportCommitter(
 
     private companion object {
         const val FIELD_ALIAS = "identity.alias"
+        const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
         const val FIELD_SOLAR_DATE = "birth.solar_date"
+        const val FIELD_SOLAR_DATETIME = "birth.solar_datetime"
+        const val FIELD_LOCATION = "birth.location"
+        const val FIELD_LATITUDE = "birth.latitude"
+        const val FIELD_LONGITUDE = "birth.longitude"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
         const val TIME_ZONE_EVIDENCE_VERSION = "Asia-Shanghai-fixed-UTC+08-import-v1"
         val HOUR_BY_BRANCH = mapOf(

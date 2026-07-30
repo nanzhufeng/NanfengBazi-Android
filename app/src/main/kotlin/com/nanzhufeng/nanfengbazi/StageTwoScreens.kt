@@ -3394,8 +3394,17 @@ private fun DuplicateCandidatesCard(
 
 private fun String.evidenceFieldLabel(): String = when (this) {
     "identity.alias" -> "命例名称"
+    "identity.name" -> "姓名"
     "identity.sex" -> "性别"
+    "identity.constellation" -> "星座"
+    "identity.zodiac" -> "属相"
     "birth.solar_date" -> "公历生日"
+    "birth.solar_datetime" -> "公历出生时间"
+    "birth.lunar_text" -> "农历原文"
+    "birth.true_solar_datetime" -> "问真真太阳时"
+    "birth.location" -> "出生地区"
+    "birth.latitude" -> "纬度"
+    "birth.longitude" -> "经度"
     "chart.four_pillars" -> "四柱"
     else -> this
 }

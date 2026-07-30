@@ -9,6 +9,7 @@ import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.EvidenceBoundingBox
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
@@ -26,6 +27,7 @@ import com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetector
 import java.io.InputStream
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -782,8 +784,17 @@ class ScreenshotImportViewModel(
 
     private fun String.displayLabel(): String = when (this) {
         "identity.alias" -> "命例名称"
+        "identity.name" -> "姓名"
         "identity.sex" -> "性别"
+        "identity.constellation" -> "星座"
+        "identity.zodiac" -> "属相"
         "birth.solar_date" -> "公历生日"
+        "birth.solar_datetime" -> "公历出生时间"
+        "birth.lunar_text" -> "农历原文"
+        "birth.true_solar_datetime" -> "问真真太阳时"
+        "birth.location" -> "出生地区"
+        "birth.latitude" -> "纬度"
+        "birth.longitude" -> "经度"
         "chart.four_pillars" -> "四柱"
         else -> this
     }
@@ -825,6 +836,31 @@ class ScreenshotImportViewModel(
                 ?.toString()
                 ?.let(TypedFieldValue::Text)
 
+            "birth.solar_datetime",
+            "birth.true_solar_datetime",
+            -> runCatching { LocalDateTime.parse(value.replace(' ', 'T')) }
+                .getOrNull()
+                ?.let { dateTime ->
+                    TypedFieldValue.DateTimeValue(
+                        CivilDateTime(
+                            year = dateTime.year,
+                            month = dateTime.monthValue,
+                            day = dateTime.dayOfMonth,
+                            hour = dateTime.hour,
+                            minute = dateTime.minute,
+                            second = dateTime.second,
+                        ),
+                    )
+                }
+
+            "birth.latitude" -> value.toDoubleOrNull()
+                ?.takeIf { it in -90.0..90.0 }
+                ?.let { TypedFieldValue.DecimalNumber(it.toString()) }
+
+            "birth.longitude" -> value.toDoubleOrNull()
+                ?.takeIf { it in -180.0..180.0 }
+                ?.let { TypedFieldValue.DecimalNumber(it.toString()) }
+
             "chart.four_pillars" -> value
                 .split(Regex("\\s+"))
                 .takeIf { pillars ->
@@ -849,6 +885,11 @@ class ScreenshotImportViewModel(
         "identity.alias" -> "命例名称不能为空且不能超过 60 个字符。"
         "identity.sex" -> "性别只能填写“男”或“女”。"
         "birth.solar_date" -> "公历生日必须使用 YYYY-MM-DD 格式并且是真实日期。"
+        "birth.solar_datetime",
+        "birth.true_solar_datetime",
+        -> "时间必须使用 YYYY-MM-DD HH:MM:SS 格式并且是真实时间。"
+        "birth.latitude" -> "纬度必须是 -90 到 90 之间的数字。"
+        "birth.longitude" -> "经度必须是 -180 到 180 之间的数字。"
         "chart.four_pillars" -> "四柱必须按“年柱 月柱 日柱 时柱”填写，例如：壬申 戊申 壬申 丙午。"
         else -> "修正值不能为空。"
     }
@@ -864,7 +905,7 @@ class ScreenshotImportViewModel(
     }
 
     private companion object {
-        const val PARSER_VERSION = "wenzhen-p0-v1"
+        const val PARSER_VERSION = "wenzhen-basic-info-v2"
         val REQUIRED_COMMIT_FIELD_KEYS = listOf(
             "identity.alias",
             "identity.sex",

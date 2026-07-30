@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 174 条唯一单元契约；Debug/Release 变体合计 315 次执行，0 失败、0 跳过。
+- 176 条唯一单元契约；Debug/Release 变体合计 319 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -230,6 +230,10 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     同时保留左侧命例索引和右侧完整详情。API 35 约 1013dp 宽屏四入口与双栏专项各
     1/1 通过，手机态 1.5 倍字体四入口和关键 48dp 触控目标 1/1 通过，默认手机视口
     StageTwo 主流程设备回归 9/9 通过；
+  - alpha44 扩展问真基本资料页：姓名、性别、公历日期/秒级时间、农历原文、真太阳时、
+    出生地区、经纬度、星座、属相和四柱均成为逐字段证据；采用的精确时间、姓名、地区
+    和成对坐标进入正式命例，日期或四柱不一致继续硬拦截。bundled ML Kit 合成基本资料
+    页分类与关键字段提取设备专项 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -237,17 +241,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha43-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha44-debug.apk`
 
-- 大小：56,237,578 bytes
-- SHA-256：`9c63ebc0a55173e751985f960a5afc2def643d52726a7c583cf8d90eefb5f025`
+- 大小：55,696,371 bytes
+- SHA-256：`9380e09c2c13c2fd878bea2d46d3826699cf17d145b437bbc4d9aace8beb18a5`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha43-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha44-release-unsigned.apk`
 
-- 大小：51,974,186 bytes
-- SHA-256：`6d6de0397331deeed8905df47e20e7c93af9e8413b920fbdfb56d4a9f8ecc57d`
+- 大小：51,990,570 bytes
+- SHA-256：`7e1a63a4527a7142f0cfe92d41d8a45ea700cbcbb0bba0b8b38e2227c5b7d225`
 
 ## 当前限制与风险
 
@@ -257,8 +261,9 @@ Debug 验收构建：
   Stage 4B 扩大边界黄金集和后续问真真实样本对照。
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
-  及反馈/点评完整原文、字段人工修正和原图文件/边界框坐标已实现；逐命例候选失败结果、
-  超 10 分钟前台任务模式、其余基本资料字段和原图可视框选联动尚未实现。
+  及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
+  逐命例候选失败结果、反馈事件候选、超 10 分钟前台任务模式、基本资料非核心衍生字段
+  和 P1 基本排盘页解析尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
 - 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；1.5 倍字体的四主入口
   与关键触控目标已验证，但 OPPO Find N5 实机展开/折叠、TalkBack 全页遍历和 2.0 倍
@@ -269,9 +274,9 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 扩展问真基本资料字段解析，并保持真实样本外部验收门禁；
-2. 增加窗口尺寸自适应与展开态双栏；
-3. 完成无障碍、大字体与目标视口 QA。
+1. 从命主反馈完整原文生成逐条事件候选，并保持人工确认门禁；
+2. 实现 P1 基本排盘页的结构化字段解析；
+3. 继续 TalkBack、2.0 倍字体与真实目标视口 QA。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于
 整个产品已经落地。

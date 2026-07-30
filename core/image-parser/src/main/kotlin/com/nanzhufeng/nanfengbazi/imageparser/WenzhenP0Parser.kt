@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.imageparser
 
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.EvidenceBoundingBox
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
@@ -12,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.OcrTextBlock
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import java.security.MessageDigest
+import java.time.LocalDateTime
 
 data class WenzhenP0ParseResult(
     val fields: List<CaseFieldEvidence>,
@@ -40,6 +42,9 @@ class WenzhenP0Parser(
                 listCandidatesByImageId[image.id] = rows.map(ParsedUserRow::candidate)
             } else {
                 fields += parseIdentityFields(image, document)
+                if (image.pageType == WenzhenPageType.BASIC_INFO) {
+                    fields += parseBasicInfoFields(image, document)
+                }
             }
             parseLongText(image, document)?.let(longTexts::add)
         }
@@ -277,6 +282,164 @@ class WenzhenP0Parser(
         )
     }
 
+    private fun parseBasicInfoFields(
+        image: ImportImageRef,
+        document: OcrDocument,
+    ): List<CaseFieldEvidence> = buildList {
+        document.firstMatch(SEX_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_SEX,
+                    rawText = match.value,
+                    value = TypedFieldValue.Text(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.94f,
+                ),
+            )
+        }
+        document.firstMatch(NAME_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_NAME,
+                    rawText = match.value,
+                    value = TypedFieldValue.Text(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.94f,
+                ),
+            )
+        }
+        document.firstDateTimeMatch(SOLAR_DATETIME_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_SOLAR_DATETIME,
+                    rawText = match.rawValue,
+                    value = TypedFieldValue.DateTimeValue(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.96f,
+                ),
+            )
+        }
+        document.firstMatch(LUNAR_TEXT_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_LUNAR_TEXT,
+                    rawText = match.value,
+                    value = TypedFieldValue.Text(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.88f,
+                ),
+            )
+        }
+        document.firstDateTimeMatch(TRUE_SOLAR_DATETIME_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_TRUE_SOLAR_DATETIME,
+                    rawText = match.rawValue,
+                    value = TypedFieldValue.DateTimeValue(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.94f,
+                ),
+            )
+        }
+        document.firstMatch(LOCATION_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_LOCATION,
+                    rawText = match.value,
+                    value = TypedFieldValue.Text(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.9f,
+                ),
+            )
+        }
+        document.firstCoordinates()?.let { coordinates ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_LATITUDE,
+                    rawText = coordinates.latitudeRaw,
+                    value = TypedFieldValue.DecimalNumber(
+                        coordinates.latitude.toString(),
+                    ),
+                    confidence = coordinates.block.confidence,
+                    boundingBox = coordinates.block.boundingBox,
+                    parserConfidence = 0.92f,
+                ),
+            )
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_LONGITUDE,
+                    rawText = coordinates.longitudeRaw,
+                    value = TypedFieldValue.DecimalNumber(
+                        coordinates.longitude.toString(),
+                    ),
+                    confidence = coordinates.block.confidence,
+                    boundingBox = coordinates.block.boundingBox,
+                    parserConfidence = 0.92f,
+                ),
+            )
+        }
+        document.firstMatch(CONSTELLATION_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_CONSTELLATION,
+                    rawText = match.value,
+                    value = TypedFieldValue.Text(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.9f,
+                ),
+            )
+        }
+        document.firstMatch(ZODIAC_PATTERN)?.let { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info",
+                    fieldKey = FIELD_ZODIAC,
+                    rawText = match.value,
+                    value = TypedFieldValue.Text(match.value),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.9f,
+                ),
+            )
+        }
+    }
+
     private fun field(
         image: ImportImageRef,
         document: OcrDocument,
@@ -316,6 +479,75 @@ class WenzhenP0Parser(
         if (year !in 1800..2200 || month !in 1..12 || day !in 1..31) return null
         return "%04d-%02d-%02d".format(year, month, day)
     }
+
+    private fun OcrDocument.firstMatch(pattern: Regex): BlockMatch? =
+        blocks.firstNotNullOfOrNull { block ->
+            pattern.find(block.text)?.groupValues?.getOrNull(1)
+                ?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?.let { BlockMatch(block, it) }
+        }
+
+    private fun OcrDocument.firstDateTimeMatch(pattern: Regex): DateTimeBlockMatch? =
+        blocks.firstNotNullOfOrNull { block ->
+            val match = pattern.find(block.text) ?: return@firstNotNullOfOrNull null
+            val dateTime = runCatching {
+                LocalDateTime.of(
+                    match.groupValues[1].toInt(),
+                    match.groupValues[2].toInt(),
+                    match.groupValues[3].toInt(),
+                    match.groupValues[4].toInt(),
+                    match.groupValues[5].toInt(),
+                    match.groupValues[6].ifBlank { "0" }.toInt(),
+                )
+            }.getOrNull() ?: return@firstNotNullOfOrNull null
+            DateTimeBlockMatch(
+                block = block,
+                rawValue = match.value.substringAfter('：', match.value)
+                    .substringAfter(':', match.value)
+                    .trim(),
+                value = CivilDateTime(
+                    year = dateTime.year,
+                    month = dateTime.monthValue,
+                    day = dateTime.dayOfMonth,
+                    hour = dateTime.hour,
+                    minute = dateTime.minute,
+                    second = dateTime.second,
+                ),
+            )
+        }
+
+    private fun OcrDocument.firstCoordinates(): CoordinatesBlockMatch? =
+        blocks.firstNotNullOfOrNull { block ->
+            val latitudeMatch = LATITUDE_PATTERN.find(block.text)
+                ?: return@firstNotNullOfOrNull null
+            val longitudeMatch = LONGITUDE_PATTERN.find(block.text)
+                ?: return@firstNotNullOfOrNull null
+            val latitudeMagnitude = latitudeMatch.groupValues[2].toDoubleOrNull()
+                ?: return@firstNotNullOfOrNull null
+            val longitudeMagnitude = longitudeMatch.groupValues[2].toDoubleOrNull()
+                ?: return@firstNotNullOfOrNull null
+            val latitude = if (latitudeMatch.groupValues[1] == "南纬") {
+                -latitudeMagnitude
+            } else {
+                latitudeMagnitude
+            }
+            val longitude = if (longitudeMatch.groupValues[1] == "西经") {
+                -longitudeMagnitude
+            } else {
+                longitudeMagnitude
+            }
+            if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) {
+                return@firstNotNullOfOrNull null
+            }
+            CoordinatesBlockMatch(
+                block = block,
+                latitudeRaw = latitudeMatch.value,
+                latitude = latitude,
+                longitudeRaw = longitudeMatch.value,
+                longitude = longitude,
+            )
+        }
 
     private fun extractCompactFourPillars(blocks: List<OcrTextBlock>): String? {
         val stems = blocks.firstNotNullOfOrNull { block ->
@@ -381,13 +613,41 @@ class WenzhenP0Parser(
         val candidate: ImportCaseCandidate,
     )
 
+    private data class BlockMatch(
+        val block: OcrTextBlock,
+        val value: String,
+    )
+
+    private data class DateTimeBlockMatch(
+        val block: OcrTextBlock,
+        val rawValue: String,
+        val value: CivilDateTime,
+    )
+
+    private data class CoordinatesBlockMatch(
+        val block: OcrTextBlock,
+        val latitudeRaw: String,
+        val latitude: Double,
+        val longitudeRaw: String,
+        val longitude: Double,
+    )
+
     private companion object {
         private const val STEMS = "甲乙丙丁戊己庚辛壬癸"
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v1"
+        const val PARSER_RULE_ID = "wenzhen-basic-info-parser-v2"
         const val FIELD_ALIAS = "identity.alias"
+        const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
         const val FIELD_SOLAR_DATE = "birth.solar_date"
+        const val FIELD_SOLAR_DATETIME = "birth.solar_datetime"
+        const val FIELD_LUNAR_TEXT = "birth.lunar_text"
+        const val FIELD_TRUE_SOLAR_DATETIME = "birth.true_solar_datetime"
+        const val FIELD_LOCATION = "birth.location"
+        const val FIELD_LATITUDE = "birth.latitude"
+        const val FIELD_LONGITUDE = "birth.longitude"
+        const val FIELD_CONSTELLATION = "identity.constellation"
+        const val FIELD_ZODIAC = "identity.zodiac"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
         const val MAX_NAME_DATE_DISTANCE_PX = 240
         const val ROW_VERTICAL_TOLERANCE_PX = 24
@@ -397,6 +657,30 @@ class WenzhenP0Parser(
         )
         val SOLAR_DATE_PATTERN = Regex(
             "(?:阳历|公历)\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-](\\d{1,2})日?",
+        )
+        val NAME_PATTERN = Regex("(?:姓名|命主)\\s*[:：]\\s*([\\p{L}·]{1,20})")
+        val SEX_PATTERN = Regex("(?:性别|性別)\\s*[:：]\\s*(男|女)")
+        val SOLAR_DATETIME_PATTERN = Regex(
+            "(?:阳历|公历)\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-]" +
+                "(\\d{1,2})日?\\s*(\\d{1,2})[:：](\\d{1,2})[:：](\\d{1,2})",
+        )
+        val TRUE_SOLAR_DATETIME_PATTERN = Regex(
+            "(?:真[太大]阳时|真太陽時)\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-]" +
+                "(\\d{1,2})日?\\s*(\\d{1,2})[:：](\\d{1,2})[:：](\\d{1,2})",
+        )
+        val LUNAR_TEXT_PATTERN = Regex(
+            "(?:农历|農曆|阴历|陰曆)\\s*[:：]\\s*([^\\n]{2,48})",
+        )
+        val LOCATION_PATTERN = Regex(
+            "(?:出生地区|出生地區|出生地)\\s*[:：]\\s*([^\\n]{2,80})",
+        )
+        val LATITUDE_PATTERN = Regex("(北纬|南纬)\\s*[:：]?\\s*(-?\\d{1,2}(?:\\.\\d+)?)")
+        val LONGITUDE_PATTERN = Regex("(东经|西经)\\s*[:：]?\\s*(-?\\d{1,3}(?:\\.\\d+)?)")
+        val CONSTELLATION_PATTERN = Regex(
+            "(?:星座)\\s*[:：]\\s*([^\\s（(]{1,12})",
+        )
+        val ZODIAC_PATTERN = Regex(
+            "(?:属相|屬相|生肖)\\s*[:：]\\s*([^\\s（(]{1,8})",
         )
         val STEM_SEQUENCE = Regex(
             "([$STEMS])\\s*([$STEMS])\\s*([$STEMS])\\s*([$STEMS])",

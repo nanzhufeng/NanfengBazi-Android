@@ -109,6 +109,77 @@ class WenzhenP0ParserTest {
     }
 
     @Test
+    fun `基本资料页提取出生资料并为每项保留原图区域`() {
+        val image = image("basic-info", WenzhenPageType.BASIC_INFO)
+        val document = document(
+            imageId = image.id,
+            blocks = listOf(
+                block("identity", "姓名：席瑞 性别：男", 24, 80, 420, 120),
+                block("lunar", "农历：1992年七月廿六 午时 乾造", 24, 130, 560, 170),
+                block("solar", "阳历：1992年08月24日 12:00:00", 24, 180, 560, 220),
+                block("true-solar", "真太阳时：1992-08-24 11:53:00", 24, 230, 560, 270),
+                block("location", "出生地区：江苏省宿迁市泗阳县", 24, 280, 560, 320),
+                block("coordinates", "地址经纬：北纬33.72 东经118.68", 24, 330, 560, 370),
+                block("identity-tags", "星座：处女座(Virgo) 属相：猴", 24, 380, 560, 420),
+                block("pillars", "壬申 戊申 壬申 丙午", 24, 430, 560, 470),
+            ),
+        )
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        val fieldsByKey = result.fields.associateBy { it.fieldKey }
+        assertEquals(
+            setOf(
+                "identity.alias",
+                "identity.name",
+                "identity.sex",
+                "identity.constellation",
+                "identity.zodiac",
+                "birth.solar_date",
+                "birth.solar_datetime",
+                "birth.lunar_text",
+                "birth.true_solar_datetime",
+                "birth.location",
+                "birth.latitude",
+                "birth.longitude",
+                "chart.four_pillars",
+            ),
+            fieldsByKey.keys,
+        )
+        assertEquals(
+            "席瑞",
+            (fieldsByKey.getValue("identity.name").normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            12,
+            (fieldsByKey.getValue("birth.solar_datetime").normalizedValue as
+                TypedFieldValue.DateTimeValue).value.hour,
+        )
+        assertEquals(
+            11,
+            (fieldsByKey.getValue("birth.true_solar_datetime").normalizedValue as
+                TypedFieldValue.DateTimeValue).value.hour,
+        )
+        assertEquals(
+            "33.72",
+            (fieldsByKey.getValue("birth.latitude").normalizedValue as
+                TypedFieldValue.DecimalNumber).canonicalValue,
+        )
+        assertEquals(
+            "118.68",
+            (fieldsByKey.getValue("birth.longitude").normalizedValue as
+                TypedFieldValue.DecimalNumber).canonicalValue,
+        )
+        assertTrue(result.fields.all { it.boundingBox != null && it.adoptedValue == null })
+        assertEquals(result.fields.map { it.id }.toSet(), result.candidates.single().fieldEvidenceIds.toSet())
+    }
+
+    @Test
     fun `无法识别用户列表行时保留原待核对候选而不制造空命例`() {
         val image = image("unreadable-list", WenzhenPageType.USER_LIST)
         val original = candidate(image.id)

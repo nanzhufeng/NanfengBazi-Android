@@ -10,6 +10,7 @@ import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
@@ -23,6 +24,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.canTransitionTo
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
 import java.io.ByteArrayInputStream
@@ -156,10 +158,41 @@ class ScreenshotImportCommitterTest {
         assertEquals(1, fixture.caseRepository.cases.size)
     }
 
+    @Test
+    fun `采用基本资料页字段后使用精确时间姓名地区和经纬度`() = runTest {
+        val fixture = fixture(
+            pillars = FourPillars("壬申", "戊申", "壬申", "丙午"),
+            adoptAll = true,
+            extraFields = listOf(
+                "identity.name" to TypedFieldValue.Text("席瑞"),
+                "birth.solar_datetime" to TypedFieldValue.DateTimeValue(
+                    CivilDateTime(1992, 8, 24, 12, 0, 0),
+                ),
+                "birth.location" to TypedFieldValue.Text("江苏省宿迁市泗阳县"),
+                "birth.latitude" to TypedFieldValue.DecimalNumber("33.72"),
+                "birth.longitude" to TypedFieldValue.DecimalNumber("118.68"),
+            ),
+        )
+
+        val result = fixture.committer.commitCandidate("session-1", "candidate-1")
+
+        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        val case = fixture.caseRepository.cases.values.single()
+        assertEquals("席瑞", case.name.value)
+        assertEquals(TimePrecision.EXACT_TO_SECOND, case.birthInput.timePrecision)
+        assertEquals("江苏省宿迁市泗阳县", case.birthInput.locationName)
+        assertEquals(33.72, case.birthInput.latitude)
+        assertEquals(118.68, case.birthInput.longitude)
+        val solar = case.birthInput.calendarInput as BirthCalendarInput.Solar
+        assertEquals(CivilDateTime(1992, 8, 24, 12, 0, 0), solar.dateTime)
+        assertEquals(9, case.fieldEvidence.size)
+    }
+
     private suspend fun fixture(
         pillars: FourPillars,
         adoptAll: Boolean,
         folderSuffix: String = "",
+        extraFields: List<Pair<String, TypedFieldValue>> = emptyList(),
     ): Fixture {
         val now = Instant.parse("2026-01-01T00:00:00Z")
         val importRoot =
@@ -200,7 +233,9 @@ class ScreenshotImportCommitterTest {
                 "chart.four_pillars",
                 TypedFieldValue.FourPillarsValue(pillars),
             ),
-        )
+        ) + extraFields.mapIndexed { index, (key, value) ->
+            field("extra-$index", key, value)
+        }
         val longText = ImportedLongTextEvidence(
             id = "feedback",
             imageId = image.id,
