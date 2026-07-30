@@ -11,6 +11,7 @@ import com.nanzhufeng.nanfengbazi.data.db.CaseTagCrossRefEntity
 import com.nanzhufeng.nanfengbazi.data.db.CaseTagEntity
 import com.nanzhufeng.nanfengbazi.data.db.FieldEvidenceEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
+import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
@@ -341,7 +342,7 @@ private fun CaseFieldEvidence.toEntity(caseId: String, sortOrder: Int) = FieldEv
     sortOrder = sortOrder,
 )
 
-private fun CaseEntity.toDomain(
+internal fun CaseEntity.toDomain(
     snapshots: List<CalculationSnapshotEntity>,
     textRecords: List<TextRecordEntity>,
     textRecordRevisions: List<TextRecordRevisionEntity>,
@@ -410,6 +411,29 @@ private fun CaseEntity.toDomain(
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
     revision = revision,
 )
+
+internal fun RoomDataSnapshot.toDomainCases(): List<BaziCase> = cases.map { entity ->
+    val caseId = entity.id
+    val groupIds = caseGroupCrossRefs.asSequence()
+        .filter { it.caseId == caseId }
+        .map { it.groupId }
+        .toSet()
+    val tagIds = caseTagCrossRefs.asSequence()
+        .filter { it.caseId == caseId }
+        .map { it.tagId }
+        .toSet()
+    entity.toDomain(
+        snapshots = calculationSnapshots.filter { it.caseId == caseId },
+        textRecords = textRecords.filter { it.caseId == caseId },
+        textRecordRevisions = textRecordRevisions.filter { it.caseId == caseId },
+        events = events.filter { it.caseId == caseId },
+        eventRevisions = eventRevisions.filter { it.caseId == caseId },
+        attachments = attachments.filter { it.caseId == caseId },
+        fieldEvidence = fieldEvidence.filter { it.caseId == caseId },
+        groups = groups.filter { it.id in groupIds }.sortedWith(compareBy({ it.name }, { it.id })),
+        tags = tags.filter { it.id in tagIds }.sortedWith(compareBy({ it.name }, { it.id })),
+    )
+}
 
 private fun CaseEntity.toSummary(
     adoptedSnapshot: CaseCalculationSnapshot?,

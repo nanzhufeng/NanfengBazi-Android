@@ -8,6 +8,7 @@ import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
+import com.nanzhufeng.nanfengbazi.data.repository.toDomainCases
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
@@ -401,15 +402,9 @@ class CaseBackupService(
     private suspend fun buildCaseRestorePreviews(
         source: RoomDataSnapshot,
     ): List<BackupCaseRestorePreview> {
-        val sourcePillars = adoptedPillarsByCase(source.calculationSnapshots)
-        val sources = source.cases.map { sourceCase ->
+        val sources = source.toDomainCases().map { sourceCase ->
             BackupCaseRestorePreview(
-                sourceCaseId = sourceCase.id,
-                sourceAlias = sourceCase.alias,
-                sourceRevision = sourceCase.revision,
-                isTrashed = sourceCase.deletedAtEpochMillis != null,
-                sourceBirthInput = DomainJson.decodeFromString(sourceCase.birthInputJson),
-                sourceFourPillars = sourcePillars[sourceCase.id],
+                sourceCase = sourceCase,
                 conflicts = emptyList(),
             )
         }

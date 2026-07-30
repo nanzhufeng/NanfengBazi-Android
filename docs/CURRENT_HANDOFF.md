@@ -1,11 +1,11 @@
-# 当前交接：Stage 3B 完整备份逐例决策合同第九增量
+# 当前交接：Stage 3B 完整来源聚合第十增量
 
 更新日期：2026-07-30
 
 ## 当前结论
 
 - Stage 0、Stage 1、Stage 2 与 Stage 3A 已有当前实现和证据，Stage 3B 正在进行。
-- 本增量完成完整备份逐例恢复决策合同与预演过期校验；仍未开放恢复提交。
+- 本增量让完整备份预览与计划绑定完整来源聚合；仍未开放恢复提交。
 - v1.0 总方案仍未完成；附件事务、密码备份恢复、非空恢复和进程恢复仍待落地。
 - 未使用真实问真资料、真实姓名或用户截图；未安装或操作 OPPO 真机，未 push、未发布。
 
@@ -48,10 +48,14 @@
   目标必须来自当前候选、不能位于回收站，且至少选择一个模块或来源字段；
 - 生成计划前重新以同一来源出生输入/四柱读取当前库；候选、revision 或回收站状态变化
   返回 `PREVIEW_STALE`，不生成计划；计划保留原 manifest 文件哈希供后续提交复核；
+- `RoomDataSnapshot.toDomainCases()` 按既有 sortOrder、分组/标签关联重建完整 `BaziCase`；
+  预览逐例保存来源身份、资料、快照、记录/历史、事件/历史、附件、字段证据和组织信息；
+- 来源聚合构造会执行 `BaziCase` 的领域引用约束，缺失附件引用、重复子项 ID 等事实不能
+  只靠摘要绕过；恢复计划 equality 同时绑定完整来源事实与 manifest 文件哈希；
 - 预览不检查当前库是否为空、不写数据库且不提供恢复按钮；空库恢复服务仍保持原边界；
 - 错误弹窗保留协议错误代码，导出成功明确图片仅保留引用；
 - 启用 App `BuildConfig.VERSION_NAME`，导出文件记录真实当前版本；
-- Debug 版本升级到 `0.3.0-alpha14`。
+- Debug 版本升级到 `0.3.0-alpha15`。
 
 ## 所有者与边界
 
@@ -97,11 +101,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 ## APK
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha14-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha15-debug.apk`
 
-大小：9,985,497 bytes
+大小：9,818,722 bytes
 
-SHA-256：`58f9816b1b230c91c008e7072f47260baf00e41837bb3b22be80c116931a8635`
+SHA-256：`5a34e80dced5150045165ef5caa479cbc3b9f5fcf64e09cb76403666828ec41b`
 
 该 APK 是 Debug 验收构建，不是正式签名 Release。
 

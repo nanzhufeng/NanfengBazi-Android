@@ -189,6 +189,10 @@ class CaseBackupServiceTest {
             assertEquals(1, result.preview.manifest.counts.attachments)
             assertEquals(11, result.preview.sourceFileCount)
             val casePreview = result.preview.cases.single()
+            assertEquals(
+                RoomCaseRepository(database).findById("case-1"),
+                casePreview.sourceCase,
+            )
             assertEquals("case-1", casePreview.sourceCaseId)
             assertEquals("脱敏案例一", casePreview.sourceAlias)
             val conflict = casePreview.conflicts.single()

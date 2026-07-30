@@ -15,8 +15,7 @@ import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
-import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
-import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -92,14 +91,20 @@ data class BackupCaseConflictCandidate(
 )
 
 data class BackupCaseRestorePreview(
-    val sourceCaseId: String,
-    val sourceAlias: String,
-    val sourceRevision: Long,
-    val isTrashed: Boolean,
-    val sourceBirthInput: BirthInput,
-    val sourceFourPillars: FourPillars?,
+    val sourceCase: BaziCase,
     val conflicts: List<BackupCaseConflictCandidate>,
-)
+) {
+    val sourceCaseId: String get() = sourceCase.id
+    val sourceAlias: String get() = sourceCase.alias
+    val sourceRevision: Long get() = sourceCase.revision
+    val isTrashed: Boolean get() = sourceCase.deletedAt != null
+    val sourceBirthInput get() = sourceCase.birthInput
+    val sourceFourPillars get() = sourceCase.calculationSnapshots
+        .asReversed()
+        .firstOrNull { it.adopted }
+        ?.result
+        ?.fourPillars
+}
 
 enum class BackupCaseRestoreAction {
     IMPORT_AS_IS,
