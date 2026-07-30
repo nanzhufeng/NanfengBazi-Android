@@ -229,6 +229,60 @@ class WenzhenP0ParserTest {
     }
 
     @Test
+    fun `基本排盘表按四柱拆出可定位且默认不采用的结构化证据`() {
+        val image = image("basic-chart", WenzhenPageType.BASIC_CHART)
+        val document = document(
+            imageId = image.id,
+            blocks = listOf(
+                block("pillars", "壬申 戊申 壬申 丙午", 110, 70, 720, 110),
+                block("main-star", "主星比肩七杀元男偏财", 20, 130, 720, 170),
+                block("hidden-label", "藏干", 20, 190, 90, 230),
+                block("hidden-year", "庚金\n壬水\n戊土", 120, 190, 220, 280),
+                block("hidden-month", "庚金\n壬水\n戊土", 260, 190, 360, 280),
+                block("hidden-day", "庚金\n壬水\n戊土", 400, 190, 500, 280),
+                block("hidden-hour", "丁火\n己土", 550, 190, 650, 260),
+                block("fortune", "星运长生长生长生胎", 20, 300, 720, 340),
+                block("self", "自坐 长生 病 长生 帝旺", 20, 360, 720, 400),
+                block("void", "空亡 戌亥 寅卯 戌亥 寅卯", 20, 420, 720, 460),
+                block("nayin", "纳音 剑锋金 大驿土 剑锋金 天河水", 20, 480, 720, 520),
+                block("terminator", "原局天干：丙壬相冲", 20, 560, 720, 600),
+            ),
+        )
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        val chartFields = result.fields.filter {
+            it.fieldKey.startsWith("chart.") && it.fieldKey != "chart.four_pillars"
+        }
+        assertEquals(24, chartFields.size)
+        assertEquals(
+            "比肩",
+            (chartFields.single { it.fieldKey == "chart.year.main_star" }.normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "庚金\n壬水\n戊土",
+            (chartFields.single { it.fieldKey == "chart.month.hidden_stems" }.normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "天河水",
+            (chartFields.single { it.fieldKey == "chart.hour.nayin" }.normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertTrue(chartFields.all { it.adoptedValue == null && it.boundingBox != null })
+        assertTrue(
+            result.candidates.single().fieldEvidenceIds.containsAll(
+                chartFields.map { it.id },
+            ),
+        )
+    }
+
+    @Test
     fun `无法识别用户列表行时保留原待核对候选而不制造空命例`() {
         val image = image("unreadable-list", WenzhenPageType.USER_LIST)
         val original = candidate(image.id)

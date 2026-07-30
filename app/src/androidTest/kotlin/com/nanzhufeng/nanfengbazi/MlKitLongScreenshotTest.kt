@@ -23,6 +23,52 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MlKitLongScreenshotTest {
     @Test
+    fun 基本排盘合成图经真实离线OCR后拆出四柱表格证据() = runBlocking {
+        val bytes = createBasicChartSyntheticImage()
+        val sourceImage = ImportImageRef(
+            id = "basic-chart-image",
+            originalFileName = "synthetic-basic-chart.png",
+            mimeType = "image/png",
+            relativePath = "session-1/basic-chart-image.png",
+            sha256 = "d".repeat(64),
+            byteSize = bytes.size.toLong(),
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+        )
+        val engine = MlKitChineseOcrEngine()
+        try {
+            val document = engine.recognize(OcrImageInput(sourceImage, bytes))
+            val classification = AnchorBasedWenzhenPageClassifier().classify(document)
+            assertTrue(
+                "合成基本排盘页应被识别；OCR=${document.rawText}",
+                classification.pageType == WenzhenPageType.BASIC_CHART,
+            )
+            val image = sourceImage.copy(
+                pageType = classification.pageType,
+                pageConfidence = classification.confidence,
+                classifierVersion = classification.classifierVersion,
+            )
+            val result = WenzhenP0Parser().parse(
+                images = listOf(image),
+                documents = listOf(document),
+                groupedCandidates = WenzhenImageGrouper().group(
+                    listOf(image),
+                    listOf(document),
+                ),
+            )
+            val chartFields = result.fields.filter {
+                it.fieldKey.matches(Regex("chart\\.(year|month|day|hour)\\..+"))
+            }
+            assertTrue(
+                "应从表格行生成至少 16 项分柱证据；OCR=${document.rawText}",
+                chartFields.size >= 16,
+            )
+            assertTrue(chartFields.all { it.adoptedValue == null && it.boundingBox != null })
+        } finally {
+            engine.close()
+        }
+    }
+
+    @Test
     fun 命主反馈合成图经真实离线OCR后生成事件候选() = runBlocking {
         val bytes = createFeedbackSyntheticImage()
         val sourceImage = ImportImageRef(
@@ -161,6 +207,41 @@ class MlKitLongScreenshotTest {
         }
         canvas.drawText("问真八字 用户列表", 50f, 220f, paint)
         canvas.drawText("阳历 1992年8月24日", 50f, 2_220f, paint)
+        return try {
+            ByteArrayOutputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun createBasicChartSyntheticImage(): ByteArray {
+        val bitmap = Bitmap.createBitmap(1080, 1900, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 52f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        listOf(
+            "问真八字 基本排盘",
+            "年柱 月柱 日柱 时柱",
+            "主星 比肩 七杀 元男 偏财",
+            "天干 壬 戊 壬 丙",
+            "地支 申 申 申 午",
+            "藏干 庚金 庚金 庚金 丁火",
+            "副星 偏印 偏印 偏印 正财",
+            "星运 长生 长生 长生 胎",
+            "自坐 长生 病 长生 帝旺",
+            "空亡 戌亥 寅卯 戌亥 寅卯",
+            "纳音 剑锋金 大驿土 剑锋金 天河水",
+            "原局天干 丙壬相冲",
+        ).forEachIndexed { index, line ->
+            canvas.drawText(line, 52f, 130f + index * 145f, paint)
+        }
         return try {
             ByteArrayOutputStream().use { output ->
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))

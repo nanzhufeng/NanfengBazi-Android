@@ -45,6 +45,9 @@ class WenzhenP0Parser(
                 if (image.pageType == WenzhenPageType.BASIC_INFO) {
                     fields += parseBasicInfoFields(image, document)
                 }
+                if (image.pageType == WenzhenPageType.BASIC_CHART) {
+                    fields += parseBasicChartFields(image, document)
+                }
                 if (image.pageType == WenzhenPageType.FEEDBACK) {
                     fields += parseFeedbackEventFields(image, document)
                 }
@@ -494,6 +497,117 @@ class WenzhenP0Parser(
         }
     }
 
+    private fun parseBasicChartFields(
+        image: ImportImageRef,
+        document: OcrDocument,
+    ): List<CaseFieldEvidence> {
+        val chartBlocks = document.blocks.filter { it.boundingBox != null }
+        val rowAnchors = CHART_ROW_DEFINITIONS.mapNotNull { definition ->
+            chartBlocks.firstNotNullOfOrNull { block ->
+                val normalized = block.text.normalizeChartText()
+                val matchedLabel = definition.labels.firstOrNull { label ->
+                    CHART_ROW_PREFIX_PATTERN.getValue(label).containsMatchIn(normalized)
+                } ?: return@firstNotNullOfOrNull null
+                ChartRowAnchor(definition, block, matchedLabel)
+            }
+        }.sortedBy { it.block.boundingBox?.top }
+        val terminatorTop = chartBlocks
+            .filter { block ->
+                CHART_TABLE_TERMINATOR_PATTERN.containsMatchIn(block.text.normalizeChartText())
+            }
+            .mapNotNull { it.boundingBox?.top }
+            .minOrNull()
+
+        return rowAnchors.flatMapIndexed { rowIndex, anchor ->
+            val anchorBox = requireNotNull(anchor.block.boundingBox)
+            val nextRowTop = rowAnchors.getOrNull(rowIndex + 1)
+                ?.block
+                ?.boundingBox
+                ?.top
+            val rowBottom = listOfNotNull(nextRowTop, terminatorTop)
+                .filter { it > anchorBox.top }
+                .minOrNull()
+                ?: Int.MAX_VALUE
+            val rowBlocks = chartBlocks.filter { block ->
+                val box = requireNotNull(block.boundingBox)
+                val centerY = (box.top + box.bottom) / 2
+                centerY >= anchorBox.top && centerY < rowBottom
+            }
+            parseChartRow(image, document, anchor, rowBlocks)
+        }
+    }
+
+    private fun parseChartRow(
+        image: ImportImageRef,
+        document: OcrDocument,
+        anchor: ChartRowAnchor,
+        rowBlocks: List<OcrTextBlock>,
+    ): List<CaseFieldEvidence> {
+        val anchorBox = requireNotNull(anchor.block.boundingBox)
+        val valuesByColumn = List(CHART_COLUMN_KEYS.size) { mutableListOf<ChartCellPart>() }
+        val valueBlocks = rowBlocks.mapNotNull { block ->
+            val normalized = block.text.normalizeChartText()
+            val valueText = if (block.id == anchor.block.id) {
+                normalized
+                    .replaceFirst(CHART_ROW_PREFIX_PATTERN.getValue(anchor.matchedLabel), "")
+                    .trim()
+            } else {
+                normalized.trim()
+            }
+            valueText.takeIf(String::isNotBlank)?.let { block to it }
+        }
+        val probableChartRight = rowBlocks
+            .mapNotNull { it.boundingBox?.right }
+            .maxOrNull()
+            ?: anchorBox.right
+        val chartLeft = anchorBox.right
+        val chartWidth = (probableChartRight - chartLeft).coerceAtLeast(4)
+
+        valueBlocks.forEach { (block, valueText) ->
+            val tokens = anchor.definition.tokenizeValues(valueText)
+            if (tokens.size >= CHART_COLUMN_KEYS.size &&
+                tokens.size % CHART_COLUMN_KEYS.size == 0
+            ) {
+                tokens.forEachIndexed { index, token ->
+                    valuesByColumn[index % CHART_COLUMN_KEYS.size] += ChartCellPart(
+                        text = token,
+                        block = block,
+                    )
+                }
+            } else {
+                val box = requireNotNull(block.boundingBox)
+                val centerX = (box.left + box.right) / 2
+                val columnIndex = (
+                    (centerX - chartLeft).coerceAtLeast(0) *
+                        CHART_COLUMN_KEYS.size / chartWidth
+                    ).coerceIn(CHART_COLUMN_KEYS.indices)
+                valuesByColumn[columnIndex] += ChartCellPart(
+                    text = valueText,
+                    block = block,
+                )
+            }
+        }
+        if (valuesByColumn.any(List<ChartCellPart>::isEmpty)) return emptyList()
+
+        return valuesByColumn.mapIndexed { columnIndex, parts ->
+            val columnKey = CHART_COLUMN_KEYS[columnIndex]
+            val normalizedText = parts.joinToString("\n", transform = ChartCellPart::text)
+            val sourceBlocks = parts.map(ChartCellPart::block).distinctBy(OcrTextBlock::id)
+            field(
+                image = image,
+                document = document,
+                rowKey = "chart-${anchor.definition.key}-$columnKey",
+                fieldKey = "chart.$columnKey.${anchor.definition.key}",
+                rawText = "${anchor.definition.displayLabel}·" +
+                    "${CHART_COLUMN_LABELS[columnIndex]}\n$normalizedText",
+                value = TypedFieldValue.Text(normalizedText),
+                confidence = sourceBlocks.mapNotNull(OcrTextBlock::confidence).averageOrNull(),
+                boundingBox = sourceBlocks.unionBoundingBox(),
+                parserConfidence = if (parts.size == 1) 0.86f else 0.8f,
+            )
+        }
+    }
+
     private fun field(
         image: ImportImageRef,
         document: OcrDocument,
@@ -619,6 +733,20 @@ class WenzhenP0Parser(
         return FourPillars(values[0], values[1], values[2], values[3])
     }
 
+    private fun String.normalizeChartText(): String = trim()
+        .replace('運', '运')
+        .replace('納', '纳')
+        .replace('｜', '|')
+
+    private fun ChartRowDefinition.tokenizeValues(text: String): List<String> {
+        val splitValues = text.split(CHART_VALUE_SEPARATOR_PATTERN)
+            .filter(String::isNotBlank)
+        if (splitValues.size > 1 || valuePattern == null) return splitValues
+        val compact = text.replace(CHART_VALUE_SEPARATOR_PATTERN, "")
+        val matchedValues = valuePattern.findAll(compact).map(MatchResult::value).toList()
+        return matchedValues.takeIf { it.joinToString("") == compact } ?: splitValues
+    }
+
     private fun List<Float>.averageOrNull(): Float? =
         takeIf { it.isNotEmpty() }?.average()?.toFloat()
 
@@ -693,10 +821,28 @@ class WenzhenP0Parser(
         val inlineText: String,
     )
 
+    private data class ChartRowDefinition(
+        val key: String,
+        val displayLabel: String,
+        val labels: List<String>,
+        val valuePattern: Regex? = null,
+    )
+
+    private data class ChartRowAnchor(
+        val definition: ChartRowDefinition,
+        val block: OcrTextBlock,
+        val matchedLabel: String,
+    )
+
+    private data class ChartCellPart(
+        val text: String,
+        val block: OcrTextBlock,
+    )
+
     private companion object {
         private const val STEMS = "甲乙丙丁戊己庚辛壬癸"
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v3"
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v4"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -711,6 +857,39 @@ class WenzhenP0Parser(
         const val FIELD_ZODIAC = "identity.zodiac"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
         const val FIELD_EVENT_PREFIX = "event.candidate."
+        val CHART_COLUMN_KEYS = listOf("year", "month", "day", "hour")
+        val CHART_COLUMN_LABELS = listOf("年柱", "月柱", "日柱", "时柱")
+        val TEN_GOD_PATTERN = Regex(
+            "正印|偏印|比肩|劫财|食神|伤官|正财|偏财|正官|七杀|元男|元女",
+        )
+        val STEM_ELEMENT_PATTERN = Regex("[$STEMS][金木水火土]")
+        val LIFE_STAGE_PATTERN = Regex(
+            "长生|沐浴|冠带|临官|帝旺|衰|病|死|墓|绝|胎|养",
+        )
+        val VOID_PAIR_PATTERN = Regex("[$BRANCHES]{2}")
+        val NAYIN_PATTERN = Regex(
+            "海中金|炉中火|大林木|路旁土|剑锋金|山头火|涧下水|城头土|" +
+                "白蜡金|杨柳木|泉中水|屋上土|霹雳火|松柏木|长流水|沙中金|" +
+                "山下火|平地木|壁上土|金箔金|覆灯火|天河水|大驿土|钗钏金|" +
+            "桑柘木|大溪水|沙中土|天上火|石榴木|大海水",
+        )
+        val CHART_ROW_DEFINITIONS = listOf(
+            ChartRowDefinition("main_star", "主星", listOf("主星"), TEN_GOD_PATTERN),
+            ChartRowDefinition("hidden_stems", "藏干", listOf("藏干"), STEM_ELEMENT_PATTERN),
+            ChartRowDefinition("secondary_stars", "副星", listOf("副星"), TEN_GOD_PATTERN),
+            ChartRowDefinition("fortune_stage", "星运", listOf("星运"), LIFE_STAGE_PATTERN),
+            ChartRowDefinition("self_stage", "自坐", listOf("自坐"), LIFE_STAGE_PATTERN),
+            ChartRowDefinition("void", "空亡", listOf("空亡"), VOID_PAIR_PATTERN),
+            ChartRowDefinition("nayin", "纳音", listOf("纳音"), NAYIN_PATTERN),
+            ChartRowDefinition("spirits", "神煞", listOf("神煞")),
+        )
+        val CHART_ROW_PREFIX_PATTERN = CHART_ROW_DEFINITIONS
+            .flatMap(ChartRowDefinition::labels)
+            .associateWith { label -> Regex("^\\s*${Regex.escape(label)}\\s*[:：|]?\\s*") }
+        val CHART_VALUE_SEPARATOR_PATTERN = Regex("[\\s|]+")
+        val CHART_TABLE_TERMINATOR_PATTERN = Regex(
+            "^(?:智能干支图示|AI指令|原局天干|原局地支|原局整柱)",
+        )
         const val MAX_NAME_DATE_DISTANCE_PX = 240
         const val ROW_VERTICAL_TOLERANCE_PX = 24
         const val LAST_ROW_TAIL_PX = 140

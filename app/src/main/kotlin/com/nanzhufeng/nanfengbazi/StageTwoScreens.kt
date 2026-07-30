@@ -3395,6 +3395,27 @@ private fun DuplicateCandidatesCard(
 private val EVENT_EVIDENCE_FIELD_PATTERN = Regex(
     "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",
 )
+private val CHART_EVIDENCE_FIELD_PATTERN = Regex(
+    "chart\\.(year|month|day|hour)\\." +
+        "(main_star|hidden_stems|secondary_stars|fortune_stage|" +
+        "self_stage|void|nayin|spirits)",
+)
+private val CHART_EVIDENCE_COLUMN_LABELS = mapOf(
+    "year" to "年柱",
+    "month" to "月柱",
+    "day" to "日柱",
+    "hour" to "时柱",
+)
+private val CHART_EVIDENCE_ROW_LABELS = mapOf(
+    "main_star" to "主星",
+    "hidden_stems" to "藏干",
+    "secondary_stars" to "副星",
+    "fortune_stage" to "星运",
+    "self_stage" to "自坐",
+    "void" to "空亡",
+    "nayin" to "纳音",
+    "spirits" to "神煞",
+)
 
 private fun String.evidenceFieldLabel(): String = when (this) {
     "identity.alias" -> "命例名称"
@@ -3410,10 +3431,15 @@ private fun String.evidenceFieldLabel(): String = when (this) {
     "birth.latitude" -> "纬度"
     "birth.longitude" -> "经度"
     "chart.four_pillars" -> "四柱"
-    else -> EVENT_EVIDENCE_FIELD_PATTERN.matchEntire(this)
-        ?.groupValues
-        ?.get(1)
-        ?.let { "关键事件候选 · ${it}年" }
+    else -> CHART_EVIDENCE_FIELD_PATTERN.matchEntire(this)
+        ?.let { match ->
+            "${CHART_EVIDENCE_COLUMN_LABELS.getValue(match.groupValues[1])} · " +
+                CHART_EVIDENCE_ROW_LABELS.getValue(match.groupValues[2])
+        }
+        ?: EVENT_EVIDENCE_FIELD_PATTERN.matchEntire(this)
+            ?.groupValues
+            ?.get(1)
+            ?.let { "关键事件候选 · ${it}年" }
         ?: this
 }
 
