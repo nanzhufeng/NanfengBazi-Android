@@ -5,6 +5,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
@@ -101,13 +102,70 @@ class ScreenshotImportCommitterTest {
         assertFalse(java.nio.file.Files.exists(fixture.attachmentRoot.resolve("wenzhen")))
     }
 
+    @Test
+    fun `疑似重复必须人工确认后才能保留两份`() = runTest {
+        val seed = fixture(
+            pillars = FourPillars("壬申", "戊申", "壬申", "丙午"),
+            adoptAll = true,
+        )
+        assertTrue(
+            seed.committer.commitCandidate("session-1", "candidate-1") is
+                ScreenshotCandidateCommitResult.Committed,
+        )
+        val existing = seed.caseRepository.cases.values.single()
+        val fixture = fixture(
+            pillars = FourPillars("壬申", "戊申", "壬申", "丙午"),
+            adoptAll = true,
+            folderSuffix = "-duplicate",
+        )
+        fixture.caseRepository.duplicateCandidates = listOf(
+            DuplicateCaseCandidate(
+                summary = CaseSummary(
+                    id = existing.id,
+                    alias = existing.alias,
+                    name = existing.name,
+                    sexForFortuneDirection = existing.sexForFortuneDirection,
+                    sourceType = existing.sourceType,
+                    birthInput = existing.birthInput,
+                    fourPillars = existing.adoptedPillars(),
+                    groups = existing.groups,
+                    tags = existing.tags,
+                    isFavorite = existing.isFavorite,
+                    isPinned = existing.isPinned,
+                    copiedFromCaseId = existing.copiedFromCaseId,
+                    createdAt = existing.createdAt,
+                    updatedAt = existing.updatedAt,
+                    lastViewedAt = existing.lastViewedAt,
+                    deletedAt = existing.deletedAt,
+                    revision = existing.revision,
+                ),
+                reasons = setOf(DuplicateReason.SAME_FOUR_PILLARS),
+            ),
+        )
+
+        val blocked = fixture.committer.commitCandidate("session-1", "candidate-1")
+        assertTrue(blocked is ScreenshotCandidateCommitResult.DuplicateFound)
+        assertTrue(fixture.caseRepository.cases.isEmpty())
+
+        val confirmed = fixture.committer.commitCandidate(
+            "session-1",
+            "candidate-1",
+            allowDuplicate = true,
+        )
+        assertTrue(confirmed is ScreenshotCandidateCommitResult.Committed)
+        assertEquals(1, fixture.caseRepository.cases.size)
+    }
+
     private suspend fun fixture(
         pillars: FourPillars,
         adoptAll: Boolean,
+        folderSuffix: String = "",
     ): Fixture {
         val now = Instant.parse("2026-01-01T00:00:00Z")
-        val importRoot = temporaryFolder.newFolder("imports-${pillars.year}").toPath()
-        val attachmentRoot = temporaryFolder.newFolder("attachments-${pillars.year}").toPath()
+        val importRoot =
+            temporaryFolder.newFolder("imports-${pillars.year}$folderSuffix").toPath()
+        val attachmentRoot =
+            temporaryFolder.newFolder("attachments-${pillars.year}$folderSuffix").toPath()
         val imageStore = PrivateImportImageStore(importRoot)
         val image = imageStore.copyImage(
             sessionId = "session-1",
@@ -246,6 +304,7 @@ private class FakeCommitImportRepository(
 
 private class FakeCommitCaseRepository : CaseRepository {
     val cases = linkedMapOf<String, BaziCase>()
+    var duplicateCandidates: List<DuplicateCaseCandidate> = emptyList()
 
     override suspend fun save(
         case: BaziCase,
@@ -266,7 +325,7 @@ private class FakeCommitCaseRepository : CaseRepository {
         fourPillars: FourPillars?,
         canonicalSolarDateTime: CivilDateTime?,
         excludeCaseId: String?,
-    ): List<DuplicateCaseCandidate> = emptyList()
+    ): List<DuplicateCaseCandidate> = duplicateCandidates
 
     override suspend fun markViewed(caseId: String, viewedAt: Instant): Boolean = false
 }

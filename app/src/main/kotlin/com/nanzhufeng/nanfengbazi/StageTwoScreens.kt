@@ -107,7 +107,7 @@ fun NanfengBaziApp(
     onUpdateScreenshotFieldValue: (String, String, String) -> Unit = { _, _, _ -> },
     onSetScreenshotLongTextAdopted: (String, String, Boolean) -> Unit = { _, _, _ -> },
     onSetScreenshotCandidateAdopted: (String, Boolean) -> Unit = { _, _ -> },
-    onCommitScreenshotCandidate: (String) -> Unit = {},
+    onCommitScreenshotCandidate: (String, Boolean) -> Unit = { _, _ -> },
     onConsumeScreenshotImportMessage: () -> Unit = {},
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
@@ -1738,7 +1738,7 @@ private fun ScreenshotImportReviewScreen(
     onUpdateFieldValue: (String, String, String) -> Unit,
     onSetLongTextAdopted: (String, String, Boolean) -> Unit,
     onSetCandidateAdopted: (String, Boolean) -> Unit,
-    onCommitCandidate: (String) -> Unit,
+    onCommitCandidate: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var correctionDrafts by rememberSaveable {
@@ -1805,7 +1805,7 @@ private fun ScreenshotImportReviewScreen(
                             Text(if (candidate.fullyAdopted) "撤销本候选采用" else "采用本候选全部内容")
                         }
                         Button(
-                            onClick = { onCommitCandidate(candidate.id) },
+                            onClick = { onCommitCandidate(candidate.id, false) },
                             enabled = candidate.readyToCommit &&
                                 candidate.targetCaseId == null &&
                                 state.committingCandidateId == null,
@@ -1819,6 +1819,15 @@ private fun ScreenshotImportReviewScreen(
                                     state.committingCandidateId == candidate.id -> "正在复算并写入…"
                                     !candidate.readyToCommit -> "必填字段尚未齐全"
                                     else -> "复算一致后写入正式命例"
+                                },
+                            )
+                        }
+                        if (state.pendingDuplicateCandidateId == candidate.id) {
+                            DuplicateCandidatesCard(
+                                candidates = state.duplicateCaseCandidates,
+                                saving = state.committingCandidateId != null,
+                                onConfirm = {
+                                    onCommitCandidate(candidate.id, true)
                                 },
                             )
                         }

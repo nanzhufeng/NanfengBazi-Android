@@ -4,6 +4,7 @@ import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
@@ -46,6 +47,10 @@ sealed interface ScreenshotCandidateCommitResult {
         val sessionCompleted: Boolean,
     ) : ScreenshotCandidateCommitResult
 
+    data class DuplicateFound(
+        val candidates: List<DuplicateCaseCandidate>,
+    ) : ScreenshotCandidateCommitResult
+
     data class Rejected(val message: String) : ScreenshotCandidateCommitResult
     data class Failed(val message: String) : ScreenshotCandidateCommitResult
 }
@@ -61,6 +66,7 @@ class ScreenshotImportCommitter(
     suspend fun commitCandidate(
         sessionId: String,
         candidateId: String,
+        allowDuplicate: Boolean = false,
     ): ScreenshotCandidateCommitResult {
         val session = importSessionRepository.findById(sessionId)
             ?: return ScreenshotCandidateCommitResult.Rejected("导入会话已经不存在。")
@@ -106,10 +112,8 @@ class ScreenshotImportCommitter(
                     "重复命例检查失败，本次没有写入正式命例。",
                 )
             }
-            if (duplicates.isNotEmpty()) {
-                return ScreenshotCandidateCommitResult.Rejected(
-                    "检测到相同出生资料或四柱的既有命例，请先人工决定是否合并。",
-                )
+            if (duplicates.isNotEmpty() && !allowDuplicate) {
+                return ScreenshotCandidateCommitResult.DuplicateFound(duplicates)
             }
         } else if (existing.sourceType != CaseSourceType.WENZHEN_SCREENSHOT) {
             return ScreenshotCandidateCommitResult.Rejected("稳定命例标识已被其他来源占用。")

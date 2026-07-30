@@ -7,6 +7,7 @@ import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
@@ -87,6 +88,8 @@ data class ScreenshotImportUiState(
     val reviewCandidates: List<ScreenshotCandidateReviewUi> = emptyList(),
     val committingCandidateId: String? = null,
     val committedCaseCount: Int = 0,
+    val pendingDuplicateCandidateId: String? = null,
+    val duplicateCaseCandidates: List<DuplicateCaseCandidate> = emptyList(),
     val needsReview: Boolean = false,
     val canRetry: Boolean = false,
     val recoverableSessionCount: Int = 0,
@@ -345,7 +348,10 @@ class ScreenshotImportViewModel(
         }
     }
 
-    fun commitCandidate(candidateId: String) {
+    fun commitCandidate(
+        candidateId: String,
+        allowDuplicate: Boolean = false,
+    ) {
         val sessionId = mutableState.value.activeSessionId ?: return
         val committer = importCommitter
         if (committer == null) {
@@ -358,9 +364,17 @@ class ScreenshotImportViewModel(
                 it.copy(
                     committingCandidateId = candidateId,
                     message = null,
+                    pendingDuplicateCandidateId = null,
+                    duplicateCaseCandidates = emptyList(),
                 )
             }
-            when (val result = committer.commitCandidate(sessionId, candidateId)) {
+            when (
+                val result = committer.commitCandidate(
+                    sessionId,
+                    candidateId,
+                    allowDuplicate,
+                )
+            ) {
                 is ScreenshotCandidateCommitResult.Committed -> {
                     if (result.sessionCompleted) {
                         mutableState.update {
@@ -370,6 +384,8 @@ class ScreenshotImportViewModel(
                                 reviewCandidates = emptyList(),
                                 committingCandidateId = null,
                                 committedCaseCount = it.committedCaseCount + 1,
+                                pendingDuplicateCandidateId = null,
+                                duplicateCaseCandidates = emptyList(),
                                 message = "全部候选已核对并写入正式命例。",
                             )
                         }
@@ -380,10 +396,21 @@ class ScreenshotImportViewModel(
                                 reviewCandidates = persisted?.toReviewCandidates().orEmpty(),
                                 committingCandidateId = null,
                                 committedCaseCount = it.committedCaseCount + 1,
+                                pendingDuplicateCandidateId = null,
+                                duplicateCaseCandidates = emptyList(),
                                 message = "当前候选已写入正式命例，其余候选仍待核对。",
                             )
                         }
                     }
+                }
+
+                is ScreenshotCandidateCommitResult.DuplicateFound -> mutableState.update {
+                    it.copy(
+                        committingCandidateId = null,
+                        pendingDuplicateCandidateId = candidateId,
+                        duplicateCaseCandidates = result.candidates,
+                        message = "发现疑似重复命例，请人工核对后决定是否仍保留两份。",
+                    )
                 }
 
                 is ScreenshotCandidateCommitResult.Rejected -> mutableState.update {
@@ -559,6 +586,8 @@ class ScreenshotImportViewModel(
                     val recovery = importCommitter.resumeCompletedSession(recoverableCompletion.id)
                 ) {
                     is ScreenshotCandidateCommitResult.Committed -> null
+                    is ScreenshotCandidateCommitResult.DuplicateFound ->
+                        "恢复完成检查遇到疑似重复命例。"
                     is ScreenshotCandidateCommitResult.Rejected -> recovery.message
                     is ScreenshotCandidateCommitResult.Failed -> recovery.message
                 }

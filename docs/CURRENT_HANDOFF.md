@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 173 条唯一单元契约；Debug/Release 变体合计 313 次执行，0 失败、0 跳过。
+- 174 条唯一单元契约；Debug/Release 变体合计 315 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -216,6 +216,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha38 对无法规范化的四柱继续保留原文、原图文件和边界框，核对页人工修正后撤销
     采用并要求重新确认；真实 bundled OCR 双候选流程证明第二候选四柱可修正落库，且
     长列表离屏回收不丢修正草稿，目标流程 1/1 通过；
+  - alpha39 截图候选正式写入前返回具体重复命例和命中原因，默认零写入；只有用户明确
+    选择“确认仍然保存”才保留两份，提交器阻断与放行契约均已通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -223,17 +225,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha38-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha39-debug.apk`
 
 - 大小：55,647,219 bytes
-- SHA-256：`06df2a8c63195a114d4285482fe8ed8683c08d41dcf28091eba46dec16e6352e`
+- SHA-256：`ae713bea66a782f772496140b0331146135a1273fc42518ece2dc925a819552d`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha38-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha39-release-unsigned.apk`
 
 - 大小：51,957,802 bytes
-- SHA-256：`52a157fd56dc9e12f469bb0c817773844a78ce9bd8e0101d1d93f6c9250a66f9`
+- SHA-256：`024d73831f30f0c5f5de0255dafe81ebc44321e0921cc87623b909e81e3ffb08`
 
 ## 当前限制与风险
 
@@ -253,7 +255,7 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 持久化来源值/计算值/采用值对照报告，并支持重复命例人工决策；
+1. 持久化来源值/计算值/采用值对照报告；
 2. 增加原图预览与边界框可视定位；
 3. 扩展问真基本资料字段解析，并保持真实样本外部验收门禁。
 
