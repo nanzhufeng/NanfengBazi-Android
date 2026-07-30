@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Clock
@@ -294,7 +295,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `单命例明文确认后导出并只读预览`() = runTest {
+    fun `单命例明文确认后导出预览并保留两份导入`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-exchange"] = sampleStoredCase("case-exchange")
         }
@@ -322,6 +323,16 @@ class StageTwoViewModelTest {
         assertTrue(viewModel.state.value.singleCasePreview?.conflicts?.isNotEmpty() == true)
         assertEquals(beforePreview, repository.stored)
         assertNull(viewModel.state.value.singleCaseExchangeError)
+
+        viewModel.commitSingleCaseImport(SingleCaseImportDecision.KEEP_BOTH)
+
+        assertNull(viewModel.state.value.singleCasePreview)
+        val imported = repository.stored.values.single { it.id != "case-exchange" }
+        assertEquals("case-exchange", imported.copiedFromCaseId)
+        assertEquals(
+            "单命例已作为新命例导入，原有本地命例未被覆盖。",
+            viewModel.state.value.message,
+        )
     }
 
     private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
@@ -365,7 +376,11 @@ class StageTwoViewModelTest {
                 idGenerator = IdGenerator { ids.next() },
             ),
             clock = fixedClock,
-            singleCaseExchange = SingleCaseExchangeService(repository, fixedClock),
+            singleCaseExchange = SingleCaseExchangeService(
+                repository = repository,
+                clock = fixedClock,
+                idGenerator = { ids.next() },
+            ),
             ioDispatcher = dispatcher,
         )
     }

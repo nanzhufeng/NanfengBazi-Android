@@ -9,10 +9,15 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocument
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Clock
@@ -206,6 +211,175 @@ class SingleCaseExchangeServiceTest {
         }
     }
 
+    @Test
+    fun `保留两份提交会重建聚合身份且不覆盖来源身份`() = runTest {
+        val base = attachmentFree(sampleCase())
+        val source = base.copy(
+            textRecordRevisions = listOf(
+                CaseTextRecordRevision(
+                    id = "record-revision-1",
+                    recordId = base.textRecords.first().id,
+                    version = 1,
+                    changeType = RecordChangeType.CREATED,
+                    snapshot = base.textRecords.first(),
+                    changedAt = FixtureInstant,
+                ),
+            ),
+            eventRevisions = listOf(
+                CaseEventRevision(
+                    id = "event-revision-1",
+                    eventId = base.events.first().id,
+                    version = 1,
+                    changeType = RecordChangeType.CREATED,
+                    snapshot = base.events.first(),
+                    changedAt = FixtureInstant,
+                ),
+            ),
+        )
+        val bytes = withDatabase { sourceDatabase ->
+            val sourceRepository = RoomCaseRepository(sourceDatabase)
+            sourceRepository.save(source, null)
+            exportBytes(sourceRepository, source.id)
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationRepository = RoomCaseRepository(destinationDatabase)
+            val generatedIds = generateSequence(1) { it + 1 }.iterator()
+            val service = SingleCaseExchangeService(
+                repository = destinationRepository,
+                clock = fixedClock,
+                idGenerator = { "import-${generatedIds.next()}" },
+            )
+            val preview = (
+                service.preview(ByteArrayInputStream(bytes)) as
+                    SingleCasePreviewResult.Success
+                ).preview
+
+            val result = service.commitImport(
+                preview = preview,
+                decision = SingleCaseImportDecision.KEEP_BOTH,
+            )
+
+            assertTrue(result is SingleCaseImportResult.Imported)
+            val importedId = (result as SingleCaseImportResult.Imported).caseId
+            val imported = checkNotNull(destinationRepository.findById(importedId))
+            assertEquals(source.id, imported.copiedFromCaseId)
+            assertEquals(FixtureInstant, imported.createdAt)
+            assertEquals(FixtureInstant, imported.updatedAt)
+            assertEquals(1, imported.revision)
+            assertTrue(imported.id != source.id)
+            assertTrue(
+                imported.textRecords.map { it.id }.toSet()
+                    .intersect(source.textRecords.map { it.id }.toSet())
+                    .isEmpty(),
+            )
+            assertTrue(
+                imported.events.map { it.id }.toSet()
+                    .intersect(source.events.map { it.id }.toSet())
+                    .isEmpty(),
+            )
+            assertEquals(
+                imported.textRecords.first().id,
+                imported.textRecordRevisions.single().recordId,
+            )
+            assertEquals(
+                imported.textRecordRevisions.single().recordId,
+                imported.textRecordRevisions.single().snapshot.id,
+            )
+            assertEquals(
+                imported.events.first().id,
+                imported.eventRevisions.single().eventId,
+            )
+            assertEquals(
+                imported.eventRevisions.single().eventId,
+                imported.eventRevisions.single().snapshot.id,
+            )
+            assertTrue(
+                imported.calculationSnapshots.map { it.id }.toSet()
+                    .intersect(source.calculationSnapshots.map { it.id }.toSet())
+                    .isEmpty(),
+            )
+            assertTrue(imported.groups.single().id != source.groups.single().id)
+            assertTrue(imported.tags.single().id != source.tags.single().id)
+            assertEquals(1, destinationRepository.search().size)
+        }
+    }
+
+    @Test
+    fun `提交前冲突变化会使预览过期且保持零写入`() = runTest {
+        val source = attachmentFree(sampleCase())
+        val bytes = withDatabase { sourceDatabase ->
+            val sourceRepository = RoomCaseRepository(sourceDatabase)
+            sourceRepository.save(source, null)
+            exportBytes(sourceRepository, source.id)
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationRepository = RoomCaseRepository(destinationDatabase)
+            val service = SingleCaseExchangeService(destinationRepository, fixedClock)
+            val preview = (
+                service.preview(ByteArrayInputStream(bytes)) as
+                    SingleCasePreviewResult.Success
+                ).preview
+            val concurrentCase = source.copy(
+                id = "concurrent-case",
+                alias = "预览后新增",
+                copiedFromCaseId = null,
+                revision = 0,
+            )
+            destinationRepository.save(concurrentCase, null)
+
+            val result = service.commitImport(
+                preview = preview,
+                decision = SingleCaseImportDecision.KEEP_BOTH,
+            )
+
+            assertEquals(
+                "PREVIEW_STALE",
+                (result as SingleCaseImportResult.Rejected).code,
+            )
+            assertEquals(
+                listOf("concurrent-case"),
+                destinationRepository.search().map { it.id },
+            )
+        }
+    }
+
+    @Test
+    fun `引用附件缺少二进制时拒绝提交但允许明确跳过`() = runTest {
+        val bytes = withDatabase { sourceDatabase ->
+            val sourceRepository = RoomCaseRepository(sourceDatabase)
+            val source = sampleCase()
+            sourceRepository.save(source, null)
+            exportBytes(sourceRepository, source.id)
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationRepository = RoomCaseRepository(destinationDatabase)
+            val service = SingleCaseExchangeService(destinationRepository, fixedClock)
+            val preview = (
+                service.preview(ByteArrayInputStream(bytes)) as
+                    SingleCasePreviewResult.Success
+                ).preview
+
+            val rejected = service.commitImport(
+                preview = preview,
+                decision = SingleCaseImportDecision.KEEP_BOTH,
+            )
+            val skipped = service.commitImport(
+                preview = preview,
+                decision = SingleCaseImportDecision.SKIP,
+            )
+
+            assertEquals(
+                "ATTACHMENT_BINARIES_REQUIRED",
+                (rejected as SingleCaseImportResult.Rejected).code,
+            )
+            assertTrue(skipped is SingleCaseImportResult.Skipped)
+            assertTrue(destinationRepository.search().isEmpty())
+        }
+    }
+
     private suspend fun exportBytes(
         repository: RoomCaseRepository,
         caseId: String,
@@ -218,6 +392,14 @@ class SingleCaseExchangeServiceTest {
         )
         check(result is SingleCaseExportResult.Success)
     }.toByteArray()
+
+    private fun attachmentFree(case: com.nanzhufeng.nanfengbazi.domain.model.BaziCase) =
+        case.copy(
+            textRecords = case.textRecords.map { it.copy(sourceAttachmentId = null) },
+            events = case.events.map { it.copy(sourceAttachmentId = null) },
+            attachments = emptyList(),
+            fieldEvidence = emptyList(),
+        )
 
     private fun newDatabase(): NanfengBaziDatabase {
         val context = ApplicationProvider.getApplicationContext<Context>()

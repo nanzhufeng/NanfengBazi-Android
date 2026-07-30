@@ -270,7 +270,15 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("稳定 ID 已存在", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithTag("close_single_case_preview").performClick()
+        composeRule.onNodeWithTag("keep_both_single_case").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("single_case_preview"))
+                .fetchSemanticsNodes().isEmpty()
+        }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$editedAlias"))
+                .fetchSemanticsNodes().size >= 2
+        }
     }
 }

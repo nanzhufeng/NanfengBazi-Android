@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
@@ -311,7 +313,56 @@ class StageTwoViewModel(
     }
 
     fun dismissSingleCasePreview() {
+        if (mutableState.value.singleCaseExchangeBusy) return
         mutableState.update { it.copy(singleCasePreview = null) }
+    }
+
+    fun commitSingleCaseImport(decision: SingleCaseImportDecision) {
+        val preview = mutableState.value.singleCasePreview ?: return
+        if (mutableState.value.singleCaseExchangeBusy) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    singleCaseExchange.commitImport(preview, decision)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SingleCaseImportResult.Rejected(
+                    code = "IMPORT_FAILED",
+                    message = "单命例导入失败，未写入数据。",
+                )
+            }
+            when (result) {
+                is SingleCaseImportResult.Imported -> {
+                    mutableState.update {
+                        it.copy(
+                            singleCaseExchangeBusy = false,
+                            singleCasePreview = null,
+                            visibility = CaseVisibility.ACTIVE,
+                            message = "单命例已作为新命例导入，原有本地命例未被覆盖。",
+                        )
+                    }
+                    refreshCases()
+                }
+                is SingleCaseImportResult.Skipped -> mutableState.update {
+                    it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCasePreview = null,
+                        message = "已跳过该单命例，未写入数据。",
+                    )
+                }
+                is SingleCaseImportResult.Rejected -> mutableState.update {
+                    it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCaseExchangeError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
     }
 
     fun dismissSingleCaseExchangeError() {

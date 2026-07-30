@@ -98,4 +98,5 @@
 | 单命例 JSON 导出 | v1 严格封套、明文风险确认、载荷/文件哈希和系统创建文档 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.export` | 聚合往返、真实文件、密码未实现零输出 |
 | 单命例只读预览 | 系统打开文档、16 MiB 上限、格式/Schema/哈希/领域校验和预览弹窗 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.preview` | 同一真实文件读回、冲突显示且数据库零写入 |
 | 本地冲突候选 | 稳定 ID、出生输入、四柱和回收站位置 | `CaseRepository` 查询，由预览服务合并 | 同一候选理由合并且不修改本地命例 |
-| 附件二进制 | 单 JSON 不携带，仅保留引用元数据 | `REFERENCES_ONLY` | 预览明确 `containsAttachmentBinaries=false` |
+| 无附件命例提交 | 跳过零写入；保留两份重建全部聚合 ID，提交前复查冲突 | `StageTwoViewModel` → `SingleCaseExchangeService.commitImport` → `CaseRepository.save` | 过期预览拒绝、事务失败不覆盖、系统文件 E2E 后列表读回第二份 |
+| 附件二进制 | 单 JSON 不携带，仅保留引用元数据；存在引用时禁止提交 | `REFERENCES_ONLY` | 预览明确限制并返回 `ATTACHMENT_BINARIES_REQUIRED` |

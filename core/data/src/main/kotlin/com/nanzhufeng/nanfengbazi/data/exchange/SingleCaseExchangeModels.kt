@@ -80,3 +80,24 @@ sealed interface SingleCasePreviewResult {
         val message: String,
     ) : SingleCasePreviewResult
 }
+
+enum class SingleCaseImportDecision {
+    SKIP,
+    KEEP_BOTH,
+}
+
+sealed interface SingleCaseImportResult {
+    data class Imported(
+        val caseId: String,
+        val revision: Long,
+    ) : SingleCaseImportResult
+
+    data class Skipped(
+        val sourceCaseId: String,
+    ) : SingleCaseImportResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : SingleCaseImportResult
+}

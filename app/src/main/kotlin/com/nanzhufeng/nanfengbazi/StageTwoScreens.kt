@@ -65,6 +65,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 
 @Composable
@@ -227,6 +228,13 @@ fun NanfengBaziApp(
             state.singleCasePreview?.let { preview ->
                 SingleCasePreviewDialog(
                     preview = preview,
+                    busy = state.singleCaseExchangeBusy,
+                    onKeepBoth = {
+                        viewModel.commitSingleCaseImport(SingleCaseImportDecision.KEEP_BOTH)
+                    },
+                    onSkip = {
+                        viewModel.commitSingleCaseImport(SingleCaseImportDecision.SKIP)
+                    },
                     onDismiss = viewModel::dismissSingleCasePreview,
                 )
             }
@@ -249,11 +257,15 @@ fun NanfengBaziApp(
 @Composable
 private fun SingleCasePreviewDialog(
     preview: SingleCasePreview,
+    busy: Boolean,
+    onKeepBoth: () -> Unit,
+    onSkip: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sourceCase = preview.document.caseData
+    val hasAttachmentReferences = preview.counts.attachmentReferences > 0
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text("单命例导入预览") },
         text = {
             Column(
@@ -284,7 +296,13 @@ private fun SingleCasePreviewDialog(
                         "字段证据：${preview.counts.fieldEvidence}",
                 )
                 Text(
-                    "此 JSON 不包含图片二进制，当前仅完成只读预览，不会写入数据库。",
+                    if (hasAttachmentReferences) {
+                        "此 JSON 不包含图片二进制。该命例存在图片或字段证据，" +
+                            "当前禁止提交导入，以免证据引用失效。"
+                    } else {
+                        "当前仍是零写入预览；确认导入时会再次核对本地冲突，" +
+                            "并创建全新身份，不覆盖现有命例。"
+                    },
                     color = MaterialTheme.colorScheme.error,
                 )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -303,11 +321,27 @@ private fun SingleCasePreviewDialog(
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.testTag("close_single_case_preview"),
+            Button(
+                onClick = onKeepBoth,
+                enabled = !busy && !hasAttachmentReferences,
+                modifier = Modifier.testTag("keep_both_single_case"),
             ) {
-                Text("关闭预览")
+                Text(
+                    when {
+                        busy -> "正在提交…"
+                        preview.conflicts.isEmpty() -> "导入为新命例"
+                        else -> "保留两份并导入"
+                    },
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onSkip,
+                enabled = !busy,
+                modifier = Modifier.testTag("skip_single_case_import"),
+            ) {
+                Text("跳过导入")
             }
         },
     )
