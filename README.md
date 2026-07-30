@@ -40,7 +40,7 @@
   跳过是明确用户动作，只设置逐例决策，不会直接提交。
 
 当前 UI 已覆盖最小真实闭环和命例生命周期主链路。农历、地区/真太阳时、
-问真截图迁移、单命例附件事务、带附件模块合并和进程强杀设备验收尚未实现。详细范围见
+问真截图迁移、单命例附件事务和进程强杀设备验收尚未实现。详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
 [`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。

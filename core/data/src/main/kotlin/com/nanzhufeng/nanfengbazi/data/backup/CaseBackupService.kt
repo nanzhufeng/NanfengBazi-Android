@@ -5,6 +5,7 @@ import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
@@ -325,31 +326,6 @@ class CaseBackupService(
                             "合并范围包含当前没有可追加内容的模块，请重新选择。",
                         )
                     }
-                    val attachmentBackedRecords =
-                        source.sourceCase.textRecords.any {
-                            it.sourceAttachmentId != null
-                        } ||
-                            source.sourceCase.textRecordRevisions.any {
-                                it.snapshot.sourceAttachmentId != null
-                            }
-                    val attachmentBackedEvents =
-                        source.sourceCase.events.any {
-                            it.sourceAttachmentId != null
-                        } ||
-                            source.sourceCase.eventRevisions.any {
-                                it.snapshot.sourceAttachmentId != null
-                            }
-                    if (
-                        SingleCaseMergeModule.TEXT_RECORDS in decision.modules &&
-                        attachmentBackedRecords ||
-                        SingleCaseMergeModule.EVENTS in decision.modules &&
-                        attachmentBackedEvents
-                    ) {
-                        return rejectedPlan(
-                            "ATTACHMENT_MERGE_SCOPE_UNSUPPORTED",
-                            "所选记录或事件依赖来源附件；附件随模块合并尚未开放。",
-                        )
-                    }
                     if (decision.modules.isEmpty() &&
                         decision.fieldChoices.values.none {
                             it == SingleCaseValueChoice.IMPORTED
@@ -513,20 +489,62 @@ class CaseBackupService(
                 }
             }.associateBy { it.sourceCaseId }
 
-            val attachmentFiles = preparedImports.values.flatMap { it.attachmentFiles }
+            val preparedMerges = checkedPlan.decisions.mapNotNull { decision ->
+                if (decision.action != BackupCaseRestoreAction.MERGE) {
+                    return@mapNotNull null
+                }
+                val targetId = checkNotNull(decision.targetCaseId)
+                val target = repository.findById(targetId)
+                    ?: throw RestoreExecutionRejectedException(
+                        "TARGET_NOT_FOUND",
+                        "范围合并目标已不存在，事务已回滚。",
+                    )
+                prepareMergedCase(
+                    source = expectedSources.getValue(decision.sourceCaseId),
+                    target = target,
+                    modules = decision.modules,
+                    fieldChoices = decision.fieldChoices,
+                    transactionId = transactionId,
+                    usedIds = usedIds,
+                    extracted = validated.extracted,
+                )
+            }.associateBy { it.sourceCaseId }
+
+            val attachmentFiles =
+                preparedImports.values.flatMap { it.attachmentFiles } +
+                    preparedMerges.values.flatMap { it.attachmentFiles }
             if (attachmentFiles.isNotEmpty()) {
                 Files.createDirectories(attachmentRoot)
                 val restoreJournal = RestoreJournal(
                     transactionId = transactionId,
                     state = RestoreJournalState.PREPARED,
                     finalDirectory = "$RESTORED_ATTACHMENTS_DIRECTORY/$transactionId",
-                    expectedCases = preparedImports.values
-                        .filter { it.attachmentFiles.isNotEmpty() }
-                        .map {
-                            RestoreExpectedCase(
-                                caseId = it.caseData.id,
-                                payloadSha256 = casePayloadSha256(it.caseData),
-                            )
+                    expectedCases = (
+                        preparedImports.values
+                            .filter { it.attachmentFiles.isNotEmpty() }
+                            .map {
+                                RestoreExpectedCase(
+                                    caseId = it.caseData.id,
+                                    payloadSha256 = casePayloadSha256(it.caseData),
+                                )
+                            } +
+                            preparedMerges.values
+                                .filter { it.attachmentFiles.isNotEmpty() }
+                                .map {
+                                    RestoreExpectedCase(
+                                        caseId = it.targetCaseId,
+                                        payloadSha256 = casePayloadSha256(
+                                            it.expectedCommittedCase,
+                                        ),
+                                        previousPayloadSha256 =
+                                            it.previousPayloadSha256,
+                                    )
+                                }
+                        ).also { expectedCases ->
+                            check(
+                                expectedCases.map { it.caseId }.distinct().size ==
+                                    expectedCases.size,
+                            ) { "恢复日志目标命例重复" }
                         },
                 )
                 journal = restoreJournal
@@ -606,15 +624,18 @@ class CaseBackupService(
                                     "TARGET_NOT_FOUND",
                                     "范围合并目标已不存在，事务已回滚。",
                                 )
-                            val source = expectedSources.getValue(decision.sourceCaseId)
-                            val merged = mergeService.buildMergedCaseForRestore(
-                                source = source,
-                                target = target,
-                                modules = decision.modules,
-                                fieldChoices = decision.fieldChoices,
-                            )
+                            val prepared = preparedMerges.getValue(decision.sourceCaseId)
+                            if (
+                                prepared.targetCaseId != targetId ||
+                                prepared.targetRevision != target.revision
+                            ) {
+                                throw RestoreExecutionRejectedException(
+                                    "PREVIEW_STALE",
+                                    "范围合并目标在提交前发生变化，事务已回滚。",
+                                )
+                            }
                             val result = repository.save(
-                                merged,
+                                prepared.caseData,
                                 expectedRevision = target.revision,
                             )
                             if (result !is CaseWriteResult.Updated) {
@@ -721,24 +742,39 @@ class CaseBackupService(
                 .resolve(journal.transactionId)
                 .normalize()
             val restoredCases = journal.expectedCases.map { expected ->
-                expected to repository.findById(expected.caseId)
+                val caseData = repository.findById(expected.caseId)
+                val payloadSha256 = caseData?.let(::casePayloadSha256)
+                val state = when {
+                    expected.previousPayloadSha256 == null && caseData == null ->
+                        RecoveryCaseState.PREVIOUS
+                    expected.previousPayloadSha256 != null &&
+                        payloadSha256 == expected.previousPayloadSha256 ->
+                        RecoveryCaseState.PREVIOUS
+                    payloadSha256 == expected.payloadSha256 ->
+                        RecoveryCaseState.COMMITTED
+                    else -> RecoveryCaseState.UNKNOWN
+                }
+                RestoredCaseState(expected, caseData, state)
             }
-            val presentCount = restoredCases.count { it.second != null }
-            if (presentCount == 0) {
+            if (restoredCases.all { it.state == RecoveryCaseState.PREVIOUS }) {
                 deleteRecursively(finalRoot)
                 deleteRecursively(stageRoot)
                 Files.deleteIfExists(journalFile)
                 rolledBack += 1
-            } else if (presentCount != restoredCases.size) {
+            } else if (
+                restoredCases.any { it.state == RecoveryCaseState.PREVIOUS } &&
+                restoredCases.any { it.state == RecoveryCaseState.COMMITTED }
+            ) {
                 return recoveryAttention(
                     "RESTORE_PARTIAL_DATABASE_STATE",
                     "检测到恢复事务只写入了部分命例，已保留日志和附件等待人工检查。",
                 )
-            } else {
-                val exactAndReadable = restoredCases.all { (expected, caseData) ->
-                    caseData != null &&
-                        casePayloadSha256(caseData) == expected.payloadSha256 &&
-                        caseData.attachments.all { attachment ->
+            } else if (restoredCases.all { it.state == RecoveryCaseState.COMMITTED }) {
+                val exactAndReadable = restoredCases.all { restored ->
+                    restored.caseData != null &&
+                        casePayloadSha256(restored.caseData) ==
+                            restored.expected.payloadSha256 &&
+                        restored.caseData.attachments.all { attachment ->
                             val file = resolveContained(
                                 attachmentRoot,
                                 attachment.relativePath,
@@ -758,6 +794,11 @@ class CaseBackupService(
                 deleteRecursively(stageRoot)
                 Files.deleteIfExists(journalFile)
                 finalized += 1
+            } else {
+                return recoveryAttention(
+                    "RESTORE_COMMITTED_STATE_MISMATCH",
+                    "恢复命例处于未知或被修改状态，已保留日志和附件等待人工检查。",
+                )
             }
         }
         return BackupRestoreRecoveryResult.Success(rolledBack, finalized)
@@ -991,6 +1032,68 @@ class CaseBackupService(
             )
         }
         return PreparedImportedCase(source.id, caseData, attachmentFiles)
+    }
+
+    private fun prepareMergedCase(
+        source: BaziCase,
+        target: BaziCase,
+        modules: Set<SingleCaseMergeModule>,
+        fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
+        transactionId: String,
+        usedIds: MutableSet<String>,
+        extracted: Map<String, Path>,
+    ): PreparedMergedCase {
+        val requiredAttachmentIds = mergeService.requiredAttachmentIdsForRestore(
+            source = source,
+            target = target,
+            modules = modules,
+        )
+        val sourceAttachments = source.attachments
+            .filter { it.id in requiredAttachmentIds }
+        check(sourceAttachments.size == requiredAttachmentIds.size) {
+            "所选合并模块存在无法解析的附件引用"
+        }
+        val attachmentIds = sourceAttachments.associate {
+            it.id to nextRestoreId(usedIds)
+        }
+        val restoredAttachments = sourceAttachments.map { attachment ->
+            val newId = attachmentIds.getValue(attachment.id)
+            attachment.copy(
+                id = newId,
+                relativePath =
+                    "$RESTORED_ATTACHMENTS_DIRECTORY/$transactionId/$newId",
+            )
+        }
+        val merged = mergeService.buildMergedCaseForRestore(
+            source = source,
+            target = target,
+            modules = modules,
+            fieldChoices = fieldChoices,
+            attachmentIdMapping = attachmentIds,
+            importedAttachments = restoredAttachments,
+        )
+        val attachmentFiles = sourceAttachments.map { sourceAttachment ->
+            val restored = restoredAttachments.single {
+                it.id == attachmentIds.getValue(sourceAttachment.id)
+            }
+            PreparedAttachmentFile(
+                source = extracted.getValue(
+                    "$ATTACHMENTS_DIRECTORY/${sourceAttachment.relativePath}",
+                ),
+                fileName = restored.id,
+                byteSize = restored.byteSize,
+                sha256 = restored.sha256,
+            )
+        }
+        return PreparedMergedCase(
+            sourceCaseId = source.id,
+            targetCaseId = target.id,
+            targetRevision = target.revision,
+            caseData = merged,
+            expectedCommittedCase = merged.copy(revision = target.revision + 1),
+            previousPayloadSha256 = casePayloadSha256(target),
+            attachmentFiles = attachmentFiles,
+        )
     }
 
     private fun nextRestoreId(usedIds: MutableSet<String>): String {
@@ -1598,6 +1701,16 @@ class CaseBackupService(
         val attachmentFiles: List<PreparedAttachmentFile>,
     )
 
+    private data class PreparedMergedCase(
+        val sourceCaseId: String,
+        val targetCaseId: String,
+        val targetRevision: Long,
+        val caseData: BaziCase,
+        val expectedCommittedCase: BaziCase,
+        val previousPayloadSha256: String,
+        val attachmentFiles: List<PreparedAttachmentFile>,
+    )
+
     private data class PreparedAttachmentFile(
         val source: Path,
         val fileName: String,
@@ -1620,7 +1733,15 @@ class CaseBackupService(
                 expectedCases.isNotEmpty() &&
                 expectedCases.map { it.caseId }.distinct().size == expectedCases.size &&
                 expectedCases.all {
-                    it.caseId.isNotBlank() && it.payloadSha256.matches(SHA256_PATTERN)
+                    it.caseId.isNotBlank() &&
+                        it.payloadSha256.matches(SHA256_PATTERN) &&
+                        (
+                            it.previousPayloadSha256 == null ||
+                                (
+                                    it.previousPayloadSha256.matches(SHA256_PATTERN) &&
+                                        it.previousPayloadSha256 != it.payloadSha256
+                                    )
+                            )
                 }
     }
 
@@ -1635,7 +1756,20 @@ class CaseBackupService(
     private data class RestoreExpectedCase(
         val caseId: String,
         val payloadSha256: String,
+        val previousPayloadSha256: String? = null,
     )
+
+    private data class RestoredCaseState(
+        val expected: RestoreExpectedCase,
+        val caseData: BaziCase?,
+        val state: RecoveryCaseState,
+    )
+
+    private enum class RecoveryCaseState {
+        PREVIOUS,
+        COMMITTED,
+        UNKNOWN,
+    }
 
     private sealed interface ExecutionSourceResult {
         data class Success(

@@ -867,6 +867,13 @@ private fun FullBackupMergeDialog(
                 )
                 if (availableModules.isNotEmpty()) {
                     Text("按模块追加", fontWeight = FontWeight.SemiBold)
+                    if (counts.attachmentReferences > 0) {
+                        Text(
+                            "记录或事件最多关联 ${counts.attachmentReferences} 个来源附件；" +
+                                "提交时只复制实际新增内容引用的附件，并在多个模块间去重。",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     availableModules.forEach { (module, label) ->
                         if (module in selectedModules) {
                             Button(

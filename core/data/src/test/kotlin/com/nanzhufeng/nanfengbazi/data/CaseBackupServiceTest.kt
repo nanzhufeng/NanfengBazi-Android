@@ -544,6 +544,146 @@ class CaseBackupServiceTest {
     }
 
     @Test
+    fun `范围合并只复制新增记录事件共同引用的来源附件`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-merge-attachments-")
+        val sourceBytes = "脱敏来源合并附件".encodeToByteArray()
+        val localBytes = "脱敏本地既有附件".encodeToByteArray()
+        val sourceAttachmentRoot = root.resolve("source-attachments")
+        val sourceFile = sourceAttachmentRoot.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, sourceBytes)
+        val sourceCase = sampleCase(sourceBytes).copy(alias = "来源附件合并命例")
+        val backupBytes = withDatabase { sourceDatabase ->
+            RoomCaseRepository(sourceDatabase).save(sourceCase, null)
+            ByteArrayOutputStream().also { output ->
+                CaseBackupService(sourceDatabase, fixedClock).export(
+                    output = output,
+                    attachmentRoot = sourceAttachmentRoot,
+                    appVersion = "0.3.0-attachment-merge-test",
+                    protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                )
+            }.toByteArray()
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationAttachmentRoot = root.resolve("destination-attachments")
+            val localAttachmentPath = "local-case/source/existing.png"
+            val localFile = destinationAttachmentRoot.resolve(localAttachmentPath)
+            Files.createDirectories(localFile.parent)
+            Files.write(localFile, localBytes)
+            val localBase = sampleCase(localBytes)
+            val localCase = localBase.copy(
+                id = "local-attachment-target",
+                alias = "本地附件合并目标",
+                textRecords = emptyList(),
+                textRecordRevisions = emptyList(),
+                events = emptyList(),
+                eventRevisions = emptyList(),
+                attachments = localBase.attachments.map {
+                    it.copy(relativePath = localAttachmentPath)
+                },
+                groups = emptyList(),
+                tags = emptyList(),
+            )
+            val repository = RoomCaseRepository(destinationDatabase)
+            repository.save(localCase, null)
+            val service = CaseBackupService(destinationDatabase, fixedClock)
+            val preview = service.preview(
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("preview-work"),
+            ) as BackupPreviewResult.Success
+            val mergePreparation = service.prepareCaseMerge(
+                preview = preview.preview,
+                sourceCaseId = "case-1",
+                targetCaseId = "local-attachment-target",
+            ) as BackupCaseMergePreparationResult.Success
+            assertEquals(1, mergePreparation.preparation.analysis.addableCounts.attachmentReferences)
+            val plan = service.prepareRestorePlan(
+                preview.preview,
+                listOf(
+                    BackupCaseRestoreDecision(
+                        sourceCaseId = "case-1",
+                        action = BackupCaseRestoreAction.MERGE,
+                        targetCaseId = "local-attachment-target",
+                        modules = setOf(
+                            SingleCaseMergeModule.TEXT_RECORDS,
+                            SingleCaseMergeModule.EVENTS,
+                        ),
+                    ),
+                ),
+            ) as BackupRestorePlanResult.Success
+
+            destinationDatabase.openHelper.writableDatabase.execSQL(
+                """
+                CREATE TRIGGER reject_attachment_merge
+                BEFORE UPDATE ON cases
+                WHEN OLD.id = 'local-attachment-target'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced attachment merge failure');
+                END
+                """.trimIndent(),
+            )
+            val failedExecution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("failed-execute-work"),
+                attachmentRoot = destinationAttachmentRoot,
+            )
+            assertEquals(
+                "RESTORE_EXECUTION_FAILED_ROLLED_BACK",
+                (failedExecution as BackupRestoreExecutionResult.Rejected).code,
+            )
+            assertEquals(
+                1,
+                repository.findById("local-attachment-target")!!.attachments.size,
+            )
+            val restoredRootAfterFailure = destinationAttachmentRoot.resolve("restored")
+            assertTrue(
+                !Files.exists(restoredRootAfterFailure) ||
+                    Files.list(restoredRootAfterFailure).use { it.findAny().isEmpty },
+            )
+            assertArrayEquals(localBytes, Files.readAllBytes(localFile))
+            destinationDatabase.openHelper.writableDatabase.execSQL(
+                "DROP TRIGGER reject_attachment_merge",
+            )
+
+            val execution = service.executeRestorePlan(
+                plan = plan.plan,
+                input = ByteArrayInputStream(backupBytes),
+                workRoot = root.resolve("execute-work"),
+                attachmentRoot = destinationAttachmentRoot,
+            ) as BackupRestoreExecutionResult.Success
+
+            assertEquals(1, execution.summary.mergedCases)
+            assertEquals(1, execution.summary.restoredAttachments)
+            val merged = repository.findById("local-attachment-target")!!
+            assertEquals(2, merged.attachments.size)
+            val importedAttachment = merged.attachments.single {
+                it.relativePath.startsWith("restored/")
+            }
+            assertNotEquals("attachment-1", importedAttachment.id)
+            assertEquals(
+                setOf(importedAttachment.id),
+                (
+                    merged.textRecords.mapNotNull { it.sourceAttachmentId } +
+                        merged.events.mapNotNull { it.sourceAttachmentId }
+                    ).toSet(),
+            )
+            assertEquals(
+                "attachment-1",
+                merged.fieldEvidence.single().attachmentId,
+            )
+            assertArrayEquals(
+                sourceBytes,
+                Files.readAllBytes(
+                    destinationAttachmentRoot.resolve(importedAttachment.relativePath),
+                ),
+            )
+            assertArrayEquals(localBytes, Files.readAllBytes(localFile))
+        }
+    }
+
+    @Test
     fun `密码完整备份提交重新认证同一文件并恢复附件`() = runTest {
         val root = Files.createTempDirectory("nanfeng-backup-execute-encrypted-")
         val attachmentBytes = "脱敏密码恢复附件".encodeToByteArray()
@@ -815,6 +955,69 @@ class CaseBackupServiceTest {
         }
         assertFalse(Files.exists(finalRoot))
         assertFalse(Files.exists(journalRoot.resolve("$transactionId.json")))
+    }
+
+    @Test
+    fun `范围合并中断时目标仍是提交前载荷会清理孤儿附件`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-restore-merge-rollback-")
+        val transactionId = "33333333-3333-4333-8333-333333333333"
+        val finalRoot = root.resolve("restored/$transactionId")
+        Files.createDirectories(finalRoot)
+        Files.write(finalRoot.resolve("orphan"), "orphan".encodeToByteArray())
+        val journalRoot = root.resolve(".restore-journal")
+        Files.createDirectories(journalRoot)
+
+        withDatabase { database ->
+            val repository = RoomCaseRepository(database)
+            val previousCase = sampleCase().copy(
+                id = "existing-merge-target",
+                textRecords = emptyList(),
+                textRecordRevisions = emptyList(),
+                events = emptyList(),
+                eventRevisions = emptyList(),
+                attachments = emptyList(),
+                fieldEvidence = emptyList(),
+            )
+            repository.save(previousCase, null)
+            val persisted = repository.findById("existing-merge-target")!!
+            val previousPayloadSha256 = sha256(
+                DomainJson.encodeToString(
+                    BaziCase.serializer(),
+                    persisted,
+                ).encodeToByteArray(),
+            )
+            val journal = """
+                {
+                  "formatVersion": 1,
+                  "transactionId": "$transactionId",
+                  "state": "FILES_MOVED",
+                  "finalDirectory": "restored/$transactionId",
+                  "expectedCases": [
+                    {
+                      "caseId": "existing-merge-target",
+                      "payloadSha256": "${"0".repeat(64)}",
+                      "previousPayloadSha256": "$previousPayloadSha256"
+                    }
+                  ]
+                }
+            """.trimIndent()
+            val journalFile = journalRoot.resolve("$transactionId.json")
+            Files.write(journalFile, journal.encodeToByteArray())
+
+            val result = CaseBackupService(database, fixedClock)
+                .recoverInterruptedRestores(root)
+
+            assertEquals(
+                BackupRestoreRecoveryResult.Success(
+                    rolledBackTransactions = 1,
+                    finalizedTransactions = 0,
+                ),
+                result,
+            )
+            assertEquals(persisted, repository.findById("existing-merge-target"))
+            assertFalse(Files.exists(journalFile))
+        }
+        assertFalse(Files.exists(finalRoot))
     }
 
     @Test

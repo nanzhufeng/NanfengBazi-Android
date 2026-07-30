@@ -15,6 +15,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
+import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -407,13 +408,30 @@ class SingleCaseExchangeService(
         target: BaziCase,
         modules: Set<SingleCaseMergeModule>,
         fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
-    ): BaziCase = buildMergedCase(
-        target = target,
-        source = source,
-        modules = modules,
-        fieldChoices = fieldChoices,
-        additions = calculateMergeAdditions(source, target),
-    )
+        attachmentIdMapping: Map<String, String> = emptyMap(),
+        importedAttachments: List<SourceAttachment> = emptyList(),
+    ): BaziCase {
+        require(
+            importedAttachments.mapTo(mutableSetOf()) { it.id } ==
+                attachmentIdMapping.values.toSet(),
+        ) { "恢复附件身份映射与待追加附件不一致" }
+        return buildMergedCase(
+            target = target,
+            source = source,
+            modules = modules,
+            fieldChoices = fieldChoices,
+            additions = calculateMergeAdditions(source, target),
+            attachmentIdMapping = attachmentIdMapping,
+            importedAttachments = importedAttachments,
+        )
+    }
+
+    internal fun requiredAttachmentIdsForRestore(
+        source: BaziCase,
+        target: BaziCase,
+        modules: Set<SingleCaseMergeModule>,
+    ): Set<String> = calculateMergeAdditions(source, target)
+        .requiredAttachmentIds(modules)
 
     private fun validateDocument(
         document: SingleCaseDocument,
@@ -716,6 +734,8 @@ class SingleCaseExchangeService(
         modules: Set<SingleCaseMergeModule>,
         fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
         additions: MergeAdditions,
+        attachmentIdMapping: Map<String, String> = emptyMap(),
+        importedAttachments: List<SourceAttachment> = emptyList(),
     ): BaziCase {
         val usedIds = mutableSetOf<String>()
         fun nextId() = nextGeneratedId(usedIds)
@@ -792,7 +812,11 @@ class SingleCaseExchangeService(
             ),
             textRecords = target.textRecords + if (appendRecords) {
                 additions.textRecords.map { record ->
-                    record.copy(id = recordIds.getValue(record.id))
+                    record.copy(
+                        id = recordIds.getValue(record.id),
+                        sourceAttachmentId = record.sourceAttachmentId
+                            ?.let { attachmentIdMapping.getValue(it) },
+                    )
                 }
             } else {
                 emptyList()
@@ -803,7 +827,11 @@ class SingleCaseExchangeService(
                     revision.copy(
                         id = nextId(),
                         recordId = newRecordId,
-                        snapshot = revision.snapshot.copy(id = newRecordId),
+                        snapshot = revision.snapshot.copy(
+                            id = newRecordId,
+                            sourceAttachmentId = revision.snapshot.sourceAttachmentId
+                                ?.let { attachmentIdMapping.getValue(it) },
+                        ),
                     )
                 }
             } else {
@@ -811,7 +839,11 @@ class SingleCaseExchangeService(
             },
             events = target.events + if (appendEvents) {
                 additions.events.map { event ->
-                    event.copy(id = eventIds.getValue(event.id))
+                    event.copy(
+                        id = eventIds.getValue(event.id),
+                        sourceAttachmentId = event.sourceAttachmentId
+                            ?.let { attachmentIdMapping.getValue(it) },
+                    )
                 }
             } else {
                 emptyList()
@@ -822,7 +854,11 @@ class SingleCaseExchangeService(
                     revision.copy(
                         id = nextId(),
                         eventId = newEventId,
-                        snapshot = revision.snapshot.copy(id = newEventId),
+                        snapshot = revision.snapshot.copy(
+                            id = newEventId,
+                            sourceAttachmentId = revision.snapshot.sourceAttachmentId
+                                ?.let { attachmentIdMapping.getValue(it) },
+                        ),
                     )
                 }
             } else {
@@ -835,6 +871,7 @@ class SingleCaseExchangeService(
             } else {
                 emptyList()
             },
+            attachments = target.attachments + importedAttachments,
             groups = target.groups + if (appendOrganization) {
                 additions.groups.map { it.copy(id = nextId()) }
             } else {
@@ -957,13 +994,39 @@ class SingleCaseExchangeService(
         val groups: List<CaseGroup>,
         val tags: List<CaseTag>,
     ) {
+        fun requiredAttachmentIds(
+            modules: Set<SingleCaseMergeModule>,
+        ): Set<String> = buildSet {
+            if (SingleCaseMergeModule.TEXT_RECORDS in modules) {
+                addAll(textRecords.mapNotNull { it.sourceAttachmentId })
+                addAll(
+                    textRecordRevisions.mapNotNull {
+                        it.snapshot.sourceAttachmentId
+                    },
+                )
+            }
+            if (SingleCaseMergeModule.EVENTS in modules) {
+                addAll(events.mapNotNull { it.sourceAttachmentId })
+                addAll(
+                    eventRevisions.mapNotNull {
+                        it.snapshot.sourceAttachmentId
+                    },
+                )
+            }
+        }
+
         fun counts() = SingleCaseCounts(
             calculationSnapshots = calculationSnapshots.size,
             textRecords = textRecords.size,
             textRecordRevisions = textRecordRevisions.size,
             events = events.size,
             eventRevisions = eventRevisions.size,
-            attachmentReferences = 0,
+            attachmentReferences = requiredAttachmentIds(
+                setOf(
+                    SingleCaseMergeModule.TEXT_RECORDS,
+                    SingleCaseMergeModule.EVENTS,
+                ),
+            ).size,
             fieldEvidence = 0,
             groups = groups.size,
             tags = tags.size,
@@ -985,7 +1048,7 @@ class SingleCaseExchangeService(
             eventRevisions = eventRevisions.size.takeIf {
                 SingleCaseMergeModule.EVENTS in modules
             } ?: 0,
-            attachmentReferences = 0,
+            attachmentReferences = requiredAttachmentIds(modules).size,
             fieldEvidence = 0,
             groups = groups.size.takeIf {
                 SingleCaseMergeModule.ORGANIZATION in modules
