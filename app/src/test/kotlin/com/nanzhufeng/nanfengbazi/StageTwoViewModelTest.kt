@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
@@ -373,6 +374,70 @@ class StageTwoViewModelTest {
         )
     }
 
+    @Test
+    fun `密码加密导出后错误密码保留重试且正确密码进入预览`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-password"] = sampleStoredCase("case-password")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-password")
+        viewModel.requestSingleCaseExport()
+        viewModel.requestPasswordSingleCaseExport()
+        val password = "合成测试密码123".toCharArray()
+
+        val fileName = viewModel.confirmPasswordSingleCaseExport(
+            password.copyOf(),
+            password.copyOf(),
+        )
+        assertEquals("合成命例甲_南枫八字命例_加密.json", fileName)
+        val output = ByteArrayOutputStream()
+        viewModel.exportCurrentCase { output }
+
+        assertFalse(output.toByteArray().decodeToString().contains("合成命例甲"))
+        assertEquals(
+            "密码加密单命例已导出；请另行安全保存密码。",
+            viewModel.state.value.message,
+        )
+        viewModel.previewSingleCase { ByteArrayInputStream(output.toByteArray()) }
+        assertTrue(viewModel.state.value.singleCasePasswordImportVisible)
+
+        viewModel.previewSingleCaseWithPassword("错误密码".toCharArray()) {
+            ByteArrayInputStream(output.toByteArray())
+        }
+        assertTrue(
+            viewModel.state.value.singleCasePasswordError?.contains("DECRYPTION_FAILED") == true,
+        )
+
+        viewModel.previewSingleCaseWithPassword(password.copyOf()) {
+            ByteArrayInputStream(output.toByteArray())
+        }
+        assertFalse(viewModel.state.value.singleCasePasswordImportVisible)
+        assertEquals(
+            SingleCaseDocumentProtection.PASSWORD_PROTECTED,
+            viewModel.state.value.singleCasePreview?.protection,
+        )
+    }
+
+    @Test
+    fun `密码流程提前结束时清零调用方字符数组`() = runTest {
+        val viewModel = createViewModel(FakeCaseRepository())
+        val password = "临时密码123".toCharArray()
+        val confirmation = password.copyOf()
+
+        assertEquals(
+            null,
+            viewModel.confirmPasswordSingleCaseExport(password, confirmation),
+        )
+        assertTrue(password.all { it == '\u0000' })
+        assertTrue(confirmation.all { it == '\u0000' })
+
+        val emptyPassword = CharArray(0)
+        viewModel.previewSingleCaseWithPassword(emptyPassword) {
+            error("空密码不应打开文件")
+        }
+        assertTrue(emptyPassword.all { it == '\u0000' })
+    }
+
     private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
         val engine = RecordingEngine()
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
@@ -418,6 +483,7 @@ class StageTwoViewModelTest {
                 repository = repository,
                 clock = fixedClock,
                 idGenerator = { ids.next() },
+                passwordKdfIterations = 100_000,
             ),
             ioDispatcher = dispatcher,
         )

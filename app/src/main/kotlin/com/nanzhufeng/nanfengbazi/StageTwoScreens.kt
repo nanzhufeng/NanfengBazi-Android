@@ -38,13 +38,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
@@ -65,6 +68,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
@@ -77,6 +81,7 @@ fun NanfengBaziApp(
     viewModel: StageTwoViewModel,
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
+    onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -223,10 +228,51 @@ fun NanfengBaziApp(
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = viewModel::cancelSingleCaseExport) {
-                            Text("取消")
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(
+                                onClick = viewModel::requestPasswordSingleCaseExport,
+                                modifier = Modifier.testTag(
+                                    "choose_password_single_case_export",
+                                ),
+                            ) {
+                                Text("改用密码加密")
+                            }
+                            TextButton(onClick = viewModel::cancelSingleCaseExport) {
+                                Text("取消")
+                            }
                         }
                     },
+                )
+            }
+            if (state.singleCasePasswordExportVisible) {
+                SingleCasePasswordDialog(
+                    title = "设置单命例加密密码",
+                    description = "密码不会写入文件，也无法找回。请至少输入 8 个字符并另行保管。",
+                    error = state.singleCasePasswordError,
+                    requireConfirmation = true,
+                    confirmLabel = "选择保存位置",
+                    confirmTag = "confirm_password_single_case_export",
+                    onConfirm = { password, confirmation ->
+                        viewModel.confirmPasswordSingleCaseExport(
+                            password,
+                            checkNotNull(confirmation),
+                        )?.let(onCreateSingleCaseDocument)
+                    },
+                    onDismiss = viewModel::cancelPasswordSingleCaseExport,
+                )
+            }
+            if (state.singleCasePasswordImportVisible) {
+                SingleCasePasswordDialog(
+                    title = "输入单命例解密密码",
+                    description = "密码只用于本次解密，不会保存。错误密码与损坏文件使用相同错误。",
+                    error = state.singleCasePasswordError,
+                    requireConfirmation = false,
+                    confirmLabel = "解密并预览",
+                    confirmTag = "confirm_password_single_case_import",
+                    onConfirm = { password, _ ->
+                        onRetryPasswordSingleCaseDocument(password)
+                    },
+                    onDismiss = viewModel::cancelPasswordSingleCaseImport,
                 )
             }
             state.singleCasePreview?.let { preview ->
@@ -299,6 +345,13 @@ private fun SingleCasePreviewDialog(
                         "Schema ${preview.document.databaseSchemaVersion}",
                 )
                 Text("导出时间：${preview.document.exportedAt}")
+                Text(
+                    "文件保护：" +
+                        when (preview.protection) {
+                            SingleCaseDocumentProtection.UNENCRYPTED -> "未加密"
+                            SingleCaseDocumentProtection.PASSWORD_PROTECTED -> "密码加密"
+                        },
+                )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Text("计算快照：${preview.counts.calculationSnapshots}")
                 Text(
@@ -378,6 +431,79 @@ private fun SingleCasePreviewDialog(
                 modifier = Modifier.testTag("skip_single_case_import"),
             ) {
                 Text("跳过导入")
+            }
+        },
+    )
+}
+
+@Composable
+private fun SingleCasePasswordDialog(
+    title: String,
+    description: String,
+    error: String?,
+    requireConfirmation: Boolean,
+    confirmLabel: String,
+    confirmTag: String,
+    onConfirm: (CharArray, CharArray?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(description)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("密码") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    isError = error != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("single_case_password"),
+                )
+                if (requireConfirmation) {
+                    OutlinedTextField(
+                        value = confirmation,
+                        onValueChange = { confirmation = it },
+                        label = { Text("再次输入密码") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        isError = error != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("single_case_password_confirmation"),
+                    )
+                }
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("single_case_password_error"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(
+                        password.toCharArray(),
+                        if (requireConfirmation) confirmation.toCharArray() else null,
+                    )
+                },
+                modifier = Modifier.testTag(confirmTag),
+            ) {
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
             }
         },
     )

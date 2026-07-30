@@ -311,5 +311,56 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasText("别名：$editedAlias"))
                 .fetchSemanticsNodes().size >= 2
         }
+
+        composeRule.onAllNodes(hasText("别名：$editedAlias"))[0].performClick()
+        composeRule.onNodeWithTag("export_single_case_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("choose_password_single_case_export").performClick()
+        val encryptedPassword = "Stage3B-Pass123"
+        composeRule.onNodeWithTag("single_case_password")
+            .performTextInput(encryptedPassword)
+        composeRule.onNodeWithTag("single_case_password_confirmation")
+            .performTextInput(encryptedPassword)
+        composeRule.onNodeWithTag("confirm_password_single_case_export").performClick()
+        val encryptedSaveButton = device.wait(
+            Until.findObject(By.text(Pattern.compile("(?i)save|保存"))),
+            10_000,
+        )
+        checkNotNull(encryptedSaveButton) { "加密导出未进入系统创建文档页面" }
+        encryptedSaveButton.click()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(
+                hasText("密码加密单命例已导出；请另行安全保存密码。"),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        device.pressBack()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        val encryptedFileName = "${editedAlias.take(48)}_南枫八字命例_加密.json"
+        val encryptedFile = device.wait(
+            Until.findObject(By.text(encryptedFileName)),
+            10_000,
+        )
+        checkNotNull(encryptedFile) { "系统打开文档页面未找到加密单命例 JSON" }
+        encryptedFile.click()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("输入单命例解密密码"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("single_case_password")
+            .performTextInput(encryptedPassword)
+        composeRule.onNodeWithTag("confirm_password_single_case_import").performClick()
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasTestTag("single_case_preview"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("文件保护：密码加密")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("skip_single_case_import").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
     }
 }

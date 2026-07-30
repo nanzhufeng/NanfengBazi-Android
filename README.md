@@ -22,10 +22,12 @@
 - 支持可恢复软删除与回收站、命例复制，以及新建/编辑前的重复候选提示。
 - 已接通单命例 JSON v1 严格封套、载荷哈希、系统文件往返、零写入冲突预览，以及
   无附件命例的跳过、保留两份、按模块追加和逐字段采用。
+- 单命例可选择明文风险确认或密码保护；密码容器采用版本化
+  PBKDF2-HMAC-SHA256 + AES-256-GCM，并在解密后继续执行原协议全部校验。
 
 当前 UI 已覆盖最小真实闭环和命例生命周期主链路。农历、地区/真太阳时、
 问真截图迁移、
-单命例附件事务、完整备份 UI 和密码加密尚未实现。详细范围见
+单命例附件事务、完整备份 UI 与完整 ZIP 密码加密尚未实现。详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
 [`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。

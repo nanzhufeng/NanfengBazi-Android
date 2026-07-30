@@ -19,6 +19,23 @@ data class SingleCaseDocument(
     val caseData: BaziCase,
 )
 
+@Serializable
+data class SingleCaseEncryptedDocument(
+    val containerType: String,
+    val protectionVersion: Int,
+    val kdfAlgorithm: String,
+    val kdfIterations: Int,
+    val saltBase64: String,
+    val cipherAlgorithm: String,
+    val nonceBase64: String,
+    val ciphertextBase64: String,
+)
+
+enum class SingleCaseDocumentProtection {
+    UNENCRYPTED,
+    PASSWORD_PROTECTED,
+}
+
 data class SingleCaseCounts(
     val calculationSnapshots: Int,
     val textRecords: Int,
@@ -49,6 +66,8 @@ data class SingleCasePreview(
     val counts: SingleCaseCounts,
     val conflicts: List<SingleCaseConflictCandidate>,
     val containsAttachmentBinaries: Boolean = false,
+    val protection: SingleCaseDocumentProtection =
+        SingleCaseDocumentProtection.UNENCRYPTED,
 )
 
 sealed interface SingleCaseProtection {

@@ -19,30 +19,32 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class SingleCaseExchangeService(
     private val repository: CaseRepository,
     private val clock: Clock = Clock.systemUTC(),
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
+    secureRandom: SecureRandom = SecureRandom(),
+    passwordKdfIterations: Int = SingleCaseEncryption.DEFAULT_KDF_ITERATIONS,
 ) {
+    private val encryption = SingleCaseEncryption(secureRandom, passwordKdfIterations)
+
     suspend fun export(
         caseId: String,
         output: OutputStream,
         appVersion: String,
         protection: SingleCaseProtection,
     ): SingleCaseExportResult {
-        if (protection is SingleCaseProtection.PasswordProtected) {
-            return rejectedExport(
-                "PASSWORD_ENCRYPTION_NOT_IMPLEMENTED",
-                "当前阶段尚未实现单命例密码加密，不能静默降级为未加密文件。",
-            )
-        }
         if (caseId.isBlank()) {
             return rejectedExport("CASE_ID_REQUIRED", "导出单命例必须提供稳定 ID。")
         }
@@ -66,16 +68,38 @@ class SingleCaseExchangeService(
                 payloadSha256 = sha256(payloadBytes),
                 caseData = case,
             )
-            val bytes = DomainJson.encodeToString(document).encodeToByteArray()
-            if (bytes.size > MAX_DOCUMENT_BYTES) {
+            val plaintextBytes = DomainJson.encodeToString(document).encodeToByteArray()
+            if (plaintextBytes.size > MAX_DOCUMENT_BYTES) {
                 return rejectedExport(
                     "DOCUMENT_TOO_LARGE",
                     "单命例 JSON 超过 ${MAX_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
                 )
             }
+            val bytes = when (protection) {
+                SingleCaseProtection.UnencryptedSensitiveDataConfirmed -> plaintextBytes
+                is SingleCaseProtection.PasswordProtected -> {
+                    if (protection.password.isEmpty()) {
+                        return rejectedExport("PASSWORD_REQUIRED", "密码加密导出必须提供密码。")
+                    }
+                    DomainJson.encodeToString(
+                        encryption.encrypt(plaintextBytes, protection.password),
+                    ).encodeToByteArray()
+                }
+            }
+            if (bytes.size > MAX_ENCRYPTED_DOCUMENT_BYTES) {
+                return rejectedExport(
+                    "ENCRYPTED_DOCUMENT_TOO_LARGE",
+                    "加密单命例文件超过 ${MAX_ENCRYPTED_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
+                )
+            }
             output.write(bytes)
             SingleCaseExportResult.Success(
-                suggestedFileName = suggestedFileName(case),
+                suggestedFileName = when (protection) {
+                    SingleCaseProtection.UnencryptedSensitiveDataConfirmed ->
+                        suggestedFileName(case)
+                    is SingleCaseProtection.PasswordProtected ->
+                        suggestedEncryptedFileName(case)
+                },
                 byteSize = bytes.size.toLong(),
                 sha256 = sha256(bytes),
             )
@@ -86,19 +110,32 @@ class SingleCaseExchangeService(
 
     fun suggestedFileName(case: BaziCase): String = buildSuggestedFileName(case)
 
-    suspend fun preview(input: InputStream): SingleCasePreviewResult {
+    fun suggestedEncryptedFileName(case: BaziCase): String =
+        buildSuggestedFileName(case, encrypted = true)
+
+    suspend fun preview(
+        input: InputStream,
+        password: CharArray? = null,
+    ): SingleCasePreviewResult {
         val bytes = try {
-            input.readBounded(MAX_DOCUMENT_BYTES)
+            input.readBounded(MAX_ENCRYPTED_DOCUMENT_BYTES)
         } catch (_: DocumentTooLargeException) {
             return rejectedPreview(
                 "DOCUMENT_TOO_LARGE",
-                "单命例 JSON 超过 ${MAX_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
+                "单命例文件超过 ${MAX_ENCRYPTED_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
             )
         } catch (_: Exception) {
             return rejectedPreview("READ_FAILED", "无法读取单命例 JSON。")
         }
+        val decoded = decodeDocumentBytes(bytes, password)
+        if (decoded is DecodedDocumentBytes.Rejected) {
+            return rejectedPreview(decoded.code, decoded.message)
+        }
+        decoded as DecodedDocumentBytes.Success
         val document = try {
-            DomainJson.decodeFromString<SingleCaseDocument>(bytes.decodeToString())
+            DomainJson.decodeFromString<SingleCaseDocument>(
+                decoded.plaintext.decodeToString(),
+            )
         } catch (_: SerializationException) {
             return rejectedPreview("INVALID_JSON", "文件不是受支持的南枫八字单命例 JSON。")
         } catch (_: IllegalArgumentException) {
@@ -120,6 +157,7 @@ class SingleCaseExchangeService(
                 document = document,
                 counts = document.caseData.counts(),
                 conflicts = conflicts,
+                protection = decoded.protection,
             ),
         )
     }
@@ -388,6 +426,86 @@ class SingleCaseExchangeService(
             return rejectedPreview("PAYLOAD_HASH_MISMATCH", "单命例内容与载荷哈希不一致。")
         }
         return null
+    }
+
+    private fun decodeDocumentBytes(
+        bytes: ByteArray,
+        password: CharArray?,
+    ): DecodedDocumentBytes {
+        val root = try {
+            DomainJson.parseToJsonElement(bytes.decodeToString()).jsonObject
+        } catch (_: Exception) {
+            return if (bytes.size > MAX_DOCUMENT_BYTES) {
+                DecodedDocumentBytes.Rejected(
+                    "DOCUMENT_TOO_LARGE",
+                    "未加密单命例 JSON 超过 ${MAX_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
+                )
+            } else {
+                DecodedDocumentBytes.Rejected(
+                    "INVALID_JSON",
+                    "文件不是受支持的南枫八字单命例 JSON。",
+                )
+            }
+        }
+        val containerType = try {
+            root["containerType"]?.jsonPrimitive?.contentOrNull
+        } catch (_: Exception) {
+            return DecodedDocumentBytes.Rejected(
+                "INVALID_ENCRYPTED_DOCUMENT",
+                "加密单命例容器字段无效。",
+            )
+        }
+        if (containerType == null) {
+            return if (bytes.size > MAX_DOCUMENT_BYTES) {
+                DecodedDocumentBytes.Rejected(
+                    "DOCUMENT_TOO_LARGE",
+                    "未加密单命例 JSON 超过 ${MAX_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
+                )
+            } else {
+                DecodedDocumentBytes.Success(
+                    plaintext = bytes,
+                    protection = SingleCaseDocumentProtection.UNENCRYPTED,
+                )
+            }
+        }
+        if (containerType != SingleCaseEncryption.CONTAINER_TYPE) {
+            return DecodedDocumentBytes.Rejected(
+                "UNSUPPORTED_PROTECTION_CONTAINER",
+                "文件使用了当前版本不支持的加密容器。",
+            )
+        }
+        val encrypted = try {
+            DomainJson.decodeFromString<SingleCaseEncryptedDocument>(bytes.decodeToString())
+        } catch (_: Exception) {
+            return DecodedDocumentBytes.Rejected(
+                "INVALID_ENCRYPTED_DOCUMENT",
+                "加密单命例容器字段无效。",
+            )
+        }
+        if (password == null || password.isEmpty()) {
+            return DecodedDocumentBytes.Rejected(
+                "PASSWORD_REQUIRED",
+                "该单命例文件已加密，请输入密码。",
+            )
+        }
+        val plaintext = try {
+            encryption.decrypt(encrypted, password)
+        } catch (_: Exception) {
+            return DecodedDocumentBytes.Rejected(
+                "DECRYPTION_FAILED",
+                "密码错误、文件已损坏或加密参数不受支持。",
+            )
+        }
+        if (plaintext.size > MAX_DOCUMENT_BYTES) {
+            return DecodedDocumentBytes.Rejected(
+                "DOCUMENT_TOO_LARGE",
+                "解密后的单命例 JSON 超过 ${MAX_DOCUMENT_BYTES / 1024 / 1024} MiB 上限。",
+            )
+        }
+        return DecodedDocumentBytes.Success(
+            plaintext = plaintext,
+            protection = SingleCaseDocumentProtection.PASSWORD_PROTECTED,
+        )
     }
 
     private fun rejectedExport(code: String, message: String) =
@@ -795,6 +913,18 @@ class SingleCaseExchangeService(
         )
     }
 
+    private sealed interface DecodedDocumentBytes {
+        data class Success(
+            val plaintext: ByteArray,
+            val protection: SingleCaseDocumentProtection,
+        ) : DecodedDocumentBytes
+
+        data class Rejected(
+            val code: String,
+            val message: String,
+        ) : DecodedDocumentBytes
+    }
+
     private data class MergeAdditions(
         val calculationSnapshots: List<CaseCalculationSnapshot>,
         val textRecords: List<CaseTextRecord>,
@@ -851,6 +981,7 @@ class SingleCaseExchangeService(
     companion object {
         const val FORMAT_VERSION = 1
         const val MAX_DOCUMENT_BYTES = 16 * 1024 * 1024
+        const val MAX_ENCRYPTED_DOCUMENT_BYTES = 24 * 1024 * 1024
         private const val MAX_ID_GENERATION_ATTEMPTS = 32
         private const val MIN_SUPPORTED_DATABASE_SCHEMA = 2
         private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
@@ -936,14 +1067,18 @@ private fun BaziCase.counts() = SingleCaseCounts(
 private fun canonicalPayload(case: BaziCase): ByteArray =
     DomainJson.encodeToString(BaziCase.serializer(), case).encodeToByteArray()
 
-private fun buildSuggestedFileName(case: BaziCase): String {
+private fun buildSuggestedFileName(
+    case: BaziCase,
+    encrypted: Boolean = false,
+): String {
     val safeAlias = case.alias
         .trim()
         .replace(INVALID_FILE_NAME_PATTERN, "_")
         .trim('.', ' ')
         .take(48)
         .ifBlank { case.id.take(48) }
-    return "${safeAlias}_南枫八字命例.json"
+    val protectionSuffix = if (encrypted) "_加密" else ""
+    return "${safeAlias}_南枫八字命例$protectionSuffix.json"
 }
 
 private fun InputStream.readBounded(maxBytes: Int): ByteArray {

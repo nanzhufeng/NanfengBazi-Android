@@ -130,6 +130,9 @@ data class StageTwoUiState(
     val mutationError: String? = null,
     val deleteConfirmationVisible: Boolean = false,
     val singleCaseExportConfirmationVisible: Boolean = false,
+    val singleCasePasswordExportVisible: Boolean = false,
+    val singleCasePasswordImportVisible: Boolean = false,
+    val singleCasePasswordError: String? = null,
     val singleCaseExchangeBusy: Boolean = false,
     val singleCasePreview: SingleCasePreview? = null,
     val singleCaseMergePreparation: SingleCaseMergePreparation? = null,
@@ -156,6 +159,7 @@ class StageTwoViewModel(
     private val mutableState = MutableStateFlow(StageTwoUiState())
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
+    private var pendingExportPassword: CharArray? = null
 
     init {
         refreshCases()
@@ -223,18 +227,92 @@ class StageTwoViewModel(
 
     fun confirmSingleCaseExport(): String? {
         val detail = mutableState.value.detail ?: return null
+        pendingExportPassword?.fill('\u0000')
+        pendingExportPassword = null
         mutableState.update {
             it.copy(
                 singleCaseExportConfirmationVisible = false,
+                singleCasePasswordExportVisible = false,
+                singleCasePasswordError = null,
                 singleCaseExchangeError = null,
             )
         }
         return singleCaseExchange.suggestedFileName(detail)
     }
 
+    fun requestPasswordSingleCaseExport() {
+        if (mutableState.value.detail == null || mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(
+                singleCaseExportConfirmationVisible = false,
+                singleCasePasswordExportVisible = true,
+                singleCasePasswordError = null,
+            )
+        }
+    }
+
+    fun cancelPasswordSingleCaseExport() {
+        pendingExportPassword?.fill('\u0000')
+        pendingExportPassword = null
+        mutableState.update {
+            it.copy(
+                singleCasePasswordExportVisible = false,
+                singleCasePasswordError = null,
+            )
+        }
+    }
+
+    fun confirmPasswordSingleCaseExport(
+        password: CharArray,
+        confirmation: CharArray,
+    ): String? {
+        val detail = mutableState.value.detail
+        if (detail == null) {
+            password.fill('\u0000')
+            confirmation.fill('\u0000')
+            return null
+        }
+        val error = when {
+            password.size < MIN_EXPORT_PASSWORD_LENGTH ->
+                "密码至少需要 $MIN_EXPORT_PASSWORD_LENGTH 个字符。"
+            password.size > MAX_EXPORT_PASSWORD_LENGTH ->
+                "密码不能超过 $MAX_EXPORT_PASSWORD_LENGTH 个字符。"
+            !password.contentEquals(confirmation) -> "两次输入的密码不一致。"
+            else -> null
+        }
+        confirmation.fill('\u0000')
+        if (error != null) {
+            password.fill('\u0000')
+            mutableState.update { it.copy(singleCasePasswordError = error) }
+            return null
+        }
+        pendingExportPassword?.fill('\u0000')
+        pendingExportPassword = password.copyOf()
+        password.fill('\u0000')
+        mutableState.update {
+            it.copy(
+                singleCasePasswordExportVisible = false,
+                singleCasePasswordError = null,
+                singleCaseExchangeError = null,
+            )
+        }
+        return singleCaseExchange.suggestedEncryptedFileName(detail)
+    }
+
+    fun clearPendingSingleCaseExport() {
+        pendingExportPassword?.fill('\u0000')
+        pendingExportPassword = null
+    }
+
     fun exportCurrentCase(openOutput: () -> OutputStream?) {
-        val caseId = mutableState.value.detail?.id ?: return
-        if (mutableState.value.singleCaseExchangeBusy) return
+        val caseId = mutableState.value.detail?.id
+        if (caseId == null || mutableState.value.singleCaseExchangeBusy) {
+            clearPendingSingleCaseExport()
+            return
+        }
+        val exportPassword = pendingExportPassword
+        pendingExportPassword = null
+        val passwordProtected = exportPassword != null
         viewModelScope.launch {
             mutableState.update {
                 it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
@@ -251,8 +329,11 @@ class StageTwoViewModel(
                             caseId = caseId,
                             output = it,
                             appVersion = BuildConfig.VERSION_NAME,
-                            protection =
-                                SingleCaseProtection.UnencryptedSensitiveDataConfirmed,
+                            protection = if (exportPassword == null) {
+                                SingleCaseProtection.UnencryptedSensitiveDataConfirmed
+                            } else {
+                                SingleCaseProtection.PasswordProtected(exportPassword)
+                            },
                         )
                     }
                 }
@@ -263,12 +344,18 @@ class StageTwoViewModel(
                     code = "OUTPUT_OPEN_FAILED",
                     message = "无法创建或写入目标文件。",
                 )
+            } finally {
+                exportPassword?.fill('\u0000')
             }
             mutableState.update {
                 when (result) {
                     is SingleCaseExportResult.Success -> it.copy(
                         singleCaseExchangeBusy = false,
-                        message = "单命例 JSON 已导出，图片仅保留引用信息。",
+                        message = if (passwordProtected) {
+                            "密码加密单命例已导出；请另行安全保存密码。"
+                        } else {
+                            "单命例 JSON 已导出，图片仅保留引用信息。"
+                        },
                     )
                     is SingleCaseExportResult.Rejected -> it.copy(
                         singleCaseExchangeBusy = false,
@@ -280,12 +367,35 @@ class StageTwoViewModel(
     }
 
     fun previewSingleCase(openInput: () -> InputStream?) {
-        if (mutableState.value.singleCaseExchangeBusy) return
+        previewSingleCase(openInput, password = null)
+    }
+
+    fun previewSingleCaseWithPassword(
+        password: CharArray,
+        openInput: () -> InputStream?,
+    ) {
+        if (password.isEmpty()) {
+            password.fill('\u0000')
+            mutableState.update { it.copy(singleCasePasswordError = "请输入解密密码。") }
+            return
+        }
+        previewSingleCase(openInput, password)
+    }
+
+    private fun previewSingleCase(
+        openInput: () -> InputStream?,
+        password: CharArray?,
+    ) {
+        if (mutableState.value.singleCaseExchangeBusy) {
+            password?.fill('\u0000')
+            return
+        }
         viewModelScope.launch {
             mutableState.update {
                 it.copy(
                     singleCaseExchangeBusy = true,
                     singleCasePreview = null,
+                    singleCasePasswordError = null,
                     singleCaseExchangeError = null,
                 )
             }
@@ -296,7 +406,7 @@ class StageTwoViewModel(
                             code = "INPUT_OPEN_FAILED",
                             message = "无法打开所选文件。",
                         )
-                    input.use { singleCaseExchange.preview(it) }
+                    input.use { singleCaseExchange.preview(it, password) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -305,22 +415,57 @@ class StageTwoViewModel(
                     code = "INPUT_OPEN_FAILED",
                     message = "无法读取所选文件。",
                 )
+            } finally {
+                password?.fill('\u0000')
             }
             mutableState.update {
                 when (result) {
                     is SingleCasePreviewResult.Success -> it.copy(
                         singleCaseExchangeBusy = false,
                         singleCasePreview = result.preview,
+                        singleCasePasswordImportVisible = false,
+                        singleCasePasswordError = null,
                         singleCaseMergePreparation = null,
                         singleCaseMergeModules = emptySet(),
                         singleCaseFieldChoices = emptyMap(),
                     )
-                    is SingleCasePreviewResult.Rejected -> it.copy(
-                        singleCaseExchangeBusy = false,
-                        singleCaseExchangeError = "${result.message}（${result.code}）",
-                    )
+                    is SingleCasePreviewResult.Rejected -> {
+                        if (
+                            result.code == "PASSWORD_REQUIRED" ||
+                            result.code == "DECRYPTION_FAILED"
+                        ) {
+                            it.copy(
+                                singleCaseExchangeBusy = false,
+                                singleCasePasswordImportVisible = true,
+                                singleCasePasswordError =
+                                    if (result.code == "PASSWORD_REQUIRED") {
+                                        null
+                                    } else {
+                                        "${result.message}（${result.code}）"
+                                    },
+                            )
+                        } else {
+                            it.copy(
+                                singleCaseExchangeBusy = false,
+                                singleCasePasswordImportVisible = false,
+                                singleCasePasswordError = null,
+                                singleCaseExchangeError =
+                                    "${result.message}（${result.code}）",
+                            )
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    fun cancelPasswordSingleCaseImport() {
+        if (mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(
+                singleCasePasswordImportVisible = false,
+                singleCasePasswordError = null,
+            )
         }
     }
 
@@ -1075,6 +1220,11 @@ class StageTwoViewModel(
                 caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
             ) as T
         }
+    }
+
+    private companion object {
+        const val MIN_EXPORT_PASSWORD_LENGTH = 8
+        const val MAX_EXPORT_PASSWORD_LENGTH = 256
     }
 }
 

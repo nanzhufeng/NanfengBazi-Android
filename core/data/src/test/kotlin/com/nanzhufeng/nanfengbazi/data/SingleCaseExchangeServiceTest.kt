@@ -7,6 +7,8 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseAttachmentMode
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocument
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseEncryptedDocument
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
@@ -179,25 +181,107 @@ class SingleCaseExchangeServiceTest {
     }
 
     @Test
-    fun `密码加密未实现时拒绝且不产生明文`() = runTest {
+    fun `密码加密文件不含明文且仅正确密码可预览`() = runTest {
         withDatabase { database ->
             val repository = RoomCaseRepository(database)
             val source = sampleCase()
             repository.save(source, null)
             val output = ByteArrayOutputStream()
+            val password = "正确密码-Stage3B".toCharArray()
+            val service = SingleCaseExchangeService(
+                repository = repository,
+                clock = fixedClock,
+                passwordKdfIterations = 100_000,
+            )
 
-            val result = SingleCaseExchangeService(repository, fixedClock).export(
+            val result = service.export(
                 caseId = source.id,
                 output = output,
                 appVersion = "0.3.0-test",
-                protection = SingleCaseProtection.PasswordProtected("test".toCharArray()),
+                protection = SingleCaseProtection.PasswordProtected(password),
+            )
+
+            assertTrue(result is SingleCaseExportResult.Success)
+            result as SingleCaseExportResult.Success
+            assertEquals(
+                "脱敏案例一_南枫八字命例_加密.json",
+                result.suggestedFileName,
+            )
+            val encryptedBytes = output.toByteArray()
+            assertFalse(encryptedBytes.decodeToString().contains(source.alias))
+            assertFalse(encryptedBytes.decodeToString().contains("脱敏师傅点评完整原文"))
+
+            val withoutPassword = service.preview(ByteArrayInputStream(encryptedBytes))
+            val wrongPassword = service.preview(
+                ByteArrayInputStream(encryptedBytes),
+                "错误密码".toCharArray(),
+            )
+            val correctPassword = service.preview(
+                ByteArrayInputStream(encryptedBytes),
+                password,
             )
 
             assertEquals(
-                "PASSWORD_ENCRYPTION_NOT_IMPLEMENTED",
-                (result as SingleCaseExportResult.Rejected).code,
+                "PASSWORD_REQUIRED",
+                (withoutPassword as SingleCasePreviewResult.Rejected).code,
             )
-            assertEquals(0, output.size())
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (wrongPassword as SingleCasePreviewResult.Rejected).code,
+            )
+            assertEquals(
+                SingleCaseDocumentProtection.PASSWORD_PROTECTED,
+                (correctPassword as SingleCasePreviewResult.Success).preview.protection,
+            )
+            assertEquals(source.copy(revision = 1), correctPassword.preview.document.caseData)
+        }
+    }
+
+    @Test
+    fun `加密容器篡改与降级参数统一拒绝且不写入`() = runTest {
+        withDatabase { database ->
+            val repository = RoomCaseRepository(database)
+            val source = sampleCase()
+            repository.save(source, null)
+            val password = "篡改测试密码".toCharArray()
+            val service = SingleCaseExchangeService(
+                repository = repository,
+                clock = fixedClock,
+                passwordKdfIterations = 100_000,
+            )
+            val output = ByteArrayOutputStream()
+            service.export(
+                caseId = source.id,
+                output = output,
+                appVersion = "0.3.0-test",
+                protection = SingleCaseProtection.PasswordProtected(password),
+            )
+            val encrypted = DomainJson.decodeFromString<SingleCaseEncryptedDocument>(
+                output.toByteArray().decodeToString(),
+            )
+            val tamperedCiphertext = encrypted.ciphertextBase64.toCharArray().also {
+                val index = it.lastIndex
+                it[index] = if (it[index] == 'A') 'B' else 'A'
+            }.concatToString()
+            val tampered = DomainJson.encodeToString(
+                encrypted.copy(ciphertextBase64 = tamperedCiphertext),
+            ).encodeToByteArray()
+            val downgraded = DomainJson.encodeToString(
+                encrypted.copy(kdfIterations = 1),
+            ).encodeToByteArray()
+
+            val tamperedResult = service.preview(ByteArrayInputStream(tampered), password)
+            val downgradedResult = service.preview(ByteArrayInputStream(downgraded), password)
+
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (tamperedResult as SingleCasePreviewResult.Rejected).code,
+            )
+            assertEquals(
+                "DECRYPTION_FAILED",
+                (downgradedResult as SingleCasePreviewResult.Rejected).code,
+            )
+            assertEquals(1, repository.search().size)
         }
     }
 
