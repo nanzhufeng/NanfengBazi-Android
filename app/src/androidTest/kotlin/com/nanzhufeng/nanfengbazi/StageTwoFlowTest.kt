@@ -3,6 +3,9 @@ package com.nanzhufeng.nanfengbazi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -18,6 +21,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
@@ -33,16 +37,90 @@ class StageTwoFlowTest {
     @Test
     fun fourPrimaryEntriesAreReachableAndActionable() {
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        val screenWidthDp = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.configuration.screenWidthDp
+        if (screenWidthDp >= 840) {
+            composeRule.onNodeWithTag("root_navigation_rail").assertIsDisplayed()
+        } else {
+            composeRule.onNodeWithTag("root_navigation").assertIsDisplayed()
+        }
+        listOf("nav_chart", "nav_cases", "nav_records", "nav_settings").forEach { tag ->
+            composeRule.onNodeWithTag(tag)
+                .assertHasClickAction()
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+        }
         composeRule.onNodeWithTag("nav_records").performClick()
         composeRule.onNodeWithTag("record_hub_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_settings").performClick()
         composeRule.onNodeWithTag("settings_home_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("settings_import_screenshots").assertIsEnabled()
-        composeRule.onNodeWithTag("settings_export_backup").assertIsEnabled()
+        composeRule.onNodeWithTag("settings_import_screenshots")
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag("settings_export_backup")
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithTag("nav_chart").performClick()
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_cases").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun expandedLayoutKeepsCaseIndexAlongsideDetail() {
+        val screenWidthDp = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.configuration.screenWidthDp
+        if (screenWidthDp < 840) {
+            composeRule.onNodeWithTag("root_navigation").assertIsDisplayed()
+            return
+        }
+
+        val alias = "Stage2宽屏样例-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("root_navigation_rail").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("1992")
+        composeRule.onNodeWithTag("birth_month").performTextInput("8")
+        composeRule.onNodeWithTag("birth_day").performTextInput("24")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("12")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省宿迁市泗阳县")
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("case_search").performTextInput(alias)
+        composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty() &&
+                composeRule.onAllNodes(hasTestTag("expanded_case_index_pane"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("root_navigation_rail").assertIsDisplayed()
+        composeRule.onNodeWithTag("expanded_case_index_pane").assertIsDisplayed()
+        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
     }
 
     @Test
@@ -443,6 +521,11 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("别名：$alias").performClick()
 
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
+        val screenWidthDp = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.configuration.screenWidthDp
+        if (screenWidthDp >= 840) {
+            composeRule.onNodeWithTag("expanded_case_index_pane").assertIsDisplayed()
+        }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("原始录入信息"))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -473,7 +556,10 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasTestTag("export_single_case_button"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(editedAlias).performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodes(hasText(editedAlias))
+            .onFirst()
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(
                 hasText("命例资料已重新排盘并保存；旧计算快照仍保留。"),
@@ -618,6 +704,10 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("别名：$editedAlias（副本）").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("restore_case_button"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("restore_case_button").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))

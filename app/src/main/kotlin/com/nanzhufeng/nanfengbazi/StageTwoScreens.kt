@@ -9,14 +9,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +37,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -43,6 +49,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -179,32 +186,50 @@ fun NanfengBaziApp(
     }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            Scaffold(
-                snackbarHost = { SnackbarHost(snackbarHostState) },
-                bottomBar = {
-                    if (
-                        state.destination in setOf(
-                            AppDestination.CaseList,
-                            AppDestination.CreateCase,
-                            AppDestination.RecordHub,
-                            AppDestination.Settings,
-                        )
-                    ) {
-                        RootNavigationBar(
-                            destination = state.destination,
-                            onOpenChart = {
-                                if (state.destination != AppDestination.CreateCase) {
-                                    viewModel.openCreate()
-                                }
-                            },
-                            onOpenCases = viewModel::backToList,
-                            onOpenRecords = viewModel::openRecordHub,
-                            onOpenSettings = viewModel::openSettings,
-                        )
+            BoxWithConstraints {
+                val useNavigationRail = maxWidth >= EXPANDED_NAVIGATION_MIN_WIDTH
+                val showRootNavigation = state.destination in setOf(
+                    AppDestination.CaseList,
+                    AppDestination.CreateCase,
+                    AppDestination.RecordHub,
+                    AppDestination.Settings,
+                ) || (useNavigationRail && state.destination is AppDestination.CaseDetail)
+                val openChart = {
+                    if (state.destination != AppDestination.CreateCase) {
+                        viewModel.openCreate()
                     }
-                },
-            ) { padding ->
-                when (state.destination) {
+                }
+                Scaffold(
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
+                    bottomBar = {
+                        if (showRootNavigation && !useNavigationRail) {
+                            RootNavigationBar(
+                                destination = state.destination,
+                                onOpenChart = openChart,
+                                onOpenCases = viewModel::backToList,
+                                onOpenRecords = viewModel::openRecordHub,
+                                onOpenSettings = viewModel::openSettings,
+                            )
+                        }
+                    },
+                ) { padding ->
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        if (showRootNavigation && useNavigationRail) {
+                            RootNavigationRail(
+                                destination = state.destination,
+                                onOpenChart = openChart,
+                                onOpenCases = viewModel::backToList,
+                                onOpenRecords = viewModel::openRecordHub,
+                                onOpenSettings = viewModel::openSettings,
+                                modifier = Modifier.padding(padding),
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize(),
+                        ) {
+                            when (state.destination) {
                     AppDestination.CaseList -> CaseListScreen(
                         state = state,
                         onQueryChange = viewModel::updateQuery,
@@ -260,23 +285,54 @@ fun NanfengBaziApp(
                         onConfirmDuplicate = { viewModel.submitCase(allowDuplicate = true) },
                         modifier = Modifier.padding(padding),
                     )
-                    is AppDestination.CaseDetail -> CaseDetailScreen(
-                        state = state,
-                        onBack = viewModel::backToList,
-                        onEditCase = viewModel::openEditCase,
-                        onAddBirthTimeCandidate = viewModel::openBirthTimeCandidate,
-                        onAdoptBirthTimeCandidate = viewModel::adoptBirthTimeCandidate,
-                        onEditMetadata = viewModel::openMetadata,
-                        onAddRecord = { viewModel.openTextRecord() },
-                        onEditRecord = viewModel::openTextRecord,
-                        onAddEvent = { viewModel.openEvent() },
-                        onEditEvent = viewModel::openEvent,
-                        onDuplicate = viewModel::duplicateCase,
-                        onExportSingleCase = viewModel::requestSingleCaseExport,
-                        onMoveToTrash = viewModel::requestMoveToTrash,
-                        onRestore = viewModel::restoreCase,
-                        modifier = Modifier.padding(padding),
-                    )
+                    is AppDestination.CaseDetail -> {
+                        val detailContent: @Composable (Modifier) -> Unit = { modifier ->
+                            CaseDetailScreen(
+                                state = state,
+                                onBack = viewModel::backToList,
+                                onEditCase = viewModel::openEditCase,
+                                onAddBirthTimeCandidate = viewModel::openBirthTimeCandidate,
+                                onAdoptBirthTimeCandidate = viewModel::adoptBirthTimeCandidate,
+                                onEditMetadata = viewModel::openMetadata,
+                                onAddRecord = { viewModel.openTextRecord() },
+                                onEditRecord = viewModel::openTextRecord,
+                                onAddEvent = { viewModel.openEvent() },
+                                onEditEvent = viewModel::openEvent,
+                                onDuplicate = viewModel::duplicateCase,
+                                onExportSingleCase = viewModel::requestSingleCaseExport,
+                                onMoveToTrash = viewModel::requestMoveToTrash,
+                                onRestore = viewModel::restoreCase,
+                                modifier = modifier,
+                            )
+                        }
+                        if (useNavigationRail) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(padding),
+                            ) {
+                                ExpandedCaseIndexPane(
+                                    cases = state.cases,
+                                    selectedCaseId = state.detail?.id,
+                                    loading = state.listLoading,
+                                    error = state.listError,
+                                    onRefresh = viewModel::refreshCases,
+                                    onOpenCase = viewModel::openDetail,
+                                    modifier = Modifier
+                                        .width(340.dp)
+                                        .fillMaxHeight(),
+                                )
+                                VerticalDivider()
+                                detailContent(
+                                    Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                )
+                            }
+                        } else {
+                            detailContent(Modifier.padding(padding))
+                        }
+                    }
                     is AppDestination.EditCase -> CaseFormScreen(
                         title = "编辑命例",
                         screenTag = "edit_case_screen",
@@ -325,15 +381,18 @@ fun NanfengBaziApp(
                         onDelete = viewModel::deleteTextRecord,
                         modifier = Modifier.padding(padding),
                     )
-                    is AppDestination.EditEvent -> EventEditorScreen(
-                        state = state,
-                        destination = state.destination as AppDestination.EditEvent,
-                        onBack = viewModel::navigateBack,
-                        onDraftChange = viewModel::updateEventDraft,
-                        onSave = viewModel::saveEvent,
-                        onDelete = viewModel::deleteEvent,
-                        modifier = Modifier.padding(padding),
-                    )
+                                is AppDestination.EditEvent -> EventEditorScreen(
+                                    state = state,
+                                    destination = state.destination as AppDestination.EditEvent,
+                                    onBack = viewModel::navigateBack,
+                                    onDraftChange = viewModel::updateEventDraft,
+                                    onSave = viewModel::saveEvent,
+                                    onDelete = viewModel::deleteEvent,
+                                    modifier = Modifier.padding(padding),
+                                )
+                            }
+                        }
+                    }
                 }
             }
             if (state.deleteConfirmationVisible) {
@@ -1503,6 +1562,54 @@ private fun SingleCaseConflictReason.displayName(): String = when (this) {
     SingleCaseConflictReason.SAME_FOUR_PILLARS -> "采用四柱相同"
 }
 
+private val EXPANDED_NAVIGATION_MIN_WIDTH = 840.dp
+
+private data class RootNavigationAction(
+    val label: String,
+    val glyph: String,
+    val selected: Boolean,
+    val tag: String,
+    val onClick: () -> Unit,
+)
+
+private fun rootNavigationActions(
+    destination: AppDestination,
+    onOpenChart: () -> Unit,
+    onOpenCases: () -> Unit,
+    onOpenRecords: () -> Unit,
+    onOpenSettings: () -> Unit,
+): List<RootNavigationAction> = listOf(
+    RootNavigationAction(
+        "排盘",
+        "盘",
+        destination == AppDestination.CreateCase,
+        "nav_chart",
+        onOpenChart,
+    ),
+    RootNavigationAction(
+        "命例",
+        "例",
+        destination == AppDestination.CaseList ||
+            destination is AppDestination.CaseDetail,
+        "nav_cases",
+        onOpenCases,
+    ),
+    RootNavigationAction(
+        "记录",
+        "记",
+        destination == AppDestination.RecordHub,
+        "nav_records",
+        onOpenRecords,
+    ),
+    RootNavigationAction(
+        "设置",
+        "设",
+        destination == AppDestination.Settings,
+        "nav_settings",
+        onOpenSettings,
+    ),
+)
+
 @Composable
 private fun RootNavigationBar(
     destination: AppDestination,
@@ -1511,18 +1618,12 @@ private fun RootNavigationBar(
     onOpenRecords: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    data class Item(
-        val label: String,
-        val glyph: String,
-        val selected: Boolean,
-        val tag: String,
-        val onClick: () -> Unit,
-    )
-    val items = listOf(
-        Item("排盘", "盘", destination == AppDestination.CreateCase, "nav_chart", onOpenChart),
-        Item("命例", "例", destination == AppDestination.CaseList, "nav_cases", onOpenCases),
-        Item("记录", "记", destination == AppDestination.RecordHub, "nav_records", onOpenRecords),
-        Item("设置", "设", destination == AppDestination.Settings, "nav_settings", onOpenSettings),
+    val items = rootNavigationActions(
+        destination = destination,
+        onOpenChart = onOpenChart,
+        onOpenCases = onOpenCases,
+        onOpenRecords = onOpenRecords,
+        onOpenSettings = onOpenSettings,
     )
     NavigationBar(modifier = Modifier.testTag("root_navigation")) {
         items.forEach { item ->
@@ -1531,8 +1632,122 @@ private fun RootNavigationBar(
                 onClick = item.onClick,
                 icon = { Text(item.glyph) },
                 label = { Text(item.label) },
-                modifier = Modifier.testTag(item.tag),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .widthIn(min = 48.dp)
+                    .semantics { contentDescription = item.label }
+                    .testTag(item.tag),
             )
+        }
+    }
+}
+
+@Composable
+private fun RootNavigationRail(
+    destination: AppDestination,
+    onOpenChart: () -> Unit,
+    onOpenCases: () -> Unit,
+    onOpenRecords: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val items = rootNavigationActions(
+        destination = destination,
+        onOpenChart = onOpenChart,
+        onOpenCases = onOpenCases,
+        onOpenRecords = onOpenRecords,
+        onOpenSettings = onOpenSettings,
+    )
+    NavigationRail(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(88.dp)
+            .testTag("root_navigation_rail"),
+    ) {
+        Spacer(modifier = Modifier.height(12.dp))
+        items.forEach { item ->
+            NavigationRailItem(
+                selected = item.selected,
+                onClick = item.onClick,
+                icon = { Text(item.glyph) },
+                label = { Text(item.label) },
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .widthIn(min = 48.dp)
+                    .semantics { contentDescription = item.label }
+                    .testTag(item.tag),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExpandedCaseIndexPane(
+    cases: List<CaseSummary>,
+    selectedCaseId: String?,
+    loading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+    onOpenCase: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.testTag("expanded_case_index_pane"),
+    ) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text("命例索引", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "保持详情上下文，快速切换命例",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            },
+            actions = {
+                TextButton(onClick = onRefresh) { Text("刷新") }
+            },
+        )
+        when {
+            loading -> LoadingBox("正在读取命例…")
+            error != null -> ErrorBox(error, "重试", onRefresh)
+            cases.isEmpty() -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("暂无命例")
+            }
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(cases, key = CaseSummary::id) { summary ->
+                    Card(
+                        colors = if (summary.id == selectedCaseId) {
+                            CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            )
+                        } else {
+                            CardDefaults.cardColors()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenCase(summary.id) }
+                            .testTag("expanded_case_${summary.id}"),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(summary.alias, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                summary.fourPillars?.display() ?: "暂无已采用排盘",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1631,6 +1846,7 @@ private fun SettingsHomeScreen(
             enabled = !screenshotImportState.busy,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .testTag("settings_import_screenshots"),
         ) {
             Text("导入问真截图")
@@ -1639,6 +1855,7 @@ private fun SettingsHomeScreen(
             onClick = onImportSingleCase,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .testTag("settings_import_case"),
         ) {
             Text("导入单命例文件")
@@ -1647,6 +1864,7 @@ private fun SettingsHomeScreen(
             onClick = onExportFullBackup,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .testTag("settings_export_backup"),
         ) {
             Text("导出完整备份")
@@ -1655,6 +1873,7 @@ private fun SettingsHomeScreen(
             onClick = onRestoreFullBackup,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .testTag("settings_restore_backup"),
         ) {
             Text("预览并恢复完整备份")

@@ -226,6 +226,10 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha42 新增排盘、命例、记录、设置四主入口：记录按命例进入已实现内容，设置承载
     截图导入与备份，四入口目标设备流程 1/1 通过；完整 StageTwo 主流程设备回归 8/8
     通过，无空白功能页且未破坏既有新建、编辑、记录、事件和系统文件流程；
+  - alpha43 以 840dp 为门槛在手机底部导航与展开态左侧导航轨之间切换；展开命例详情
+    同时保留左侧命例索引和右侧完整详情。API 35 约 1013dp 宽屏四入口与双栏专项各
+    1/1 通过，手机态 1.5 倍字体四入口和关键 48dp 触控目标 1/1 通过，默认手机视口
+    StageTwo 主流程设备回归 9/9 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -233,17 +237,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha42-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha43-debug.apk`
 
-- 大小：55,679,987 bytes
-- SHA-256：`a3f5f446ed2e7a03a88dbbefc59f13f030bce512fc946fb9bd1114a40edd8b85`
+- 大小：56,237,578 bytes
+- SHA-256：`9c63ebc0a55173e751985f960a5afc2def643d52726a7c583cf8d90eefb5f025`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha42-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha43-release-unsigned.apk`
 
 - 大小：51,974,186 bytes
-- SHA-256：`6268fc812ada03d84eea0d61483c6019ba9a69f6a52d51883c945ebdf90db890`
+- SHA-256：`6d6de0397331deeed8905df47e20e7c93af9e8413b920fbdfb56d4a9f8ecc57d`
 
 ## 当前限制与风险
 
@@ -256,7 +260,9 @@ Debug 验收构建：
   及反馈/点评完整原文、字段人工修正和原图文件/边界框坐标已实现；逐命例候选失败结果、
   超 10 分钟前台任务模式、其余基本资料字段和原图可视框选联动尚未实现。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
-- App 仍是手机单列工作台，OPPO Find N5 展开双栏、无障碍和大字体尚未验收。
+- 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；1.5 倍字体的四主入口
+  与关键触控目标已验证，但 OPPO Find N5 实机展开/折叠、TalkBack 全页遍历和 2.0 倍
+  字体仍待用户授权验收。
 - 当前 Debug APK 不是正式签名 Release；OPPO 数据保留安装与发布需要用户明确授权。
 
 ## 下一安全增量
