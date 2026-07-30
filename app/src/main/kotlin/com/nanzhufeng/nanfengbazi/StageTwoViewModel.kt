@@ -62,6 +62,8 @@ import kotlinx.coroutines.withContext
 
 sealed interface AppDestination {
     data object CaseList : AppDestination
+    data object RecordHub : AppDestination
+    data object Settings : AppDestination
     data object CreateCase : AppDestination
     data object ScreenshotImportReview : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
@@ -86,6 +88,10 @@ class StageTwoNavigator {
     fun openCreate(): AppDestination {
         return push(AppDestination.CreateCase)
     }
+
+    fun openRecordHub(): AppDestination = openRoot(AppDestination.RecordHub)
+
+    fun openSettings(): AppDestination = openRoot(AppDestination.Settings)
 
     fun openScreenshotImportReview(): AppDestination {
         return push(AppDestination.ScreenshotImportReview)
@@ -121,8 +127,12 @@ class StageTwoNavigator {
     }
 
     fun backToList(): AppDestination {
+        return openRoot(AppDestination.CaseList)
+    }
+
+    private fun openRoot(destination: AppDestination): AppDestination {
         stack.clear()
-        stack += AppDestination.CaseList
+        stack += destination
         return current
     }
 
@@ -1792,6 +1802,25 @@ class StageTwoViewModel(
                 duplicateCandidates = emptyList(),
                 previewing = false,
                 instantCalculation = null,
+                message = null,
+            )
+        }
+    }
+
+    fun openRecordHub() {
+        mutableState.update {
+            it.copy(
+                destination = navigator.openRecordHub(),
+                message = null,
+            )
+        }
+        refreshCases()
+    }
+
+    fun openSettings() {
+        mutableState.update {
+            it.copy(
+                destination = navigator.openSettings(),
                 message = null,
             )
         }

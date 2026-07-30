@@ -223,6 +223,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     1/1 通过；
   - alpha41 核对页可按字段打开私有原图采样预览并叠加原坐标橙色框；设备流程完成
     “打开定位—收起—修正—提交—删除临时导入—查看正式证据”，目标流程 1/1 通过；
+  - alpha42 新增排盘、命例、记录、设置四主入口：记录按命例进入已实现内容，设置承载
+    截图导入与备份，四入口目标设备流程 1/1 通过；完整 StageTwo 主流程设备回归 8/8
+    通过，无空白功能页且未破坏既有新建、编辑、记录、事件和系统文件流程；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -230,17 +233,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha41-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha42-debug.apk`
 
-- 大小：56,176,206 bytes
-- SHA-256：`8176e2015b9434184c1ed9310e6f3127afe54b2a84496032676df7abfe3fba4b`
+- 大小：55,679,987 bytes
+- SHA-256：`a3f5f446ed2e7a03a88dbbefc59f13f030bce512fc946fb9bd1114a40edd8b85`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha41-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha42-release-unsigned.apk`
 
-- 大小：51,957,802 bytes
-- SHA-256：`91801a54e8205ba37009bc2dc81f19221ed9cd8fc2b887506ea0fe018de4fb7d`
+- 大小：51,974,186 bytes
+- SHA-256：`6268fc812ada03d84eea0d61483c6019ba9a69f6a52d51883c945ebdf90db890`
 
 ## 当前限制与风险
 
@@ -261,8 +264,8 @@ Debug 验收构建：
 继续 Stage 5A，优先顺序：
 
 1. 扩展问真基本资料字段解析，并保持真实样本外部验收门禁；
-2. 进入排盘、命例、记录、设置四主入口；
-3. 增加窗口尺寸自适应、无障碍与大字体验收。
+2. 增加窗口尺寸自适应与展开态双栏；
+3. 完成无障碍、大字体与目标视口 QA。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于
 整个产品已经落地。

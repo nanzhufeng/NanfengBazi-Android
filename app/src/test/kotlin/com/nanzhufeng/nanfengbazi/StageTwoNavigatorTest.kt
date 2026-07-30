@@ -9,6 +9,9 @@ class StageTwoNavigatorTest {
         val navigator = StageTwoNavigator()
 
         assertEquals(AppDestination.CaseList, navigator.current)
+        assertEquals(AppDestination.RecordHub, navigator.openRecordHub())
+        assertEquals(AppDestination.Settings, navigator.openSettings())
+        assertEquals(AppDestination.CaseList, navigator.backToList())
         assertEquals(AppDestination.CreateCase, navigator.openCreate())
         assertEquals(AppDestination.CaseList, navigator.backToList())
         assertEquals(

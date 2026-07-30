@@ -31,6 +31,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -166,13 +168,41 @@ fun NanfengBaziApp(
             }
         }
     }
-    BackHandler(enabled = state.destination != AppDestination.CaseList) {
+    BackHandler(
+        enabled = state.destination !in setOf(
+            AppDestination.CaseList,
+            AppDestination.RecordHub,
+            AppDestination.Settings,
+        ),
+    ) {
         viewModel.navigateBack()
     }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) },
+                bottomBar = {
+                    if (
+                        state.destination in setOf(
+                            AppDestination.CaseList,
+                            AppDestination.CreateCase,
+                            AppDestination.RecordHub,
+                            AppDestination.Settings,
+                        )
+                    ) {
+                        RootNavigationBar(
+                            destination = state.destination,
+                            onOpenChart = {
+                                if (state.destination != AppDestination.CreateCase) {
+                                    viewModel.openCreate()
+                                }
+                            },
+                            onOpenCases = viewModel::backToList,
+                            onOpenRecords = viewModel::openRecordHub,
+                            onOpenSettings = viewModel::openSettings,
+                        )
+                    }
+                },
             ) { padding ->
                 when (state.destination) {
                     AppDestination.CaseList -> CaseListScreen(
@@ -193,6 +223,22 @@ fun NanfengBaziApp(
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onPreviewFullBackup = onOpenFullBackupDocument,
                         onOpenCase = viewModel::openDetail,
+                        modifier = Modifier.padding(padding),
+                    )
+                    AppDestination.RecordHub -> RecordHubScreen(
+                        cases = state.cases,
+                        loading = state.listLoading,
+                        error = state.listError,
+                        onRefresh = viewModel::refreshCases,
+                        onOpenCase = viewModel::openDetail,
+                        modifier = Modifier.padding(padding),
+                    )
+                    AppDestination.Settings -> SettingsHomeScreen(
+                        screenshotImportState = screenshotImportState,
+                        onImportScreenshots = onImportScreenshots,
+                        onImportSingleCase = onOpenSingleCaseDocument,
+                        onExportFullBackup = viewModel::requestFullBackupExport,
+                        onRestoreFullBackup = onOpenFullBackupDocument,
                         modifier = Modifier.padding(padding),
                     )
                     AppDestination.ScreenshotImportReview -> ScreenshotImportReviewScreen(
@@ -1455,6 +1501,172 @@ private fun SingleCaseConflictReason.displayName(): String = when (this) {
     SingleCaseConflictReason.STABLE_ID_EXISTS -> "稳定 ID 已存在"
     SingleCaseConflictReason.SAME_BIRTH_INPUT -> "出生输入相同"
     SingleCaseConflictReason.SAME_FOUR_PILLARS -> "采用四柱相同"
+}
+
+@Composable
+private fun RootNavigationBar(
+    destination: AppDestination,
+    onOpenChart: () -> Unit,
+    onOpenCases: () -> Unit,
+    onOpenRecords: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    data class Item(
+        val label: String,
+        val glyph: String,
+        val selected: Boolean,
+        val tag: String,
+        val onClick: () -> Unit,
+    )
+    val items = listOf(
+        Item("排盘", "盘", destination == AppDestination.CreateCase, "nav_chart", onOpenChart),
+        Item("命例", "例", destination == AppDestination.CaseList, "nav_cases", onOpenCases),
+        Item("记录", "记", destination == AppDestination.RecordHub, "nav_records", onOpenRecords),
+        Item("设置", "设", destination == AppDestination.Settings, "nav_settings", onOpenSettings),
+    )
+    NavigationBar(modifier = Modifier.testTag("root_navigation")) {
+        items.forEach { item ->
+            NavigationBarItem(
+                selected = item.selected,
+                onClick = item.onClick,
+                icon = { Text(item.glyph) },
+                label = { Text(item.label) },
+                modifier = Modifier.testTag(item.tag),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecordHubScreen(
+    cases: List<CaseSummary>,
+    loading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit,
+    onOpenCase: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("record_hub_screen"),
+    ) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text("记录", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "按命例进入反馈、点评、事件与版本历史",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            },
+            actions = {
+                TextButton(onClick = onRefresh) { Text("刷新") }
+            },
+        )
+        when {
+            loading -> LoadingBox("正在读取记录索引…")
+            error != null -> ErrorBox(error, "重试", onRefresh)
+            cases.isEmpty() -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("暂无命例记录，请先从“排盘”创建或从“命例”导入。")
+            }
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(cases, key = CaseSummary::id) { summary ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenCase(summary.id) }
+                            .testTag("record_case_${summary.id}"),
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(summary.alias, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                summary.fourPillars?.display() ?: "暂无已采用排盘",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "打开命例查看完整记录与事件",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsHomeScreen(
+    screenshotImportState: ScreenshotImportUiState,
+    onImportScreenshots: () -> Unit,
+    onImportSingleCase: () -> Unit,
+    onExportFullBackup: () -> Unit,
+    onRestoreFullBackup: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+            .testTag("settings_home_screen"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text("数据只保存在本机；问真截图识别不需要联网。")
+        Button(
+            onClick = onImportScreenshots,
+            enabled = !screenshotImportState.busy,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("settings_import_screenshots"),
+        ) {
+            Text("导入问真截图")
+        }
+        OutlinedButton(
+            onClick = onImportSingleCase,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("settings_import_case"),
+        ) {
+            Text("导入单命例文件")
+        }
+        OutlinedButton(
+            onClick = onExportFullBackup,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("settings_export_backup"),
+        ) {
+            Text("导出完整备份")
+        }
+        OutlinedButton(
+            onClick = onRestoreFullBackup,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("settings_restore_backup"),
+        ) {
+            Text("预览并恢复完整备份")
+        }
+        HorizontalDivider()
+        Text("版本：${BuildConfig.VERSION_NAME}")
+        Text(
+            "发布前仍需正式签名、真实问真样本验收和用户授权的真机数据保留安装。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -31,6 +31,21 @@ class StageTwoFlowTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
+    fun fourPrimaryEntriesAreReachableAndActionable() {
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_records").performClick()
+        composeRule.onNodeWithTag("record_hub_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_home_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_import_screenshots").assertIsEnabled()
+        composeRule.onNodeWithTag("settings_export_backup").assertIsEnabled()
+        composeRule.onNodeWithTag("nav_chart").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_cases").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+    }
+
+    @Test
     fun instantChartShowsResultWithoutSavingCase() {
         val alias = "Stage4即时排盘-${System.currentTimeMillis()}"
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
