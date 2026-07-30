@@ -19,6 +19,7 @@ dependencies {
     implementation("cn.6tail:tyme4j:1.5.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("cn.6tail:lunar:1.7.7")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
 

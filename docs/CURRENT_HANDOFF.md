@@ -140,7 +140,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew test lint assembleDebug assembleRelease
 ```
 
-- 138 条唯一单元契约；Debug/Release 变体合计 242 次执行，0 失败、0 跳过。
+- 139 条唯一单元契约；Debug/Release 变体合计 243 次执行，0 失败、0 跳过。
 - 新增自动化覆盖：
   - 农历字段基础范围；
   - 公历 2023-01-22 13:00 与农历 2023 年正月初一 13:00 的四柱和起运等价；
@@ -169,6 +169,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     明确采用后才同步切换出生输入、候选状态和快照。
   - Room Schema v5→v6 迁移、仓储往返、命例复制、单命例交换和完整备份恢复均保持
     候选与快照双向身份关联。
+  - `four-pillars-golden-v2.psv` 冻结 60 个 1900–2100 四柱样本，生产 Tyme4j 1.5.1
+    与测试专用 lunar-java 1.7.7 逐项差分一致；参考库不进入生产 APK。
 - App 与 `core:data` Lint 均 0 错误；仅有 9 + 5 条依赖版本提示。
 - Debug 与未签名 Release 均构建成功。
 - API 35 模拟器 `ExpenseCapture_API35`：
