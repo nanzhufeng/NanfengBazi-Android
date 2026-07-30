@@ -99,4 +99,5 @@
 | 单命例只读预览 | 系统打开文档、16 MiB 上限、格式/Schema/哈希/领域校验和预览弹窗 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseExchangeService.preview` | 同一真实文件读回、冲突显示且数据库零写入 |
 | 本地冲突候选 | 稳定 ID、出生输入、四柱和回收站位置 | `CaseRepository` 查询，由预览服务合并 | 同一候选理由合并且不修改本地命例 |
 | 无附件命例提交 | 跳过零写入；保留两份重建全部聚合 ID，提交前复查冲突 | `StageTwoViewModel` → `SingleCaseExchangeService.commitImport` → `CaseRepository.save` | 过期预览拒绝、事务失败不覆盖、系统文件 E2E 后列表读回第二份 |
+| 范围化合并 | 模块仅追加独有内容；标量差异逐字段采用，默认本地 | `prepareMerge` 固定目标 revision/载荷 → `commitMerge` 复查 → `CaseRepository.save` | 内容去重、子项重建 ID、目标变化拒绝、模拟器记录/事件合并 |
 | 附件二进制 | 单 JSON 不携带，仅保留引用元数据；存在引用时禁止提交 | `REFERENCES_ONLY` | 预览明确限制并返回 `ATTACHMENT_BINARIES_REQUIRED` |

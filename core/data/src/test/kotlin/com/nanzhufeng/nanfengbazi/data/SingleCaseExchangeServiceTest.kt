@@ -11,12 +11,19 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePlan
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparationResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
+import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -377,6 +384,135 @@ class SingleCaseExchangeServiceTest {
             )
             assertTrue(skipped is SingleCaseImportResult.Skipped)
             assertTrue(destinationRepository.search().isEmpty())
+        }
+    }
+
+    @Test
+    fun `按模块合并只追加独有内容且逐字段只采用明确来源值`() = runTest {
+        val source = attachmentFree(sampleCase()).copy(alias = "来源别名")
+        val bytes = withDatabase { sourceDatabase ->
+            val sourceRepository = RoomCaseRepository(sourceDatabase)
+            sourceRepository.save(source, null)
+            exportBytes(sourceRepository, source.id)
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationRepository = RoomCaseRepository(destinationDatabase)
+            val localSnapshot = source.calculationSnapshots.single().copy(
+                id = "local-snapshot",
+                result = source.calculationSnapshots.single().result.copy(
+                    fourPillars = FourPillars("甲子", "乙丑", "丙寅", "丁卯"),
+                ),
+            )
+            val localRecord = source.textRecords.first().copy(id = "local-record")
+            val target = source.copy(
+                id = "local-target",
+                alias = "本地别名",
+                name = ExplicitText.present("本地姓名"),
+                profile = source.profile.copy(
+                    occupation = ExplicitText.present("本地职业"),
+                ),
+                textRecords = listOf(localRecord),
+                calculationSnapshots = listOf(localSnapshot),
+                events = emptyList(),
+                groups = source.groups.map { it.copy(id = "local-group") },
+                tags = emptyList(),
+                revision = 0,
+            )
+            destinationRepository.save(target, null)
+            val generatedIds = generateSequence(1) { it + 1 }.iterator()
+            val service = SingleCaseExchangeService(
+                repository = destinationRepository,
+                clock = fixedClock,
+                idGenerator = { "merge-${generatedIds.next()}" },
+            )
+            val preview = (
+                service.preview(ByteArrayInputStream(bytes)) as
+                    SingleCasePreviewResult.Success
+                ).preview
+            val preparation = (
+                service.prepareMerge(preview, target.id) as
+                    SingleCaseMergePreparationResult.Success
+                ).preparation
+
+            assertEquals(1, preparation.addableCounts.calculationSnapshots)
+            assertEquals(1, preparation.addableCounts.textRecords)
+            assertEquals(1, preparation.addableCounts.events)
+            assertTrue(
+                preparation.fieldDifferences.any {
+                    it.key == SingleCaseFieldKey.ALIAS
+                },
+            )
+            val result = service.commitMerge(
+                SingleCaseMergePlan(
+                    preparation = preparation,
+                    modules = SingleCaseMergeModule.entries.toSet(),
+                    fieldChoices = mapOf(
+                        SingleCaseFieldKey.ALIAS to SingleCaseValueChoice.IMPORTED,
+                        SingleCaseFieldKey.NAME to SingleCaseValueChoice.LOCAL,
+                        SingleCaseFieldKey.PROFILE_OCCUPATION to
+                            SingleCaseValueChoice.LOCAL,
+                    ),
+                ),
+            )
+
+            assertTrue(result is SingleCaseImportResult.Merged)
+            val merged = checkNotNull(destinationRepository.findById(target.id))
+            assertEquals("来源别名", merged.alias)
+            assertEquals("本地姓名", merged.name.value)
+            assertEquals("本地职业", merged.profile.occupation.value)
+            assertEquals(2, merged.calculationSnapshots.size)
+            assertEquals(1, merged.calculationSnapshots.count { it.adopted })
+            assertEquals(localSnapshot.result, merged.calculationSnapshots.single { it.adopted }.result)
+            assertEquals(2, merged.textRecords.size)
+            assertEquals(1, merged.events.size)
+            assertEquals(1, merged.groups.size)
+            assertEquals(1, merged.tags.size)
+            assertEquals(2, merged.revision)
+        }
+    }
+
+    @Test
+    fun `合并方案生成后目标事实变化会拒绝且不覆盖`() = runTest {
+        val source = attachmentFree(sampleCase())
+        val bytes = withDatabase { sourceDatabase ->
+            val sourceRepository = RoomCaseRepository(sourceDatabase)
+            sourceRepository.save(source, null)
+            exportBytes(sourceRepository, source.id)
+        }
+
+        withDatabase { destinationDatabase ->
+            val destinationRepository = RoomCaseRepository(destinationDatabase)
+            val target = source.copy(id = "local-target", alias = "本地目标", revision = 0)
+            destinationRepository.save(target, null)
+            val service = SingleCaseExchangeService(destinationRepository, fixedClock)
+            val preview = (
+                service.preview(ByteArrayInputStream(bytes)) as
+                    SingleCasePreviewResult.Success
+                ).preview
+            val preparation = (
+                service.prepareMerge(preview, target.id) as
+                    SingleCaseMergePreparationResult.Success
+                ).preparation
+            destinationRepository.markViewed(
+                target.id,
+                FixtureInstant.plusSeconds(60),
+            )
+
+            val result = service.commitMerge(
+                SingleCaseMergePlan(
+                    preparation = preparation,
+                    fieldChoices = mapOf(
+                        SingleCaseFieldKey.ALIAS to SingleCaseValueChoice.IMPORTED,
+                    ),
+                ),
+            )
+
+            assertEquals(
+                "TARGET_CHANGED",
+                (result as SingleCaseImportResult.Rejected).code,
+            )
+            assertEquals("本地目标", destinationRepository.findById(target.id)?.alias)
         }
     }
 

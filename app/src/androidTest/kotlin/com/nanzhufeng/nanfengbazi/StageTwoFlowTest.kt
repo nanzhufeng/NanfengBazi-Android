@@ -270,6 +270,37 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("稳定 ID 已存在", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onAllNodes(hasText("与此命例生成合并差异"))[1]
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("single_case_merge_dialog"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("追加文本记录", substring = true)
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithText("追加事件", substring = true)
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("confirm_single_case_merge").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("single_case_merge_dialog"))
+                .fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        val exportedFileAgain = device.wait(
+            Until.findObject(By.text(exportedFileName)),
+            10_000,
+        )
+        checkNotNull(exportedFileAgain) { "系统打开文档页面未找到待二次导入的 JSON" }
+        exportedFileAgain.click()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("single_case_preview"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("keep_both_single_case").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("single_case_preview"))

@@ -27,6 +27,8 @@ data class SingleCaseCounts(
     val eventRevisions: Int,
     val attachmentReferences: Int,
     val fieldEvidence: Int,
+    val groups: Int = 0,
+    val tags: Int = 0,
 )
 
 enum class SingleCaseConflictReason {
@@ -86,6 +88,66 @@ enum class SingleCaseImportDecision {
     KEEP_BOTH,
 }
 
+enum class SingleCaseMergeModule {
+    CALCULATION_SNAPSHOTS,
+    TEXT_RECORDS,
+    EVENTS,
+    ORGANIZATION,
+}
+
+enum class SingleCaseFieldKey {
+    ALIAS,
+    NAME,
+    SOURCE_TYPE,
+    BIRTH_INPUT,
+    PROFILE_OCCUPATION,
+    PROFILE_EDUCATION,
+    PROFILE_FINANCE,
+    PROFILE_MARRIAGE,
+    PROFILE_HEALTH,
+    FAVORITE,
+    PINNED,
+}
+
+enum class SingleCaseValueChoice {
+    LOCAL,
+    IMPORTED,
+}
+
+data class SingleCaseFieldDifference(
+    val key: SingleCaseFieldKey,
+    val label: String,
+    val localValue: String,
+    val importedValue: String,
+)
+
+data class SingleCaseMergePreparation(
+    val sourcePreview: SingleCasePreview,
+    val targetCaseId: String,
+    val targetAlias: String,
+    val targetRevision: Long,
+    val targetPayloadSha256: String,
+    val fieldDifferences: List<SingleCaseFieldDifference>,
+    val addableCounts: SingleCaseCounts,
+)
+
+data class SingleCaseMergePlan(
+    val preparation: SingleCaseMergePreparation,
+    val modules: Set<SingleCaseMergeModule> = emptySet(),
+    val fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
+)
+
+sealed interface SingleCaseMergePreparationResult {
+    data class Success(
+        val preparation: SingleCaseMergePreparation,
+    ) : SingleCaseMergePreparationResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : SingleCaseMergePreparationResult
+}
+
 sealed interface SingleCaseImportResult {
     data class Imported(
         val caseId: String,
@@ -94,6 +156,12 @@ sealed interface SingleCaseImportResult {
 
     data class Skipped(
         val sourceCaseId: String,
+    ) : SingleCaseImportResult
+
+    data class Merged(
+        val caseId: String,
+        val revision: Long,
+        val addedCounts: SingleCaseCounts,
     ) : SingleCaseImportResult
 
     data class Rejected(

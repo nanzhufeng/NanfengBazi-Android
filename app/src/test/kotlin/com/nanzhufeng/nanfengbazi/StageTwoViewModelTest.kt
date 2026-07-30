@@ -1,7 +1,9 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Clock
@@ -331,6 +333,42 @@ class StageTwoViewModelTest {
         assertEquals("case-exchange", imported.copiedFromCaseId)
         assertEquals(
             "单命例已作为新命例导入，原有本地命例未被覆盖。",
+            viewModel.state.value.message,
+        )
+    }
+
+    @Test
+    fun `单命例逐字段采用只更新明确选择的目标值`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-merge"] = sampleStoredCase("case-merge")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-merge")
+        val output = ByteArrayOutputStream()
+        viewModel.exportCurrentCase { output }
+        repository.stored["case-merge"] = repository.stored.getValue("case-merge").copy(
+            alias = "本地修改别名",
+            revision = 2,
+        )
+
+        viewModel.previewSingleCase { ByteArrayInputStream(output.toByteArray()) }
+        viewModel.prepareSingleCaseMerge("case-merge")
+
+        assertNotNull(viewModel.state.value.singleCaseMergePreparation)
+        assertEquals(
+            SingleCaseValueChoice.LOCAL,
+            viewModel.state.value.singleCaseFieldChoices[SingleCaseFieldKey.ALIAS],
+        )
+        viewModel.chooseSingleCaseMergeField(
+            SingleCaseFieldKey.ALIAS,
+            SingleCaseValueChoice.IMPORTED,
+        )
+        viewModel.commitSingleCaseMerge()
+
+        assertEquals("合成命例甲", repository.stored.getValue("case-merge").alias)
+        assertNull(viewModel.state.value.singleCaseMergePreparation)
+        assertEquals(
+            "单命例差异已合并到“本地修改别名”。",
             viewModel.state.value.message,
         )
     }

@@ -65,8 +65,12 @@ import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparation
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 
 @Composable
 fun NanfengBaziApp(
@@ -235,7 +239,20 @@ fun NanfengBaziApp(
                     onSkip = {
                         viewModel.commitSingleCaseImport(SingleCaseImportDecision.SKIP)
                     },
+                    onMergeTarget = viewModel::prepareSingleCaseMerge,
                     onDismiss = viewModel::dismissSingleCasePreview,
+                )
+            }
+            state.singleCaseMergePreparation?.let { preparation ->
+                SingleCaseMergeDialog(
+                    preparation = preparation,
+                    selectedModules = state.singleCaseMergeModules,
+                    fieldChoices = state.singleCaseFieldChoices,
+                    busy = state.singleCaseExchangeBusy,
+                    onToggleModule = viewModel::toggleSingleCaseMergeModule,
+                    onChooseField = viewModel::chooseSingleCaseMergeField,
+                    onConfirm = viewModel::commitSingleCaseMerge,
+                    onDismiss = viewModel::cancelSingleCaseMerge,
                 )
             }
             state.singleCaseExchangeError?.let { error ->
@@ -260,6 +277,7 @@ private fun SingleCasePreviewDialog(
     busy: Boolean,
     onKeepBoth: () -> Unit,
     onSkip: () -> Unit,
+    onMergeTarget: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sourceCase = preview.document.caseData
@@ -312,10 +330,28 @@ private fun SingleCasePreviewDialog(
                     Text("本地冲突候选", fontWeight = FontWeight.SemiBold)
                     preview.conflicts.forEach { conflict ->
                         val location = if (conflict.isTrashed) "回收站" else "活动命例"
-                        Text(
-                            "• ${conflict.alias}（$location）：" +
-                                conflict.reasons.joinToString("、") { it.displayName() },
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "• ${conflict.alias}（$location）：" +
+                                    conflict.reasons.joinToString("、") { it.displayName() },
+                            )
+                            TextButton(
+                                onClick = { onMergeTarget(conflict.caseId) },
+                                enabled =
+                                    !busy && !hasAttachmentReferences && !conflict.isTrashed,
+                                modifier = Modifier.testTag(
+                                    "merge_single_case_${conflict.caseId}",
+                                ),
+                            ) {
+                                Text(
+                                    if (conflict.isTrashed) {
+                                        "请先从回收站恢复再合并"
+                                    } else {
+                                        "与此命例生成合并差异"
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -342,6 +378,149 @@ private fun SingleCasePreviewDialog(
                 modifier = Modifier.testTag("skip_single_case_import"),
             ) {
                 Text("跳过导入")
+            }
+        },
+    )
+}
+
+@Composable
+private fun SingleCaseMergeDialog(
+    preparation: SingleCaseMergePreparation,
+    selectedModules: Set<SingleCaseMergeModule>,
+    fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice>,
+    busy: Boolean,
+    onToggleModule: (SingleCaseMergeModule) -> Unit,
+    onChooseField: (SingleCaseFieldKey, SingleCaseValueChoice) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val counts = preparation.addableCounts
+    val availableModules = buildList {
+        if (counts.calculationSnapshots > 0) {
+            add(
+                SingleCaseMergeModule.CALCULATION_SNAPSHOTS to
+                    "追加计算快照 ${counts.calculationSnapshots} 条（不改变当前采用盘）",
+            )
+        }
+        if (counts.textRecords + counts.textRecordRevisions > 0) {
+            add(
+                SingleCaseMergeModule.TEXT_RECORDS to
+                    "追加文本记录 ${counts.textRecords} 条、历史 ${counts.textRecordRevisions} 条",
+            )
+        }
+        if (counts.events + counts.eventRevisions > 0) {
+            add(
+                SingleCaseMergeModule.EVENTS to
+                    "追加事件 ${counts.events} 条、历史 ${counts.eventRevisions} 条",
+            )
+        }
+        if (counts.groups + counts.tags > 0) {
+            add(
+                SingleCaseMergeModule.ORGANIZATION to
+                    "追加分组 ${counts.groups} 个、标签 ${counts.tags} 个",
+            )
+        }
+    }
+    val hasSelection = selectedModules.any { module ->
+        availableModules.any { it.first == module }
+    } || fieldChoices.values.any { it == SingleCaseValueChoice.IMPORTED }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("选择合并范围") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .testTag("single_case_merge_dialog"),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "目标：${preparation.targetAlias}（修订 ${preparation.targetRevision}）",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "只有下方明确选中的内容会写入；本地未选字段不会被覆盖。",
+                    color = MaterialTheme.colorScheme.error,
+                )
+                if (availableModules.isNotEmpty()) {
+                    Text("按模块追加", fontWeight = FontWeight.SemiBold)
+                    availableModules.forEach { (module, label) ->
+                        if (module in selectedModules) {
+                            Button(
+                                onClick = { onToggleModule(module) },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("已选择 · $label")
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onToggleModule(module) },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
+                if (preparation.fieldDifferences.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("逐字段采用", fontWeight = FontWeight.SemiBold)
+                    preparation.fieldDifferences.forEach { difference ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(difference.label, fontWeight = FontWeight.SemiBold)
+                            Text("本地：${difference.localValue}")
+                            Text("来源：${difference.importedValue}")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SelectionButton(
+                                    text = "保留本地",
+                                    selected =
+                                        fieldChoices[difference.key] !=
+                                            SingleCaseValueChoice.IMPORTED,
+                                    onClick = {
+                                        onChooseField(
+                                            difference.key,
+                                            SingleCaseValueChoice.LOCAL,
+                                        )
+                                    },
+                                    tag = "merge_local_${difference.key.name}",
+                                )
+                                SelectionButton(
+                                    text = "采用来源",
+                                    selected =
+                                        fieldChoices[difference.key] ==
+                                            SingleCaseValueChoice.IMPORTED,
+                                    onClick = {
+                                        onChooseField(
+                                            difference.key,
+                                            SingleCaseValueChoice.IMPORTED,
+                                        )
+                                    },
+                                    tag = "merge_imported_${difference.key.name}",
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = !busy && hasSelection,
+                modifier = Modifier.testTag("confirm_single_case_merge"),
+            ) {
+                Text(if (busy) "正在合并…" else "确认所选范围")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !busy,
+                modifier = Modifier.testTag("cancel_single_case_merge"),
+            ) {
+                Text("返回预览")
             }
         },
     )

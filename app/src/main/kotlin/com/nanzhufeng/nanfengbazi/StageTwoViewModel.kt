@@ -7,9 +7,15 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExchangeService
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseExportResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportDecision
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseImportResult
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePlan
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparation
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergePreparationResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
@@ -126,6 +132,9 @@ data class StageTwoUiState(
     val singleCaseExportConfirmationVisible: Boolean = false,
     val singleCaseExchangeBusy: Boolean = false,
     val singleCasePreview: SingleCasePreview? = null,
+    val singleCaseMergePreparation: SingleCaseMergePreparation? = null,
+    val singleCaseMergeModules: Set<SingleCaseMergeModule> = emptySet(),
+    val singleCaseFieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
     val singleCaseExchangeError: String? = null,
     val message: String? = null,
 )
@@ -302,6 +311,9 @@ class StageTwoViewModel(
                     is SingleCasePreviewResult.Success -> it.copy(
                         singleCaseExchangeBusy = false,
                         singleCasePreview = result.preview,
+                        singleCaseMergePreparation = null,
+                        singleCaseMergeModules = emptySet(),
+                        singleCaseFieldChoices = emptyMap(),
                     )
                     is SingleCasePreviewResult.Rejected -> it.copy(
                         singleCaseExchangeBusy = false,
@@ -355,10 +367,142 @@ class StageTwoViewModel(
                         message = "已跳过该单命例，未写入数据。",
                     )
                 }
+                is SingleCaseImportResult.Merged -> mutableState.update {
+                    it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCasePreview = null,
+                        message = "单命例差异已合并到本地目标。",
+                    )
+                }
                 is SingleCaseImportResult.Rejected -> mutableState.update {
                     it.copy(
                         singleCaseExchangeBusy = false,
                         singleCaseExchangeError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun prepareSingleCaseMerge(targetCaseId: String) {
+        val preview = mutableState.value.singleCasePreview ?: return
+        if (mutableState.value.singleCaseExchangeBusy) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    singleCaseExchange.prepareMerge(preview, targetCaseId)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SingleCaseMergePreparationResult.Rejected(
+                    code = "MERGE_PREPARATION_FAILED",
+                    message = "无法生成合并差异，未写入数据。",
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is SingleCaseMergePreparationResult.Success -> it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCasePreview = null,
+                        singleCaseMergePreparation = result.preparation,
+                        singleCaseMergeModules = emptySet(),
+                        singleCaseFieldChoices = result.preparation.fieldDifferences
+                            .associate { difference ->
+                                difference.key to SingleCaseValueChoice.LOCAL
+                            },
+                    )
+                    is SingleCaseMergePreparationResult.Rejected -> it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCaseExchangeError = "${result.message}（${result.code}）",
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleSingleCaseMergeModule(module: SingleCaseMergeModule) {
+        if (mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            val modules = it.singleCaseMergeModules.toMutableSet()
+            if (!modules.add(module)) modules.remove(module)
+            it.copy(singleCaseMergeModules = modules)
+        }
+    }
+
+    fun chooseSingleCaseMergeField(
+        key: SingleCaseFieldKey,
+        choice: SingleCaseValueChoice,
+    ) {
+        if (mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(singleCaseFieldChoices = it.singleCaseFieldChoices + (key to choice))
+        }
+    }
+
+    fun cancelSingleCaseMerge() {
+        if (mutableState.value.singleCaseExchangeBusy) return
+        mutableState.update {
+            it.copy(
+                singleCasePreview = it.singleCaseMergePreparation?.sourcePreview,
+                singleCaseMergePreparation = null,
+                singleCaseMergeModules = emptySet(),
+                singleCaseFieldChoices = emptyMap(),
+            )
+        }
+    }
+
+    fun commitSingleCaseMerge() {
+        val preparation = mutableState.value.singleCaseMergePreparation ?: return
+        if (mutableState.value.singleCaseExchangeBusy) return
+        val plan = SingleCaseMergePlan(
+            preparation = preparation,
+            modules = mutableState.value.singleCaseMergeModules,
+            fieldChoices = mutableState.value.singleCaseFieldChoices,
+        )
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(singleCaseExchangeBusy = true, singleCaseExchangeError = null)
+            }
+            val result = try {
+                withContext(ioDispatcher) { singleCaseExchange.commitMerge(plan) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SingleCaseImportResult.Rejected(
+                    code = "MERGE_FAILED",
+                    message = "单命例合并失败，未写入数据。",
+                )
+            }
+            when (result) {
+                is SingleCaseImportResult.Merged -> {
+                    mutableState.update {
+                        it.copy(
+                            singleCaseExchangeBusy = false,
+                            singleCaseMergePreparation = null,
+                            singleCaseMergeModules = emptySet(),
+                            singleCaseFieldChoices = emptyMap(),
+                            visibility = CaseVisibility.ACTIVE,
+                            message = "单命例差异已合并到“${preparation.targetAlias}”。",
+                        )
+                    }
+                    refreshCases()
+                }
+                is SingleCaseImportResult.Rejected -> mutableState.update {
+                    it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCaseExchangeError = "${result.message}（${result.code}）",
+                    )
+                }
+                is SingleCaseImportResult.Imported,
+                is SingleCaseImportResult.Skipped,
+                -> mutableState.update {
+                    it.copy(
+                        singleCaseExchangeBusy = false,
+                        singleCaseExchangeError = "合并返回了不匹配的结果，未确认成功。",
                     )
                 }
             }
