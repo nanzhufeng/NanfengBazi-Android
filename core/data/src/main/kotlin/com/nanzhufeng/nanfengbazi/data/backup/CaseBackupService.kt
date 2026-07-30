@@ -306,7 +306,9 @@ class CaseBackupService(
         if (manifest.encrypted) {
             return "ENCRYPTION_NOT_SUPPORTED" to "当前阶段尚未实现加密备份恢复。"
         }
-        if (manifest.databaseSchemaVersion != NanfengBaziDatabase.SCHEMA_VERSION) {
+        if (manifest.databaseSchemaVersion !in
+            MIN_SUPPORTED_BACKUP_SCHEMA..NanfengBaziDatabase.SCHEMA_VERSION
+        ) {
             return "UNSUPPORTED_SCHEMA" to "备份数据库 Schema 与当前版本不兼容。"
         }
         val required = setOf(
@@ -502,6 +504,7 @@ class CaseBackupService(
     companion object {
         const val BACKUP_FORMAT_VERSION = 1
         private const val MANIFEST_PATH = "manifest.json"
+        private const val MIN_SUPPORTED_BACKUP_SCHEMA = 2
         private const val CASES_PATH = "cases.json"
         private const val SNAPSHOTS_PATH = "snapshots.json"
         private const val NOTES_PATH = "notes.json"

@@ -2,11 +2,14 @@ package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
@@ -93,6 +96,100 @@ class EditCaseUseCase(
         return persistCase(caseRepository, updated, expectedRevision)
     }
 }
+
+data class CaseMetadataDraft(
+    val groupNames: String = "",
+    val tagNames: String = "",
+    val isFavorite: Boolean = false,
+    val isPinned: Boolean = false,
+)
+
+class CaseMetadataUseCase(
+    private val caseRepository: CaseRepository,
+    private val clock: Clock = Clock.systemUTC(),
+    private val idGenerator: IdGenerator = UuidGenerator(),
+) {
+    suspend fun save(
+        caseId: String,
+        expectedRevision: Long,
+        draft: CaseMetadataDraft,
+    ): CaseMutationResult {
+        val groupNames = when (val result = validateNames(draft.groupNames, "分组")) {
+            is NameValidation.Invalid ->
+                return CaseMutationResult.ValidationFailed(result.message)
+            is NameValidation.Valid -> result.names
+        }
+        val tagNames = when (val result = validateNames(draft.tagNames, "标签")) {
+            is NameValidation.Invalid ->
+                return CaseMutationResult.ValidationFailed(result.message)
+            is NameValidation.Valid -> result.names
+        }
+        val existing: BaziCase
+        val catalog: List<com.nanzhufeng.nanfengbazi.domain.model.CaseSummary>
+        try {
+            existing = caseRepository.findById(caseId)
+                ?: return CaseMutationResult.NotFound
+            catalog = caseRepository.search(CaseSearchRequest())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return caseReadFailure()
+        }
+        if (existing.revision != expectedRevision) {
+            return CaseMutationResult.RevisionConflict(existing.revision)
+        }
+        val knownGroups = (catalog.flatMap { it.groups } + existing.groups)
+            .associateBy { it.name.normalizedMetadataName() }
+        val knownTags = (catalog.flatMap { it.tags } + existing.tags)
+            .associateBy { it.name.normalizedMetadataName() }
+        val updated = existing.copy(
+            groups = groupNames.map { name ->
+                knownGroups[name.normalizedMetadataName()] ?: CaseGroup(
+                    id = idGenerator.nextId(),
+                    name = name,
+                )
+            },
+            tags = tagNames.map { name ->
+                knownTags[name.normalizedMetadataName()] ?: CaseTag(
+                    id = idGenerator.nextId(),
+                    name = name,
+                )
+            },
+            isFavorite = draft.isFavorite,
+            isPinned = draft.isPinned,
+            updatedAt = clock.instant(),
+        )
+        return persistCase(caseRepository, updated, expectedRevision)
+    }
+
+    private sealed interface NameValidation {
+        data class Valid(val names: List<String>) : NameValidation
+        data class Invalid(val message: String) : NameValidation
+    }
+
+    private fun validateNames(raw: String, label: String): NameValidation {
+        val names = raw.split(Regex("[,，\\n]"))
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+        if (names.any { it.length > MAX_METADATA_NAME_LENGTH }) {
+            return NameValidation.Invalid(
+                "${label}名称不能超过 $MAX_METADATA_NAME_LENGTH 个字符。",
+            )
+        }
+        val unique = names.distinctBy(String::normalizedMetadataName)
+        if (unique.size > MAX_METADATA_COUNT) {
+            return NameValidation.Invalid("每个命例最多设置 $MAX_METADATA_COUNT 个$label。")
+        }
+        return NameValidation.Valid(unique)
+    }
+
+    private companion object {
+        const val MAX_METADATA_NAME_LENGTH = 20
+        const val MAX_METADATA_COUNT = 10
+    }
+}
+
+private fun String.normalizedMetadataName(): String = lowercase()
 
 data class TextRecordDraft(
     val type: CaseTextRecordType = CaseTextRecordType.NOTE,

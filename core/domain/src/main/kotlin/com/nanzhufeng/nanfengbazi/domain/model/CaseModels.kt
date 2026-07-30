@@ -246,6 +246,10 @@ data class BaziCase(
     val fieldEvidence: List<CaseFieldEvidence> = emptyList(),
     val groups: List<CaseGroup> = emptyList(),
     val tags: List<CaseTag> = emptyList(),
+    val isFavorite: Boolean = false,
+    val isPinned: Boolean = false,
+    @Serializable(with = InstantIsoSerializer::class)
+    val lastViewedAt: Instant? = null,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
     @Serializable(with = InstantIsoSerializer::class)
@@ -284,7 +288,15 @@ data class CaseSummary(
     val sourceType: CaseSourceType,
     val birthInput: BirthInput,
     val fourPillars: FourPillars?,
+    val groups: List<CaseGroup>,
+    val tags: List<CaseTag>,
+    val isFavorite: Boolean,
+    val isPinned: Boolean,
+    @Serializable(with = InstantIsoSerializer::class)
+    val createdAt: Instant,
     @Serializable(with = InstantIsoSerializer::class)
     val updatedAt: Instant,
+    @Serializable(with = InstantIsoSerializer::class)
+    val lastViewedAt: Instant?,
     val revision: Long,
 )

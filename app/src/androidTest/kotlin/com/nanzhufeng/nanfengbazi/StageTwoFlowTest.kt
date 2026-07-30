@@ -43,11 +43,11 @@ class StageTwoFlowTest {
 
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
         composeRule.onNodeWithText("原始录入信息").assertIsDisplayed()
-        composeRule.onNodeWithText("计算结果").assertIsDisplayed()
-        composeRule.onNodeWithText("Tyme4j").assertIsDisplayed()
+        composeRule.onNodeWithText("计算结果").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Tyme4j").performScrollTo().assertIsDisplayed()
 
         val editedAlias = "$alias-已编辑"
-        composeRule.onNodeWithTag("edit_case_button").performClick()
+        composeRule.onNodeWithTag("edit_case_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("case_alias").performTextReplacement(editedAlias)
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -64,6 +64,23 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(
                 hasText("命例资料已重新排盘并保存；旧计算快照仍保留。"),
             ).fetchSemanticsNodes().isEmpty()
+        }
+
+        composeRule.onNodeWithTag("edit_metadata_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("metadata_groups").performTextInput("合成分组")
+        composeRule.onNodeWithTag("metadata_tags").performTextInput("自动化标签")
+        composeRule.onNodeWithTag("metadata_favorite").performClick()
+        composeRule.onNodeWithTag("metadata_pinned").performClick()
+        composeRule.onNodeWithTag("save_metadata").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("合成分组").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("自动化标签").performScrollTo().assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("命例分组、标签与标记已保存。"))
+                .fetchSemanticsNodes().isEmpty()
         }
 
         composeRule.onNodeWithTag("add_record_button").performScrollTo().performClick()

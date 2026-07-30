@@ -1,6 +1,8 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
@@ -192,5 +194,55 @@ class CaseManagementTest {
         )
 
         assertTrue(result is CaseMutationResult.StorageFailed)
+    }
+
+    @Test
+    fun `分类编辑复用同名目录并保存收藏置顶`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-meta"] = sampleStoredCase("case-meta")
+            stored["case-catalog"] = sampleStoredCase("case-catalog").copy(
+                groups = listOf(CaseGroup("group-existing", "家人")),
+                tags = listOf(CaseTag("tag-existing", "已核对")),
+            )
+        }
+        val ids = ArrayDeque(listOf("group-new", "tag-new"))
+        val useCase = CaseMetadataUseCase(
+            caseRepository = repository,
+            clock = fixedClock,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )
+
+        val result = useCase.save(
+            caseId = "case-meta",
+            expectedRevision = 1,
+            draft = CaseMetadataDraft(
+                groupNames = "家人，研究",
+                tagNames = "已核对, 待复盘",
+                isFavorite = true,
+                isPinned = true,
+            ),
+        )
+
+        assertEquals(CaseMutationResult.Saved("case-meta", 2), result)
+        val saved = repository.stored.getValue("case-meta")
+        assertEquals(listOf("group-existing", "group-new"), saved.groups.map { it.id })
+        assertEquals(listOf("tag-existing", "tag-new"), saved.tags.map { it.id })
+        assertTrue(saved.isFavorite)
+        assertTrue(saved.isPinned)
+    }
+
+    @Test
+    fun `分类数量和名称长度在写入前校验`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-meta"] = sampleStoredCase("case-meta")
+        }
+        val useCase = CaseMetadataUseCase(repository)
+
+        val tooMany = (1..11).joinToString("，") { "分组$it" }
+        assertEquals(
+            CaseMutationResult.ValidationFailed("每个命例最多设置 10 个分组。"),
+            useCase.save("case-meta", 1, CaseMetadataDraft(groupNames = tooMany)),
+        )
+        assertEquals(1L, repository.stored.getValue("case-meta").revision)
     }
 }

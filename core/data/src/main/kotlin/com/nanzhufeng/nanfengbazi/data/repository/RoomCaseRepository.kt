@@ -13,8 +13,11 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
@@ -94,9 +97,10 @@ class RoomCaseRepository(
         )
     }
 
-    override suspend fun search(query: String): List<CaseSummary> =
+    override suspend fun search(request: CaseSearchRequest): List<CaseSummary> =
         database.withTransaction {
-            dao.searchCases(query.trim()).map { entity ->
+            val query = request.query.trim()
+            dao.allCases().map { entity ->
                 val adoptedSnapshot = dao.calculationSnapshots(entity.id)
                     .asReversed()
                     .firstOrNull { it.adopted }
@@ -106,9 +110,26 @@ class RoomCaseRepository(
                             it.resultJson,
                         )
                     }
-                entity.toSummary(adoptedSnapshot)
+                entity.toSummary(
+                    adoptedSnapshot = adoptedSnapshot,
+                    groups = dao.groups(entity.id).map { CaseGroup(it.id, it.name) },
+                    tags = dao.tags(entity.id).map { CaseTag(it.id, it.name) },
+                )
             }
+                .asSequence()
+                .filter { summary ->
+                    request.groupId == null || summary.groups.any { it.id == request.groupId }
+                }
+                .filter { summary ->
+                    request.tagId == null || summary.tags.any { it.id == request.tagId }
+                }
+                .filter { summary -> query.isEmpty() || summary.matches(query) }
+                .sortedWith(request.sortOrder.summaryComparator())
+                .toList()
         }
+
+    override suspend fun markViewed(caseId: String, viewedAt: Instant): Boolean =
+        dao.markViewed(caseId, viewedAt.toEpochMilli()) == 1
 
     private suspend fun deleteChildren(caseId: String) {
         dao.deleteFieldEvidence(caseId)
@@ -171,6 +192,9 @@ private fun BaziCase.toCaseEntity(): CaseEntity = CaseEntity(
     sourceType = sourceType.name,
     birthInputJson = DomainJson.encodeToString(BirthInput.serializer(), birthInput),
     profileJson = DomainJson.encodeToString(CaseProfile.serializer(), profile),
+    isFavorite = isFavorite,
+    isPinned = isPinned,
+    lastViewedAtEpochMillis = lastViewedAt?.toEpochMilli(),
     createdAtEpochMillis = createdAt.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
     revision = revision,
@@ -282,6 +306,9 @@ private fun CaseEntity.toDomain(
     },
     groups = groups.map { CaseGroup(it.id, it.name) },
     tags = tags.map { CaseTag(it.id, it.name) },
+    isFavorite = isFavorite,
+    isPinned = isPinned,
+    lastViewedAt = lastViewedAtEpochMillis?.let(Instant::ofEpochMilli),
     createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
     revision = revision,
@@ -289,6 +316,8 @@ private fun CaseEntity.toDomain(
 
 private fun CaseEntity.toSummary(
     adoptedSnapshot: CaseCalculationSnapshot?,
+    groups: List<CaseGroup>,
+    tags: List<CaseTag>,
 ): CaseSummary = CaseSummary(
     id = id,
     alias = alias,
@@ -297,6 +326,80 @@ private fun CaseEntity.toSummary(
     sourceType = CaseSourceType.valueOf(sourceType),
     birthInput = DomainJson.decodeFromString(BirthInput.serializer(), birthInputJson),
     fourPillars = adoptedSnapshot?.result?.fourPillars,
+    groups = groups,
+    tags = tags,
+    isFavorite = isFavorite,
+    isPinned = isPinned,
+    createdAt = Instant.ofEpochMilli(createdAtEpochMillis),
     updatedAt = Instant.ofEpochMilli(updatedAtEpochMillis),
+    lastViewedAt = lastViewedAtEpochMillis?.let(Instant::ofEpochMilli),
     revision = revision,
 )
+
+private fun CaseSummary.matches(query: String): Boolean {
+    if (alias.contains(query, ignoreCase = true)) return true
+    if (name.value?.contains(query, ignoreCase = true) == true) return true
+    val pillars = fourPillars ?: return false
+    return listOf(pillars.year, pillars.month, pillars.day, pillars.hour)
+        .any { it.contains(query, ignoreCase = true) }
+}
+
+private fun CaseSortOrder.summaryComparator(): Comparator<CaseSummary> {
+    val selected = when (this) {
+        CaseSortOrder.LAST_VIEWED_DESC ->
+            compareByDescending<CaseSummary> { it.lastViewedAt }
+                .thenByDescending { it.updatedAt }
+
+        CaseSortOrder.UPDATED_DESC ->
+            compareByDescending { it.updatedAt }
+
+        CaseSortOrder.CREATED_DESC ->
+            compareByDescending { it.createdAt }
+
+        CaseSortOrder.BIRTH_ASC ->
+            compareBy { it.birthInput.birthSortKey() }
+    }
+    return compareByDescending<CaseSummary> { it.isPinned }
+        .then(selected)
+        .thenBy { it.id }
+}
+
+private fun BirthInput.birthSortKey(): String {
+    val prefix: String
+    val year: Int
+    val month: Int
+    val day: Int
+    val hour: Int
+    val minute: Int
+    val second: Int
+    when (val input = calendarInput) {
+        is BirthCalendarInput.Solar -> {
+            prefix = "0"
+            year = input.dateTime.year
+            month = input.dateTime.month
+            day = input.dateTime.day
+            hour = input.dateTime.hour
+            minute = input.dateTime.minute
+            second = input.dateTime.second
+        }
+
+        is BirthCalendarInput.Lunar -> {
+            prefix = if (input.dateTime.isLeapMonth) "2" else "1"
+            year = input.dateTime.year
+            month = input.dateTime.month
+            day = input.dateTime.day
+            hour = input.dateTime.hour
+            minute = input.dateTime.minute
+            second = input.dateTime.second
+        }
+    }
+    return "%s%04d%02d%02d%02d%02d%02d".format(
+        prefix,
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    )
+}

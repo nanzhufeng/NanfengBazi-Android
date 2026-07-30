@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -79,6 +81,9 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                     AppDestination.CaseList -> CaseListScreen(
                         state = state,
                         onQueryChange = viewModel::updateQuery,
+                        onSelectGroup = viewModel::selectGroup,
+                        onSelectTag = viewModel::selectTag,
+                        onSelectSort = viewModel::selectSortOrder,
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
                         onOpenCase = viewModel::openDetail,
@@ -95,6 +100,7 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         state = state,
                         onBack = viewModel::backToList,
                         onEditCase = viewModel::openEditCase,
+                        onEditMetadata = viewModel::openMetadata,
                         onAddRecord = { viewModel.openTextRecord() },
                         onEditRecord = viewModel::openTextRecord,
                         onAddEvent = { viewModel.openEvent() },
@@ -111,6 +117,13 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
                         onBack = viewModel::navigateBack,
                         onFormChange = viewModel::updateEditForm,
                         onSubmit = viewModel::saveEditedCase,
+                        modifier = Modifier.padding(padding),
+                    )
+                    is AppDestination.EditMetadata -> CaseMetadataEditorScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onDraftChange = viewModel::updateMetadataDraft,
+                        onSave = viewModel::saveMetadata,
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.EditTextRecord -> TextRecordEditorScreen(
@@ -142,6 +155,9 @@ fun NanfengBaziApp(viewModel: StageTwoViewModel) {
 private fun CaseListScreen(
     state: StageTwoUiState,
     onQueryChange: (String) -> Unit,
+    onSelectGroup: (String?) -> Unit,
+    onSelectTag: (String?) -> Unit,
+    onSelectSort: (CaseSortOrder) -> Unit,
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
     onOpenCase: (String) -> Unit,
@@ -181,8 +197,14 @@ private fun CaseListScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .testTag("case_search"),
-            label = { Text("搜索姓名或别名") },
+            label = { Text("搜索姓名、别名或四柱") },
             singleLine = true,
+        )
+        CaseListControls(
+            state = state,
+            onSelectGroup = onSelectGroup,
+            onSelectTag = onSelectTag,
+            onSelectSort = onSelectSort,
         )
         when {
             state.listLoading -> LoadingBox("正在读取命例…")
@@ -206,6 +228,103 @@ private fun CaseListScreen(
                     CaseSummaryCard(summary, onClick = { onOpenCase(summary.id) })
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CaseListControls(
+    state: StageTwoUiState,
+    onSelectGroup: (String?) -> Unit,
+    onSelectTag: (String?) -> Unit,
+    onSelectSort: (CaseSortOrder) -> Unit,
+) {
+    FilterRow(
+        title = "分组",
+        allSelected = state.selectedGroupId == null,
+        values = state.availableGroups.map { it.id to it.name },
+        selectedId = state.selectedGroupId,
+        onSelected = onSelectGroup,
+        testTagPrefix = "group_filter",
+    )
+    FilterRow(
+        title = "标签",
+        allSelected = state.selectedTagId == null,
+        values = state.availableTags.map { it.id to it.name },
+        selectedId = state.selectedTagId,
+        onSelected = onSelectTag,
+        testTagPrefix = "tag_filter",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("排序", style = MaterialTheme.typography.labelLarge)
+        CaseSortOrder.entries.forEach { sort ->
+            SelectionButton(
+                text = sort.displayName(),
+                selected = state.sortOrder == sort,
+                onClick = { onSelectSort(sort) },
+                tag = "sort_${sort.name.lowercase()}",
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterRow(
+    title: String,
+    allSelected: Boolean,
+    values: List<Pair<String, String>>,
+    selectedId: String?,
+    onSelected: (String?) -> Unit,
+    testTagPrefix: String,
+) {
+    if (values.isEmpty()) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.labelLarge)
+        SelectionButton(
+            text = "全部",
+            selected = allSelected,
+            onClick = { onSelected(null) },
+            tag = "${testTagPrefix}_all",
+        )
+        values.forEach { (id, name) ->
+            SelectionButton(
+                text = name,
+                selected = selectedId == id,
+                onClick = { onSelected(id) },
+                tag = "${testTagPrefix}_$id",
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    tag: String,
+) {
+    if (selected) {
+        Button(onClick = onClick, modifier = Modifier.testTag(tag)) {
+            Text(text)
+        }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = Modifier.testTag(tag)) {
+            Text(text)
         }
     }
 }
@@ -257,7 +376,11 @@ private fun CaseSummaryCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                summary.name.value ?: summary.alias,
+                buildString {
+                    if (summary.isPinned) append("📌 ")
+                    if (summary.isFavorite) append("★ ")
+                    append(summary.name.value ?: summary.alias)
+                },
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -278,6 +401,22 @@ private fun CaseSummaryCard(
                 modifier = Modifier.padding(top = 4.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (summary.groups.isNotEmpty()) {
+                Text(
+                    "分组：${summary.groups.joinToString("、") { it.name }}",
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (summary.tags.isNotEmpty()) {
+                Text(
+                    "标签：${summary.tags.joinToString("、") { it.name }}",
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -526,6 +665,7 @@ private fun CaseDetailScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
     onEditCase: () -> Unit,
+    onEditMetadata: () -> Unit,
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
     onAddEvent: () -> Unit,
@@ -555,6 +695,7 @@ private fun CaseDetailScreen(
             state.detail != null -> CaseDetailContent(
                 case = state.detail,
                 onEditCase = onEditCase,
+                onEditMetadata = onEditMetadata,
                 onAddRecord = onAddRecord,
                 onEditRecord = onEditRecord,
                 onAddEvent = onAddEvent,
@@ -568,6 +709,7 @@ private fun CaseDetailScreen(
 private fun CaseDetailContent(
     case: BaziCase,
     onEditCase: () -> Unit,
+    onEditMetadata: () -> Unit,
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
     onAddEvent: () -> Unit,
@@ -580,14 +722,40 @@ private fun CaseDetailContent(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Button(
-            onClick = onEditCase,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 14.dp)
-                .testTag("edit_case_button"),
+                .padding(bottom = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("编辑资料并重新排盘")
+            Button(
+                onClick = onEditCase,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("edit_case_button"),
+            ) {
+                Text("编辑资料")
+            }
+            OutlinedButton(
+                onClick = onEditMetadata,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("edit_metadata_button"),
+            ) {
+                Text("管理分类")
+            }
+        }
+        DetailSection("命例管理") {
+            DetailRow("收藏", if (case.isFavorite) "是" else "否")
+            DetailRow("置顶", if (case.isPinned) "是" else "否")
+            DetailRow(
+                "分组",
+                case.groups.joinToString("、") { it.name }.ifEmpty { "未设置" },
+            )
+            DetailRow(
+                "标签",
+                case.tags.joinToString("、") { it.name }.ifEmpty { "未设置" },
+            )
         }
         DetailSection("原始录入信息") {
             DetailRow("命例别名", case.alias)
@@ -863,3 +1031,10 @@ private fun CivilDateTime.display(): String =
     "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
 
 private fun FourPillars.display(): String = "$year $month $day $hour"
+
+private fun CaseSortOrder.displayName(): String = when (this) {
+    CaseSortOrder.LAST_VIEWED_DESC -> "最近查看"
+    CaseSortOrder.UPDATED_DESC -> "最近更新"
+    CaseSortOrder.CREATED_DESC -> "最近创建"
+    CaseSortOrder.BIRTH_ASC -> "出生时间"
+}

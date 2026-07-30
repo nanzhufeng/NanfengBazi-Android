@@ -4,9 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
+import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +25,7 @@ sealed interface AppDestination {
     data object CreateCase : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
     data class EditCase(val caseId: String) : AppDestination
+    data class EditMetadata(val caseId: String) : AppDestination
     data class EditTextRecord(
         val caseId: String,
         val recordId: String?,
@@ -45,6 +51,10 @@ class StageTwoNavigator {
 
     fun openEditCase(caseId: String): AppDestination {
         return push(AppDestination.EditCase(caseId))
+    }
+
+    fun openMetadata(caseId: String): AppDestination {
+        return push(AppDestination.EditMetadata(caseId))
     }
 
     fun openTextRecord(caseId: String, recordId: String?): AppDestination {
@@ -75,6 +85,11 @@ class StageTwoNavigator {
 data class StageTwoUiState(
     val destination: AppDestination = AppDestination.CaseList,
     val query: String = "",
+    val selectedGroupId: String? = null,
+    val selectedTagId: String? = null,
+    val sortOrder: CaseSortOrder = CaseSortOrder.UPDATED_DESC,
+    val availableGroups: List<CaseGroup> = emptyList(),
+    val availableTags: List<CaseTag> = emptyList(),
     val cases: List<CaseSummary> = emptyList(),
     val listLoading: Boolean = false,
     val listError: String? = null,
@@ -85,6 +100,7 @@ data class StageTwoUiState(
     val detailLoading: Boolean = false,
     val detailError: String? = null,
     val editForm: CaseFormState = CaseFormState(),
+    val metadataDraft: CaseMetadataDraft = CaseMetadataDraft(),
     val recordDraft: TextRecordDraft = TextRecordDraft(),
     val eventDraft: EventDraft = EventDraft(),
     val mutationSaving: Boolean = false,
@@ -96,9 +112,11 @@ class StageTwoViewModel(
     private val caseRepository: CaseRepository,
     private val createCase: CreateCaseUseCase,
     private val editCase: EditCaseUseCase,
+    private val caseMetadata: CaseMetadataUseCase = CaseMetadataUseCase(caseRepository),
     private val textRecords: TextRecordUseCase,
     private val caseEvents: CaseEventUseCase,
     private val navigator: StageTwoNavigator = StageTwoNavigator(),
+    private val clock: Clock = Clock.systemUTC(),
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(StageTwoUiState())
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
@@ -110,13 +128,34 @@ class StageTwoViewModel(
 
     fun refreshCases() {
         searchJob?.cancel()
-        val query = mutableState.value.query
+        val current = mutableState.value
+        val request = CaseSearchRequest(
+            query = current.query,
+            groupId = current.selectedGroupId,
+            tagId = current.selectedTagId,
+            sortOrder = current.sortOrder,
+        )
         searchJob = viewModelScope.launch {
             mutableState.update { it.copy(listLoading = true, listError = null) }
             try {
-                val cases = caseRepository.search(query)
+                val allCases = caseRepository.search()
+                val cases = if (request == CaseSearchRequest()) {
+                    allCases
+                } else {
+                    caseRepository.search(request)
+                }
                 mutableState.update {
-                    it.copy(cases = cases, listLoading = false, listError = null)
+                    it.copy(
+                        cases = cases,
+                        availableGroups = allCases.flatMap { item -> item.groups }
+                            .distinctBy { group -> group.id }
+                            .sortedBy { group -> group.name },
+                        availableTags = allCases.flatMap { item -> item.tags }
+                            .distinctBy { tag -> tag.id }
+                            .sortedBy { tag -> tag.name },
+                        listLoading = false,
+                        listError = null,
+                    )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -133,6 +172,27 @@ class StageTwoViewModel(
 
     fun updateQuery(query: String) {
         mutableState.update { it.copy(query = query) }
+        refreshCases()
+    }
+
+    fun selectGroup(groupId: String?) {
+        mutableState.update {
+            it.copy(selectedGroupId = groupId, listError = null)
+        }
+        refreshCases()
+    }
+
+    fun selectTag(tagId: String?) {
+        mutableState.update {
+            it.copy(selectedTagId = tagId, listError = null)
+        }
+        refreshCases()
+    }
+
+    fun selectSortOrder(sortOrder: CaseSortOrder) {
+        mutableState.update {
+            it.copy(sortOrder = sortOrder, listError = null)
+        }
         refreshCases()
     }
 
@@ -209,6 +269,17 @@ class StageTwoViewModel(
             )
         }
         viewModelScope.launch {
+            val viewWarning = try {
+                if (caseRepository.markViewed(caseId, clock.instant())) {
+                    null
+                } else {
+                    "详情已打开，但最近查看时间未能记录。"
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                "详情已打开，但数据库未能记录最近查看时间。"
+            }
             try {
                 val detail = caseRepository.findById(caseId)
                 mutableState.update {
@@ -218,7 +289,11 @@ class StageTwoViewModel(
                             detailError = "未找到该命例，记录可能已被移除。",
                         )
                     } else {
-                        it.copy(detail = detail, detailLoading = false)
+                        it.copy(
+                            detail = detail,
+                            detailLoading = false,
+                            message = viewWarning,
+                        )
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -249,6 +324,44 @@ class StageTwoViewModel(
                 editForm = form,
                 mutationError = null,
             )
+        }
+    }
+
+    fun openMetadata() {
+        val detail = mutableState.value.detail ?: return
+        mutableState.update {
+            it.copy(
+                destination = navigator.openMetadata(detail.id),
+                metadataDraft = CaseMetadataDraft(
+                    groupNames = detail.groups.joinToString("，") { group -> group.name },
+                    tagNames = detail.tags.joinToString("，") { tag -> tag.name },
+                    isFavorite = detail.isFavorite,
+                    isPinned = detail.isPinned,
+                ),
+                mutationError = null,
+            )
+        }
+    }
+
+    fun updateMetadataDraft(
+        transform: (CaseMetadataDraft) -> CaseMetadataDraft,
+    ) {
+        mutableState.update {
+            it.copy(
+                metadataDraft = transform(it.metadataDraft),
+                mutationError = null,
+            )
+        }
+    }
+
+    fun saveMetadata() {
+        val detail = mutableState.value.detail ?: return
+        if (mutableState.value.mutationSaving) return
+        val draft = mutableState.value.metadataDraft
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val result = caseMetadata.save(detail.id, detail.revision, draft)
+            finishMutation(result, detail.id, "命例分组、标签与标记已保存。")
         }
     }
 
@@ -472,6 +585,7 @@ class StageTwoViewModel(
                     baziEngine = container.baziEngine,
                     caseRepository = container.caseRepository,
                 ),
+                caseMetadata = CaseMetadataUseCase(container.caseRepository),
                 textRecords = TextRecordUseCase(container.caseRepository),
                 caseEvents = CaseEventUseCase(container.caseRepository),
             ) as T

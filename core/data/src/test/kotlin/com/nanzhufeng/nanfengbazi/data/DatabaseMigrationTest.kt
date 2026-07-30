@@ -17,7 +17,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
-    fun `v1 命例迁移到 v2 时补充来源类型且保留原值`() {
+    fun `v1 命例迁移到 v3 时补充管理字段且保留原值`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -56,17 +56,27 @@ class DatabaseMigrationTest {
             context,
             NanfengBaziDatabase::class.java,
             name,
-        ).addMigrations(DatabaseMigrations.MIGRATION_1_2)
+        ).addMigrations(
+            DatabaseMigrations.MIGRATION_1_2,
+            DatabaseMigrations.MIGRATION_2_3,
+        )
             .allowMainThreadQueries()
             .build()
         try {
             migrated.openHelper.readableDatabase.query(
-                "SELECT alias, sourceType, revision FROM cases WHERE id = 'legacy-case'",
+                """
+                SELECT alias, sourceType, revision, isFavorite, isPinned,
+                       lastViewedAtEpochMillis
+                FROM cases WHERE id = 'legacy-case'
+                """.trimIndent(),
             ).use { cursor ->
                 cursor.moveToFirst()
                 assertEquals("旧版脱敏案例", cursor.getString(0))
                 assertEquals("MANUAL", cursor.getString(1))
                 assertEquals(3L, cursor.getLong(2))
+                assertEquals(0, cursor.getInt(3))
+                assertEquals(0, cursor.getInt(4))
+                assertEquals(true, cursor.isNull(5))
             }
         } finally {
             migrated.close()

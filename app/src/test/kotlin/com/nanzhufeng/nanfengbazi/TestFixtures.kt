@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -79,6 +80,7 @@ internal class RecordingEngine : BaziEngine {
 internal class FakeCaseRepository : CaseRepository {
     val stored = linkedMapOf<String, BaziCase>()
     val searchQueries = mutableListOf<String>()
+    val searchRequests = mutableListOf<CaseSearchRequest>()
     var writeOverride: CaseWriteResult? = null
     var saveFailure: Exception? = null
     var readFailure: Exception? = null
@@ -107,14 +109,27 @@ internal class FakeCaseRepository : CaseRepository {
         return stored[id]
     }
 
-    override suspend fun search(query: String): List<CaseSummary> {
+    override suspend fun search(request: CaseSearchRequest): List<CaseSummary> {
         readFailure?.let { throw it }
+        val query = request.query
         searchQueries += query
+        searchRequests += request
         return stored.values
             .filter {
                 query.isBlank() ||
                     it.alias.contains(query) ||
-                    it.name.value?.contains(query) == true
+                    it.name.value?.contains(query) == true ||
+                    it.calculationSnapshots.any { snapshot ->
+                        val pillars = snapshot.result.fourPillars
+                        listOf(pillars.year, pillars.month, pillars.day, pillars.hour)
+                            .any { pillar -> pillar.contains(query) }
+                    }
+            }
+            .filter { item ->
+                request.groupId == null || item.groups.any { it.id == request.groupId }
+            }
+            .filter { item ->
+                request.tagId == null || item.tags.any { it.id == request.tagId }
             }
             .map { case ->
                 CaseSummary(
@@ -129,10 +144,23 @@ internal class FakeCaseRepository : CaseRepository {
                         .firstOrNull { it.adopted }
                         ?.result
                         ?.fourPillars,
+                    groups = case.groups,
+                    tags = case.tags,
+                    isFavorite = case.isFavorite,
+                    isPinned = case.isPinned,
+                    createdAt = case.createdAt,
                     updatedAt = case.updatedAt,
+                    lastViewedAt = case.lastViewedAt,
                     revision = case.revision,
                 )
             }
+    }
+
+    override suspend fun markViewed(caseId: String, viewedAt: Instant): Boolean {
+        readFailure?.let { throw it }
+        val current = stored[caseId] ?: return false
+        stored[caseId] = current.copy(lastViewedAt = viewedAt)
+        return true
     }
 }
 

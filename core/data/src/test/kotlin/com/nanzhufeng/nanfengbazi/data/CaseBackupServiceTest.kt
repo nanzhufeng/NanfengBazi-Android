@@ -4,11 +4,14 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
+import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
+import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -228,6 +231,43 @@ class CaseBackupServiceTest {
         }
     }
 
+    @Test
+    fun `Schema v2 备份缺少管理字段时仍可恢复到v3默认值`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-v2-")
+        val sourceAttachments = root.resolve("source")
+        val attachmentBytes = "脱敏截图夹具".encodeToByteArray()
+        val sourceFile = sourceAttachments.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, attachmentBytes)
+        val currentBackup = withDatabase { source ->
+            RoomCaseRepository(source).save(sampleCase(attachmentBytes), null)
+            ByteArrayOutputStream().also {
+                CaseBackupService(source, fixedClock).export(
+                    it,
+                    sourceAttachments,
+                    "0.2.0-test",
+                    BackupProtection.UnencryptedSensitiveDataConfirmed,
+                )
+            }.toByteArray()
+        }
+        val schemaTwoBackup = downgradeToSchemaTwo(currentBackup)
+
+        withDatabase { destination ->
+            val result = CaseBackupService(destination, fixedClock).restoreIntoEmptyStore(
+                ByteArrayInputStream(schemaTwoBackup),
+                root.resolve("work"),
+                root.resolve("destination"),
+            )
+
+            assertTrue(result is BackupRestoreResult.Success)
+            val restored = RoomCaseRepository(destination).findById("case-1")
+            assertNotNull(restored)
+            assertFalse(restored!!.isFavorite)
+            assertFalse(restored.isPinned)
+            assertNull(restored.lastViewedAt)
+        }
+    }
+
     private fun newDatabase(): NanfengBaziDatabase {
         val context = ApplicationProvider.getApplicationContext<Context>()
         return Room.inMemoryDatabaseBuilder(
@@ -268,5 +308,54 @@ class CaseBackupServiceTest {
             }
         }
         return output.toByteArray()
+    }
+
+    private fun downgradeToSchemaTwo(source: ByteArray): ByteArray {
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(ByteArrayInputStream(source)).use { input ->
+            while (true) {
+                val entry = input.nextEntry ?: break
+                entries[entry.name] = input.readBytes()
+                input.closeEntry()
+            }
+        }
+        val currentCases = entries.getValue("cases.json").decodeToString()
+        val schemaTwoCases = currentCases.replace(
+            ",\"isFavorite\":false,\"isPinned\":false,\"lastViewedAtEpochMillis\":null",
+            "",
+        ).encodeToByteArray()
+        check(!schemaTwoCases.decodeToString().contains("\"isFavorite\"")) {
+            "测试夹具没有成功移除 Schema v3 管理字段"
+        }
+        entries["cases.json"] = schemaTwoCases
+        val manifest = DomainJson.decodeFromString<BackupManifest>(
+            entries.getValue("manifest.json").decodeToString(),
+        )
+        entries["manifest.json"] = DomainJson.encodeToString(
+            BackupManifest.serializer(),
+            manifest.copy(
+                databaseSchemaVersion = 2,
+                files = manifest.files.map { file ->
+                    if (file.path == "cases.json") {
+                        BackupFileManifest(
+                            path = file.path,
+                            byteSize = schemaTwoCases.size.toLong(),
+                            sha256 = sha256(schemaTwoCases),
+                        )
+                    } else {
+                        file
+                    }
+                },
+            ),
+        ).encodeToByteArray()
+        return ByteArrayOutputStream().also { output ->
+            ZipOutputStream(output).use { zip ->
+                entries.forEach { (name, bytes) ->
+                    zip.putNextEntry(ZipEntry(name).apply { time = 0L })
+                    zip.write(bytes)
+                    zip.closeEntry()
+                }
+            }
+        }.toByteArray()
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +34,122 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CaseMetadataEditorScreen(
+    state: StageTwoUiState,
+    onBack: () -> Unit,
+    onDraftChange: ((CaseMetadataDraft) -> CaseMetadataDraft) -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("metadata_editor_screen"),
+    ) {
+        TopAppBar(
+            title = { Text("管理命例分类") },
+            navigationIcon = {
+                TextButton(onClick = onBack) {
+                    Text("返回")
+                }
+            },
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Text(
+                "分组和标签可用中文逗号、英文逗号或换行分隔；同名项会自动复用。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = state.metadataDraft.groupNames,
+                onValueChange = { value ->
+                    onDraftChange { it.copy(groupNames = value) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp)
+                    .testTag("metadata_groups"),
+                label = { Text("分组（最多 10 个）") },
+                enabled = !state.mutationSaving,
+                minLines = 2,
+            )
+            OutlinedTextField(
+                value = state.metadataDraft.tagNames,
+                onValueChange = { value ->
+                    onDraftChange { it.copy(tagNames = value) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .testTag("metadata_tags"),
+                label = { Text("标签（最多 10 个）") },
+                enabled = !state.mutationSaving,
+                minLines = 2,
+            )
+            MetadataCheckRow(
+                label = "收藏命例",
+                checked = state.metadataDraft.isFavorite,
+                enabled = !state.mutationSaving,
+                tag = "metadata_favorite",
+                onCheckedChange = { checked ->
+                    onDraftChange { it.copy(isFavorite = checked) }
+                },
+            )
+            MetadataCheckRow(
+                label = "置顶命例",
+                checked = state.metadataDraft.isPinned,
+                enabled = !state.mutationSaving,
+                tag = "metadata_pinned",
+                onCheckedChange = { checked ->
+                    onDraftChange { it.copy(isPinned = checked) }
+                },
+            )
+            MutationError(state.mutationError)
+            Button(
+                onClick = onSave,
+                enabled = !state.mutationSaving,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp, bottom = 24.dp)
+                    .height(52.dp)
+                    .testTag("save_metadata"),
+            ) {
+                SaveButtonContent(state.mutationSaving, "保存分类与标记")
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetadataCheckRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    tag: String,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, modifier = Modifier.padding(top = 12.dp))
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.testTag(tag),
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

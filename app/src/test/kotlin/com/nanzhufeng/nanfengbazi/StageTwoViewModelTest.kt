@@ -3,6 +3,9 @@ package com.nanzhufeng.nanfengbazi
 import java.time.Clock
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -14,6 +17,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -161,6 +165,53 @@ class StageTwoViewModelTest {
         assertNotNull(viewModel.state.value.mutationError)
     }
 
+    @Test
+    fun `分组标签筛选与排序通过结构化仓储请求刷新`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-filter"] = sampleStoredCase("case-filter").copy(
+                groups = listOf(CaseGroup("group-1", "家人")),
+                tags = listOf(CaseTag("tag-1", "已核对")),
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectGroup("group-1")
+        viewModel.selectTag("tag-1")
+        viewModel.selectSortOrder(CaseSortOrder.LAST_VIEWED_DESC)
+
+        val request = repository.searchRequests.last()
+        assertEquals("group-1", request.groupId)
+        assertEquals("tag-1", request.tagId)
+        assertEquals(CaseSortOrder.LAST_VIEWED_DESC, request.sortOrder)
+    }
+
+    @Test
+    fun `详情分类保存后返回详情并保留最近查看不提升修订`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-meta"] = sampleStoredCase("case-meta")
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail("case-meta")
+        assertEquals(1L, viewModel.state.value.detail?.revision)
+        assertNotNull(viewModel.state.value.detail?.lastViewedAt)
+        viewModel.openMetadata()
+        viewModel.updateMetadataDraft {
+            it.copy(groupNames = "家人", isFavorite = true)
+        }
+        viewModel.saveMetadata()
+
+        assertNull(viewModel.state.value.mutationError)
+        assertFalse(viewModel.state.value.mutationSaving)
+        assertEquals(
+            AppDestination.CaseDetail("case-meta"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(2L, viewModel.state.value.detail?.revision)
+        assertEquals("家人", viewModel.state.value.detail?.groups?.single()?.name)
+        assertEquals(true, viewModel.state.value.detail?.isFavorite)
+    }
+
     private fun createViewModel(repository: FakeCaseRepository): StageTwoViewModel {
         val engine = RecordingEngine()
         val ids = generateSequence(1) { it + 1 }
@@ -176,6 +227,11 @@ class StageTwoViewModelTest {
             ),
             editCase = EditCaseUseCase(
                 baziEngine = engine,
+                caseRepository = repository,
+                clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
+                idGenerator = IdGenerator { ids.next() },
+            ),
+            caseMetadata = CaseMetadataUseCase(
                 caseRepository = repository,
                 clock = Clock.fixed(FixedInstant, ZoneOffset.UTC),
                 idGenerator = IdGenerator { ids.next() },

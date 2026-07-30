@@ -11,21 +11,14 @@ internal interface CaseDao {
     @Query("SELECT * FROM cases WHERE id = :id")
     suspend fun findCase(id: String): CaseEntity?
 
-    @Query(
-        """
-        SELECT * FROM cases
-        WHERE alias LIKE '%' || :query || '%'
-           OR nameValue LIKE '%' || :query || '%'
-        ORDER BY updatedAtEpochMillis DESC, id ASC
-        """,
-    )
-    suspend fun searchCases(query: String): List<CaseEntity>
-
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCase(entity: CaseEntity)
 
     @Update
     suspend fun updateCase(entity: CaseEntity)
+
+    @Query("UPDATE cases SET lastViewedAtEpochMillis = :viewedAtEpochMillis WHERE id = :caseId")
+    suspend fun markViewed(caseId: String, viewedAtEpochMillis: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCalculationSnapshots(entities: List<CalculationSnapshotEntity>)
