@@ -19,7 +19,8 @@
 当前 UI 仅覆盖最小真实闭环。农历、地区/真太阳时、编辑删除、问真截图迁移、
 非空库冲突合并和密码加密尚未实现。详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
-[`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。
+[`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
+[`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。
 
 ## 本机构建
 
