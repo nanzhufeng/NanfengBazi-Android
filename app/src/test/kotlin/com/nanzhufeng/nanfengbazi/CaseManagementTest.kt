@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
@@ -171,6 +172,18 @@ class CaseManagementTest {
                 EventDraft("2025", "2", "29", rawText = "合成事件"),
             ),
         )
+        assertEquals(
+            CaseMutationResult.ValidationFailed("事件标题不能超过 80 个字符。"),
+            events.save(
+                "case-invalid",
+                1,
+                null,
+                EventDraft(
+                    rawText = "合成事件",
+                    title = "题".repeat(81),
+                ),
+            ),
+        )
         assertTrue(repository.stored.getValue("case-invalid").events.isEmpty())
     }
 
@@ -228,13 +241,23 @@ class CaseManagementTest {
             "case-event",
             2,
             null,
-            EventDraft("2024", "6", "1", "已确认", "有日期的合成事件"),
+            EventDraft(
+                year = "2024",
+                month = "6",
+                day = "1",
+                status = "已确认",
+                rawText = "有日期的合成事件",
+                title = "事业阶段变化",
+                category = CaseEventCategory.CAREER,
+            ),
         )
 
         val events = repository.stored.getValue("case-event").events
         assertEquals(EventDatePrecision.UNKNOWN, events[0].datePrecision)
         assertEquals(EventDatePrecision.DAY, events[1].datePrecision)
         assertEquals("已确认", events[1].status)
+        assertEquals("事业阶段变化", events[1].title)
+        assertEquals(CaseEventCategory.CAREER, events[1].category)
         assertEquals(
             listOf(1, 1),
             repository.stored.getValue("case-event").eventRevisions.map { it.version },

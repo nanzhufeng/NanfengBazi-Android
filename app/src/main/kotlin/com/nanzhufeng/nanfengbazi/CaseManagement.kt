@@ -11,6 +11,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
@@ -482,9 +483,13 @@ data class EventDraft(
     val day: String = "",
     val status: String = "",
     val rawText: String = "",
+    val title: String = "",
+    val category: CaseEventCategory = CaseEventCategory.GENERAL,
 )
 
 private data class ValidEventDraft(
+    val title: String?,
+    val category: CaseEventCategory,
     val year: Int?,
     val month: Int?,
     val day: Int?,
@@ -525,6 +530,8 @@ class CaseEventUseCase(
         val nextEvent = if (currentEvent == null) {
             CaseEvent(
                 id = idGenerator.nextId(),
+                title = valid.title,
+                category = valid.category,
                 year = valid.year,
                 month = valid.month,
                 day = valid.day,
@@ -535,6 +542,8 @@ class CaseEventUseCase(
             )
         } else {
             currentEvent.copy(
+                title = valid.title,
+                category = valid.category,
                 year = valid.year,
                 month = valid.month,
                 day = valid.day,
@@ -612,6 +621,12 @@ class CaseEventUseCase(
         if (rawText.isEmpty()) {
             return EventValidation.Invalid("事件内容不能为空。")
         }
+        val title = draft.title.trim().takeIf { it.isNotEmpty() }
+        if (title != null && title.length > MAX_EVENT_TITLE_LENGTH) {
+            return EventValidation.Invalid(
+                "事件标题不能超过 $MAX_EVENT_TITLE_LENGTH 个字符。",
+            )
+        }
         val year = draft.year.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
         val month = draft.month.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
         val day = draft.day.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
@@ -648,6 +663,8 @@ class CaseEventUseCase(
         }
         return EventValidation.Valid(
             ValidEventDraft(
+                title = title,
+                category = draft.category,
                 year = year,
                 month = month,
                 day = day,
@@ -656,6 +673,10 @@ class CaseEventUseCase(
                 rawText = rawText,
             ),
         )
+    }
+
+    private companion object {
+        const val MAX_EVENT_TITLE_LENGTH = 80
     }
 }
 

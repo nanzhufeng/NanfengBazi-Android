@@ -1,15 +1,18 @@
 package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.semantics.SemanticsActions
 import org.junit.Rule
 import org.junit.Test
 
@@ -56,6 +59,10 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("别名：$alias").assertIsDisplayed().performClick()
 
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("原始录入信息"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("原始录入信息").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("计算结果").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Tyme4j").performScrollTo().assertIsDisplayed()
@@ -154,14 +161,36 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasTestTag("event_editor_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("event_year").performTextInput("2024")
-        composeRule.onNodeWithTag("event_content").performTextInput("Stage3 合成关键事件")
-        composeRule.onNodeWithTag("save_event").performScrollTo().performClick()
+        composeRule.onNodeWithTag("event_title").performTextInput("Stage3 合成事件标题")
+        composeRule.onNodeWithText("事业").performClick()
+        composeRule.onNodeWithTag("event_year").performScrollTo().performTextInput("2024")
+        composeRule.onNodeWithTag("event_content")
+            .performScrollTo()
+            .performTextInput("Stage3 合成关键事件")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("save_event")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))
-                .fetchSemanticsNodes().isNotEmpty()
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("mutation_error"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        val eventErrors = composeRule.onAllNodes(hasTestTag("mutation_error"))
+            .fetchSemanticsNodes()
+        check(eventErrors.isEmpty()) {
+            "事件保存失败：${eventErrors.joinToString { it.config.toString() }}"
         }
         composeRule.onAllNodes(hasText("Stage3 合成关键事件"))[0]
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onAllNodes(hasText("Stage3 合成事件标题"))[0]
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onAllNodes(hasText("2024年 · 事业"))[0]
             .performScrollTo()
             .assertIsDisplayed()
 

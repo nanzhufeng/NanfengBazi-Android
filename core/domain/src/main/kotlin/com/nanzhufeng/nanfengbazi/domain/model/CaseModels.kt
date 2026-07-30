@@ -129,8 +129,22 @@ enum class EventDatePrecision {
 }
 
 @Serializable
+enum class CaseEventCategory {
+    GENERAL,
+    EDUCATION,
+    CAREER,
+    WEALTH,
+    RELATIONSHIP,
+    FAMILY,
+    HEALTH,
+    OTHER,
+}
+
+@Serializable
 data class CaseEvent(
     val id: String,
+    val title: String? = null,
+    val category: CaseEventCategory = CaseEventCategory.GENERAL,
     val year: Int? = null,
     val month: Int? = null,
     val day: Int? = null,
@@ -145,6 +159,7 @@ data class CaseEvent(
 ) {
     init {
         require(id.isNotBlank()) { "事件 id 不能为空" }
+        require(title == null || title.isNotBlank()) { "事件标题不能为空白文本" }
         require(rawText.isNotBlank()) { "事件原文不能为空" }
         month?.let { require(it in 1..12) { "事件月份超出范围" } }
         day?.let { require(it in 1..31) { "事件日期超出范围" } }

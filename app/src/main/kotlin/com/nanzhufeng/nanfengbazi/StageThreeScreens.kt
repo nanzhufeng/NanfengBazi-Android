@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -405,13 +406,75 @@ internal fun EventEditorScreen(
         )
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Text(
                 "事件日期可以留空；只填写年份或年月也会保留对应精度。",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = state.eventDraft.title,
+                onValueChange = { value ->
+                    onDraftChange { it.copy(title = value) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .testTag("event_title"),
+                label = { Text("事件标题（可选，最多 80 字）") },
+                singleLine = true,
+                enabled = !state.mutationSaving,
+            )
+            Text(
+                "事件分类",
+                modifier = Modifier.padding(top = 14.dp),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            EventCategoryRow(
+                categories = listOf(
+                    CaseEventCategory.GENERAL,
+                    CaseEventCategory.EDUCATION,
+                ),
+                selected = state.eventDraft.category,
+                enabled = !state.mutationSaving,
+                onSelected = { category ->
+                    onDraftChange { it.copy(category = category) }
+                },
+            )
+            EventCategoryRow(
+                categories = listOf(
+                    CaseEventCategory.CAREER,
+                    CaseEventCategory.WEALTH,
+                ),
+                selected = state.eventDraft.category,
+                enabled = !state.mutationSaving,
+                onSelected = { category ->
+                    onDraftChange { it.copy(category = category) }
+                },
+            )
+            EventCategoryRow(
+                categories = listOf(
+                    CaseEventCategory.RELATIONSHIP,
+                    CaseEventCategory.FAMILY,
+                ),
+                selected = state.eventDraft.category,
+                enabled = !state.mutationSaving,
+                onSelected = { category ->
+                    onDraftChange { it.copy(category = category) }
+                },
+            )
+            EventCategoryRow(
+                categories = listOf(
+                    CaseEventCategory.HEALTH,
+                    CaseEventCategory.OTHER,
+                ),
+                selected = state.eventDraft.category,
+                enabled = !state.mutationSaving,
+                onSelected = { category ->
+                    onDraftChange { it.copy(category = category) }
+                },
             )
             Row(
                 modifier = Modifier
@@ -477,17 +540,6 @@ internal fun EventEditorScreen(
                 enabled = !state.mutationSaving,
             )
             MutationError(state.mutationError)
-            Button(
-                onClick = { onSave(destination.eventId) },
-                enabled = !state.mutationSaving,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp)
-                    .height(52.dp)
-                    .testTag("save_event"),
-            ) {
-                SaveButtonContent(state.mutationSaving, "保存事件")
-            }
             if (destination.eventId != null) {
                 OutlinedButton(
                     onClick = { confirmDelete = true },
@@ -500,6 +552,18 @@ internal fun EventEditorScreen(
                     Text("删除这个事件", color = MaterialTheme.colorScheme.error)
                 }
             }
+            Spacer(Modifier.height(12.dp))
+        }
+        Button(
+            onClick = { onSave(destination.eventId) },
+            enabled = !state.mutationSaving,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .height(52.dp)
+                .testTag("save_event"),
+        ) {
+            SaveButtonContent(state.mutationSaving, "保存事件")
         }
     }
     if (confirmDelete && destination.eventId != null) {
@@ -512,6 +576,41 @@ internal fun EventEditorScreen(
                 onDelete(destination.eventId)
             },
         )
+    }
+}
+
+@Composable
+private fun EventCategoryRow(
+    categories: List<CaseEventCategory>,
+    selected: CaseEventCategory,
+    enabled: Boolean,
+    onSelected: (CaseEventCategory) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        categories.forEach { category ->
+            if (category == selected) {
+                Button(
+                    onClick = { onSelected(category) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(category.displayName())
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { onSelected(category) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(category.displayName())
+                }
+            }
+        }
     }
 }
 

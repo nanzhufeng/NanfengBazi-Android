@@ -69,7 +69,7 @@
 |---|---|---|---|
 | 编辑身份与出生资料 | 已接通，保存前按期望修订号读取并重新计算 | `EditCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 旧修订在重算前拒绝；旧快照保留、新快照采用 |
 | 文本记录增改删 | 已支持笔记、反馈、师傅点评、统一分类分析及版本历史 | `TextRecordUseCase` → `CaseRepository.save` | 身份、创建时间、分类、顺序和新增/修改/删除历史 |
-| 关键事件增改删 | 已支持未知/年/月/日精度、状态及版本历史 | `CaseEventUseCase` → `CaseRepository.save` | 日期校验、精度、顺序和旧数据基线补建 |
+| 关键事件增改删 | 已支持可选标题、八类类别、未知/年/月/日精度、状态及版本历史 | `CaseEventUseCase` → `CaseRepository.save` | 标题、类别、日期校验、精度、顺序和旧数据基线补建 |
 | 整例删除 | 已由后续生命周期增量补齐软删除与恢复 | `CaseLifecycleUseCase` | 禁止 DAO 物理删除 |
 | 备份/恢复 | 精确保真通道 | `CaseBackupService` | 新增记录和事件仍由 Stage 1 全量回归覆盖 |
 

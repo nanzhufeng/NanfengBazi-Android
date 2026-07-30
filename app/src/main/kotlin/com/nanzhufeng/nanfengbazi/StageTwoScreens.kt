@@ -55,6 +55,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
@@ -1087,10 +1088,17 @@ private fun CaseDetailContent(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                event.displayDate(),
+                                "${event.displayDate()} · ${event.category.displayName()}",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+                            event.title?.let { title ->
+                                Text(
+                                    title,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                            }
                             Text(
                                 event.rawText,
                                 modifier = Modifier.padding(top = 4.dp),
@@ -1167,10 +1175,18 @@ private fun CaseDetailContent(
                             Text(
                                 "事件 · ${revision.changeType.displayName()} · " +
                                     "v${revision.version} · " +
-                                    revision.snapshot.displayDate(),
+                                    revision.snapshot.displayDate() + " · " +
+                                    revision.snapshot.category.displayName(),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+                            revision.snapshot.title?.let { title ->
+                                Text(
+                                    title,
+                                    modifier = Modifier.padding(top = 3.dp),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                            }
                             Text(
                                 revision.snapshot.rawText,
                                 modifier = Modifier.padding(top = 3.dp),
@@ -1306,6 +1322,17 @@ internal fun AnalysisCategory.displayName(): String = when (this) {
     AnalysisCategory.EDUCATION -> "学业"
     AnalysisCategory.FAMILY -> "家庭"
     AnalysisCategory.OTHER -> "其他"
+}
+
+internal fun CaseEventCategory.displayName(): String = when (this) {
+    CaseEventCategory.GENERAL -> "综合"
+    CaseEventCategory.EDUCATION -> "学业"
+    CaseEventCategory.CAREER -> "事业"
+    CaseEventCategory.WEALTH -> "财运"
+    CaseEventCategory.RELATIONSHIP -> "感情"
+    CaseEventCategory.FAMILY -> "家庭"
+    CaseEventCategory.HEALTH -> "健康"
+    CaseEventCategory.OTHER -> "其他"
 }
 
 private fun RecordChangeType.displayName(): String = when (this) {

@@ -8,6 +8,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -131,12 +132,24 @@ class StageTwoViewModelTest {
 
         viewModel.openEvent()
         viewModel.updateEventDraft {
-            EventDraft("2024", "6", "", "待核对", "合成关键事件")
+            EventDraft(
+                year = "2024",
+                month = "6",
+                status = "待核对",
+                rawText = "合成关键事件",
+                title = "合成事件标题",
+                category = CaseEventCategory.EDUCATION,
+            )
         }
         viewModel.saveEvent(null)
 
         assertEquals(1, viewModel.state.value.detail?.events?.size)
         assertEquals(1, viewModel.state.value.detail?.eventRevisions?.size)
+        assertEquals("合成事件标题", viewModel.state.value.detail?.events?.single()?.title)
+        assertEquals(
+            CaseEventCategory.EDUCATION,
+            viewModel.state.value.detail?.events?.single()?.category,
+        )
         assertEquals(3L, viewModel.state.value.detail?.revision)
     }
 

@@ -501,6 +501,8 @@ class StageTwoViewModel(
                         day = event.day?.toString().orEmpty(),
                         status = event.status.orEmpty(),
                         rawText = event.rawText,
+                        title = event.title.orEmpty(),
+                        category = event.category,
                     )
                 },
                 mutationError = null,
