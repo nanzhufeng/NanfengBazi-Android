@@ -241,6 +241,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     自坐、空亡、纳音和神煞证据；支持整行四值、无空格紧排及按列多行三种 OCR 形态，
     每项保留原图框且默认不采用，不反向覆盖本地计算结果。bundled ML Kit 合成排盘页
     分类与不少于 16 项分柱证据设备专项 1/1 通过；
+  - alpha47 在每个待核对命例顶部汇总图片失败、未知页面、必填字段缺失/无法规范化、
+    低字段置信度和低多图归组置信度；问题只影响对应候选，不阻塞同批其他命例。完整
+    “分享—OCR—问题摘要—原图定位—修正—提交”设备流程 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -248,17 +251,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha46-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha47-debug.apk`
 
-- 大小：55,712,755 bytes
-- SHA-256：`174b8b374eb13911d0d228185da9b1243ea8f51db1fc488b7801050bb69048bd`
+- 大小：55,729,139 bytes
+- SHA-256：`a48b77570bd54b0297000ee96799a9f5ca1ccc4121ac241304ed5ed6bae56918`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha46-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha47-release-unsigned.apk`
 
-- 大小：51,990,570 bytes
-- SHA-256：`c0b0e8322eae9b5a4e82f09133cfad704c6e1df066988bc0048007aad182c2dd`
+- 大小：52,006,954 bytes
+- SHA-256：`5fc7e36a76564ea4feda736c9acee41b2a262ee7061734d046a8f952745c248b`
 
 ## 当前限制与风险
 
@@ -269,7 +272,7 @@ Debug 验收构建：
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
   及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
-  反馈年份事件候选与 P1 基本排盘分柱证据也已接入逐项确认；逐命例候选失败结果、
+  反馈年份事件候选、P1 基本排盘分柱证据和逐命例候选问题摘要也已接入核对链路；
   超 10 分钟前台任务模式和基本资料非核心衍生字段尚未实现。基本排盘真实问真截图的
   OCR 分块与字段准确率仍待用户批准样本校准。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
@@ -282,8 +285,8 @@ Debug 验收构建：
 
 继续 Stage 5A，优先顺序：
 
-1. 增加逐命例候选失败摘要，避免批次错误只停留在字段层；
-2. 继续 TalkBack、2.0 倍字体与真实目标视口 QA；
+1. 继续 TalkBack、2.0 倍字体与真实目标视口 QA；
+2. 评估超 10 分钟识别任务的前台模式；
 3. 在用户授权真实问真样本后，校准基本排盘分块与字段准确率。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

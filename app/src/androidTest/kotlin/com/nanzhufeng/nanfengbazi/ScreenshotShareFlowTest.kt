@@ -176,6 +176,17 @@ class ScreenshotShareFlowTest {
         }
         composeRule
             .onNodeWithTag("screenshot_review_list")
+            .performScrollToNode(
+                hasTestTag("candidate_blocking_issues_$incompleteCandidateId"),
+            )
+        composeRule
+            .onNodeWithTag("candidate_blocking_issues_$incompleteCandidateId")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithText("• 四柱无法规范化，请人工修正")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("screenshot_review_list")
             .performScrollToNode(hasTestTag("screenshot_candidate_$incompleteCandidateId"))
         composeRule
             .onNodeWithTag("screenshot_review_list")

@@ -2241,6 +2241,47 @@ private fun ScreenshotImportReviewScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (candidate.blockingIssues.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("candidate_blocking_issues_${candidate.id}"),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        "候选问题摘要",
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                    candidate.blockingIssues.forEach { issue ->
+                                        Text(
+                                            "• $issue",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (candidate.reviewWarnings.isNotEmpty()) {
+                            Text(
+                                candidate.reviewWarnings.joinToString(
+                                    separator = "\n",
+                                    transform = { "提醒：$it" },
+                                ),
+                                modifier = Modifier.testTag(
+                                    "candidate_review_warnings_${candidate.id}",
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
                         OutlinedButton(
                             onClick = {
                                 onSetCandidateAdopted(candidate.id, !candidate.fullyAdopted)

@@ -76,6 +76,8 @@ data class ScreenshotCandidateReviewUi(
     val fullyAdopted: Boolean,
     val readyToCommit: Boolean,
     val missingRequiredFields: List<String>,
+    val blockingIssues: List<String>,
+    val reviewWarnings: List<String>,
     val targetCaseId: String?,
 )
 
@@ -695,8 +697,14 @@ class ScreenshotImportViewModel(
         val fieldsById = extractedFields.associateBy(CaseFieldEvidence::id)
         val longTextsById = extractedLongTexts.associateBy(ImportedLongTextEvidence::id)
         val imagesById = images.associateBy { it.id }
+        val imageFailuresById = imageFailures.associateBy { it.imageId }
         return caseCandidates.map { candidate ->
-            candidate.toReviewUi(fieldsById, longTextsById, imagesById)
+            candidate.toReviewUi(
+                fieldsById = fieldsById,
+                longTextsById = longTextsById,
+                imagesById = imagesById,
+                imageFailuresById = imageFailuresById,
+            )
         }
     }
 
@@ -704,11 +712,61 @@ class ScreenshotImportViewModel(
         fieldsById: Map<String, CaseFieldEvidence>,
         longTextsById: Map<String, ImportedLongTextEvidence>,
         imagesById: Map<String, com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef>,
-    ) = ScreenshotCandidateReviewUi(
-        id = id,
-        alias = suggestedAlias ?: "未命名候选",
-        imageCount = imageIds.size,
-        fields = fieldEvidenceIds.mapNotNull(fieldsById::get).map { field ->
+        imageFailuresById:
+            Map<String, com.nanzhufeng.nanfengbazi.domain.model.ImportImageFailure>,
+    ): ScreenshotCandidateReviewUi {
+        val candidateFields = fieldEvidenceIds.mapNotNull(fieldsById::get)
+        val candidateLongTexts = longTextEvidenceIds.mapNotNull(longTextsById::get)
+        val missingRequiredFieldKeys = REQUIRED_COMMIT_FIELD_KEYS.filter { requiredKey ->
+            candidateFields.none { field ->
+                field.fieldKey == requiredKey && field.adoptedValue != null
+            }
+        }
+        val blockingIssues = buildList {
+            imageIds.mapNotNull(imageFailuresById::get).forEach { failure ->
+                val imageName = imagesById[failure.imageId]?.originalFileName ?: "未知图片"
+                add("$imageName：${failure.userMessage}")
+            }
+            imageIds.mapNotNull(imagesById::get)
+                .filter { it.pageType == WenzhenPageType.UNKNOWN }
+                .forEach { image ->
+                    add("${image.originalFileName}：未识别出问真页面类型")
+                }
+            REQUIRED_COMMIT_FIELD_KEYS.forEach { requiredKey ->
+                val matchingFields = candidateFields.filter { it.fieldKey == requiredKey }
+                when {
+                    matchingFields.isEmpty() ->
+                        add("未识别出${requiredKey.displayLabel()}")
+                    matchingFields.all { it.normalizedValue == null } ->
+                        add("${requiredKey.displayLabel()}无法规范化，请人工修正")
+                }
+            }
+            if (candidateFields.isEmpty() && candidateLongTexts.isEmpty() && isEmpty()) {
+                add("关联图片没有提取出可核对内容")
+            }
+        }.distinct()
+        val reviewWarnings = buildList {
+            val lowConfidenceCount = candidateFields.count { field ->
+                listOfNotNull(
+                    field.ocrConfidence,
+                    field.parserConfidence,
+                    field.consistencyConfidence,
+                ).minOrNull()?.let { it < LOW_CONFIDENCE_THRESHOLD } == true
+            }
+            if (lowConfidenceCount > 0) {
+                add("$lowConfidenceCount 项字段识别置信度较低，请重点核对")
+            }
+            if (imageIds.size > 1 &&
+                groupingConfidence?.let { it < LOW_GROUPING_CONFIDENCE_THRESHOLD } == true
+            ) {
+                add("多图归组置信度较低，请确认这些图片属于同一命例")
+            }
+        }
+        return ScreenshotCandidateReviewUi(
+            id = id,
+            alias = suggestedAlias ?: "未命名候选",
+            imageCount = imageIds.size,
+            fields = candidateFields.map { field ->
             ScreenshotFieldReviewUi(
                 id = field.id,
                 label = field.fieldKey.displayLabel(),
@@ -738,7 +796,7 @@ class ScreenshotImportViewModel(
                 userEdited = field.userEdited,
             )
         },
-        longTexts = longTextEvidenceIds.mapNotNull(longTextsById::get).map { text ->
+        longTexts = candidateLongTexts.map { text ->
             ScreenshotLongTextReviewUi(
                 id = text.id,
                 label = when (text.type) {
@@ -753,31 +811,21 @@ class ScreenshotImportViewModel(
                     ?: "未知来源图片",
             )
         },
-        fullyAdopted = fieldEvidenceIds
-            .mapNotNull(fieldsById::get)
+        fullyAdopted = candidateFields
             .takeIf { it.isNotEmpty() }
             ?.all { it.adoptedValue != null } == true &&
-            longTextEvidenceIds
-                .mapNotNull(longTextsById::get)
-                .all(ImportedLongTextEvidence::adopted),
+            candidateLongTexts.all(ImportedLongTextEvidence::adopted),
         readyToCommit = REQUIRED_COMMIT_FIELD_KEYS.all { requiredKey ->
-            fieldEvidenceIds
-                .mapNotNull(fieldsById::get)
-                .any { field ->
-                    field.fieldKey == requiredKey && field.adoptedValue != null
-                }
-        },
-        missingRequiredFields = REQUIRED_COMMIT_FIELD_KEYS.mapNotNull { requiredKey ->
-            requiredKey.displayLabel().takeUnless {
-                fieldEvidenceIds
-                    .mapNotNull(fieldsById::get)
-                    .any { field ->
-                        field.fieldKey == requiredKey && field.adoptedValue != null
-                    }
+            candidateFields.any { field ->
+                field.fieldKey == requiredKey && field.adoptedValue != null
             }
         },
+        missingRequiredFields = missingRequiredFieldKeys.map { it.displayLabel() },
+        blockingIssues = blockingIssues,
+        reviewWarnings = reviewWarnings,
         targetCaseId = targetCaseId,
     )
+    }
 
     private suspend fun importSessionRepositorySession(sessionId: String): ImportSession? =
         repository.findById(sessionId)
@@ -948,5 +996,7 @@ class ScreenshotImportViewModel(
             "nayin" to "纳音",
             "spirits" to "神煞",
         )
+        const val LOW_CONFIDENCE_THRESHOLD = 0.7f
+        const val LOW_GROUPING_CONFIDENCE_THRESHOLD = 0.75f
     }
 }

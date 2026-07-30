@@ -113,7 +113,7 @@ class ScreenshotImportViewModelTest {
             fieldKey = "identity.alias",
             rawText = "案例甲",
             normalizedValue = TypedFieldValue.Text("案例甲"),
-            parserConfidence = 0.95f,
+            parserConfidence = 0.65f,
             parserRuleId = "fixture",
             userEdited = false,
             createdAt = now,
@@ -176,6 +176,20 @@ class ScreenshotImportViewModelTest {
         }
         assertEquals(null, initial.reviewCandidates.single().fields.single().adoptedValue)
         assertTrue(!initial.reviewCandidates.single().longTexts.single().adopted)
+        assertTrue(
+            initial.reviewCandidates.single().blockingIssues.containsAll(
+                listOf(
+                    "fixture.png：未识别出问真页面类型",
+                    "未识别出性别",
+                    "未识别出公历生日",
+                    "未识别出四柱",
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("1 项字段识别置信度较低，请重点核对"),
+            initial.reviewCandidates.single().reviewWarnings,
+        )
 
         viewModel.setFieldAdopted("candidate-1", "field-1", true)
         viewModel.setLongTextAdopted("candidate-1", "text-1", true)
