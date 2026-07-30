@@ -79,6 +79,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
@@ -97,6 +98,10 @@ import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 @Composable
 fun NanfengBaziApp(
     viewModel: StageTwoViewModel,
+    onImportScreenshots: () -> Unit = {},
+    screenshotImportState: ScreenshotImportUiState = ScreenshotImportUiState(),
+    onRetryScreenshotImport: () -> Unit = {},
+    onConsumeScreenshotImportMessage: () -> Unit = {},
     onCreateSingleCaseDocument: (String) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
@@ -122,6 +127,12 @@ fun NanfengBaziApp(
             viewModel.consumeMessage()
         }
     }
+    LaunchedEffect(screenshotImportState.message) {
+        screenshotImportState.message?.let {
+            snackbarHostState.showSnackbar(it)
+            onConsumeScreenshotImportMessage()
+        }
+    }
     BackHandler(enabled = state.destination != AppDestination.CaseList) {
         viewModel.navigateBack()
     }
@@ -140,6 +151,9 @@ fun NanfengBaziApp(
                         onSelectVisibility = viewModel::selectVisibility,
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
+                        onImportScreenshots = onImportScreenshots,
+                        screenshotImportState = screenshotImportState,
+                        onRetryScreenshotImport = onRetryScreenshotImport,
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onPreviewFullBackup = onOpenFullBackupDocument,
@@ -1409,6 +1423,9 @@ private fun CaseListScreen(
     onSelectVisibility: (CaseVisibility) -> Unit,
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
+    onImportScreenshots: () -> Unit,
+    screenshotImportState: ScreenshotImportUiState,
+    onRetryScreenshotImport: () -> Unit,
     onImportSingleCase: () -> Unit,
     onExportFullBackup: () -> Unit,
     onPreviewFullBackup: () -> Unit,
@@ -1453,6 +1470,13 @@ private fun CaseListScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedButton(
+                onClick = onImportScreenshots,
+                enabled = !screenshotImportState.busy,
+                modifier = Modifier.testTag("import_screenshots_button"),
+            ) {
+                Text(if (screenshotImportState.busy) "识别中…" else "截图建档")
+            }
+            OutlinedButton(
                 onClick = onImportSingleCase,
                 enabled = !state.singleCaseExchangeBusy && !state.fullBackupBusy,
                 modifier = Modifier.testTag("import_single_case_button"),
@@ -1474,6 +1498,10 @@ private fun CaseListScreen(
                 Text("检查完整备份")
             }
         }
+        ScreenshotImportSummary(
+            state = screenshotImportState,
+            onRetry = onRetryScreenshotImport,
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1533,6 +1561,86 @@ private fun CaseListScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ScreenshotImportSummary(
+    state: ScreenshotImportUiState,
+    onRetry: () -> Unit,
+) {
+    if (
+        !state.busy &&
+        !state.needsReview &&
+        !state.canRetry &&
+        state.recoverableSessionCount == 0
+    ) {
+        return
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .testTag("screenshot_import_summary"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = when {
+                    state.busy -> "截图正在本机处理"
+                    state.needsReview -> "截图识别结果待核对"
+                    state.canRetry -> "截图识别可重试"
+                    else -> "存在未完成的截图导入"
+                },
+                fontWeight = FontWeight.SemiBold,
+            )
+            state.progressText?.let { Text(it) }
+            val facts = buildList {
+                if (state.completedImageCount > 0) {
+                    add("原图 ${state.completedImageCount} 张")
+                }
+                if (state.classifiedPageTypes.isNotEmpty()) {
+                    add(
+                        state.classifiedPageTypes
+                            .groupingBy(WenzhenPageType::displayName)
+                            .eachCount()
+                            .entries
+                            .joinToString("、") { (name, count) -> "$name $count 张" },
+                    )
+                }
+                if (state.recoverableSessionCount > 0) {
+                    add("可恢复 ${state.recoverableSessionCount} 个")
+                }
+            }
+            if (facts.isNotEmpty()) Text(facts.joinToString(" · "))
+            if (state.needsReview) {
+                Text("当前结果只保存在导入会话中，尚未写入正式命例。")
+            }
+            if (state.canRetry && !state.busy) {
+                OutlinedButton(
+                    onClick = onRetry,
+                    modifier = Modifier.testTag("retry_screenshot_import_button"),
+                ) {
+                    Text("复用原图重试")
+                }
+            }
+        }
+    }
+}
+
+private fun WenzhenPageType.displayName(): String = when (this) {
+    WenzhenPageType.HOME_INPUT -> "首页排盘"
+    WenzhenPageType.USER_LIST -> "用户列表"
+    WenzhenPageType.BASIC_INFO -> "基本信息"
+    WenzhenPageType.BASIC_CHART -> "基本排盘"
+    WenzhenPageType.PROFESSIONAL_CHART -> "专业细盘"
+    WenzhenPageType.COMMENTARY -> "师傅点评"
+    WenzhenPageType.FEEDBACK -> "命主反馈"
+    WenzhenPageType.UNKNOWN -> "待识别"
 }
 
 @Composable

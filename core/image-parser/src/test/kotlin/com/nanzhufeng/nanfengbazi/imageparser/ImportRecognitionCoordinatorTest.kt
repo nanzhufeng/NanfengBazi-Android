@@ -67,6 +67,33 @@ class ImportRecognitionCoordinatorTest {
         assertNotNull(recoveredSession.ocrDocuments.single())
     }
 
+    @Test
+    fun `进程在归组阶段中断后可直接恢复到待核对而不重复 OCR`() = runTest {
+        val bytes = byteArrayOf(1, 2, 3)
+        val document = OcrDocument(
+            imageId = "image-1",
+            rawText = "问真八字 用户列表 筛选 阳历1992年8月24日",
+            blocks = emptyList(),
+            engineId = "fixture-offline",
+            engineVersion = "1",
+            recognizedAt = Instant.parse("2026-01-01T00:01:00Z"),
+        )
+        val interrupted = fixture(bytes.size.toLong()).copy(
+            status = ImportStatus.GROUPING_CASES,
+            ocrDocuments = listOf(document),
+        )
+        val repository = InMemoryImportSessionRepository(interrupted)
+        val coordinator = coordinator(repository, bytes, FixtureOcrEngine(failFirst = true))
+
+        val result = coordinator.recognize("session-1")
+
+        assertTrue(result is RecognitionRunResult.NeedsReview)
+        assertEquals(
+            ImportStatus.NEEDS_REVIEW,
+            (result as RecognitionRunResult.NeedsReview).session.status,
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `在线 OCR 引擎不能接入图片导入主链路`() {
         val bytes = byteArrayOf(1)

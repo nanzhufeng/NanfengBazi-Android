@@ -34,6 +34,15 @@ class ImportRecognitionCoordinator(
 
     suspend fun recognize(sessionId: String): RecognitionRunResult {
         var session = repository.findById(sessionId) ?: return RecognitionRunResult.NotFound
+        if (session.status == ImportStatus.GROUPING_CASES && session.ocrDocuments.isNotEmpty()) {
+            val needsReview = session.copy(
+                status = ImportStatus.NEEDS_REVIEW,
+                updatedAt = nowNotBefore(session.updatedAt),
+            )
+            session = persist(needsReview, session.revision)
+                ?: return RecognitionRunResult.RevisionConflict
+            return RecognitionRunResult.NeedsReview(session)
+        }
         if (
             session.status !in setOf(
                 ImportStatus.CLASSIFYING,

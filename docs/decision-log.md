@@ -459,3 +459,16 @@
 - 原因：Photo Picker 和分享 URI 权限可能短暂，具体 OCR 库也仍需在真实样本上比较。
   先固定私有复制、状态迁移、来源证据和模块边界，才能在不丢图、不串例、不锁死供应商的
   前提下替换识别实现。
+
+## D-048 首个 OCR 使用 bundled 中文模型并显式移除联网权限
+
+- 状态：已接受
+- 决策：首个 Android OCR 适配器固定使用
+  `com.google.mlkit:text-recognition-chinese:16.0.1` bundled 依赖，模型随 APK 静态打包，
+  不使用 Google Play Services 动态下载版本，也不声明模型下载 metadata。由于 ML Kit
+  的遥测传递依赖会合并 `INTERNET` 与 `ACCESS_NETWORK_STATE`，主 Manifest 使用
+  `tools:node="remove"` 同时移除 Debug/Release 的两项权限。OCR 仍由离线接口门禁，
+  原始文字与行边界框进入导入会话，不直接写正式命例。
+- 原因：bundled 解决首次运行与国内设备模型下载的不确定性，但“模型本地”不等于
+  “应用没有联网能力”。最终合并 Manifest 才是权限真值，必须同时满足模型可用和网络
+  权限为零。

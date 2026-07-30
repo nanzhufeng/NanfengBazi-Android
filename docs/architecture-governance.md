@@ -45,8 +45,8 @@
 - `core:solar-time`：NREL SPA 真太阳时适配器，只输出领域证据，不计算四柱。
 - `core:engine-tyme`：Tyme4j 适配器及状态隔离。
 - `core:data`：Room、仓储实现、JSON/ZIP 协议、恢复校验和附件提交。
-- `core:image-parser`：离线 OCR 端口、问真页面分类与可恢复识别协调；不依赖 Compose、
-  Room 或八字计算实现。
+- `core:image-parser`：离线 OCR 端口、bundled ML Kit Android 适配器、问真页面分类与
+  可恢复识别协调；不依赖 Compose、Room 或八字计算实现。
 
 ## Stage 1 入口矩阵
 

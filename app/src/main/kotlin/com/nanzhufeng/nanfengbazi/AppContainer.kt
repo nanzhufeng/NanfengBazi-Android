@@ -15,6 +15,10 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
+import com.nanzhufeng.nanfengbazi.imageparser.AnchorBasedWenzhenPageClassifier
+import com.nanzhufeng.nanfengbazi.imageparser.ImportImageContentReader
+import com.nanzhufeng.nanfengbazi.imageparser.ImportRecognitionCoordinator
+import com.nanzhufeng.nanfengbazi.imageparser.MlKitChineseOcrEngine
 import java.nio.file.Path
 
 interface AppContainer {
@@ -24,6 +28,7 @@ interface AppContainer {
     val singleCaseBundleService: SingleCaseBundleOperations
     val importSessionRepository: ImportSessionRepository
     val importImageStore: PrivateImportImageStore
+    val importRecognitionCoordinator: ImportRecognitionCoordinator
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
 }
@@ -55,6 +60,13 @@ class DefaultAppContainer(
         RoomImportSessionRepository(database)
     override val importImageStore: PrivateImportImageStore =
         PrivateImportImageStore(application.filesDir.toPath().resolve("import-images"))
+    override val importRecognitionCoordinator: ImportRecognitionCoordinator =
+        ImportRecognitionCoordinator(
+            repository = importSessionRepository,
+            contentReader = ImportImageContentReader(importImageStore::readBytes),
+            ocrEngine = MlKitChineseOcrEngine(),
+            pageClassifier = AnchorBasedWenzhenPageClassifier(),
+        )
     override val backupAttachmentRoot: Path = application.filesDir.toPath().resolve("attachments")
     override val backupWorkRoot: Path = application.cacheDir.toPath().resolve("backup-work")
 

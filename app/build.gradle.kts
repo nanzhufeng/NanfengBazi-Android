@@ -12,8 +12,8 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "0.3.0-alpha31"
+        versionCode = 34
+        versionName = "0.3.0-alpha32"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -50,13 +50,14 @@ android {
 }
 
 base {
-        archivesName.set("NanfengBazi-Android-v0.3.0-alpha31")
+        archivesName.set("NanfengBazi-Android-v0.3.0-alpha32")
 }
 
 dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
     implementation(project(":core:engine-tyme"))
+    implementation(project(":core:image-parser"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")

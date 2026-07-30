@@ -1,28 +1,43 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
     private val viewModel: StageTwoViewModel by viewModels {
         val app = application as NanfengBaziApplication
         StageTwoViewModel.Factory(app.container)
     }
+    private val screenshotImportViewModel: ScreenshotImportViewModel by viewModels {
+        val app = application as NanfengBaziApplication
+        ScreenshotImportViewModel.Factory(app.container)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val screenshotImportState by
+                screenshotImportViewModel.state.collectAsStateWithLifecycle()
             var lastSingleCaseUri by remember { mutableStateOf<Uri?>(null) }
             var lastFullBackupUri by remember { mutableStateOf<Uri?>(null) }
+            val pickScreenshotImages = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.PickMultipleVisualMedia(20),
+            ) { uris ->
+                importScreenshotUris(uris)
+            }
             val createSingleCaseDocument = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.CreateDocument("application/json"),
             ) { uri ->
@@ -122,6 +137,15 @@ class MainActivity : ComponentActivity() {
                         ),
                     )
                 },
+                onImportScreenshots = {
+                    pickScreenshotImages.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+                screenshotImportState = screenshotImportState,
+                onRetryScreenshotImport = screenshotImportViewModel::retryRecognition,
+                onConsumeScreenshotImportMessage =
+                    screenshotImportViewModel::consumeMessage,
                 onRetryPasswordSingleCaseDocument = { password ->
                     val uri = lastSingleCaseUri
                     if (uri != null) {
@@ -174,5 +198,60 @@ class MainActivity : ComponentActivity() {
                 },
             )
         }
+        consumeSharedImages(intent)
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeSharedImages(intent)
+    }
+
+    internal fun consumeSharedImages(sourceIntent: Intent) {
+        val uris = when (sourceIntent.action) {
+            Intent.ACTION_SEND -> listOfNotNull(sourceIntent.sharedImageUri())
+            Intent.ACTION_SEND_MULTIPLE -> sourceIntent.sharedImageUris()
+            else -> emptyList()
+        }
+        if (uris.isNotEmpty()) {
+            importScreenshotUris(uris.distinct())
+            sourceIntent.action = null
+            sourceIntent.removeExtra(Intent.EXTRA_STREAM)
+        }
+    }
+
+    private fun importScreenshotUris(uris: List<Uri>) {
+        val sources = uris.mapNotNull { uri ->
+            runCatching {
+                PendingImportImage(
+                    originalFileName = displayName(uri) ?: "共享图片",
+                    mimeType = contentResolver.getType(uri)
+                        ?.takeIf { it.startsWith("image/") }
+                        ?: "image/unknown",
+                    openInput = { contentResolver.openInputStream(uri) },
+                )
+            }.getOrNull()
+        }
+        screenshotImportViewModel.importImages(sources)
+    }
+
+    private fun displayName(uri: Uri): String? =
+        contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        }
+
+    @Suppress("DEPRECATION")
+    private fun Intent.sharedImageUri(): Uri? =
+        getParcelableExtra(Intent.EXTRA_STREAM)
+
+    @Suppress("DEPRECATION")
+    private fun Intent.sharedImageUris(): List<Uri> =
+        getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
 }

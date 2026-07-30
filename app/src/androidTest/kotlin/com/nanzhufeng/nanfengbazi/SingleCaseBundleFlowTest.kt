@@ -216,14 +216,9 @@ class SingleCaseBundleFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("import_single_case_button").performClick()
-        val encryptedFile = device.wait(
-            Until.findObject(By.textContains(alias.take(32))),
-            SYSTEM_UI_TIMEOUT_MILLIS,
-        )
-        checkNotNull(encryptedFile) {
+        check(clickSystemDocument(device, alias.take(32))) {
             "Android 系统打开文档页面未找到刚导出的密码加密命例附件包"
         }
-        encryptedFile.click()
         waitForAppWindow(device)
 
         composeRule.waitUntil(timeoutMillis = 30_000) {
@@ -318,6 +313,20 @@ class SingleCaseBundleFlowTest {
         ) {
             "Android 系统文档页面没有返回南枫八字"
         }
+    }
+
+    private fun clickSystemDocument(device: UiDevice, text: String): Boolean {
+        repeat(3) {
+            val document = device.wait(
+                Until.findObject(By.textContains(text)),
+                SYSTEM_UI_TIMEOUT_MILLIS,
+            ) ?: return@repeat
+            if (runCatching { document.click() }.isSuccess) {
+                return true
+            }
+            device.waitForIdle()
+        }
+        return false
     }
 
     private fun sha256(bytes: ByteArray): String =

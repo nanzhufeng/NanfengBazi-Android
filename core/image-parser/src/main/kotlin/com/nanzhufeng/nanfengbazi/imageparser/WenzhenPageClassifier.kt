@@ -45,6 +45,8 @@ class AnchorBasedWenzhenPageClassifier : WenzhenPageClassifier {
 
     private fun String.normalizedForAnchors(): String =
         replace(Regex("\\s+"), "")
+            .map { character -> TRADITIONAL_ANCHOR_NORMALIZATION[character] ?: character }
+            .joinToString("")
 
     private data class Template(
         val pageType: WenzhenPageType,
@@ -53,6 +55,22 @@ class AnchorBasedWenzhenPageClassifier : WenzhenPageClassifier {
     )
 
     private companion object {
+        val TRADITIONAL_ANCHOR_NORMALIZATION = mapOf(
+            '問' to '问',
+            '頁' to '页',
+            '戶' to '户',
+            '師' to '师',
+            '點' to '点',
+            '評' to '评',
+            '職' to '职',
+            '業' to '业',
+            '學' to '学',
+            '歷' to '历',
+            '財' to '财',
+            '陽' to '阳',
+            '篩' to '筛',
+            '選' to '选',
+        )
         val templates = listOf(
             Template(
                 WenzhenPageType.USER_LIST,

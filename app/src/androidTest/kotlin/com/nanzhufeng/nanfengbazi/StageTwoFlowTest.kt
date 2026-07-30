@@ -672,8 +672,13 @@ class StageTwoFlowTest {
         }
 
         val encryptedExportAlias = "$editedAlias（副本）"
+        composeRule.onNodeWithTag("case_search")
+            .performTextReplacement(encryptedExportAlias)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$encryptedExportAlias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("别名：$encryptedExportAlias")
-            .performScrollTo()
             .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("export_single_case_button"))

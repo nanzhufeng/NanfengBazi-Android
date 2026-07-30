@@ -34,6 +34,15 @@ class WenzhenPageClassifierTest {
         assertEquals(0f, result.confidence)
     }
 
+    @Test
+    fun `OCR 输出常见繁体锚点时归一化但保留双锚点门禁`() {
+        val result = classifier.classify(
+            document("問真八字 用戶列表 名人库 篩選 陽歷1992年8月24日"),
+        )
+        assertEquals(WenzhenPageType.USER_LIST, result.pageType)
+        assertTrue(result.matchedAnchors.contains("用户列表"))
+    }
+
     private fun document(text: String): OcrDocument = OcrDocument(
         imageId = "image-1",
         rawText = text,
