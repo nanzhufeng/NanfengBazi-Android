@@ -12,6 +12,11 @@ import com.nanzhufeng.nanfengbazi.data.db.FieldEvidenceEntity
 import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -91,8 +96,41 @@ data class BackupCaseRestorePreview(
     val sourceAlias: String,
     val sourceRevision: Long,
     val isTrashed: Boolean,
+    val sourceBirthInput: BirthInput,
+    val sourceFourPillars: FourPillars?,
     val conflicts: List<BackupCaseConflictCandidate>,
 )
+
+enum class BackupCaseRestoreAction {
+    IMPORT_AS_IS,
+    SKIP,
+    KEEP_BOTH,
+    MERGE,
+}
+
+data class BackupCaseRestoreDecision(
+    val sourceCaseId: String,
+    val action: BackupCaseRestoreAction,
+    val targetCaseId: String? = null,
+    val modules: Set<SingleCaseMergeModule> = emptySet(),
+    val fieldChoices: Map<SingleCaseFieldKey, SingleCaseValueChoice> = emptyMap(),
+)
+
+data class BackupRestorePlan(
+    val preview: RestorePreview,
+    val decisions: List<BackupCaseRestoreDecision>,
+)
+
+sealed interface BackupRestorePlanResult {
+    data class Success(
+        val plan: BackupRestorePlan,
+    ) : BackupRestorePlanResult
+
+    data class Rejected(
+        val code: String,
+        val message: String,
+    ) : BackupRestorePlanResult
+}
 
 sealed interface BackupPreviewResult {
     data class Success(

@@ -7,15 +7,19 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryption
 import com.nanzhufeng.nanfengbazi.data.backup.BackupEncryptionHeader
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
+import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
 import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestoreResult
+import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlanResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupService
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
@@ -98,10 +102,26 @@ class CaseBackupServiceTest {
 
             withDatabase { destinationDatabase ->
                 val destinationAttachments = root.resolve("destination-attachments")
-                val restoreResult = CaseBackupService(
+                val destinationService = CaseBackupService(
                     destinationDatabase,
                     fixedClock,
-                ).restoreIntoEmptyStore(
+                )
+                val preview = destinationService.preview(
+                    input = ByteArrayInputStream(firstBytes),
+                    workRoot = root.resolve("preview-work"),
+                ) as BackupPreviewResult.Success
+                assertTrue(
+                    destinationService.prepareRestorePlan(
+                        preview.preview,
+                        listOf(
+                            BackupCaseRestoreDecision(
+                                sourceCaseId = "case-1",
+                                action = BackupCaseRestoreAction.IMPORT_AS_IS,
+                            ),
+                        ),
+                    ) is BackupRestorePlanResult.Success,
+                )
+                val restoreResult = destinationService.restoreIntoEmptyStore(
                     input = ByteArrayInputStream(firstBytes),
                     workRoot = root.resolve("work"),
                     attachmentRoot = destinationAttachments,
@@ -183,6 +203,79 @@ class CaseBackupServiceTest {
                 conflict.reasons,
             )
             assertEquals(before, database.caseDao().allCases())
+            assertEquals(
+                "DECISIONS_INCOMPLETE",
+                (service.prepareRestorePlan(result.preview, emptyList()) as
+                    BackupRestorePlanResult.Rejected).code,
+            )
+            assertEquals(
+                "DUPLICATE_DECISION",
+                (service.prepareRestorePlan(
+                    result.preview,
+                    listOf(
+                        BackupCaseRestoreDecision("case-1", BackupCaseRestoreAction.SKIP),
+                        BackupCaseRestoreDecision("case-1", BackupCaseRestoreAction.SKIP),
+                    ),
+                ) as BackupRestorePlanResult.Rejected).code,
+            )
+            assertEquals(
+                "IMPORT_AS_IS_CONFLICT",
+                (service.prepareRestorePlan(
+                    result.preview,
+                    listOf(
+                        BackupCaseRestoreDecision(
+                            sourceCaseId = "case-1",
+                            action = BackupCaseRestoreAction.IMPORT_AS_IS,
+                        ),
+                    ),
+                ) as BackupRestorePlanResult.Rejected).code,
+            )
+            assertEquals(
+                "EMPTY_MERGE_SCOPE",
+                (service.prepareRestorePlan(
+                    result.preview,
+                    listOf(
+                        BackupCaseRestoreDecision(
+                            sourceCaseId = "case-1",
+                            action = BackupCaseRestoreAction.MERGE,
+                            targetCaseId = "case-1",
+                        ),
+                    ),
+                ) as BackupRestorePlanResult.Rejected).code,
+            )
+            assertTrue(
+                service.prepareRestorePlan(
+                    result.preview,
+                    listOf(
+                        BackupCaseRestoreDecision(
+                            sourceCaseId = "case-1",
+                            action = BackupCaseRestoreAction.MERGE,
+                            targetCaseId = "case-1",
+                            modules = setOf(SingleCaseMergeModule.TEXT_RECORDS),
+                        ),
+                    ),
+                ) is BackupRestorePlanResult.Success,
+            )
+            val skipDecision = listOf(
+                BackupCaseRestoreDecision(
+                    sourceCaseId = "case-1",
+                    action = BackupCaseRestoreAction.SKIP,
+                ),
+            )
+            assertTrue(
+                service.prepareRestorePlan(result.preview, skipDecision) is
+                    BackupRestorePlanResult.Success,
+            )
+            val current = RoomCaseRepository(database).findById("case-1")!!
+            RoomCaseRepository(database).save(
+                current.copy(alias = "预览后变化"),
+                expectedRevision = current.revision,
+            )
+            assertEquals(
+                "PREVIEW_STALE",
+                (service.prepareRestorePlan(result.preview, skipDecision) as
+                    BackupRestorePlanResult.Rejected).code,
+            )
         }
     }
 

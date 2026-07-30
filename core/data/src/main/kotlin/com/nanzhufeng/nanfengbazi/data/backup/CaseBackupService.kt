@@ -5,6 +5,7 @@ import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
 import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
+import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.data.repository.DomainJson
 import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -28,6 +29,7 @@ import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.encodeToString
 
 interface CaseBackupOperations {
@@ -47,6 +49,11 @@ interface CaseBackupOperations {
         workRoot: Path,
         password: CharArray? = null,
     ): BackupPreviewResult
+
+    suspend fun prepareRestorePlan(
+        preview: RestorePreview,
+        decisions: List<BackupCaseRestoreDecision>,
+    ): BackupRestorePlanResult
 }
 
 class CaseBackupService(
@@ -142,12 +149,113 @@ class CaseBackupService(
             } finally {
                 deleteRecursively(stagingRoot)
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             BackupPreviewResult.Rejected(
                 code = "PREVIEW_FAILED",
                 message = "无法验证该完整备份；文件可能损坏或内容不受支持。",
             )
         }
+    }
+
+    override suspend fun prepareRestorePlan(
+        preview: RestorePreview,
+        decisions: List<BackupCaseRestoreDecision>,
+    ): BackupRestorePlanResult {
+        val sourceIds = preview.cases.map { it.sourceCaseId }
+        if (sourceIds.size != sourceIds.distinct().size) {
+            return rejectedPlan("DUPLICATE_SOURCE_CASE", "恢复预览包含重复来源命例，必须重新检查文件。")
+        }
+        if (sourceIds.size != preview.manifest.counts.cases) {
+            return rejectedPlan("PREVIEW_CASE_COUNT_MISMATCH", "恢复预览命例数与清单不一致。")
+        }
+        if (decisions.map { it.sourceCaseId }.distinct().size != decisions.size) {
+            return rejectedPlan("DUPLICATE_DECISION", "同一来源命例不能选择多个恢复方案。")
+        }
+        if (
+            decisions.size != sourceIds.size ||
+            decisions.map { it.sourceCaseId }.toSet() != sourceIds.toSet()
+        ) {
+            return rejectedPlan("DECISIONS_INCOMPLETE", "每个来源命例都必须明确选择一个恢复方案。")
+        }
+        val refreshed = try {
+            refreshCaseRestorePreviews(preview.cases)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return rejectedPlan("CONFLICT_LOOKUP_FAILED", "无法重新核对当前库冲突，未生成恢复方案。")
+        }
+        if (refreshed != preview.cases) {
+            return rejectedPlan("PREVIEW_STALE", "当前库已在预览后变化，请重新检查备份。")
+        }
+        val previewById = preview.cases.associateBy { it.sourceCaseId }
+        decisions.forEach { decision ->
+            val source = previewById.getValue(decision.sourceCaseId)
+            when (decision.action) {
+                BackupCaseRestoreAction.IMPORT_AS_IS -> {
+                    if (source.conflicts.isNotEmpty()) {
+                        return rejectedPlan(
+                            "IMPORT_AS_IS_CONFLICT",
+                            "存在冲突的命例不能按原稳定 ID 直接导入。",
+                        )
+                    }
+                    if (decision.targetCaseId != null) {
+                        return rejectedPlan("UNEXPECTED_TARGET", "直接导入不应指定本地目标。")
+                    }
+                    if (decision.modules.isNotEmpty() || decision.fieldChoices.isNotEmpty()) {
+                        return rejectedPlan("UNEXPECTED_MERGE_SCOPE", "直接导入不应携带合并范围。")
+                    }
+                }
+                BackupCaseRestoreAction.SKIP -> {
+                    if (decision.targetCaseId != null) {
+                        return rejectedPlan("UNEXPECTED_TARGET", "跳过不应指定本地目标。")
+                    }
+                    if (decision.modules.isNotEmpty() || decision.fieldChoices.isNotEmpty()) {
+                        return rejectedPlan("UNEXPECTED_MERGE_SCOPE", "跳过不应携带合并范围。")
+                    }
+                }
+                BackupCaseRestoreAction.KEEP_BOTH -> {
+                    if (source.conflicts.isEmpty()) {
+                        return rejectedPlan(
+                            "KEEP_BOTH_WITHOUT_CONFLICT",
+                            "没有冲突的来源命例应按原稳定 ID 导入或跳过。",
+                        )
+                    }
+                    if (decision.targetCaseId != null) {
+                        return rejectedPlan("UNEXPECTED_TARGET", "保留两份不应指定本地目标。")
+                    }
+                    if (decision.modules.isNotEmpty() || decision.fieldChoices.isNotEmpty()) {
+                        return rejectedPlan("UNEXPECTED_MERGE_SCOPE", "保留两份不应携带合并范围。")
+                    }
+                }
+                BackupCaseRestoreAction.MERGE -> {
+                    val targetId = decision.targetCaseId
+                        ?: return rejectedPlan("TARGET_REQUIRED", "范围合并必须明确选择本地目标。")
+                    val target = source.conflicts.singleOrNull { it.localCaseId == targetId }
+                        ?: return rejectedPlan(
+                            "TARGET_NOT_IN_PREVIEW",
+                            "范围合并目标不在当前冲突候选中。",
+                        )
+                    if (target.isTrashed) {
+                        return rejectedPlan("TARGET_TRASHED", "回收站命例必须先恢复后才能合并。")
+                    }
+                    if (
+                        decision.modules.isEmpty() &&
+                        decision.fieldChoices.values.none { it == SingleCaseValueChoice.IMPORTED }
+                    ) {
+                        return rejectedPlan("EMPTY_MERGE_SCOPE", "范围合并必须至少选择一个模块或来源字段。")
+                    }
+                }
+            }
+        }
+        val sourceIndex = sourceIds.withIndex().associate { it.value to it.index }
+        return BackupRestorePlanResult.Success(
+            BackupRestorePlan(
+                preview = preview,
+                decisions = decisions.sortedBy { sourceIndex.getValue(it.sourceCaseId) },
+            ),
+        )
     }
 
     suspend fun restoreIntoEmptyStore(
@@ -229,6 +337,8 @@ class CaseBackupService(
                     sourceFileCount = extracted.size,
                 ),
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             if (attachmentTargetTouched && Files.exists(attachmentRoot)) {
                 deleteRecursively(attachmentRoot)
@@ -291,28 +401,47 @@ class CaseBackupService(
     private suspend fun buildCaseRestorePreviews(
         source: RoomDataSnapshot,
     ): List<BackupCaseRestorePreview> {
+        val sourcePillars = adoptedPillarsByCase(source.calculationSnapshots)
+        val sources = source.cases.map { sourceCase ->
+            BackupCaseRestorePreview(
+                sourceCaseId = sourceCase.id,
+                sourceAlias = sourceCase.alias,
+                sourceRevision = sourceCase.revision,
+                isTrashed = sourceCase.deletedAtEpochMillis != null,
+                sourceBirthInput = DomainJson.decodeFromString(sourceCase.birthInputJson),
+                sourceFourPillars = sourcePillars[sourceCase.id],
+                conflicts = emptyList(),
+            )
+        }
+        return refreshCaseRestorePreviews(sources)
+    }
+
+    private suspend fun refreshCaseRestorePreviews(
+        sources: List<BackupCaseRestorePreview>,
+    ): List<BackupCaseRestorePreview> {
         val (localCases, localSnapshots) = database.withTransaction {
             dao.allCases() to dao.allCalculationSnapshots()
         }
         val localPillars = adoptedPillarsByCase(localSnapshots)
-        val sourcePillars = adoptedPillarsByCase(source.calculationSnapshots)
         val localBirthInputs = localCases.associate { entity ->
             entity.id to DomainJson.decodeFromString<BirthInput>(entity.birthInputJson)
         }
-        return source.cases.map { sourceCase ->
-            val sourceBirthInput = DomainJson.decodeFromString<BirthInput>(sourceCase.birthInputJson)
-            val sourceFourPillars = sourcePillars[sourceCase.id]
+        return sources.map { sourceCase ->
             val conflicts = localCases.mapNotNull { localCase ->
                 val reasons = buildSet {
-                    if (sourceCase.id == localCase.id) {
+                    if (sourceCase.sourceCaseId == localCase.id) {
                         add(BackupCaseConflictReason.STABLE_ID_EXISTS)
                     }
-                    if (sourceBirthInput.hasSameBirthIdentity(localBirthInputs.getValue(localCase.id))) {
+                    if (
+                        sourceCase.sourceBirthInput.hasSameBirthIdentity(
+                            localBirthInputs.getValue(localCase.id),
+                        )
+                    ) {
                         add(BackupCaseConflictReason.SAME_BIRTH_INPUT)
                     }
                     if (
-                        sourceFourPillars != null &&
-                        sourceFourPillars == localPillars[localCase.id]
+                        sourceCase.sourceFourPillars != null &&
+                        sourceCase.sourceFourPillars == localPillars[localCase.id]
                     ) {
                         add(BackupCaseConflictReason.SAME_FOUR_PILLARS)
                     }
@@ -327,15 +456,12 @@ class CaseBackupService(
                     )
                 }
             }.sortedWith(compareBy({ it.isTrashed }, { it.localAlias }, { it.localCaseId }))
-            BackupCaseRestorePreview(
-                sourceCaseId = sourceCase.id,
-                sourceAlias = sourceCase.alias,
-                sourceRevision = sourceCase.revision,
-                isTrashed = sourceCase.deletedAtEpochMillis != null,
-                conflicts = conflicts,
-            )
+            sourceCase.copy(conflicts = conflicts)
         }.sortedWith(compareBy({ it.isTrashed }, { it.sourceAlias }, { it.sourceCaseId }))
     }
+
+    private fun rejectedPlan(code: String, message: String) =
+        BackupRestorePlanResult.Rejected(code, message)
 
     private fun adoptedPillarsByCase(
         snapshots: List<CalculationSnapshotEntity>,
