@@ -178,6 +178,23 @@ class ScreenshotShareFlowTest {
             .onNodeWithTag("screenshot_review_list")
             .performScrollToNode(hasTestTag("screenshot_candidate_$incompleteCandidateId"))
         composeRule
+            .onNodeWithTag("screenshot_review_list")
+            .performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        composeRule
+            .onNodeWithTag("preview_screenshot_field_$missingFourPillarsFieldId")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule
+                .onAllNodesWithTag("screenshot_field_preview_$missingFourPillarsFieldId")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule
+            .onNodeWithTag("preview_screenshot_field_$missingFourPillarsFieldId")
+            .performClick()
+        composeRule
             .onNodeWithTag("edit_screenshot_field_$missingFourPillarsFieldId")
             .performScrollTo()
             .performTextReplacement("庚辰 癸未 乙未 甲申")

@@ -1,6 +1,10 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +50,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -96,6 +107,9 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun NanfengBaziApp(
@@ -1745,6 +1759,7 @@ private fun ScreenshotImportReviewScreen(
     var correctionDrafts by rememberSaveable {
         mutableStateOf(emptyMap<String, String>())
     }
+    var previewFieldId by rememberSaveable { mutableStateOf<String?>(null) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1885,6 +1900,39 @@ private fun ScreenshotImportReviewScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                    if (
+                                        field.sourceImageRelativePath.isNotBlank() &&
+                                        field.evidenceBox != null
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                previewFieldId = if (previewFieldId == field.id) {
+                                                    null
+                                                } else {
+                                                    field.id
+                                                }
+                                            },
+                                            modifier = Modifier.testTag(
+                                                "preview_screenshot_field_${field.id}",
+                                            ),
+                                        ) {
+                                            Text(
+                                                if (previewFieldId == field.id) {
+                                                    "收起原图定位"
+                                                } else {
+                                                    "在原图中定位"
+                                                },
+                                            )
+                                        }
+                                        if (previewFieldId == field.id) {
+                                            ScreenshotEvidencePreview(
+                                                field = field,
+                                                modifier = Modifier.testTag(
+                                                    "screenshot_field_preview_${field.id}",
+                                                ),
+                                            )
+                                        }
+                                    }
                                     OutlinedTextField(
                                         value = correctedValue,
                                         onValueChange = { updatedValue ->
@@ -1978,6 +2026,92 @@ private fun ScreenshotImportReviewScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ScreenshotEvidencePreview(
+    field: ScreenshotFieldReviewUi,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var bitmap by remember(field.sourceImageRelativePath) {
+        mutableStateOf<Bitmap?>(null)
+    }
+    LaunchedEffect(field.sourceImageRelativePath) {
+        bitmap = withContext(Dispatchers.IO) {
+            decodeImportPreview(
+                filesDir = context.filesDir,
+                relativePath = field.sourceImageRelativePath,
+            )
+        }
+    }
+    val preview = bitmap
+    if (preview == null) {
+        Text(
+            "原图预览暂不可用，文件名与边界框坐标仍已保留。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        return
+    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(220.dp),
+    ) {
+        Image(
+            bitmap = preview.asImageBitmap(),
+            contentDescription = "${field.sourceImageName} 的字段原图定位",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+        )
+        val evidence = field.evidenceBox
+        val originalWidth = field.sourceImageWidthPx
+        val originalHeight = field.sourceImageHeightPx
+        if (evidence != null && originalWidth != null && originalHeight != null) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val scale = minOf(
+                    size.width / originalWidth.toFloat(),
+                    size.height / originalHeight.toFloat(),
+                )
+                val offsetX = (size.width - originalWidth * scale) / 2f
+                val offsetY = (size.height - originalHeight * scale) / 2f
+                drawRect(
+                    color = Color(0xFFFF7A00),
+                    topLeft = Offset(
+                        offsetX + evidence.left * scale,
+                        offsetY + evidence.top * scale,
+                    ),
+                    size = Size(
+                        (evidence.right - evidence.left) * scale,
+                        (evidence.bottom - evidence.top) * scale,
+                    ),
+                    style = Stroke(width = 5f),
+                )
+            }
+        }
+    }
+}
+
+private fun decodeImportPreview(
+    filesDir: File,
+    relativePath: String,
+): Bitmap? {
+    if (relativePath.isBlank()) return null
+    val root = File(filesDir, "import-images").canonicalFile
+    val source = File(root, relativePath).canonicalFile
+    if (!source.path.startsWith(root.path + File.separator) || !source.isFile) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(source.path, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sampleSize = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > 1200) {
+        sampleSize *= 2
+    }
+    return BitmapFactory.decodeFile(
+        source.path,
+        BitmapFactory.Options().apply { inSampleSize = sampleSize },
+    )
 }
 
 private fun WenzhenPageType.displayName(): String = when (this) {

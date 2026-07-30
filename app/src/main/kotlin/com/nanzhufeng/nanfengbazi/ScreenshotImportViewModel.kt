@@ -9,6 +9,7 @@ import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.EvidenceBoundingBox
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.ImportFailure
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
@@ -48,6 +49,10 @@ data class ScreenshotFieldReviewUi(
     val adoptedValue: String?,
     val confidencePercent: Int?,
     val sourceImageName: String,
+    val sourceImageRelativePath: String,
+    val sourceImageWidthPx: Int?,
+    val sourceImageHeightPx: Int?,
+    val evidenceBox: EvidenceBoundingBox?,
     val evidenceRegion: String?,
     val userEdited: Boolean,
 )
@@ -718,9 +723,13 @@ class ScreenshotImportViewModel(
                     field.parserConfidence,
                     field.consistencyConfidence,
                 ).minOrNull()?.times(100)?.toInt(),
-                sourceImageName = imagesById[field.attachmentId]
-                    ?.originalFileName
-                    ?: "未知来源图片",
+                sourceImageName =
+                    imagesById[field.attachmentId]?.originalFileName ?: "未知来源图片",
+                sourceImageRelativePath =
+                    imagesById[field.attachmentId]?.relativePath.orEmpty(),
+                sourceImageWidthPx = imagesById[field.attachmentId]?.widthPx,
+                sourceImageHeightPx = imagesById[field.attachmentId]?.heightPx,
+                evidenceBox = field.boundingBox,
                 evidenceRegion = field.boundingBox?.run {
                     "($left,$top)-($right,$bottom)"
                 },
