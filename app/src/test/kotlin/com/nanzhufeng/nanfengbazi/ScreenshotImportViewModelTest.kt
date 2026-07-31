@@ -143,6 +143,17 @@ class ScreenshotImportViewModelTest {
             userEdited = false,
             createdAt = now,
         )
+        val sourceOnlyField = CaseFieldEvidence(
+            id = "field-source-metal-percent",
+            attachmentId = "image-1",
+            fieldKey = "chart.five_element.metal_percent",
+            rawText = "金 43%",
+            normalizedValue = TypedFieldValue.DecimalNumber("43"),
+            parserConfidence = 0.95f,
+            parserRuleId = "fixture",
+            userEdited = false,
+            createdAt = now,
+        )
         val longText = ImportedLongTextEvidence(
             id = "text-1",
             imageId = "image-1",
@@ -167,13 +178,18 @@ class ScreenshotImportViewModelTest {
                     createdAt = now,
                 ),
             ),
-            extractedFields = listOf(field, professionalField, chartField),
+            extractedFields = listOf(field, professionalField, chartField, sourceOnlyField),
             extractedLongTexts = listOf(longText),
             caseCandidates = listOf(
                 ImportCaseCandidate(
                     id = "candidate-1",
                     imageIds = listOf("image-1"),
-                    fieldEvidenceIds = listOf(field.id, professionalField.id, chartField.id),
+                    fieldEvidenceIds = listOf(
+                        field.id,
+                        professionalField.id,
+                        chartField.id,
+                        sourceOnlyField.id,
+                    ),
                     longTextEvidenceIds = listOf(longText.id),
                     suggestedAlias = "案例甲",
                     groupingConfidence = 0.9f,
@@ -218,6 +234,14 @@ class ScreenshotImportViewModelTest {
         assertEquals(
             "提交后与本机基础排盘自动对照；不会覆盖本地排盘",
             chartReview.calculationValue,
+        )
+        val sourceOnlyReview = initial.reviewCandidates.single().fields.single {
+            it.id == sourceOnlyField.id
+        }
+        assertEquals("金比例（%）", sourceOnlyReview.label)
+        assertEquals(
+            "仅保留问真来源证据；当前无版本化算法，不自动复算",
+            sourceOnlyReview.calculationValue,
         )
         assertTrue(!initial.reviewCandidates.single().longTexts.single().adopted)
         assertTrue(
@@ -304,6 +328,39 @@ class ScreenshotImportViewModelTest {
                 ?.single { it.id == professionalField.id }
                 ?.normalizedValue,
         )
+
+        viewModel.updateFieldNormalizedValue(
+            "candidate-1",
+            sourceOnlyField.id,
+            "44.50%",
+        )
+        val correctedPercentage = withTimeout(5_000) {
+            viewModel.state.first {
+                it.reviewCandidates.singleOrNull()
+                    ?.fields
+                    ?.singleOrNull { review -> review.id == sourceOnlyField.id }
+                    ?.normalizedValue == "44.5"
+            }
+        }
+        assertEquals(
+            TypedFieldValue.DecimalNumber("44.5"),
+            repository.findById("review-session")
+                ?.extractedFields
+                ?.single { it.id == sourceOnlyField.id }
+                ?.normalizedValue,
+        )
+        assertEquals(
+            "44.5",
+            correctedPercentage.reviewCandidates.single().fields
+                .single { it.id == sourceOnlyField.id }
+                .normalizedValue,
+        )
+
+        viewModel.updateFieldNormalizedValue("candidate-1", sourceOnlyField.id, "101")
+        val invalidPercentage = withTimeout(5_000) {
+            viewModel.state.first { it.message?.contains("0 到 100") == true }
+        }
+        assertEquals("比例必须是 0 到 100 之间的数字，可选填写 %。", invalidPercentage.message)
     }
 }
 

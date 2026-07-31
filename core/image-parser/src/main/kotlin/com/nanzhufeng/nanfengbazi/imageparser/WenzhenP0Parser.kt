@@ -12,6 +12,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.OcrDocument
 import com.nanzhufeng.nanfengbazi.domain.model.OcrTextBlock
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
+import com.nanzhufeng.nanfengbazi.domain.model.WenzhenSourceFidelityContract
 import java.security.MessageDigest
 import java.time.LocalDateTime
 import java.util.Locale
@@ -456,7 +457,7 @@ class WenzhenP0Parser(
                         document = document,
                         rowKey = "basic-info",
                         fieldKey = definition.fieldKey,
-                        rawText = match.block.text,
+                        rawText = match.rawValue,
                         value = TypedFieldValue.Text(match.value),
                         confidence = match.block.confidence,
                         boundingBox = match.block.boundingBox,
@@ -464,6 +465,38 @@ class WenzhenP0Parser(
                     ),
                 )
             }
+        }
+        BASIC_INFO_SOURCE_TEXT_FIELDS.forEach { definition ->
+            document.firstMatch(definition.pattern)?.let { match ->
+                add(
+                    field(
+                        image = image,
+                        document = document,
+                        rowKey = "basic-info-source-only",
+                        fieldKey = definition.fieldKey,
+                        rawText = match.rawValue,
+                        value = TypedFieldValue.Text(match.value),
+                        confidence = match.block.confidence,
+                        boundingBox = match.block.boundingBox,
+                        parserConfidence = 0.88f,
+                    ),
+                )
+            }
+        }
+        document.sourceOnlyPercentageMatches().forEach { match ->
+            add(
+                field(
+                    image = image,
+                    document = document,
+                    rowKey = "basic-info-source-only",
+                    fieldKey = match.fieldKey,
+                    rawText = match.rawValue,
+                    value = TypedFieldValue.DecimalNumber(match.canonicalValue),
+                    confidence = match.block.confidence,
+                    boundingBox = match.block.boundingBox,
+                    parserConfidence = 0.9f,
+                ),
+            )
         }
         val birthAt = document.firstDateTimeMatch(SOLAR_DATETIME_PATTERN)
             ?.value
@@ -950,11 +983,45 @@ class WenzhenP0Parser(
 
     private fun OcrDocument.firstMatch(pattern: Regex): BlockMatch? =
         blocks.firstNotNullOfOrNull { block ->
-            pattern.find(block.text)?.groupValues?.getOrNull(1)
-                ?.trim()
-                ?.takeIf(String::isNotEmpty)
-                ?.let { BlockMatch(block, it) }
+            pattern.find(block.text)?.let { match ->
+                match.groupValues.getOrNull(1)
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
+                    ?.let { BlockMatch(block, match.value, it) }
+            }
         }
+
+    private fun OcrDocument.sourceOnlyPercentageMatches(): List<PercentageBlockMatch> {
+        val matches = buildList {
+            blocks.forEach { block ->
+                SOURCE_ONLY_PARTY_PERCENT_PATTERNS.forEach { (fieldKey, pattern) ->
+                    pattern.find(block.text)?.toPercentageBlockMatch(block, fieldKey)?.let(::add)
+                }
+                FIVE_ELEMENT_PERCENT_PATTERN.findAll(block.text).forEach { match ->
+                    val fieldKey = FIVE_ELEMENT_PERCENT_FIELD_KEYS[match.groupValues[1]]
+                        ?: return@forEach
+                    match.toPercentageBlockMatch(block, fieldKey, valueGroupIndex = 2)
+                        ?.let(::add)
+                }
+            }
+        }
+        return matches.distinctBy(PercentageBlockMatch::fieldKey)
+    }
+
+    private fun MatchResult.toPercentageBlockMatch(
+        block: OcrTextBlock,
+        fieldKey: String,
+        valueGroupIndex: Int = 1,
+    ): PercentageBlockMatch? {
+        val value = groupValues[valueGroupIndex].toBigDecimalOrNull() ?: return null
+        if (value < java.math.BigDecimal.ZERO || value > java.math.BigDecimal("100")) return null
+        return PercentageBlockMatch(
+            block = block,
+            fieldKey = fieldKey,
+            rawValue = this.value,
+            canonicalValue = value.stripTrailingZeros().toPlainString(),
+        )
+    }
 
     private fun OcrDocument.firstDateTimeMatch(pattern: Regex): DateTimeBlockMatch? =
         blocks.firstNotNullOfOrNull { block ->
@@ -1127,7 +1194,15 @@ class WenzhenP0Parser(
 
     private data class BlockMatch(
         val block: OcrTextBlock,
+        val rawValue: String,
         val value: String,
+    )
+
+    private data class PercentageBlockMatch(
+        val block: OcrTextBlock,
+        val fieldKey: String,
+        val rawValue: String,
+        val canonicalValue: String,
     )
 
     private data class DateTimeBlockMatch(
@@ -1154,7 +1229,7 @@ class WenzhenP0Parser(
             get() = "$name ${at.format(BASIC_INFO_DATE_TIME_FORMATTER)}"
     }
 
-    private data class BasicInfoGanzhiFieldDefinition(
+    private data class BasicInfoFieldDefinition(
         val fieldKey: String,
         val pattern: Regex,
     )
@@ -1204,7 +1279,7 @@ class WenzhenP0Parser(
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
         private const val PROFESSIONAL_HEADER_ROW_TOLERANCE_PX = 48
         private const val PROFESSIONAL_PILLAR_SCAN_HEADER_HEIGHT_MULTIPLIER = 8
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v6"
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v7"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -1334,22 +1409,63 @@ class WenzhenP0Parser(
             "(?:属相|屬相|生肖)\\s*[:：]\\s*([^\\s（(]{1,8})",
         )
         val BASIC_INFO_GANZHI_FIELDS = listOf(
-            BasicInfoGanzhiFieldDefinition(
+            BasicInfoFieldDefinition(
                 FIELD_FETAL_ORIGIN,
                 Regex("(?:胎元)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
             ),
-            BasicInfoGanzhiFieldDefinition(
+            BasicInfoFieldDefinition(
                 FIELD_FETAL_BREATH,
                 Regex("(?:胎息)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
             ),
-            BasicInfoGanzhiFieldDefinition(
+            BasicInfoFieldDefinition(
                 FIELD_OWN_SIGN,
                 Regex("(?:命宫|命宮)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
             ),
-            BasicInfoGanzhiFieldDefinition(
+            BasicInfoFieldDefinition(
                 FIELD_BODY_SIGN,
                 Regex("(?:身宫|身宮)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
             ),
+        )
+        val BASIC_INFO_SOURCE_TEXT_FIELDS = listOf(
+            BasicInfoFieldDefinition(
+                WenzhenSourceFidelityContract.FIELD_STAR_LODGE,
+                Regex("(?:星宿)\\s*[:：]?\\s*([^\\s]{1,30})"),
+            ),
+            BasicInfoFieldDefinition(
+                WenzhenSourceFidelityContract.FIELD_LIFE_GUA,
+                Regex("(?:命卦)\\s*[:：]?\\s*([^\\s]{1,30})"),
+            ),
+            BasicInfoFieldDefinition(
+                WenzhenSourceFidelityContract.FIELD_DAY_MASTER_ATTRIBUTE,
+                Regex("(?:日主属性|日主屬性)\\s*[:：]?\\s*([^\\s]{1,20})"),
+            ),
+            BasicInfoFieldDefinition(
+                WenzhenSourceFidelityContract.FIELD_YIN_YANG_ATTRIBUTE,
+                Regex("(?:阴阳属性|陰陽屬性)\\s*[:：]?\\s*([^\\s]{1,20})"),
+            ),
+            BasicInfoFieldDefinition(
+                WenzhenSourceFidelityContract.FIELD_USER_STRENGTH,
+                Regex("(?:自定旺衰)\\s*[:：]?\\s*([^\\s]{1,20})"),
+            ),
+            BasicInfoFieldDefinition(
+                WenzhenSourceFidelityContract.FIELD_USER_STRUCTURE,
+                Regex("(?:自定格局)\\s*[:：]?\\s*([^\\s]{1,30})"),
+            ),
+        )
+        val SOURCE_ONLY_PARTY_PERCENT_PATTERNS = listOf(
+            WenzhenSourceFidelityContract.FIELD_SAME_PARTY_PERCENT to
+                Regex("(?:同党|同黨)\\s*[:：]?\\s*(\\d{1,3}(?:\\.\\d+)?)\\s*[％%]"),
+            WenzhenSourceFidelityContract.FIELD_OPPOSING_PARTY_PERCENT to
+                Regex("(?:异党|異黨)\\s*[:：]?\\s*(\\d{1,3}(?:\\.\\d+)?)\\s*[％%]"),
+        )
+        val FIVE_ELEMENT_PERCENT_PATTERN =
+            Regex("([木火土金水])\\s*[:：]?\\s*(\\d{1,3}(?:\\.\\d+)?)\\s*[％%]")
+        val FIVE_ELEMENT_PERCENT_FIELD_KEYS = mapOf(
+            "木" to WenzhenSourceFidelityContract.FIELD_WOOD_PERCENT,
+            "火" to WenzhenSourceFidelityContract.FIELD_FIRE_PERCENT,
+            "土" to WenzhenSourceFidelityContract.FIELD_EARTH_PERCENT,
+            "金" to WenzhenSourceFidelityContract.FIELD_METAL_PERCENT,
+            "水" to WenzhenSourceFidelityContract.FIELD_WATER_PERCENT,
         )
         val SOLAR_TERM_DATETIME_PATTERN = Regex(
             "(立春|惊蛰|清明|立夏|芒种|小暑|立秋|白露|寒露|立冬|大雪|小寒)" +

@@ -128,6 +128,31 @@ class WenzhenP0ParserTest {
                 block("next-jie", "白露：1992-09-07 17:18:20", 24, 530, 560, 570),
                 block("fetal", "胎元：己亥（平地木） 胎息：丙寅（炉中火）", 24, 580, 680, 620),
                 block("palaces", "命宫：壬寅（金箔金） 身宫：癸卯（金箔金）", 24, 630, 680, 670),
+                block(
+                    "source-attributes",
+                    "日主属性：壬水 阴阳属性：阳阳 自定旺衰：身旺 自定格局：偏印格",
+                    24,
+                    680,
+                    760,
+                    720,
+                ),
+                block(
+                    "source-symbols",
+                    "星宿：奎宿（金命） 命卦：艮卦（西四命）",
+                    24,
+                    730,
+                    760,
+                    770,
+                ),
+                block("party-ratio", "同党 72％ 异党 28%", 24, 780, 680, 820),
+                block(
+                    "element-ratio",
+                    "木 0% 火 12% 土 16% 金 43% 水 29%",
+                    24,
+                    830,
+                    760,
+                    870,
+                ),
             ),
         )
 
@@ -159,6 +184,19 @@ class WenzhenP0ParserTest {
                 "chart.fetal_breath",
                 "chart.own_sign",
                 "chart.body_sign",
+                "chart.star_lodge",
+                "chart.life_gua",
+                "chart.day_master_attribute",
+                "chart.yin_yang_attribute",
+                "chart.user_strength",
+                "chart.user_structure",
+                "chart.five_element.same_party_percent",
+                "chart.five_element.opposing_party_percent",
+                "chart.five_element.wood_percent",
+                "chart.five_element.fire_percent",
+                "chart.five_element.earth_percent",
+                "chart.five_element.metal_percent",
+                "chart.five_element.water_percent",
             ),
             fieldsByKey.keys,
         )
@@ -206,6 +244,32 @@ class WenzhenP0ParserTest {
             "癸卯",
             (fieldsByKey.getValue("chart.body_sign").normalizedValue as
                 TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "奎宿（金命）",
+            (fieldsByKey.getValue("chart.star_lodge").normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "偏印格",
+            (fieldsByKey.getValue("chart.user_structure").normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "72",
+            (fieldsByKey.getValue("chart.five_element.same_party_percent")
+                .normalizedValue as TypedFieldValue.DecimalNumber).canonicalValue,
+        )
+        assertEquals(
+            "43",
+            (fieldsByKey.getValue("chart.five_element.metal_percent")
+                .normalizedValue as TypedFieldValue.DecimalNumber).canonicalValue,
+        )
+        assertTrue(
+            fieldsByKey
+                .filterKeys { it.startsWith("chart.five_element.") }
+                .values
+                .all { it.calculatedValue == null },
         )
         assertTrue(result.fields.all { it.boundingBox != null && it.adoptedValue == null })
         assertEquals(result.fields.map { it.id }.toSet(), result.candidates.single().fieldEvidenceIds.toSet())

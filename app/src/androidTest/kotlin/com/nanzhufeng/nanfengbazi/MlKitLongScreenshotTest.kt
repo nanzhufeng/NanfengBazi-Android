@@ -171,6 +171,54 @@ class MlKitLongScreenshotTest {
     }
 
     @Test
+    fun 基本资料来源保真字段经真实离线OCR后不生成计算值() = runBlocking {
+        val bytes = createSourceOnlyBasicInfoSyntheticImage()
+        val sourceImage = ImportImageRef(
+            id = "basic-info-source-only-image",
+            originalFileName = "synthetic-basic-info-source-only.png",
+            mimeType = "image/png",
+            relativePath = "session-1/basic-info-source-only-image.png",
+            sha256 = "c".repeat(64),
+            byteSize = bytes.size.toLong(),
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+        )
+        val engine = MlKitChineseOcrEngine()
+        try {
+            val document = engine.recognize(OcrImageInput(sourceImage, bytes))
+            val classification = AnchorBasedWenzhenPageClassifier().classify(document)
+            assertTrue(
+                "合成来源保真页应被识别为基本资料；OCR=${document.rawText}",
+                classification.pageType == WenzhenPageType.BASIC_INFO,
+            )
+            val image = sourceImage.copy(
+                pageType = classification.pageType,
+                pageConfidence = classification.confidence,
+                classifierVersion = classification.classifierVersion,
+            )
+            val result = WenzhenP0Parser().parse(
+                images = listOf(image),
+                documents = listOf(document),
+                groupedCandidates = WenzhenImageGrouper().group(
+                    listOf(image),
+                    listOf(document),
+                ),
+            )
+            val fieldsByKey = result.fields.associateBy { it.fieldKey }
+            listOf(
+                "chart.star_lodge",
+                "chart.life_gua",
+                "chart.five_element.same_party_percent",
+                "chart.five_element.metal_percent",
+            ).forEach { fieldKey ->
+                assertTrue("应提取 $fieldKey；OCR=${document.rawText}", fieldKey in fieldsByKey)
+                assertTrue(fieldsByKey[fieldKey]?.calculatedValue == null)
+            }
+        } finally {
+            engine.close()
+        }
+    }
+
+    @Test
     fun 长截图按重叠区分段且边界框回映原图坐标() = runBlocking {
         val bytes = createTallSyntheticImage()
         val image = ImportImageRef(
@@ -282,6 +330,43 @@ class MlKitLongScreenshotTest {
             "白露：1992-09-07 17:18:20",
             "胎元：己亥 胎息：丙寅",
             "命宫：壬寅 身宫：癸卯",
+        ).forEachIndexed { index, line ->
+            canvas.drawText(line, 56f, 150f + index * 145f, paint)
+        }
+        return try {
+            ByteArrayOutputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun createSourceOnlyBasicInfoSyntheticImage(): ByteArray {
+        val bitmap = Bitmap.createBitmap(1080, 2500, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 58f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        listOf(
+            "问真八字 基本信息",
+            "姓名：席瑞",
+            "性别：男",
+            "农历：1992年七月廿六 午时 乾造",
+            "阳历：1992-08-24 12:00:00",
+            "真太阳时：1992-08-24 11:53:00",
+            "出生地区：江苏省宿迁市泗阳县",
+            "地址经纬：北纬33.72 东经118.68",
+            "星座：处女座 属相：猴",
+            "壬申 戊申 壬申 丙午",
+            "星宿：奎宿 命卦：艮卦",
+            "自定旺衰：身旺 自定格局：偏印格",
+            "同党 72% 异党 28%",
+            "木 0% 火 12% 土 16% 金 43% 水 29%",
         ).forEachIndexed { index, line ->
             canvas.drawText(line, 56f, 150f + index * 145f, paint)
         }

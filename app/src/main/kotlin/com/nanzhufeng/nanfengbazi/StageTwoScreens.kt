@@ -112,6 +112,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
+import com.nanzhufeng.nanfengbazi.domain.model.WenzhenSourceFidelityContract
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseDocumentProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
@@ -3652,7 +3653,9 @@ private val CHART_EVIDENCE_ROW_LABELS = mapOf(
     "spirits" to "神煞",
 )
 
-private fun String.evidenceFieldLabel(): String = when (this) {
+private fun String.evidenceFieldLabel(): String {
+    WenzhenSourceFidelityContract.definitionFor(this)?.let { return it.displayLabel }
+    return when (this) {
     "identity.alias" -> "命例名称"
     "identity.name" -> "姓名"
     "identity.sex" -> "性别"
@@ -3692,6 +3695,7 @@ private fun String.evidenceFieldLabel(): String = when (this) {
             ?.get(1)
             ?.let { "关键事件候选 · ${it}年" }
         ?: this
+    }
 }
 
 private fun TypedFieldValue.evidenceDisplayValue(): String = when (this) {
@@ -4370,10 +4374,11 @@ private fun CaseDetailContent(
                             ?: if (evidence.fieldKey == "chart.four_pillars") {
                                 adopted?.result?.fourPillars?.display() ?: "无已采用计算快照"
                             } else if (
-                                evidence.fieldKey.startsWith("chart.") &&
-                                evidence.fieldKey.endsWith(".spirits")
+                                WenzhenSourceFidelityContract.isSourceOnly(
+                                    evidence.fieldKey,
+                                )
                             ) {
-                                "神煞仅保留来源证据；当前不自动复算"
+                                WenzhenSourceFidelityContract.CALCULATION_MESSAGE
                             } else if (
                                 evidence.fieldKey == "identity.constellation" ||
                                 evidence.fieldKey == "identity.zodiac"

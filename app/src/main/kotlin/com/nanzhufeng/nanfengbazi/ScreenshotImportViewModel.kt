@@ -21,6 +21,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
+import com.nanzhufeng.nanfengbazi.domain.model.WenzhenSourceFidelityContract
 import com.nanzhufeng.nanfengbazi.imageparser.RecognitionRunResult
 import com.nanzhufeng.nanfengbazi.imageparser.DuplicateImageKind
 import com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetector
@@ -810,9 +811,8 @@ class ScreenshotImportViewModel(
                 calculationValue = field.calculatedValue?.displayValue() ?: when {
                     field.fieldKey == "chart.four_pillars" ->
                         "提交前按采用的出生资料复算"
-                    field.fieldKey.startsWith("chart.") &&
-                        field.fieldKey.endsWith(".spirits") ->
-                        "神煞仅保留来源证据；当前不自动复算"
+                    WenzhenSourceFidelityContract.isSourceOnly(field.fieldKey) ->
+                        WenzhenSourceFidelityContract.CALCULATION_MESSAGE
                     field.fieldKey == "identity.constellation" ||
                         field.fieldKey == "identity.zodiac" ->
                         "提交后与本机基础排盘自动对照；不会覆盖本地排盘"
@@ -875,7 +875,9 @@ class ScreenshotImportViewModel(
     private suspend fun importSessionRepositorySession(sessionId: String): ImportSession? =
         repository.findById(sessionId)
 
-    private fun String.displayLabel(): String = when (this) {
+    private fun String.displayLabel(): String {
+        WenzhenSourceFidelityContract.definitionFor(this)?.let { return it.displayLabel }
+        return when (this) {
         "identity.alias" -> "命例名称"
         "identity.name" -> "姓名"
         "identity.sex" -> "性别"
@@ -915,6 +917,7 @@ class ScreenshotImportViewModel(
                 ?.get(1)
                 ?.let { "关键事件候选 · ${it}年" }
             ?: this
+        }
     }
 
     private fun TypedFieldValue.displayValue(): String = when (this) {
@@ -940,6 +943,19 @@ class ScreenshotImportViewModel(
 
     private fun String.parseEditedValue(rawValue: String): TypedFieldValue? {
         val value = rawValue.trim()
+        if (WenzhenSourceFidelityContract.isPercentage(this)) {
+            val percentage = value.removeSuffix("%").trim().toBigDecimalOrNull()
+                ?: return null
+            if (
+                percentage < java.math.BigDecimal.ZERO ||
+                percentage > java.math.BigDecimal("100")
+            ) {
+                return null
+            }
+            return TypedFieldValue.DecimalNumber(
+                percentage.stripTrailingZeros().toPlainString(),
+            )
+        }
         return when (this) {
             "identity.alias" -> value
                 .takeIf { it.isNotEmpty() && it.length <= 60 }
@@ -1066,7 +1082,11 @@ class ScreenshotImportViewModel(
         "professional.natal_day",
         "professional.natal_hour",
         -> "干支必须填写一组有效天干地支，例如：丙午。"
-        else -> "修正值不能为空。"
+        else -> if (WenzhenSourceFidelityContract.isPercentage(this)) {
+            "比例必须是 0 到 100 之间的数字，可选填写 %。"
+        } else {
+            "修正值不能为空。"
+        }
     }
 
     class Factory(
@@ -1080,7 +1100,7 @@ class ScreenshotImportViewModel(
     }
 
     private companion object {
-        const val PARSER_VERSION = "wenzhen-p0-v6"
+        const val PARSER_VERSION = "wenzhen-p0-v7"
         val REQUIRED_COMMIT_FIELD_KEYS = listOf(
             "identity.alias",
             "identity.sex",

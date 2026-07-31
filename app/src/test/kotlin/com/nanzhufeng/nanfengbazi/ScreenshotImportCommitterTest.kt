@@ -301,6 +301,10 @@ class ScreenshotImportCommitterTest {
                 "chart.year.void" to TypedFieldValue.Text("戌亥"),
                 "chart.hour.nayin" to TypedFieldValue.Text("错误纳音"),
                 "chart.year.spirits" to TypedFieldValue.Text("太极贵人"),
+                "chart.star_lodge" to TypedFieldValue.Text("奎宿（金命）"),
+                "chart.life_gua" to TypedFieldValue.Text("艮卦（西四命）"),
+                "chart.five_element.metal_percent" to
+                    TypedFieldValue.DecimalNumber("43"),
                 "chart.fetal_origin" to TypedFieldValue.Text("甲子"),
                 "chart.fetal_breath" to TypedFieldValue.Text("甲子"),
                 "chart.own_sign" to TypedFieldValue.Text("甲子"),
@@ -344,6 +348,14 @@ class ScreenshotImportCommitterTest {
         assertEquals(0f, evidenceByKey["chart.hour.nayin"]?.consistencyConfidence)
         assertEquals(null, evidenceByKey["chart.year.spirits"]?.calculatedValue)
         assertEquals(null, evidenceByKey["chart.year.spirits"]?.consistencyConfidence)
+        listOf(
+            "chart.star_lodge",
+            "chart.life_gua",
+            "chart.five_element.metal_percent",
+        ).forEach { fieldKey ->
+            assertEquals(null, evidenceByKey[fieldKey]?.calculatedValue)
+            assertEquals(null, evidenceByKey[fieldKey]?.consistencyConfidence)
+        }
         val storedCalculation = fixture.caseRepository.cases.values.single()
             .calculationSnapshots
             .single { it.adopted }
