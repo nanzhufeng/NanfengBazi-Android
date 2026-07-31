@@ -271,6 +271,13 @@ fun NanfengBaziApp(
                         onRetry = viewModel::retryCaseComparison,
                         modifier = Modifier.padding(padding),
                     )
+                    AppDestination.FourPillarsLookup -> FourPillarsLookupScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onFormChange = viewModel::updateFourPillarsLookupForm,
+                        onSearch = viewModel::searchFourPillars,
+                        modifier = Modifier.padding(padding),
+                    )
                     AppDestination.RecordHub -> RecordHubScreen(
                         cases = state.cases,
                         loading = state.listLoading,
@@ -306,6 +313,7 @@ fun NanfengBaziApp(
                         onPreview = viewModel::previewCase,
                         onSubmit = { viewModel.submitCase() },
                         onConfirmDuplicate = { viewModel.submitCase(allowDuplicate = true) },
+                        onOpenFourPillarsLookup = viewModel::openFourPillarsLookup,
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.CaseDetail -> {
@@ -3126,6 +3134,7 @@ private fun CreateCaseScreen(
     onPreview: () -> Unit,
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
+    onOpenFourPillarsLookup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     CaseFormScreen(
@@ -3144,6 +3153,21 @@ private fun CreateCaseScreen(
         duplicateCandidates = state.duplicateCandidates,
         onConfirmDuplicate = onConfirmDuplicate,
         topContent = {
+            OutlinedButton(
+                onClick = onOpenFourPillarsLookup,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("open_four_pillars_lookup"),
+            ) {
+                Text("四柱反查")
+            }
+            Text(
+                "按四柱、年份范围、IANA 时区和子时口径查找可复算的民用时候选。",
+                modifier = Modifier.padding(bottom = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             RecentCasesSection(
                 cases = state.recentCases,
                 onOpenCase = onOpenCase,

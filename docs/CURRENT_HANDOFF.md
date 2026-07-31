@@ -1,4 +1,4 @@
-# 当前交接：alpha61 后续外围能力
+# 当前交接：alpha62 后续外围能力
 
 更新日期：2026-07-31
 
@@ -7,11 +7,12 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha61 生产代码基线：`12cfdbe feat: compare case archives objectively`
-- 版本：`versionCode 62`，`versionName 0.3.0-alpha61`
-- 交接整理开始前工作区：干净，未提交/未跟踪文件 0；接手时仍须现场复查。
-- 当前 ADB：仅 `emulator-5554` 在线。
-- 本轮交接不修改生产代码、不操作真实用户数据、不推送远端。
+- alpha62 本地代码基线：本文件所在提交；上一基线为
+  `12cfdbe feat: compare case archives objectively`。
+- 版本：`versionCode 63`，`versionName 0.3.0-alpha62`
+- 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
+- alpha62 验收时 ADB 仅 `emulator-5554` 在线，API 35。
+- 本轮未操作真实用户数据、OPPO、网络、外部 AI、远端推送或发布。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
 
@@ -47,6 +48,7 @@
 | 概念 | 唯一所有者/入口 | 禁止分叉 |
 |---|---|---|
 | 排盘计算 | `BaziEngine.calculate()` → `TymeBaziEngine` | UI、OCR、数据库直接调用历法库 |
+| 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | UI 直接调用 Tyme4j、展示未经复核候选或把候选自动保存为命例 |
 | 计算配置 | `CalculationProfile` | 页面用默认值重解释旧快照 |
 | 命例聚合写入 | `CaseRepository` | 页面或导入器直接写 DAO |
 | 完整备份恢复 | `CaseBackupService` | UI 自行解析、合并或恢复 |
@@ -90,11 +92,26 @@
 - 左右命例稳定 ID 和页面状态可恢复。
 - 明确不生成吉凶、合婚或关系判断。
 
+### alpha62
+
+- 增加“排盘 → 四柱反查”真实入口，输入四柱、1900–2100 年范围、IANA 时区和两种
+  子时口径。
+- `core:domain` 已定义查询、候选、结构化错误和 `FourPillarsLookup` 公开接口；
+  `core:engine-tyme` 使用 `EightChar#getSolarTimes` 生成原始候选。
+- 每个候选按 IANA 时区解析 UTC offset；DST 重叠按 offset 分列、不存在时刻排除，
+  并再次经过 `BaziEngine.calculate()` 复算一致才返回。
+- `LunarHour.provider` 只在反查适配器进程级锁内临时切换，成功、异常、取消和并发后
+  均恢复；既有正向排盘继续使用实例 provider。
+- 页面明确候选只是民用代表时刻，不是出生分钟唯一证明；首版不做真太阳时推算，
+  不自动保存正式命例。
+- 反查页面、表单、查询参数和已查询标记进入 `SavedStateHandle`；重建后重新查询，
+  不保存可能过期的候选副本。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha61 clean 命令：
+alpha62 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -105,21 +122,22 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 结果：
 
 - 405 个 Gradle 任务成功。
-- 368 次单元测试执行，0 failure、0 error、0 skipped。
-- Lint 0 error，19 条依赖版本 warning。
-- API 35 模拟器命例对比长流程和 `SavedStateHandle` 恢复组合：2/2 通过。
+- 385 次单元测试执行，0 failure、0 error、0 skipped。
+- Lint 0 error；app 12 条 warning，两个支撑模块共 8 条 warning。
+- API 35 `emulator-5554` 四柱反查真实输入—查询—候选—免责声明—Activity 重建，
+  以及独立 `SavedStateHandle` 重建组合：2/2 通过。
 - 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha61-debug.apk`
-  - 55,860,291 bytes
-  - SHA-256 `716b00190272e1d7cedb51dc6a1a2f7e762f9f02920a42235608967b2e8eea6d`
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha62-debug.apk`
+  - 55,909,443 bytes
+  - SHA-256 `5cdbb1ef6a46f0c98cd3fbc9e998d3d456ad280f6b5a1b3e95e49e286792805a`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha61-release-unsigned.apk`
-  - 52,088,962 bytes
-  - SHA-256 `3788b23fea24f2b36c64d60d1bd25b08da067d6ad71afbc61f5e7805c110963f`
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha62-release-unsigned.apk`
+  - 52,121,730 bytes
+  - SHA-256 `f41869331c3df37c983ae2ad1a4f1b54423566e08ad6457a4eb815d9b042c27f`
 
 ## 7. 尚未完成
 
@@ -127,11 +145,10 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 建议一次只完成一个增量：
 
-1. `VX-09` 四柱反查。
-2. `VX-07` 图片导出与 `VX-08` 长图分享，共用版本化渲染结果。
-3. `VX-10` 客观命盘摘要，只消费确定性字段和证据。
-4. `VX-04` 师傅点评观点候选增强。
-5. `VX-05` 命主反馈主题标签候选增强。
+1. `VX-07` 图片导出与 `VX-08` 长图分享，共用版本化渲染结果。
+2. `VX-10` 客观命盘摘要，只消费确定性字段和证据。
+3. `VX-04` 师傅点评观点候选增强。
+4. `VX-05` 命主反馈主题标签候选增强。
 
 ### 外部门禁
 
@@ -142,43 +159,38 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：四柱反查
+## 8. 下一唯一任务：图片导出与长图分享
 
 ### 目标
 
-输入年柱、月柱、日柱、时柱、起止年份、IANA 时区和子时口径，返回可解释、可复算的
-公历候选时刻；首个版本只支持民用时，不静默推算真太阳时。
+实现 `VX-07` 图片导出和 `VX-08` 长图分享；两者必须消费同一版本化渲染结果，导出的
+内容与当前已采用快照及正式研究资料一致，并通过 Android 系统文件/分享入口真实交付。
 
 ### 建议所有权
 
-- 在 `core:domain` 定义查询、候选、结构化错误和公开接口。
-- 在 `core:engine-tyme` 实现 Tyme 适配器。
-- `app` 只协调查询、保存可恢复表单状态并展示结果。
-- 页面不得直接依赖 Tyme4j。
+- 先在 `core:domain` 定义版本化导出输入、渲染事实和结构化失败。
+- `app` 只负责 Compose/Android 渲染适配、系统文件写入和分享 Intent。
+- 图片导出与长图分享必须复用同一渲染服务，不得各自拼接第二套展示真值。
+- 来源截图证据与本机计算值继续分离；不得把未采用候选或旧快照冒充当前盘。
 
-### 已发现但尚未实现的技术事实
+### 当前已知边界
 
-- Tyme4j 1.5.1 的 `com.tyme.eightchar.EightChar#getSolarTimes(int, int)` 能生成候选。
-- 该方法内部会读取进程级 `LunarHour.provider`；两种子时口径必须在
-  `core:engine-tyme` 内串行切换并在成功或异常后恢复，不能从 UI 直接调用。
-- 每个候选还应通过项目唯一规则入口复核四柱；不能把库返回列表未经验证直接展示。
-- 必须先冻结年份范围上限、IANA 时区/DST 语义、子时口径和“候选代表时刻”文案。
+- 当前没有正式图片渲染合同；不得直接截图当前可见 Compose 视口冒充完整长图。
+- 导出必须明确版本、范围、隐私提示和失败恢复；系统分享目标属于外部条件。
+- 首版只导出已经存在的确定性字段和正式记录，不自动生成吉凶、合婚或主观结论。
 
 ### 最小验收
 
-1. 领域校验：四柱必须是有效干支，起止年有界且顺序正确，时区有效。
-2. 引擎测试：已知命例正向计算后能反查回来；无解、跨 60 年周期和两种子时口径覆盖。
-3. 全局 provider 在并发、异常和取消后恢复，不污染后续正向计算。
-4. UI 可输入、搜索、显示候选/无解/错误；明确候选不是出生分钟的唯一证明。
-5. 页面、表单和查询参数进入 `SavedStateHandle` 恢复合同。
-6. API 35 模拟器完成真实输入—查询—结果—重建流程。
-7. 更新需求审计、架构所有权、领域规则、测试策略、决策日志和本交接。
+1. 版本化渲染输入和输出合同覆盖已采用快照、缺失字段和长内容。
+2. 图片导出与分享使用同一渲染字节，尺寸、分页/长图和中文字体可验证。
+3. 系统文件写入失败、分享目标不存在和用户取消均有结构化结果且不丢当前页面状态。
+4. API 35 模拟器完成真实命例—导出—系统文件读回，以及长图分享 Intent 流程。
+5. 更新受影响治理文档、下一 alpha、全量构建和本地准确提交。
 
 ### 禁止项
 
-- 不引入第二生产历法真值。
-- 不保存查询结果为正式命例，除非后续有单独确认流程。
-- 不默认联网、调用外部 AI 或发送出生资料。
+- 不重新计算或改写已采用快照，不把来源截图值覆盖本机真值。
+- 不默认联网、调用外部 AI 或发送命例资料。
 - 不接触 OPPO、不清数据、不卸载真机 App。
 - 不提交真实姓名、八字、截图、密钥或构建产物。
 
@@ -189,7 +201,7 @@ cd "/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi"
 git rev-parse --show-toplevel
 git branch --show-current
 git status --short
-rg -n -m 20 '四柱反查|VX-09' docs app/src core --glob '!**/build/**'
+rg -n -m 20 '图片导出|VX-07' docs app/src core --glob '!**/build/**'
 ```
 
 若现场与本文件不一致，以现场为准，先修正文档再实现。不要读取旧对话全文。

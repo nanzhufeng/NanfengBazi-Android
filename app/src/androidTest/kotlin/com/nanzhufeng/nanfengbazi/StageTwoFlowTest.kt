@@ -93,6 +93,51 @@ class StageTwoFlowTest {
     }
 
     @Test
+    fun fourPillarsLookupCompletesAndSurvivesActivityRecreation() {
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_chart").performClick()
+        composeRule.onNodeWithTag("open_four_pillars_lookup")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("four_pillars_lookup_notice").assertIsDisplayed()
+        composeRule.onNodeWithTag("lookup_year_pillar").performTextInput("己丑")
+        composeRule.onNodeWithTag("lookup_month_pillar").performTextInput("癸酉")
+        composeRule.onNodeWithTag("lookup_day_pillar").performTextInput("甲子")
+        composeRule.onNodeWithTag("lookup_hour_pillar").performTextInput("壬申")
+        composeRule.onNodeWithTag("lookup_start_year").performTextReplacement("1949")
+        composeRule.onNodeWithTag("lookup_end_year").performTextReplacement("1949")
+        composeRule.onNodeWithTag("lookup_search")
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("lookup_candidate"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("lookup_result_count")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("four_pillars_lookup_screen")
+            .performScrollToNode(hasTestTag("lookup_result_notice"))
+        composeRule.onNodeWithTag("lookup_result_notice").assertIsDisplayed()
+
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("lookup_candidate"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("four_pillars_lookup_screen")
+            .performScrollToNode(hasTestTag("lookup_result_count"))
+        composeRule.onNodeWithTag("lookup_result_count").assertIsDisplayed()
+        composeRule.onNodeWithTag("four_pillars_lookup_screen")
+            .performScrollToNode(hasText("返回"))
+        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
+    }
+
+    @Test
     fun chartHomeShowsRecentlyViewedCaseShortcut() {
         val alias = "最近命例-${System.currentTimeMillis()}"
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()

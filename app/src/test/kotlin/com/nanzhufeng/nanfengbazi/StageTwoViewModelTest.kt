@@ -43,6 +43,7 @@ import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
+import java.time.Instant
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
@@ -52,6 +53,10 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupEvidence
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
@@ -952,6 +957,107 @@ class StageTwoViewModelTest {
         assertEquals(3, observations.last().day)
     }
 
+    @Test
+    fun `四柱反查表单通过公开接口查询并保留解释证据`() = runTest {
+        val recordedQueries =
+            mutableListOf<com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupQuery>()
+        val lookup = FourPillarsLookup { query ->
+            recordedQueries += query
+            FourPillarsLookupResult.Completed(
+                query = query,
+                candidates = listOf(
+                    FourPillarsLookupCandidate(
+                        civilDateTime =
+                            com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
+                                1949,
+                                10,
+                                1,
+                                16,
+                                0,
+                                0,
+                            ),
+                        timeZoneId = "Asia/Shanghai",
+                        resolvedUtcOffsetSeconds = 28_800,
+                        timeZoneDataVersion = "tzdb:test",
+                        instant = Instant.parse("1949-10-01T08:00:00Z"),
+                        fourPillars =
+                            com.nanzhufeng.nanfengbazi.domain.model.FourPillars(
+                                "己丑",
+                                "癸酉",
+                                "甲子",
+                                "壬申",
+                            ),
+                        ratHourRule = RatHourRule.TYME_DEFAULT,
+                        engineVersion = "1.5.1",
+                        ruleVersion = "stage0-v1",
+                    ),
+                ),
+                evidence = FourPillarsLookupEvidence(
+                    engineName = "Tyme4j",
+                    engineVersion = "1.5.1",
+                    ruleVersion = "stage0-v1",
+                    lookupMethod = "test",
+                ),
+            )
+        }
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            fourPillarsLookup = lookup,
+        )
+
+        viewModel.openCreate()
+        viewModel.openFourPillarsLookup()
+        viewModel.updateFourPillarsLookupForm {
+            it.copy(
+                yearPillar = "己丑",
+                monthPillar = "癸酉",
+                dayPillar = "甲子",
+                hourPillar = "壬申",
+                startYear = "1949",
+                endYear = "1949",
+            )
+        }
+        viewModel.searchFourPillars()
+
+        assertEquals(AppDestination.FourPillarsLookup, viewModel.state.value.destination)
+        assertEquals(1, recordedQueries.size)
+        assertEquals(1, viewModel.state.value.fourPillarsLookupCandidates.size)
+        assertEquals("Tyme4j", viewModel.state.value.fourPillarsLookupEvidence?.engineName)
+        assertNull(viewModel.state.value.fourPillarsLookupError)
+    }
+
+    @Test
+    fun `四柱反查年份输入错误不会调用引擎且原表单保留`() = runTest {
+        var called = false
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            fourPillarsLookup = FourPillarsLookup {
+                called = true
+                error("不应调用")
+            },
+        )
+        viewModel.openCreate()
+        viewModel.openFourPillarsLookup()
+        viewModel.updateFourPillarsLookupForm {
+            it.copy(
+                yearPillar = "甲子",
+                monthPillar = "丙寅",
+                dayPillar = "甲子",
+                hourPillar = "甲子",
+                startYear = "十九四九",
+            )
+        }
+
+        viewModel.searchFourPillars()
+
+        assertFalse(called)
+        assertEquals("十九四九", viewModel.state.value.fourPillarsLookupForm.startYear)
+        assertEquals(
+            "起始年份必须是整数。",
+            viewModel.state.value.fourPillarsLookupError,
+        )
+    }
+
     private fun createViewModel(
         repository: FakeCaseRepository,
         bundleOperations: SingleCaseBundleOperations? = null,
@@ -959,6 +1065,7 @@ class StageTwoViewModelTest {
         backupRoot: Path? = null,
         engine: BaziEngine = RecordingEngine(),
         fortunePositionResolver: FortunePositionResolver? = null,
+        fourPillarsLookup: FourPillarsLookup? = null,
     ): StageTwoViewModel {
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
@@ -1007,6 +1114,7 @@ class StageTwoViewModelTest {
             clock = fixedClock,
             observationClock = fixedClock,
             fortunePositionResolver = fortunePositionResolver,
+            fourPillarsLookup = fourPillarsLookup,
             singleCaseExchange = SingleCaseExchangeService(
                 repository = repository,
                 clock = fixedClock,

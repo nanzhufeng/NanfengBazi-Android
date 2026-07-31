@@ -19,6 +19,48 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class StageTwoSavedStateTest {
     @Test
+    fun savedStateRestoresFourPillarsLookupFormAndReloadsCandidates() = runBlocking {
+        val application = ApplicationProvider.getApplicationContext<NanfengBaziApplication>()
+        val container = application.container
+        val original = createViewModel(container)
+        original.openCreate()
+        original.openFourPillarsLookup()
+        original.updateFourPillarsLookupForm {
+            it.copy(
+                yearPillar = "己丑",
+                monthPillar = "癸酉",
+                dayPillar = "甲子",
+                hourPillar = "壬申",
+                startYear = "1949",
+                endYear = "1949",
+                timeZoneId = "Asia/Shanghai",
+                ratHourRule = RatHourRule.TYME_DEFAULT,
+            )
+        }
+        original.searchFourPillars()
+        waitUntil {
+            !original.state.value.fourPillarsLookupLoading &&
+                original.state.value.fourPillarsLookupCandidates.isNotEmpty()
+        }
+        val handle = SavedStateHandle()
+        original.saveRestorableStateTo(handle)
+
+        val restored = createViewModel(container, handle)
+        waitUntil {
+            !restored.state.value.fourPillarsLookupLoading &&
+                restored.state.value.fourPillarsLookupCandidates.isNotEmpty()
+        }
+
+        assertEquals(AppDestination.FourPillarsLookup, restored.state.value.destination)
+        assertEquals("己丑", restored.state.value.fourPillarsLookupForm.yearPillar)
+        assertEquals("1949", restored.state.value.fourPillarsLookupForm.startYear)
+        assertEquals("Asia/Shanghai", restored.state.value.fourPillarsLookupForm.timeZoneId)
+        assertNotNull(restored.state.value.fourPillarsLookupEvidence)
+        restored.navigateBack()
+        assertEquals(AppDestination.CreateCase, restored.state.value.destination)
+    }
+
+    @Test
     fun savedStateRestoresCreateDraftAndCaseBoundEditor() = runBlocking {
         val application = ApplicationProvider.getApplicationContext<NanfengBaziApplication>()
         val container = application.container
@@ -152,6 +194,7 @@ class StageTwoSavedStateTest {
         caseEvents = CaseEventUseCase(container.caseRepository),
         caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
         clock = Clock.systemUTC(),
+        fourPillarsLookup = container.fourPillarsLookup,
         singleCaseBundleService = container.singleCaseBundleService,
         caseBackupService = container.caseBackupService,
         backupAttachmentRoot = container.backupAttachmentRoot,

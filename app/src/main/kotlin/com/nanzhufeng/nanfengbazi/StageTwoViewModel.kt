@@ -42,6 +42,10 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupEvidence
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
@@ -79,6 +83,7 @@ import kotlinx.coroutines.withContext
 sealed interface AppDestination {
     data object CaseList : AppDestination
     data object CaseComparison : AppDestination
+    data object FourPillarsLookup : AppDestination
     data object RecordHub : AppDestination
     data object Settings : AppDestination
     data object CreateCase : AppDestination
@@ -119,6 +124,10 @@ class StageTwoNavigator {
 
     fun openCaseComparison(): AppDestination {
         return push(AppDestination.CaseComparison)
+    }
+
+    fun openFourPillarsLookup(): AppDestination {
+        return push(AppDestination.FourPillarsLookup)
     }
 
     fun openScreenshotImportReview(): AppDestination {
@@ -170,6 +179,11 @@ class StageTwoNavigator {
 
             AppDestination.CaseComparison -> {
                 stack += AppDestination.CaseList
+                stack += destination
+            }
+
+            AppDestination.FourPillarsLookup -> {
+                stack += AppDestination.CreateCase
                 stack += destination
             }
 
@@ -239,6 +253,13 @@ data class StageTwoUiState(
     val comparisonReport: CaseComparisonReport? = null,
     val comparisonLoading: Boolean = false,
     val comparisonError: String? = null,
+    val fourPillarsLookupForm: FourPillarsLookupFormState =
+        FourPillarsLookupFormState(),
+    val fourPillarsLookupCandidates: List<FourPillarsLookupCandidate> = emptyList(),
+    val fourPillarsLookupEvidence: FourPillarsLookupEvidence? = null,
+    val fourPillarsLookupLoading: Boolean = false,
+    val fourPillarsLookupHasSearched: Boolean = false,
+    val fourPillarsLookupError: String? = null,
     val listLoading: Boolean = false,
     val listError: String? = null,
     val form: CaseFormState = CaseFormState(),
@@ -318,6 +339,7 @@ class StageTwoViewModel(
     private val observationClock: Clock = Clock.systemDefaultZone(),
     private val fortunePositionResolver: FortunePositionResolver? = null,
     private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
+    private val fourPillarsLookup: FourPillarsLookup? = null,
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -335,6 +357,7 @@ class StageTwoViewModel(
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
     private var comparisonJob: Job? = null
+    private var fourPillarsLookupJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
@@ -362,6 +385,12 @@ class StageTwoViewModel(
         refreshCases()
         if (mutableState.value.destination == AppDestination.CaseComparison) {
             loadComparisonWorkspace()
+        }
+        if (
+            mutableState.value.destination == AppDestination.FourPillarsLookup &&
+            mutableState.value.fourPillarsLookupHasSearched
+        ) {
+            searchFourPillars()
         }
     }
 
@@ -1994,6 +2023,103 @@ class StageTwoViewModel(
         loadComparisonWorkspace()
     }
 
+    fun openFourPillarsLookup() {
+        mutableState.update {
+            it.copy(
+                destination = navigator.openFourPillarsLookup(),
+                fourPillarsLookupError = null,
+                message = null,
+            )
+        }
+    }
+
+    fun updateFourPillarsLookupForm(
+        transform: (FourPillarsLookupFormState) -> FourPillarsLookupFormState,
+    ) {
+        fourPillarsLookupJob?.cancel()
+        mutableState.update {
+            it.copy(
+                fourPillarsLookupForm = transform(it.fourPillarsLookupForm),
+                fourPillarsLookupCandidates = emptyList(),
+                fourPillarsLookupEvidence = null,
+                fourPillarsLookupLoading = false,
+                fourPillarsLookupHasSearched = false,
+                fourPillarsLookupError = null,
+            )
+        }
+    }
+
+    fun searchFourPillars() {
+        val lookup = fourPillarsLookup
+        if (lookup == null) {
+            mutableState.update {
+                it.copy(
+                    fourPillarsLookupHasSearched = true,
+                    fourPillarsLookupLoading = false,
+                    fourPillarsLookupError = "四柱反查引擎当前不可用，请稍后重试。",
+                )
+            }
+            return
+        }
+        val form = mutableState.value.fourPillarsLookupForm
+        val query = when (val validation = form.toQuery()) {
+            is FourPillarsLookupFormValidation.Valid -> validation.query
+            is FourPillarsLookupFormValidation.Invalid -> {
+                mutableState.update {
+                    it.copy(
+                        fourPillarsLookupHasSearched = true,
+                        fourPillarsLookupLoading = false,
+                        fourPillarsLookupCandidates = emptyList(),
+                        fourPillarsLookupEvidence = null,
+                        fourPillarsLookupError = validation.message,
+                    )
+                }
+                return
+            }
+        }
+        fourPillarsLookupJob?.cancel()
+        fourPillarsLookupJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    fourPillarsLookupLoading = true,
+                    fourPillarsLookupHasSearched = true,
+                    fourPillarsLookupCandidates = emptyList(),
+                    fourPillarsLookupEvidence = null,
+                    fourPillarsLookupError = null,
+                )
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    lookup.search(query)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                FourPillarsLookupResult.Failed(
+                    com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupError
+                        .EngineUnavailable,
+                )
+            }
+            if (mutableState.value.fourPillarsLookupForm != form) return@launch
+            mutableState.update {
+                when (result) {
+                    is FourPillarsLookupResult.Completed -> it.copy(
+                        fourPillarsLookupCandidates = result.candidates,
+                        fourPillarsLookupEvidence = result.evidence,
+                        fourPillarsLookupLoading = false,
+                        fourPillarsLookupError = null,
+                    )
+                    is FourPillarsLookupResult.Failed -> it.copy(
+                        fourPillarsLookupCandidates = emptyList(),
+                        fourPillarsLookupEvidence = null,
+                        fourPillarsLookupLoading = false,
+                        fourPillarsLookupError = result.error.toUserMessage(),
+                    )
+                }
+            }
+        }
+    }
+
     fun selectComparisonLeft(caseId: String) {
         val candidates = mutableState.value.comparisonCandidates
         if (candidates.none { it.id == caseId }) return
@@ -2837,6 +2963,9 @@ class StageTwoViewModel(
     }
 
     fun navigateBack() {
+        if (mutableState.value.destination == AppDestination.FourPillarsLookup) {
+            fourPillarsLookupJob?.cancel()
+        }
         mutableState.update {
             it.copy(
                 destination = navigator.back(),
@@ -3060,6 +3189,7 @@ class StageTwoViewModel(
                     com.nanzhufeng.nanfengbazi.engine.tyme.TymeFortunePositionResolver(),
                 professionalFortuneResolver =
                     com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
+                fourPillarsLookup = container.fourPillarsLookup,
                 singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
@@ -3098,6 +3228,7 @@ private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.EditEvent -> caseId
     AppDestination.CaseList,
     AppDestination.CaseComparison,
+    AppDestination.FourPillarsLookup,
     AppDestination.RecordHub,
     AppDestination.Settings,
     AppDestination.CreateCase,
@@ -3112,6 +3243,11 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("selectedTagId", selectedTagId)
     putString("comparisonLeftCaseId", comparisonLeftCaseId)
     putString("comparisonRightCaseId", comparisonRightCaseId)
+    putBundle(
+        "fourPillarsLookupForm",
+        fourPillarsLookupForm.toSavedStateBundle(),
+    )
+    putBoolean("fourPillarsLookupHasSearched", fourPillarsLookupHasSearched)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
     putString("detailSection", detailSection.name)
@@ -3137,6 +3273,13 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         comparisonLeftCaseId = getString("comparisonLeftCaseId"),
         comparisonRightCaseId = getString("comparisonRightCaseId"),
         comparisonLoading = destination == AppDestination.CaseComparison,
+        fourPillarsLookupForm = getBundle("fourPillarsLookupForm")
+            ?.toFourPillarsLookupFormState()
+            ?: FourPillarsLookupFormState(),
+        fourPillarsLookupHasSearched = getBoolean("fourPillarsLookupHasSearched"),
+        fourPillarsLookupLoading =
+            destination == AppDestination.FourPillarsLookup &&
+                getBoolean("fourPillarsLookupHasSearched"),
         sortOrder = enumValueOrDefault(
             getString("sortOrder"),
             CaseSortOrder.UPDATED_DESC,
@@ -3167,6 +3310,7 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
     when (this@toSavedStateBundle) {
         AppDestination.CaseList -> putString("type", "case_list")
         AppDestination.CaseComparison -> putString("type", "case_comparison")
+        AppDestination.FourPillarsLookup -> putString("type", "four_pillars_lookup")
         AppDestination.RecordHub -> putString("type", "record_hub")
         AppDestination.Settings -> putString("type", "settings")
         AppDestination.CreateCase -> putString("type", "create_case")
@@ -3205,6 +3349,7 @@ private fun Bundle.toAppDestination(): AppDestination {
     return when (getString("type")) {
         "record_hub" -> AppDestination.RecordHub
         "case_comparison" -> AppDestination.CaseComparison
+        "four_pillars_lookup" -> AppDestination.FourPillarsLookup
         "settings" -> AppDestination.Settings
         "create_case" -> AppDestination.CreateCase
         "screenshot_review" -> AppDestination.ScreenshotImportReview

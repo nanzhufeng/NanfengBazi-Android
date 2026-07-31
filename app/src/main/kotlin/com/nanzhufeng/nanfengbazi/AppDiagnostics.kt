@@ -63,6 +63,7 @@ internal fun buildAppDiagnosticText(
 private fun AppDestination.diagnosticName(): String = when (this) {
     AppDestination.CaseList -> "CASE_LIST"
     AppDestination.CaseComparison -> "CASE_COMPARISON"
+    AppDestination.FourPillarsLookup -> "FOUR_PILLARS_LOOKUP"
     AppDestination.RecordHub -> "RECORD_HUB"
     AppDestination.Settings -> "SETTINGS"
     AppDestination.CreateCase -> "CREATE_CASE"
