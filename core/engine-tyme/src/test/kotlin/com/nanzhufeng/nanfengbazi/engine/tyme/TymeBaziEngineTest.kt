@@ -11,11 +11,14 @@ import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.LuckStartRule
 import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.tyme.eightchar.ChildLimit
 import com.tyme.eightchar.provider.impl.China95ChildLimitProvider
+import com.tyme.eightchar.provider.impl.LunarSect2EightCharProvider
+import com.tyme.lunar.LunarHour
 import com.tyme.solar.SolarTerm
 import java.time.Clock
 import java.time.Instant
@@ -252,6 +255,75 @@ class TymeBaziEngineTest {
 
         assertNotEquals(defaultResult.fortuneStart.endAt, china95Result.fortuneStart.endAt)
         assertEquals(defaultResult.fortuneStart, defaultAgain.fortuneStart)
+    }
+
+    @Test
+    fun `晚子时规则只在二十三点保留当天日柱`() = runTest {
+        val defaultProfile = CalculationProfile.tymeDefault()
+        val lateRatProfile = CalculationProfile.tymeDefault(
+            ratHourRule = RatHourRule.LATE_RAT_SAME_DAY,
+        )
+
+        val beforeDefault = engine.calculate(
+            solarInput(2026, 7, 30, 22, 59, 59),
+            defaultProfile,
+        )
+        val beforeLate = engine.calculate(
+            solarInput(2026, 7, 30, 22, 59, 59),
+            lateRatProfile,
+        )
+        val atDefault = engine.calculate(
+            solarInput(2026, 7, 30, 23, 0, 0),
+            defaultProfile,
+        )
+        val atLate = engine.calculate(
+            solarInput(2026, 7, 30, 23, 0, 0),
+            lateRatProfile,
+        )
+        val midnightDefault = engine.calculate(
+            solarInput(2026, 7, 31, 0, 0, 0),
+            defaultProfile,
+        )
+        val midnightLate = engine.calculate(
+            solarInput(2026, 7, 31, 0, 0, 0),
+            lateRatProfile,
+        )
+
+        assertEquals(beforeDefault.fourPillars, beforeLate.fourPillars)
+        assertEquals(beforeDefault.fourPillars.day, atLate.fourPillars.day)
+        assertEquals(midnightDefault.fourPillars.day, atDefault.fourPillars.day)
+        assertNotEquals(atDefault.fourPillars.day, atLate.fourPillars.day)
+        assertEquals(atDefault.fourPillars.hour, atLate.fourPillars.hour)
+        assertEquals(midnightDefault.fourPillars, midnightLate.fourPillars)
+        assertEquals(
+            "tyme-late-rat-same-day-v1",
+            atLate.profile.id,
+        )
+        assertEquals("stage7b-rat-hour-v1", atLate.profile.ruleVersion)
+    }
+
+    @Test
+    fun `子时计算不读取或改写调用方全局八字 provider`() = runTest {
+        val original = LunarHour.provider
+        val marker = LunarSect2EightCharProvider()
+        try {
+            LunarHour.provider = marker
+            val default = engine.calculate(
+                solarInput(2026, 7, 30, 23, 0, 0),
+                CalculationProfile.tymeDefault(),
+            )
+            val late = engine.calculate(
+                solarInput(2026, 7, 30, 23, 0, 0),
+                CalculationProfile.tymeDefault(
+                    ratHourRule = RatHourRule.LATE_RAT_SAME_DAY,
+                ),
+            )
+
+            assertNotEquals(default.fourPillars.day, late.fourPillars.day)
+            assertSame(marker, LunarHour.provider)
+        } finally {
+            LunarHour.provider = original
+        }
     }
 
     @Test

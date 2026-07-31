@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onFirst
@@ -104,7 +105,11 @@ class StageTwoFlowTest {
             composeRule.onAllNodes(hasText("别名：$alias"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("case_search").performTextInput(alias)
+        composeRule.onNodeWithTag("case_search").performTextReplacement(alias)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("别名：$alias").performClick()
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
         composeRule.onNodeWithText("返回").performClick()
@@ -227,15 +232,111 @@ class StageTwoFlowTest {
     }
 
     @Test
+    fun lateRatHourRuleReachesVersionedInstantChart() {
+        val alias = "晚子时-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias")
+            .performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("2026")
+        composeRule.onNodeWithTag("birth_month").performTextInput("7")
+        composeRule.onNodeWithTag("birth_day").performTextInput("30")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("23")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("birth_rat_hour_rule_LATE_RAT_SAME_DAY")
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省宿迁市泗阳县")
+        composeRule.onNodeWithTag("preview_case").performScrollTo().performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("instant_calculation_preview"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("form_error"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        val formError = composeRule.onAllNodes(
+            hasAnyAncestor(hasTestTag("form_error")),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes().flatMap {
+            it.config.getOrNull(SemanticsProperties.Text).orEmpty()
+        }.joinToString { it.text }
+        check(formError.isBlank()) {
+            "晚子时即时排盘失败：$formError"
+        }
+        composeRule.onNodeWithTag("instant_calculation_preview")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("instant_rat_hour_rule_LATE_RAT_SAME_DAY")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(
+            "instant_calculation_profile_tyme-late-rat-same-day-v1",
+        ).fetchSemanticsNode()
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.onNodeWithTag("detail_tab_fortune").performScrollTo().performClick()
+        composeRule.onNodeWithTag("fortune_observation_date")
+            .performScrollTo()
+            .performTextReplacement("2026-07-30")
+        composeRule.onNodeWithTag("fortune_observation_time")
+            .performScrollTo()
+            .performTextReplacement("23:00")
+        composeRule.onNode(
+            hasTestTag("fortune_profile_id").and(
+                hasAnyDescendant(hasText("tyme-late-rat-same-day-v1")),
+            ),
+        )
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNode(
+            hasTestTag("fortune_rule_version").and(
+                hasAnyDescendant(hasText("stage7b-rat-hour-v1")),
+            ),
+        )
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("flow_day_pillar")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun lunarInputShowsLeapMonthChoice() {
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("new_case_button").performClick()
 
         composeRule.onNodeWithTag("birth_calendar_lunar")
             .performScrollTo()
-            .performClick()
+            .performSemanticsAction(SemanticsActions.OnClick)
 
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("birth_lunar_leap_month"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("birth_lunar_leap_month")
+            .performScrollTo()
             .assertIsDisplayed()
             .assertIsEnabled()
             .performClick()
@@ -248,7 +349,12 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("new_case_button").performClick()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
-        composeRule.onNodeWithTag("birth_calendar_lunar").performClick()
+        composeRule.onNodeWithTag("birth_calendar_lunar")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("birth_lunar_leap_month"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("birth_year").performTextInput("2023")
         composeRule.onNodeWithTag("birth_month").performTextInput("1")
         composeRule.onNodeWithTag("birth_day").performTextInput("1")
@@ -272,15 +378,26 @@ class StageTwoFlowTest {
                 .performScrollTo()
                 .performClick()
         }
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("别名：$alias"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
-
-        composeRule.onNodeWithText("农历 2023年1月1日 13:00:00")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("detail_tab_basic_chart")
             .performScrollTo()
-            .assertIsDisplayed()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("换算公历"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("换算公历").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("2023-01-22 13:00:00")
             .performScrollTo()
@@ -418,11 +535,19 @@ class StageTwoFlowTest {
                 .performScrollTo()
                 .performClick()
         }
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("别名：$alias"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
 
         composeRule.onNodeWithText("America/New_York")
             .performScrollTo()
@@ -475,11 +600,19 @@ class StageTwoFlowTest {
                 .performScrollTo()
                 .performClick()
         }
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("别名：$alias"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
 
         composeRule.onNodeWithText("已启用").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
@@ -515,6 +648,9 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("fortune_observation_date")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_observation_time")
+            .performScrollTo()
+            .assertIsDisplayed()
         composeRule.onNodeWithTag("current_fortune_position")
             .performScrollTo()
             .assertIsDisplayed()
@@ -522,6 +658,32 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("current_decade_fortune")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("professional_fortune_position")
+            .performScrollTo()
+            .assertIsDisplayed()
+        listOf(
+            "flow_year_pillar",
+            "flow_month_pillar",
+            "flow_day_pillar",
+            "flow_hour_pillar",
+            "previous_solar_term",
+            "next_solar_term",
+            "fortune_profile_id",
+            "fortune_rule_version",
+        ).forEach { tag ->
+            composeRule.onNodeWithTag(tag)
+                .performScrollTo()
+                .assertIsDisplayed()
+        }
+        composeRule.onNodeWithTag("fortune_observation_time")
+            .performScrollTo()
+            .performTextReplacement("23:00")
+        composeRule.onNodeWithTag("copy_fortune_diagnostics")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithText("诊断已复制")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details")
@@ -792,6 +954,11 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("visibility_active").assertIsDisplayed()
+        composeRule.onNodeWithTag("visibility_active").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$editedAlias（副本）"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("别名：$editedAlias（副本）")
             .performScrollTo()
             .assertIsDisplayed()

@@ -71,9 +71,12 @@ class TymeBaziEngine(
         return ChildLimitProviderGuard.withProvider(profile.luckStartRule) {
             val solar = resolved.solar
             val lunarHour = resolved.lunarHour
-            val civilEightChar = lunarHour.eightChar
+            val civilEightChar = lunarHour.resolveEightChar(profile.ratHourRule)
             val eightChar = trueSolarEvidence?.let { evidence ->
-                val correctedEightChar = evidence.trueSolarDateTime.toTyme().lunarHour.eightChar
+                val correctedEightChar = evidence.trueSolarDateTime
+                    .toTyme()
+                    .lunarHour
+                    .resolveEightChar(profile.ratHourRule)
                 EightChar(
                     civilEightChar.year,
                     civilEightChar.month,
@@ -329,7 +332,6 @@ class TymeBaziEngine(
         }
         require(profile.yearBoundaryRule == YearBoundaryRule.SPRING_EXACT)
         require(profile.monthBoundaryRule == MonthBoundaryRule.SOLAR_TERM_EXACT)
-        require(profile.ratHourRule == RatHourRule.TYME_DEFAULT)
         require(
             profile.trueSolarTimeApplicationRule ==
                 TrueSolarTimeApplicationRule

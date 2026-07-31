@@ -136,11 +136,13 @@
 | 页面与草稿恢复 | 页面、参数、筛选、四类表单和详情标签写入 `SavedStateHandle`；密码、文件流和一次性句柄不保存 | `StageTwoViewModel` 保存状态合同 | Android 新 ViewModel 重建、后台 Activity 销毁、宿主杀旧 PID 后新进程恢复 |
 | 页面无障碍与目标视口 | 主入口、命例表单、详情四标签、分类、记录和事件页为可操作节点提供名称、点击语义和至少 48dp 目标 | Compose 语义树与同一真实工作流 | 手机/展开态 × 1.0/2.0 字体四组合，其中 TalkBack 开/关各两组；脚本恢复系统设置 |
 
-## Stage 7A 岁运定位合同
+## Stage 7A–7C 岁运定位合同
 
 | 能力 | 唯一入口 | 事实边界 |
 |---|---|---|
 | 流年序列 | `BaziEngine.calculate()` → `CalculationResult.annualFortunes` | 从标准公历出生年生成至前八步大运终点；保存干支、年份、虚岁和摘要大运归属 |
-| 当前流年 | `FortunePositionResolver.locate()` | 观察时刻固定为用户所选日期当地中午；按配置中的精确立春切换，不按公历元旦切换 |
+| 当前流年 | `ProfessionalFortuneResolver.locate()` | 观察日期与时分由用户配置，默认当地中午；按配置中的精确立春切换，不按公历元旦切换 |
 | 当前大运 | `FortunePositionResolver.locate()` | 优先使用每步大运的 `[startAt, endAtExclusive)` 精确半开区间；旧快照无精确边界时才按年份降级 |
-| 页面消费 | `StageTwoViewModel` → 岁运标签 | 观察日期进入 `SavedStateHandle`；页面只消费已采用快照，不直接调用 Tyme4j |
+| 流月/流日/流时 | `ProfessionalFortuneResolver.locate()` | 流月只在十二节切换；流日明确服从快照中的子时规则；观察时刻按民用时直接计算，不冒充已完成观察地点真太阳时校正 |
+| 子时口径 | `LunarHour.resolveEightChar()` | 默认与晚子时两种 provider 按调用显式选择，不读取或改写 Tyme4j 全局 `LunarHour.provider` |
+| 页面消费 | `StageTwoViewModel` → 岁运标签 | 观察日期、时分进入 `SavedStateHandle`；页面显示四层流柱、前后节气、档案/规则版本并支持复制诊断，只消费已采用快照 |

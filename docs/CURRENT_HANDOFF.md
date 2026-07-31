@@ -1,4 +1,4 @@
-# 当前交接：Stage 7A 岁运基础与当前定位完成
+# 当前交接：Stage 7B/7C 专业流运与子时多口径完成
 
 更新日期：2026-07-31
 
@@ -14,8 +14,10 @@
 - Stage 6 已补齐排盘首页最近命例、命盘详情四标签，以及页面/参数/筛选/草稿的
   `SavedStateHandle` 合同；后台 Activity 销毁和宿主杀进程后的恢复均已通过，下一安全
   增量已完成全页面无障碍与目标视口矩阵。
-- Stage 7A 已新增出生年至前八步大运终点的流年序列，并在岁运页按可配置观察日期显示
-  当前流年、虚岁和当前大运；流年按精确立春、大运按精确交运半开区间切换。
+- Stage 7A–7C 已新增出生年至前八步大运终点的流年序列、精确当前大运，以及按观察
+  日期与时分计算的流年/月/日/时；流年按精确立春、流月按十二节、流日按已保存的
+  Tyme 默认或晚子时口径，大运按精确交运半开区间切换。页面显示前后节气、计算档案、
+  规则版本并支持复制诊断。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -291,6 +293,14 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     流程 1/1 通过；
   - alpha52 重新执行手机/展开态 × 1.0/2.0 字体与 TalkBack 组合 4/4 通过；测试显式
     归一起始主入口并等待 Compose 转场稳定，结束后恢复全部系统无障碍与视口设置；
+  - alpha53 接入 Tyme 默认 23:00 换日与“晚子时日柱算当天”两种版本化口径；创建、
+    编辑、候选时间、即时排盘、保存快照和专业流日复用同一配置，且不读取或改写全局
+    `LunarHour.provider`；
+  - alpha53 专业流运输出流年、流月、流日、流时及前后节气证据；4 个年份的 48 个
+    “节”边界验证交节即换月，44 个“气”边界验证不换月，23:00/00:00 子时差异通过；
+  - alpha53 API 35 的普通/真太阳时专业岁运、晚子时保存快照与诊断复制专项均通过；
+    完整 `StageTwoFlowTest` 与 `StageTwoSavedStateTest` 共 12/12 通过，并修复搜索、
+    转场、农历语义点击及恢复筛选的测试竞态；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -298,24 +308,25 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha52-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha53-debug.apk`
 
-- 大小：55,761,987 bytes
-- SHA-256：`285247df7231b0659a543f6d9d988bce2cec11db91eea35c62cd1e7627c05769`
+- 大小：55,778,371 bytes
+- SHA-256：`83628bacdacff79e6898c9b9f8540b3506d2dc8bcfdc858f1918235d7b25869b`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha52-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha53-release-unsigned.apk`
 
-- 大小：52,023,426 bytes
-- SHA-256：`62b8dad82aa626c8aed21c644a9d2fa9ba2b13f28ec52199a8cdfa3e5ba38a2a`
+- 大小：52,039,810 bytes
+- SHA-256：`e94cf30129a1973b04ecd3f3db8f9b1da1f0ac5be2a51707a3a9835da810e4b5`
 
 ## 当前限制与风险
 
 - 自动地点搜索、行政区到坐标/时区映射尚未接通；当前地区、坐标和 IANA 时区均为人工
   输入。县域中心坐标与问真实际取点可能造成几十秒差异。
-- 神煞、流月/流日/流时与子时多口径尚未实现；流年与当前大运已实现，但仍需扩大节气、
-  交运边界黄金集和后续问真真实样本对照。
+- 神煞计算与问真真实边界对照仍未完成。专业流运的观察时刻当前按用户输入的民用时
+  直接计算，不对观察地点额外做真太阳时校正；出生真太阳时档案不得被误解为观察地点
+  已校正。
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
   及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
@@ -337,8 +348,8 @@ Debug 验收构建：
 
 继续 Stage 7，优先顺序：
 
-1. 补齐节气边界、子时多口径与专业岁运合同；
-2. 接入专业细盘证据与可复制诊断；
+1. 推进问真 P2 专业细盘截图证据和来源值/本地计算值自动对照；
+2. 补齐通用可复制诊断、计算档案升级差异和剩余节气/生肖边界门禁；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

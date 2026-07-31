@@ -61,6 +61,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
@@ -326,7 +327,14 @@ class StageTwoViewModelTest {
         val lunarCase = base.copy(
             birthInput = lunarInput,
             calculationSnapshots = base.calculationSnapshots.map {
-                it.copy(result = it.result.copy(normalizedInput = lunarInput))
+                it.copy(
+                    result = it.result.copy(
+                        normalizedInput = lunarInput,
+                        profile = it.result.profile.copy(
+                            ratHourRule = RatHourRule.LATE_RAT_SAME_DAY,
+                        ),
+                    ),
+                )
             },
         )
         val repository = FakeCaseRepository().apply {
@@ -347,6 +355,10 @@ class StageTwoViewModelTest {
             viewModel.state.value.editForm.timeSourceType,
         )
         assertEquals("家人回忆", viewModel.state.value.editForm.sourceNote)
+        assertEquals(
+            RatHourRule.LATE_RAT_SAME_DAY,
+            viewModel.state.value.editForm.ratHourRule,
+        )
     }
 
     @Test
@@ -831,7 +843,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `岁运页按观察日期定位当前流年并拒绝无效日期`() = runTest {
+    fun `岁运页按观察时刻定位当前流年并拒绝无效日期时间`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-fortune"] = sampleStoredCase("case-fortune")
         }
@@ -861,9 +873,24 @@ class StageTwoViewModelTest {
         viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
 
         assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("12:00", viewModel.state.value.fortuneObservationTime)
         assertEquals("丙午年", viewModel.state.value.fortunePosition?.annualFortune?.name)
         assertEquals(12, observations.last().hour)
 
+        viewModel.updateFortuneObservationTime("23:15")
+
+        assertEquals(23, observations.last().hour)
+        assertEquals(15, observations.last().minute)
+
+        viewModel.updateFortuneObservationTime("25:00")
+
+        assertNull(viewModel.state.value.fortunePosition)
+        assertEquals(
+            "观察时间请按 HH:mm 填写。",
+            viewModel.state.value.fortunePositionError,
+        )
+
+        viewModel.updateFortuneObservationTime("12:00")
         viewModel.updateFortuneObservationDate("2026-02-30")
 
         assertNull(viewModel.state.value.fortunePosition)

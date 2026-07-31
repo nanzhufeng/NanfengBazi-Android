@@ -1,5 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
@@ -85,6 +87,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -101,6 +104,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
 import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -311,6 +315,8 @@ fun NanfengBaziApp(
                                 onSelectSection = viewModel::selectDetailSection,
                                 onFortuneObservationDateChange =
                                     viewModel::updateFortuneObservationDate,
+                                onFortuneObservationTimeChange =
+                                    viewModel::updateFortuneObservationTime,
                                 modifier = modifier,
                             )
                         }
@@ -3184,6 +3190,33 @@ internal fun CaseFormScreen(
                 }
             }
             Text(
+                "子时换日规则 *",
+                modifier = Modifier.padding(top = 14.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RatHourRule.entries.forEach { rule ->
+                    SexButton(
+                        text = rule.displayName(),
+                        selected = form.ratHourRule == rule,
+                        enabled = !saving,
+                        tag = "birth_rat_hour_rule_${rule.name}",
+                        onClick = {
+                            onFormChange { it.copy(ratHourRule = rule) }
+                        },
+                    )
+                }
+            }
+            Text(
+                "仅 23:00–23:59 的日柱会因口径不同而变化；所选规则随计算快照留存。",
+                modifier = Modifier.padding(top = 6.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
                 "时间来源",
                 modifier = Modifier.padding(top = 14.dp, bottom = 8.dp),
                 style = MaterialTheme.typography.labelLarge,
@@ -3474,6 +3507,16 @@ private fun InstantCalculationPreviewCard(
                 "时间来源",
                 calculation.normalizedInput.timeSourceType.displayName(),
             )
+            DetailRow(
+                "子时规则",
+                calculation.profile.ratHourRule.displayName(),
+                tag = "instant_rat_hour_rule_${calculation.profile.ratHourRule.name}",
+            )
+            DetailRow(
+                "计算配置",
+                calculation.profile.id,
+                tag = "instant_calculation_profile_${calculation.profile.id}",
+            )
             calculation.normalizedInput.sourceNote?.let {
                 DetailRow("时间来源说明", it)
             }
@@ -3711,6 +3754,7 @@ private fun CaseDetailScreen(
     onRestore: () -> Unit,
     onSelectSection: (CaseDetailSection) -> Unit,
     onFortuneObservationDateChange: (String) -> Unit,
+    onFortuneObservationTimeChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -3762,9 +3806,12 @@ private fun CaseDetailScreen(
                     mutationSaving = state.mutationSaving,
                     mutationError = state.mutationError,
                     fortuneObservationDate = state.fortuneObservationDate,
+                    fortuneObservationTime = state.fortuneObservationTime,
                     fortunePosition = state.fortunePosition,
+                    professionalFortunePosition = state.professionalFortunePosition,
                     fortunePositionError = state.fortunePositionError,
                     onFortuneObservationDateChange = onFortuneObservationDateChange,
+                    onFortuneObservationTimeChange = onFortuneObservationTimeChange,
                 )
             }
         }
@@ -3830,9 +3877,12 @@ private fun CaseDetailContent(
     mutationSaving: Boolean,
     mutationError: String?,
     fortuneObservationDate: String,
+    fortuneObservationTime: String,
     fortunePosition: FortunePosition?,
+    professionalFortunePosition: ProfessionalFortunePosition?,
     fortunePositionError: String?,
     onFortuneObservationDateChange: (String) -> Unit,
+    onFortuneObservationTimeChange: (String) -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     Column(
@@ -4122,6 +4172,7 @@ private fun CaseDetailContent(
                     DetailRow("命宫", adopted.result.ownSign)
                     DetailRow("身宫", adopted.result.bodySign)
                     DetailRow("计算配置", adopted.result.profile.id)
+                    DetailRow("子时规则", adopted.result.profile.ratHourRule.displayName())
                     DetailRow("引擎", adopted.result.evidence.engineName)
                     DetailRow("引擎版本", adopted.result.evidence.engineVersion)
                     DetailRow("规则版本", adopted.result.evidence.ruleVersion)
@@ -4206,11 +4257,27 @@ private fun CaseDetailContent(
                             .padding(top = 4.dp, bottom = 8.dp)
                             .testTag("fortune_observation_date"),
                     )
+                    OutlinedTextField(
+                        value = fortuneObservationTime,
+                        onValueChange = onFortuneObservationTimeChange,
+                        label = { Text("观察时间（HH:mm）") },
+                        singleLine = true,
+                        isError = fortunePositionError != null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .testTag("fortune_observation_time"),
+                    )
                     fortunePosition?.let { position ->
                         CurrentFortunePositionView(position)
                     }
+                    professionalFortunePosition?.let { position ->
+                        ProfessionalFortunePositionView(position)
+                    }
                     Text(
-                        "定位规则：流年以精确立春切换；大运以精确交运时刻切换。",
+                        "定位规则：流年以精确立春切换；流月以交节瞬间切换；" +
+                            "流日按命例子时规则；大运以精确交运时刻切换。",
                         modifier = Modifier.padding(bottom = 10.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -4603,6 +4670,94 @@ private fun CurrentFortunePositionView(
 }
 
 @Composable
+private fun ProfessionalFortunePositionView(
+    position: ProfessionalFortunePosition,
+) {
+    val context = LocalContext.current
+    var copied by remember(position) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .testTag("professional_fortune_position"),
+    ) {
+        Text(
+            "专业流运",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        DetailRow("流年柱", position.flowPillars.year, tag = "flow_year_pillar")
+        DetailRow("流月柱", position.flowPillars.month, tag = "flow_month_pillar")
+        DetailRow("流日柱", position.flowPillars.day, tag = "flow_day_pillar")
+        DetailRow("流时柱", position.flowPillars.hour, tag = "flow_hour_pillar")
+        DetailRow(
+            "前一节气",
+            "${position.previousSolarTerm.name}（${position.previousSolarTerm.type.displayName()}） " +
+                position.previousSolarTerm.at.display(),
+            tag = "previous_solar_term",
+        )
+        DetailRow(
+            "后一节气",
+            "${position.nextSolarTerm.name}（${position.nextSolarTerm.type.displayName()}） " +
+                position.nextSolarTerm.at.display(),
+            tag = "next_solar_term",
+        )
+        DetailRow("计算档案", position.profileId, tag = "fortune_profile_id")
+        DetailRow("规则版本", position.ruleVersion, tag = "fortune_rule_version")
+        DetailRow(
+            "观察时刻口径",
+            "民用时（不额外校正观察地点真太阳时）",
+            tag = "fortune_observation_time_mode",
+        )
+        TextButton(
+            onClick = {
+                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                clipboard?.setPrimaryClip(
+                    ClipData.newPlainText(
+                        "南枫八字专业流运诊断",
+                        position.toDiagnosticText(),
+                    ),
+                )
+                copied = true
+            },
+            modifier = Modifier.testTag("copy_fortune_diagnostics"),
+        ) {
+            Text(if (copied) "诊断已复制" else "复制流运诊断")
+        }
+    }
+}
+
+private fun com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.displayName(): String =
+    when (this) {
+        com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.JIE -> "节"
+        com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.QI -> "气"
+    }
+
+private fun ProfessionalFortunePosition.toDiagnosticText(): String = buildString {
+    appendLine("观察时刻：${position.observedAt.display()}")
+    appendLine(
+        "当前流年：${position.annualFortune.calendarYear} " +
+            "${position.annualFortune.name}（虚岁 ${position.annualFortune.nominalAge}）",
+    )
+    appendLine("当前大运：${position.decadeFortune?.name ?: position.status.name}")
+    appendLine(
+        "流柱：年 ${flowPillars.year} 月 ${flowPillars.month} " +
+            "日 ${flowPillars.day} 时 ${flowPillars.hour}",
+    )
+    appendLine(
+        "前一节气：${previousSolarTerm.name}（${previousSolarTerm.type.displayName()}）" +
+            " ${previousSolarTerm.at.display()}",
+    )
+    appendLine(
+        "后一节气：${nextSolarTerm.name}（${nextSolarTerm.type.displayName()}）" +
+            " ${nextSolarTerm.at.display()}",
+    )
+    appendLine("计算档案：$profileId")
+    appendLine("观察时刻口径：民用时（不额外校正观察地点真太阳时）")
+    append("规则版本：$ruleVersion")
+}
+
+@Composable
 private fun AnnualFortuneDetailsView(
     annuals: List<AnnualFortune>,
     current: FortunePosition?,
@@ -4862,6 +5017,11 @@ private fun TimeSourceType.displayName(): String = when (this) {
     TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
     TimeSourceType.OTHER_RECORD -> "其他资料"
     TimeSourceType.UNKNOWN -> "未说明"
+}
+
+private fun RatHourRule.displayName(): String = when (this) {
+    RatHourRule.TYME_DEFAULT -> "23:00 换日（Tyme 默认）"
+    RatHourRule.LATE_RAT_SAME_DAY -> "晚子时日柱算当天"
 }
 
 private fun CaseSourceType.displayName(): String = when (this) {

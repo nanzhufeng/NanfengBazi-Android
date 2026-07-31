@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import java.time.Clock
 import kotlinx.coroutines.delay
@@ -39,6 +40,7 @@ class StageTwoSavedStateTest {
                 second = "0",
                 locationName = "江苏省宿迁市泗阳县",
                 sourceNote = "进程重建前保留",
+                ratHourRule = RatHourRule.LATE_RAT_SAME_DAY,
             )
         }
         val createHandle = SavedStateHandle()
@@ -49,17 +51,26 @@ class StageTwoSavedStateTest {
         assertEquals("待研究", restoredCreate.state.value.query)
         assertEquals(alias, restoredCreate.state.value.form.alias)
         assertEquals("进程重建前保留", restoredCreate.state.value.form.sourceNote)
+        assertEquals(
+            RatHourRule.LATE_RAT_SAME_DAY,
+            restoredCreate.state.value.form.ratHourRule,
+        )
 
         restoredCreate.submitCase(allowDuplicate = true)
         waitUntil {
             restoredCreate.state.value.destination == AppDestination.CaseList &&
                 !restoredCreate.state.value.saving
         }
+        restoredCreate.updateQuery("")
+        waitUntil {
+            restoredCreate.state.value.cases.any { it.alias == alias }
+        }
         val caseId = requireNotNull(
             restoredCreate.state.value.cases.firstOrNull { it.alias == alias }?.id,
         )
         restoredCreate.openDetail(caseId)
         waitUntil { restoredCreate.state.value.detail?.id == caseId }
+        restoredCreate.updateFortuneObservationTime("23:15")
         restoredCreate.selectDetailSection(CaseDetailSection.RECORDS)
         restoredCreate.openTextRecord()
         restoredCreate.updateRecordDraft {
@@ -83,6 +94,7 @@ class StageTwoSavedStateTest {
             restoredEditor.state.value.recordDraft.content,
         )
         assertEquals(CaseDetailSection.RECORDS, restoredEditor.state.value.detailSection)
+        assertEquals("23:15", restoredEditor.state.value.fortuneObservationTime)
         assertNotNull(restoredEditor.state.value.detail)
         restoredEditor.navigateBack()
         assertEquals(

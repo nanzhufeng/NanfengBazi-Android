@@ -42,6 +42,8 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -52,6 +54,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
@@ -61,6 +64,7 @@ import java.io.PushbackInputStream
 import java.nio.file.Path
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -230,7 +234,9 @@ data class StageTwoUiState(
     val detail: BaziCase? = null,
     val detailSection: CaseDetailSection = CaseDetailSection.BASIC_INFO,
     val fortuneObservationDate: String = "",
+    val fortuneObservationTime: String = "12:00",
     val fortunePosition: FortunePosition? = null,
+    val professionalFortunePosition: ProfessionalFortunePosition? = null,
     val fortunePositionError: String? = null,
     val detailLoading: Boolean = false,
     val detailError: String? = null,
@@ -295,6 +301,7 @@ class StageTwoViewModel(
     private val clock: Clock = Clock.systemUTC(),
     private val observationClock: Clock = Clock.systemDefaultZone(),
     private val fortunePositionResolver: FortunePositionResolver? = null,
+    private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -322,6 +329,11 @@ class StageTwoViewModel(
                 it.copy(
                     fortuneObservationDate = LocalDate.now(observationClock).toString(),
                 )
+            }
+        }
+        if (mutableState.value.fortuneObservationTime.isBlank()) {
+            mutableState.update {
+                it.copy(fortuneObservationTime = "12:00")
             }
         }
         navigator.restore(mutableState.value.destination)
@@ -2177,6 +2189,20 @@ class StageTwoViewModel(
             it.copy(
                 fortuneObservationDate = value,
                 fortunePosition = null,
+                professionalFortunePosition = null,
+                fortunePositionError = null,
+            )
+        }
+        resolveFortunePosition()
+    }
+
+    fun updateFortuneObservationTime(value: String) {
+        if (value.length > 5 || value.any { !it.isDigit() && it != ':' }) return
+        mutableState.update {
+            it.copy(
+                fortuneObservationTime = value,
+                fortunePosition = null,
+                professionalFortunePosition = null,
                 fortunePositionError = null,
             )
         }
@@ -2194,16 +2220,17 @@ class StageTwoViewModel(
             mutableState.update {
                 it.copy(
                     fortunePosition = null,
+                    professionalFortunePosition = null,
                     fortunePositionError = "当前命例没有已采用的计算快照。",
                 )
             }
             return
         }
-        val resolver = fortunePositionResolver
-        if (resolver == null) {
+        if (fortunePositionResolver == null && professionalFortuneResolver == null) {
             mutableState.update {
                 it.copy(
                     fortunePosition = null,
+                    professionalFortunePosition = null,
                     fortunePositionError = "当前运行环境未配置岁运定位器。",
                 )
             }
@@ -2216,37 +2243,59 @@ class StageTwoViewModel(
             mutableState.update {
                 it.copy(
                     fortunePosition = null,
+                    professionalFortunePosition = null,
                     fortunePositionError = "观察日期请按 YYYY-MM-DD 填写。",
                 )
             }
             return
         }
+        val time = runCatching {
+            LocalTime.parse(current.fortuneObservationTime)
+        }.getOrNull()
+        if (time == null) {
+            mutableState.update {
+                it.copy(
+                    fortunePosition = null,
+                    professionalFortunePosition = null,
+                    fortunePositionError = "观察时间请按 HH:mm 填写。",
+                )
+            }
+            return
+        }
+        val observedAt = com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
+            year = date.year,
+            month = date.monthValue,
+            day = date.dayOfMonth,
+            hour = time.hour,
+            minute = time.minute,
+            second = 0,
+        )
         val position = runCatching {
-            resolver.locate(
+            val professional = professionalFortuneResolver?.locate(
                 result = result,
-                observedAt = com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
-                    year = date.year,
-                    month = date.monthValue,
-                    day = date.dayOfMonth,
-                    hour = 12,
-                    minute = 0,
-                    second = 0,
-                ),
+                observedAt = observedAt,
             )
+            val basic = professional?.position
+                ?: requireNotNull(fortunePositionResolver) {
+                    "当前运行环境未配置岁运定位器。"
+                }.locate(result, observedAt)
+            basic to professional
         }
         mutableState.update {
             position.fold(
-                onSuccess = { resolved ->
+                onSuccess = { (resolved, professional) ->
                     it.copy(
                         fortunePosition = resolved,
+                        professionalFortunePosition = professional,
                         fortunePositionError = null,
                     )
                 },
                 onFailure = { error ->
                     it.copy(
                         fortunePosition = null,
+                        professionalFortunePosition = null,
                         fortunePositionError =
-                            error.message ?: "岁运定位失败，请核对观察日期。",
+                            error.message ?: "岁运定位失败，请核对观察日期与时间。",
                     )
                 },
             )
@@ -2820,6 +2869,8 @@ class StageTwoViewModel(
                 caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
                 fortunePositionResolver =
                     com.nanzhufeng.nanfengbazi.engine.tyme.TymeFortunePositionResolver(),
+                professionalFortuneResolver =
+                    com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
                 singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
@@ -2873,6 +2924,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("visibility", visibility.name)
     putString("detailSection", detailSection.name)
     putString("fortuneObservationDate", fortuneObservationDate)
+    putString("fortuneObservationTime", fortuneObservationTime)
     putBundle("form", form.toSavedStateBundle())
     putBundle("editForm", editForm.toSavedStateBundle())
     putString("candidateLabel", candidateLabel)
@@ -2904,6 +2956,7 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
             CaseDetailSection.BASIC_INFO,
         ),
         fortuneObservationDate = getString("fortuneObservationDate").orEmpty(),
+        fortuneObservationTime = getString("fortuneObservationTime") ?: "12:00",
         detailLoading = destination.caseIdOrNull() != null,
         editForm = getBundle("editForm")?.toCaseFormState() ?: CaseFormState(),
         candidateLabel = getString("candidateLabel").orEmpty(),
@@ -2991,6 +3044,7 @@ private fun CaseFormState.toSavedStateBundle(): Bundle = Bundle().apply {
     resolvedUtcOffsetSeconds?.let { putInt("resolvedUtcOffsetSeconds", it) }
     putIntArray("availableUtcOffsetSeconds", availableUtcOffsetSeconds.toIntArray())
     putBoolean("useTrueSolarTime", useTrueSolarTime)
+    putString("ratHourRule", ratHourRule.name)
     putString("timePrecision", timePrecision.name)
     putString("timeSourceType", timeSourceType.name)
     putString("sourceNote", sourceNote)
@@ -3023,6 +3077,10 @@ private fun Bundle.toCaseFormState(): CaseFormState = CaseFormState(
     availableUtcOffsetSeconds =
         getIntArray("availableUtcOffsetSeconds")?.toList().orEmpty(),
     useTrueSolarTime = getBoolean("useTrueSolarTime"),
+    ratHourRule = enumValueOrDefault(
+        getString("ratHourRule"),
+        RatHourRule.TYME_DEFAULT,
+    ),
     timePrecision = enumValueOrDefault(
         getString("timePrecision"),
         TimePrecision.EXACT_TO_MINUTE,
@@ -3127,6 +3185,13 @@ private fun BaziCase.toEditableForm(): CaseFormState {
         timeZoneId = birthInput.timeZoneId,
         resolvedUtcOffsetSeconds = birthInput.resolvedUtcOffsetSeconds,
         useTrueSolarTime = birthInput.useTrueSolarTime,
+        ratHourRule = calculationSnapshots
+            .asReversed()
+            .firstOrNull { it.adopted }
+            ?.result
+            ?.profile
+            ?.ratHourRule
+            ?: RatHourRule.TYME_DEFAULT,
         timePrecision = birthInput.timePrecision,
         timeSourceType = birthInput.timeSourceType,
         sourceNote = birthInput.sourceNote.orEmpty(),

@@ -4,6 +4,7 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import java.time.Clock
 import java.time.ZoneOffset
@@ -105,6 +106,29 @@ class CreateCaseUseCaseTest {
         assertTrue(engine.lastInput?.useTrueSolarTime == true)
         assertEquals(SolarTimeMode.TRUE_SOLAR_TIME, engine.lastProfile?.solarTimeMode)
         assertEquals("tyme-true-solar-provisional-v1", engine.lastProfile?.id)
+    }
+
+    @Test
+    fun `晚子时表单选择进入版本化计算快照`() = runTest {
+        val engine = RecordingEngine()
+        val repository = FakeCaseRepository()
+
+        val result = CreateCaseUseCase(engine, repository)(
+            validForm().copy(
+                hour = "23",
+                ratHourRule = RatHourRule.LATE_RAT_SAME_DAY,
+            ),
+        )
+
+        assertTrue(result is CreateCaseResult.Created)
+        assertEquals(RatHourRule.LATE_RAT_SAME_DAY, engine.lastProfile?.ratHourRule)
+        assertEquals("tyme-late-rat-same-day-v1", engine.lastProfile?.id)
+        assertEquals(
+            RatHourRule.LATE_RAT_SAME_DAY,
+            repository.stored.values.single()
+                .calculationSnapshots.single()
+                .result.profile.ratHourRule,
+        )
     }
 
     @Test

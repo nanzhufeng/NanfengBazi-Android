@@ -14,7 +14,11 @@ enum class MonthBoundaryRule {
 
 @Serializable
 enum class RatHourRule {
+    /** Tyme4j 默认口径：23:00 起日柱按次日计算。 */
     TYME_DEFAULT,
+
+    /** 晚子时口径：23:00–23:59 的日柱仍按当天计算。 */
+    LATE_RAT_SAME_DAY,
 }
 
 @Serializable
@@ -63,13 +67,25 @@ data class CalculationProfile(
 
         fun tymeDefault(
             solarTimeMode: SolarTimeMode = SolarTimeMode.CIVIL_TIME,
+            ratHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
         ): CalculationProfile = CalculationProfile(
             id = when (solarTimeMode) {
-                SolarTimeMode.CIVIL_TIME -> "tyme-default-v1"
-                SolarTimeMode.TRUE_SOLAR_TIME -> "tyme-true-solar-provisional-v1"
+                SolarTimeMode.CIVIL_TIME -> when (ratHourRule) {
+                    RatHourRule.TYME_DEFAULT -> "tyme-default-v1"
+                    RatHourRule.LATE_RAT_SAME_DAY -> "tyme-late-rat-same-day-v1"
+                }
+                SolarTimeMode.TRUE_SOLAR_TIME -> when (ratHourRule) {
+                    RatHourRule.TYME_DEFAULT -> "tyme-true-solar-provisional-v1"
+                    RatHourRule.LATE_RAT_SAME_DAY ->
+                        "tyme-true-solar-late-rat-same-day-provisional-v1"
+                }
             },
             engineVersion = TYME_ENGINE_VERSION,
-            ruleVersion = DEFAULT_RULE_VERSION,
+            ruleVersion = when (ratHourRule) {
+                RatHourRule.TYME_DEFAULT -> DEFAULT_RULE_VERSION
+                RatHourRule.LATE_RAT_SAME_DAY -> "stage7b-rat-hour-v1"
+            },
+            ratHourRule = ratHourRule,
             solarTimeMode = solarTimeMode,
         )
     }

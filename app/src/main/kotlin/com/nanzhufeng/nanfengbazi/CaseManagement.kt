@@ -83,6 +83,7 @@ class EditCaseUseCase(
             } else {
                 SolarTimeMode.CIVIL_TIME
             },
+            ratHourRule = form.ratHourRule,
         )
         val calculation = try {
             baziEngine.calculate(valid.birthInput, profile)
@@ -232,6 +233,7 @@ class BirthTimeCandidateUseCase(
             } else {
                 SolarTimeMode.CIVIL_TIME
             },
+            ratHourRule = form.ratHourRule,
         )
         val calculation = try {
             baziEngine.calculate(valid.birthInput, profile)

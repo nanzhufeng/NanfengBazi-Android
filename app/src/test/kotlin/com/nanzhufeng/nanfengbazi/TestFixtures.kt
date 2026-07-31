@@ -79,7 +79,7 @@ internal class RecordingEngine : BaziEngine {
         calls += 1
         lastInput = input
         lastProfile = profile
-        return calculationResult(input)
+        return calculationResult(input).copy(profile = profile)
     }
 }
 

@@ -18,6 +18,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -47,6 +48,7 @@ data class CaseFormState(
     val resolvedUtcOffsetSeconds: Int? = null,
     val availableUtcOffsetSeconds: List<Int> = emptyList(),
     val useTrueSolarTime: Boolean = false,
+    val ratHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
     val timePrecision: TimePrecision = TimePrecision.EXACT_TO_MINUTE,
     val timeSourceType: TimeSourceType = TimeSourceType.UNKNOWN,
     val sourceNote: String = "",
@@ -385,6 +387,7 @@ class CreateCaseUseCase(
             } else {
                 SolarTimeMode.CIVIL_TIME
             },
+            ratHourRule = form.ratHourRule,
         )
         val calculation = try {
             baziEngine.calculate(valid.birthInput, profile)

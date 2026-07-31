@@ -5,13 +5,17 @@
 ### 6tail/tyme4j
 
 - 地址：https://github.com/6tail/tyme4j
+- 晚子时官方实现：
+  https://github.com/6tail/tyme4j/blob/master/src/main/java/com/tyme/eightchar/provider/impl/LunarSect2EightCharProvider.java
 - 官方文档：https://6tail.cn/tyme.html
 - 用途：Stage 0 的八字、节气、起运和大运计算适配器；Stage 4A 依据官方
   `LunarHour.fromYmdHms`、闰月负月份约定和 `getSolarTime` 接通农历转换，并从最终
   `EightChar` 固化十神、藏干、十二长生、旬空、纳音、生肖、星座与相邻节气；公开测试
   用作首批黄金样本。童限结束时刻按官方定义作为开始起运的精确公历时间，前八步大运
-  读取其干支、起止年龄和起止年份。
-- 采用边界：第三方类型不进入 `core:domain`；全局起运 provider 必须加锁、临时切换并恢复。
+  读取其干支、起止年龄和起止年份。Stage 7B 依据官方 `LunarSect2EightCharProvider`
+  “晚子时日柱算当天”语义接入第二种子时口径。
+- 采用边界：第三方类型不进入 `core:domain`；全局起运 provider 必须加锁、临时切换并
+  恢复；八字 provider 必须按调用显式选择，不读取或改写全局状态。
 
 ### klausbrunner/solarpositioning
 
