@@ -36,6 +36,7 @@
 | 图片导入会话 | `ImportSessionRepository` | 图片入口、后台识别协调器、唯一 WorkManager 任务 | OCR、页面或 Worker 绕过仓储直接写 Room |
 | 私有导入图片 | `PrivateImportImageStore` | Photo Picker、系统分享入口 | 后台任务长期持有外部 URI 或传递 Bitmap |
 | OCR、长图与重复提示 | `core:image-parser` | `ImportRecognitionCoordinator` | 在线引擎进入主链、整张展开超大图、按相似哈希自动合并、单关键词猜测页面或直接写正式命例 |
+| 通用脱敏诊断包 | `app/AppDiagnostics` | 设置页剪贴板入口 | 复制原始异常、命例身份、出生资料、OCR 内容、文件路径、URI、密码或附件事实 |
 
 ## 模块边界
 

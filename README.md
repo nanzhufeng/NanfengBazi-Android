@@ -56,6 +56,8 @@ P0/P1/P2 截图迁移、四主入口与详情四标签。Stage 7A–7D 已接入
 来源证据，正式提交后逐字段保存本机复算值与一致性。真实问真样本与 OPPO 真机仍需
 用户授权验收。基本排盘截图的主星、藏干、副星、星运、自坐、空亡、纳音、生肖与
 星座也会在提交后保存本机计算值；神煞当前只保留来源证据。
+设置页还可复制覆盖通用页面、单命例交换、完整备份与截图会话的脱敏诊断包；该文本
+不会包含姓名、出生资料、OCR 原文、文件路径、URI、密码或附件内容。
 详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见

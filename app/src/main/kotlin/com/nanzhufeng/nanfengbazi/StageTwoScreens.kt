@@ -268,6 +268,7 @@ fun NanfengBaziApp(
                         modifier = Modifier.padding(padding),
                     )
                     AppDestination.Settings -> SettingsHomeScreen(
+                        state = state,
                         screenshotImportState = screenshotImportState,
                         onImportScreenshots = onImportScreenshots,
                         onImportSingleCase = onOpenSingleCaseDocument,
@@ -1849,6 +1850,7 @@ private fun RecordHubScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsHomeScreen(
+    state: StageTwoUiState,
     screenshotImportState: ScreenshotImportUiState,
     onImportScreenshots: () -> Unit,
     onImportSingleCase: () -> Unit,
@@ -1856,6 +1858,7 @@ private fun SettingsHomeScreen(
     onRestoreFullBackup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1903,6 +1906,29 @@ private fun SettingsHomeScreen(
         ) {
             Text("预览并恢复完整备份")
         }
+        OutlinedButton(
+            onClick = {
+                val diagnostics = buildAppDiagnosticText(
+                    state = state,
+                    screenshot = screenshotImportState,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE,
+                )
+                context.getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("南枫八字诊断包", diagnostics))
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .testTag("settings_copy_diagnostics"),
+        ) {
+            Text("复制脱敏诊断包")
+        }
+        Text(
+            "诊断包不包含姓名、出生资料、截图文字、文件路径、密码或附件内容。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         HorizontalDivider()
         Text("版本：${BuildConfig.VERSION_NAME}")
         Text(

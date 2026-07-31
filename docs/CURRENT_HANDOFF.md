@@ -1,4 +1,4 @@
-# 当前交接：Stage 7B/7C 专业流运与子时多口径完成
+# 当前交接：Stage 7F 通用脱敏诊断包完成
 
 更新日期：2026-07-31
 
@@ -18,6 +18,8 @@
   日期与时分计算的流年/月/日/时；流年按精确立春、流月按十二节、流日按已保存的
   Tyme 默认或晚子时口径，大运按精确交运半开区间切换。页面显示前后节气、计算档案、
   规则版本并支持复制诊断。
+- Stage 7F 已在设置页提供统一脱敏诊断包，覆盖通用页面、单命例交换、完整备份与截图
+  导入会话；只输出版本、去身份化状态、稳定错误码、计数和有界诊断 ID，不复制用户资料。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -315,6 +317,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha55 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
     357 项通过；API 35 的 `MlKitLongScreenshotTest` 与 `ScreenshotShareFlowTest`
     合计 7/7 通过；
+  - alpha56 设置页通用诊断包覆盖 App/Schema、页面、单命例交换、完整备份和截图导入
+    状态；纯 JVM 隐私契约证明动态姓名/出生日期/私有路径不会进入文本，API 35
+    “四主入口—设置—真实剪贴板读取”专项 1/1 通过；
+  - alpha56 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
+    405 项通过，349 次测试执行零失败/零跳过，Lint 0 错误；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -322,17 +329,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha55-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha56-debug.apk`
 
 - 大小：55,794,755 bytes
-- SHA-256：`69d199f4c2078c7ddd4584312b0393f3f715c5f20a7fb075135eee8df7c11eae`
+- SHA-256：`b512bc75a00cdb1a4e7332881fb706f060474c301f3b158c377a8765e12dd2f2`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha55-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha56-release-unsigned.apk`
 
-- 大小：52,039,810 bytes
-- SHA-256：`8832f316660dfcba61c6e33081f8b563c08e7de4e793b20d7952782e7303e259`
+- 大小：52,056,194 bytes
+- SHA-256：`92ff52a9da47664c221ed6aaed0718c445fef19c34eda25a279619224c6002ce`
 
 ## 当前限制与风险
 
@@ -365,7 +372,7 @@ Debug 验收构建：
 继续 Stage 7，优先顺序：
 
 1. 补齐基本资料其余非核心衍生字段，并单独设计版本化神煞合同；
-2. 补齐通用可复制诊断、计算档案升级差异和剩余节气/生肖边界门禁；
+2. 补齐计算档案升级差异和剩余节气/生肖边界门禁；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

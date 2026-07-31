@@ -102,6 +102,10 @@ data class ScreenshotImportUiState(
     val needsReview: Boolean = false,
     val canRetry: Boolean = false,
     val recoverableSessionCount: Int = 0,
+    val sessionStatus: ImportStatus? = null,
+    val parserVersion: String? = null,
+    val failureCodes: List<String> = emptyList(),
+    val failureDiagnosticIds: List<String> = emptyList(),
     val message: String? = null,
 )
 
@@ -498,11 +502,21 @@ class ScreenshotImportViewModel(
                     busy = false,
                     progressText = null,
                     activeSessionId = result.session.id,
+                    sessionStatus = result.session.status,
+                    parserVersion = result.session.parserVersion,
                     completedImageCount = result.session.images.size,
                     classifiedPageTypes = result.session.images.map { image -> image.pageType },
                     exactDuplicatePairCount = duplicateCounts.first,
                     similarDuplicatePairCount = duplicateCounts.second,
                     failedImageCount = result.session.imageFailures.size,
+                    failureCodes = buildList {
+                        result.session.failure?.code?.let(::add)
+                        addAll(result.session.imageFailures.map { failure -> failure.code })
+                    },
+                    failureDiagnosticIds = buildList {
+                        result.session.failure?.diagnosticId?.let(::add)
+                        addAll(result.session.imageFailures.map { failure -> failure.diagnosticId })
+                    },
                     caseCandidateCount = result.session.caseCandidates.size,
                     multiImageCandidateCount = result.session.caseCandidates.count {
                         candidate -> candidate.imageIds.size > 1
@@ -525,8 +539,18 @@ class ScreenshotImportViewModel(
                     busy = false,
                     progressText = null,
                     activeSessionId = result.session.id,
+                    sessionStatus = result.session.status,
+                    parserVersion = result.session.parserVersion,
                     completedImageCount = result.session.images.size,
                     failedImageCount = result.session.imageFailures.size,
+                    failureCodes = buildList {
+                        result.session.failure?.code?.let(::add)
+                        addAll(result.session.imageFailures.map { failure -> failure.code })
+                    },
+                    failureDiagnosticIds = buildList {
+                        result.session.failure?.diagnosticId?.let(::add)
+                        addAll(result.session.imageFailures.map { failure -> failure.diagnosticId })
+                    },
                     needsReview = false,
                     canRetry = result.session.failure?.retryable == true,
                     message = result.session.failure?.userMessage,
@@ -618,11 +642,21 @@ class ScreenshotImportViewModel(
                     val duplicateCounts = duplicateCounts(recent)
                     current.copy(
                         activeSessionId = recent.id,
+                        sessionStatus = recent.status,
+                        parserVersion = recent.parserVersion,
                         completedImageCount = recent.images.size,
                         classifiedPageTypes = recent.images.map { it.pageType },
                         exactDuplicatePairCount = duplicateCounts.first,
                         similarDuplicatePairCount = duplicateCounts.second,
                         failedImageCount = recent.imageFailures.size,
+                        failureCodes = buildList {
+                            recent.failure?.code?.let(::add)
+                            addAll(recent.imageFailures.map { failure -> failure.code })
+                        },
+                        failureDiagnosticIds = buildList {
+                            recent.failure?.diagnosticId?.let(::add)
+                            addAll(recent.imageFailures.map { failure -> failure.diagnosticId })
+                        },
                         caseCandidateCount = recent.caseCandidates.size,
                         multiImageCandidateCount = recent.caseCandidates.count {
                             candidate -> candidate.imageIds.size > 1

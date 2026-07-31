@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.content.ClipboardManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -32,6 +33,8 @@ import androidx.test.uiautomator.Until
 import java.util.regex.Pattern
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 class StageTwoFlowTest {
     @get:Rule
@@ -65,6 +68,24 @@ class StageTwoFlowTest {
             .assertIsEnabled()
             .assertHasClickAction()
             .assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag("settings_copy_diagnostics")
+            .performScrollTo()
+            .assertIsEnabled()
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+        val clipboard = InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getSystemService(ClipboardManager::class.java)
+        val diagnosticText = clipboard.primaryClip
+            ?.getItemAt(0)
+            ?.coerceToText(InstrumentationRegistry.getInstrumentation().targetContext)
+            ?.toString()
+            .orEmpty()
+        assertTrue(diagnosticText.contains("南枫八字诊断包"))
+        assertTrue(diagnosticText.contains("privacy=REDACTED"))
+        assertTrue(diagnosticText.contains("database.schema=7"))
+        assertFalse(diagnosticText.contains("/data/"))
         composeRule.onNodeWithTag("nav_chart").performClick()
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_cases").performClick()
