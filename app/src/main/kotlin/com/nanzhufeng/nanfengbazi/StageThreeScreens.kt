@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
@@ -54,7 +58,10 @@ internal fun CaseMetadataEditorScreen(
         TopAppBar(
             title = { Text("管理命例分类") },
             navigationIcon = {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("返回")
                 }
             },
@@ -148,7 +155,11 @@ private fun MetadataCheckRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
-            modifier = Modifier.testTag(tag),
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(min = 48.dp)
+                .semantics { contentDescription = label }
+                .testTag(tag),
         )
     }
 }
@@ -175,7 +186,10 @@ internal fun TextRecordEditorScreen(
                 Text(if (destination.recordId == null) "新增记录" else "编辑记录")
             },
             navigationIcon = {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("返回")
                 }
             },
@@ -325,7 +339,9 @@ private fun AnalysisCategoryRow(
                 Button(
                     onClick = { onSelected(category) },
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text(category.displayName())
                 }
@@ -333,7 +349,9 @@ private fun AnalysisCategoryRow(
                 OutlinedButton(
                     onClick = { onSelected(category) },
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text(category.displayName())
                 }
@@ -360,7 +378,9 @@ private fun RecordTypeRow(
                 Button(
                     onClick = { onSelected(type) },
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text(type.displayName())
                 }
@@ -368,7 +388,9 @@ private fun RecordTypeRow(
                 OutlinedButton(
                     onClick = { onSelected(type) },
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text(type.displayName())
                 }
@@ -399,7 +421,10 @@ internal fun EventEditorScreen(
                 Text(if (destination.eventId == null) "新增关键事件" else "编辑关键事件")
             },
             navigationIcon = {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("返回")
                 }
             },
@@ -500,7 +525,9 @@ internal fun EventEditorScreen(
                     onValueChange = { value ->
                         onDraftChange { it.copy(month = value) }
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 )
                 EventNumberField(
                     value = state.eventDraft.day,
@@ -510,7 +537,9 @@ internal fun EventEditorScreen(
                     onValueChange = { value ->
                         onDraftChange { it.copy(day = value) }
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 )
             }
             OutlinedTextField(
@@ -597,7 +626,9 @@ private fun EventCategoryRow(
                 Button(
                     onClick = { onSelected(category) },
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text(category.displayName())
                 }
@@ -605,7 +636,9 @@ private fun EventCategoryRow(
                 OutlinedButton(
                     onClick = { onSelected(category) },
                     enabled = enabled,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text(category.displayName())
                 }

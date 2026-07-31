@@ -1710,7 +1710,12 @@ private fun ExpandedCaseIndexPane(
                 }
             },
             actions = {
-                TextButton(onClick = onRefresh) { Text("刷新") }
+                TextButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("刷新")
+                }
             },
         )
         when {
@@ -1782,7 +1787,12 @@ private fun RecordHubScreen(
                 }
             },
             actions = {
-                TextButton(onClick = onRefresh) { Text("刷新") }
+                TextButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("刷新")
+                }
             },
         )
         when {
@@ -1936,6 +1946,7 @@ private fun CaseListScreen(
                         onClick = onCreate,
                         enabled = !state.singleCaseExchangeBusy,
                         modifier = Modifier
+                            .heightIn(min = 48.dp)
                             .padding(end = 12.dp)
                             .testTag("new_case_button"),
                     ) {
@@ -1954,28 +1965,36 @@ private fun CaseListScreen(
             OutlinedButton(
                 onClick = onImportScreenshots,
                 enabled = !screenshotImportState.busy,
-                modifier = Modifier.testTag("import_screenshots_button"),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("import_screenshots_button"),
             ) {
                 Text(if (screenshotImportState.busy) "识别中…" else "截图建档")
             }
             OutlinedButton(
                 onClick = onImportSingleCase,
                 enabled = !state.singleCaseExchangeBusy && !state.fullBackupBusy,
-                modifier = Modifier.testTag("import_single_case_button"),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("import_single_case_button"),
             ) {
                 Text(if (state.singleCaseExchangeBusy) "读取中…" else "导入单命例")
             }
             OutlinedButton(
                 onClick = onExportFullBackup,
                 enabled = !state.fullBackupBusy && !state.singleCaseExchangeBusy,
-                modifier = Modifier.testTag("export_full_backup_button"),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("export_full_backup_button"),
             ) {
                 Text(if (state.fullBackupBusy) "处理中…" else "导出完整备份")
             }
             OutlinedButton(
                 onClick = onPreviewFullBackup,
                 enabled = !state.fullBackupBusy && !state.singleCaseExchangeBusy,
-                modifier = Modifier.testTag("preview_full_backup_button"),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("preview_full_backup_button"),
             ) {
                 Text("检查完整备份")
             }
@@ -2212,7 +2231,10 @@ private fun ScreenshotImportReviewScreen(
                 }
             },
             navigationIcon = {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("返回")
                 }
             },
@@ -2363,9 +2385,15 @@ private fun ScreenshotImportReviewScreen(
                                                     adopted,
                                                 )
                                             },
-                                            modifier = Modifier.testTag(
-                                                "adopt_screenshot_field_${field.id}",
-                                            ),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .semantics {
+                                                    contentDescription =
+                                                        "采用截图字段：${field.label}"
+                                                }
+                                                .testTag(
+                                                    "adopt_screenshot_field_${field.id}",
+                                                ),
                                         )
                                     }
                                     Text("来源值：${field.sourceValue}")
@@ -2478,9 +2506,15 @@ private fun ScreenshotImportReviewScreen(
                                                     adopted,
                                                 )
                                             },
-                                            modifier = Modifier.testTag(
-                                                "adopt_screenshot_text_${longText.id}",
-                                            ),
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .semantics {
+                                                    contentDescription =
+                                                        "采用截图原文：${longText.label}"
+                                                }
+                                                .testTag(
+                                                    "adopt_screenshot_text_${longText.id}",
+                                                ),
                                         )
                                     }
                                     Text(longText.rawText)
@@ -2687,12 +2721,15 @@ private fun SelectionButton(
     onClick: () -> Unit,
     tag: String,
 ) {
+    val modifier = Modifier
+        .heightIn(min = 48.dp)
+        .testTag(tag)
     if (selected) {
-        Button(onClick = onClick, modifier = Modifier.testTag(tag)) {
+        Button(onClick = onClick, modifier = modifier) {
             Text(text)
         }
     } else {
-        OutlinedButton(onClick = onClick, modifier = Modifier.testTag(tag)) {
+        OutlinedButton(onClick = onClick, modifier = modifier) {
             Text(text)
         }
     }
@@ -2728,7 +2765,9 @@ private fun EmptyCaseList(
             if (visibility == CaseVisibility.ACTIVE) {
                 Button(
                     onClick = onCreate,
-                    modifier = Modifier.padding(top = 20.dp),
+                    modifier = Modifier
+                        .padding(top = 20.dp)
+                        .heightIn(min = 48.dp),
                 ) {
                     Text("新建第一个命例")
                 }
@@ -2931,7 +2970,10 @@ internal fun CaseFormScreen(
         TopAppBar(
             title = { Text(title) },
             navigationIcon = {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("返回")
                 }
             },
@@ -3264,7 +3306,10 @@ internal fun CaseFormScreen(
                     onCheckedChange = { checked ->
                         onFormChange { it.copy(useTrueSolarTime = checked) }
                     },
-                    modifier = Modifier.testTag("birth_true_solar_time"),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = "启用真太阳时" }
+                        .testTag("birth_true_solar_time"),
                     enabled = !saving,
                 )
             }
@@ -3620,11 +3665,14 @@ private fun SexButton(
     tag: String,
     onClick: () -> Unit,
 ) {
+    val modifier = Modifier
+        .heightIn(min = 48.dp)
+        .testTag(tag)
     if (selected) {
         Button(
             onClick = onClick,
             enabled = enabled,
-            modifier = Modifier.testTag(tag),
+            modifier = modifier,
         ) {
             Text(text)
         }
@@ -3632,7 +3680,7 @@ private fun SexButton(
         OutlinedButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = Modifier.testTag(tag),
+            modifier = modifier,
         ) {
             Text(text)
         }
@@ -3667,7 +3715,10 @@ private fun CaseDetailScreen(
         TopAppBar(
             title = { Text(state.detail?.name?.value ?: state.detail?.alias ?: "命例详情") },
             navigationIcon = {
-                TextButton(onClick = onBack) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("返回")
                 }
             },
@@ -3787,6 +3838,7 @@ private fun CaseDetailContent(
                     onClick = onEditCase,
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 48.dp)
                         .testTag("edit_case_button"),
                 ) {
                     Text("编辑资料")
@@ -3795,6 +3847,7 @@ private fun CaseDetailContent(
                     onClick = onEditMetadata,
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 48.dp)
                         .testTag("edit_metadata_button"),
                 ) {
                     Text("管理分类")
@@ -3810,6 +3863,7 @@ private fun CaseDetailContent(
                     onClick = onDuplicate,
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 48.dp)
                         .testTag("duplicate_case_button"),
                 ) {
                     Text("复制命例")
@@ -3818,6 +3872,7 @@ private fun CaseDetailContent(
                     onClick = onMoveToTrash,
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 48.dp)
                         .testTag("trash_case_button"),
                 ) {
                     Text("移入回收站")
@@ -3829,6 +3884,7 @@ private fun CaseDetailContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 14.dp)
+                    .heightIn(min = 48.dp)
                     .testTag("export_single_case_button"),
             ) {
                 Text(if (singleCaseExchangeBusy) "正在导出…" else "导出单命例")
@@ -3839,6 +3895,7 @@ private fun CaseDetailContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 14.dp)
+                    .heightIn(min = 48.dp)
                     .testTag("restore_case_button"),
             ) {
                 Text("恢复命例")
@@ -3865,6 +3922,7 @@ private fun CaseDetailContent(
                     enabled = !mutationSaving,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .testTag("add_birth_time_candidate_button"),
                 ) {
                     Text("新增时间候选")
@@ -4175,6 +4233,7 @@ private fun CaseDetailContent(
                         onClick = onAddRecord,
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("add_record_button"),
                     ) {
                         Text("新增记录")
@@ -4183,6 +4242,7 @@ private fun CaseDetailContent(
                         onClick = onAddEvent,
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp)
                             .testTag("add_event_button"),
                     ) {
                         Text("新增事件")

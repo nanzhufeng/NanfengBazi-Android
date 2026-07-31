@@ -1,4 +1,4 @@
-# 当前交接：Stage 6 信息架构与可恢复状态
+# 当前交接：Stage 6 内部门禁完成
 
 更新日期：2026-07-31
 
@@ -13,7 +13,7 @@
 - Stage 4B 已冻结 60 个双引擎四柱黄金样本；Stage 5A 已接通问真 P0/P1 合成截图链。
 - Stage 6 当前增量已补齐排盘首页最近命例、命盘详情四标签，以及页面/参数/筛选/草稿的
   `SavedStateHandle` 合同；后台 Activity 销毁和宿主杀进程后的恢复均已通过，下一安全
-  增量是全页面无障碍与目标视口矩阵。
+  增量已完成全页面无障碍与目标视口矩阵，当前进入 Stage 7 专业岁运。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -138,6 +138,9 @@
 - Android “后台即销毁 Activity”设备流验证从桌面重新进入后仍恢复原页面和未提交草稿；
   独立宿主脚本再以纯 UI 操作填写草稿、切到后台、`am kill` 旧 PID，并在新 PID 中恢复
   原任务，避免 instrumentation 保活或 force-stop 清任务干扰证据。
+- 无障碍门禁遍历四主入口、命例表单、详情四标签、分类、记录和事件页面，对当前可操作
+  节点逐项检查可访问名称、点击语义和至少 48dp 触控区；宿主矩阵覆盖手机/展开态与
+  1.0/2.0 字体四组合，其中两组启用真实 TalkBack 服务，并在结束后恢复全部系统设置。
 
 ## 所有者与边界
 
@@ -155,7 +158,7 @@
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
-  ./gradlew test lint assembleDebug assembleRelease
+  ./gradlew test lint assembleDebug assembleRelease :app:assembleDebugAndroidTest
 ```
 
 - 干净构建报告含 180 条唯一单元契约、322 次实际执行，0 失败、0 跳过。
@@ -278,6 +281,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     并恢复命例绑定的记录编辑草稿、详情标签和返回链，目标流程 1/1 通过；
   - alpha50 系统后台 Activity 销毁后重进恢复流程 1/1 通过；独立宿主进程恢复脚本杀死
     后台旧 PID，并以不同的新 PID 恢复“新建命例”和未提交别名，流程 1/1 通过；
+  - alpha51 修复顶部、筛选、性别/类别、详情操作、Switch 与 Checkbox 的可访问名称或
+    触控区缺口；手机/展开态 × 1.0/2.0 字体四组合真实工作流 4/4 通过，其中两组启用
+    TalkBack，测试后视口、字体、服务、触摸探索和辅助服务通知权限均恢复；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -285,17 +291,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha50-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha51-debug.apk`
 
 - 大小：55,745,603 bytes
-- SHA-256：`7ac3bdcc934855950493152956540289daa479b70e37051241587a0bcc51cb99`
+- SHA-256：`a608f9da976c5fc1640c2d3982f05c508ba4d3ad579ddbf13664b7ba34fdb107`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha50-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha51-release-unsigned.apk`
 
 - 大小：52,007,042 bytes
-- SHA-256：`4ffc27852389c5cb5e886d0ea63594eb47843ac508f942b1dd4191636d301c52`
+- SHA-256：`8656f2bb2250258eb6a96a8b12ee31a45c6f1663daf54c49d2a16ece034334d1`
 
 ## 当前限制与风险
 
@@ -313,19 +319,19 @@ Debug 验收构建：
   通知与取消动作可能只通过系统任务管理入口呈现。基本排盘真实问真截图的 OCR 分块与
   字段准确率仍待用户批准样本校准。
 - 软删除没有永久清理入口，这是数据安全选择；正式清理仍需用户可验证备份和附件引用计数。
-- 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；2.0 倍字体并启用
-  TalkBack 服务时，四主入口与关键触控目标已验证，但 OPPO Find N5 实机展开/折叠和
-  TalkBack 全页面逐焦点朗读仍待用户授权验收。
+- 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；手机/展开态、
+  1.0/2.0 字体与 TalkBack 组合下的页面语义和真实动作均已通过。OPPO Find N5 实机
+  展开/折叠、焦点朗读节奏与手势体验仍待用户授权验收。
 - 页面、参数、筛选、详情标签和表单草稿已进入 `SavedStateHandle`；Android 新
   ViewModel 重建、系统后台 Activity 销毁和宿主 `am kill` 后新 PID 任务恢复均已通过。
 - 当前 Debug APK 不是正式签名 Release；OPPO 数据保留安装与发布需要用户明确授权。
 
 ## 下一安全增量
 
-继续 Stage 6C，优先顺序：
+继续 Stage 7，优先顺序：
 
-1. 继续 TalkBack 全页面逐焦点朗读与手机/展开态/2 倍字体目标视口 QA；
-2. 进入 Stage 7 流年基础、当前大运/流年定位和专业细盘内部实现；
+1. 实现流年基础和当前大运/流年定位的版本化领域合同；
+2. 补齐节气边界、子时多口径与专业岁运合同，再接专业细盘证据；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

@@ -134,3 +134,4 @@
 | 排盘首页最近命例 | 只读取活动命例中有 `lastViewedAt` 的最近 3 条，不另存显示副本 | `CaseRepository.search(LAST_VIEWED_DESC)` → `StageTwoViewModel.recentCases` | 仓储请求契约与 API 35 创建—查看—快捷返回流程 |
 | 命盘详情四标签 | 基本信息、基本排盘、岁运、分析记录消费同一 `BaziCase` 与已采用快照 | `StageTwoUiState.detailSection` | 四标签真实切换；编辑、记录和岁运长流程回归 |
 | 页面与草稿恢复 | 页面、参数、筛选、四类表单和详情标签写入 `SavedStateHandle`；密码、文件流和一次性句柄不保存 | `StageTwoViewModel` 保存状态合同 | Android 新 ViewModel 重建、后台 Activity 销毁、宿主杀旧 PID 后新进程恢复 |
+| 页面无障碍与目标视口 | 主入口、命例表单、详情四标签、分类、记录和事件页为可操作节点提供名称、点击语义和至少 48dp 目标 | Compose 语义树与同一真实工作流 | 手机/展开态 × 1.0/2.0 字体四组合，其中 TalkBack 开/关各两组；脚本恢复系统设置 |
