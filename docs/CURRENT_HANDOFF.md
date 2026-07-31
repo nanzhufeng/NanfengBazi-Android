@@ -1,4 +1,4 @@
-# 当前交接：alpha66 师傅点评观点候选
+# 当前交接：alpha67 命主反馈主题候选
 
 更新日期：2026-07-31
 
@@ -7,12 +7,12 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha66 本地代码基线：本文件所在提交；上一基线为
-  `9223f92 feat: add objective chart summary`。
-- 版本：`versionCode 67`，`versionName 0.3.0-alpha66`
+- alpha67 本地代码基线：本文件所在提交；上一基线为
+  `881944a feat: add commentary candidate review`。
+- 版本：`versionCode 68`，`versionName 0.3.0-alpha67`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha66 验收时 ADB 仅 `emulator-5554` 在线，API 35。
-- 本轮点评候选设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
+- alpha67 验收时 ADB 仅 `emulator-5554` 在线，API 35。
+- 本轮反馈主题候选设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
   四柱均未进入 Git、剪贴板夹具或截图证据。
 - 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
@@ -167,11 +167,26 @@
 - 修复恢复竞态：候选 Bundle 先恢复、详情尚未重载时按钮禁用，调用层返回
   `CONTEXT_NOT_READY`，不再无声丢弃采用操作。
 
+### alpha67
+
+- `core:domain` 增加反馈主题候选 v1、UTF-16 半开证据区间、规范主题、分类建议、审核
+  状态、结构化提取/采用错误和 `FeedbackThemeCandidateExtractor` 公开入口。
+- `core:image-parser` 增加本地确定性实现：只按中文/ASCII 标点和换行切分可定位句段，
+  用保守词表聚合学业、事业、财运、感情、家庭、健康与迁移主题；候选 ID 绑定来源、
+  revision、规范主题和证据区间，UI 不含第二套规则。
+- 主题候选页显示规则版本、来源 revision、规范主题、事件分类建议、逐段证据和规则说明，
+  并明确“候选只是标签建议，不代表用户确认，也不是本机排盘算法真值”。
+- 编辑、拒绝与恢复只属于 `SavedStateHandle` 审核状态；采用通过
+  `CaseMetadataUseCase.adoptFeedbackThemeCandidate()` 重读聚合并校验来源类型、revision、
+  全部证据区间和聚合 revision，只追加一个正式标签，优先复用同名全局标签 ID。
+- 已有同名标签、标签上限、来源或证据过期、聚合冲突与存储失败均结构化拒绝且零写入；
+  完整命主反馈、记录历史和既有事件保持不变。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha66 clean 命令：
+alpha67 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -181,39 +196,38 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 结果：
 
-- 405 个 Gradle task 成功（388 executed，17 up-to-date）；431 次 JVM 测试执行
+- 405 个 Gradle task 成功（388 executed，17 up-to-date）；451 次 JVM 测试执行
   零失败、零错误、零跳过。
 - Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
   均为已知非阻断项。
-- API 35 `emulator-5554` 点评候选主流程与三个独立 SavedState 场景合并复验 4/4
-  通过：正式点评进入候选页，拒绝一条、编辑并改类后采用一条，Activity 重建保留审核
-  状态，返回详情可见原点评未变且正式分析新增。
-- 1140×2616 候选页截图完成视觉检查：标题、规则/来源说明、非算法真值提示、原文区间、
-  编辑框、横向分类、规则证据和采用/拒绝动作层级清楚；截图仅存临时目录并已删除。
-- Debug/Release 合并清单均为 `versionCode 67`、`0.3.0-alpha66`，且没有
+- API 35 `emulator-5554` 反馈主题主流程与四个 SavedState 场景合并复验 5/5
+  通过：正式反馈进入候选页，拒绝一条、编辑并采用一条，Activity 重建保留审核状态，
+  返回详情可见原反馈未变、正式标签新增且事件未变。
+- Compose 语义与真实交互流程已经验收；测试框架没有留下可用的前台候选页截图，因此
+  本轮不把截图或人工视觉检查列为已完成证据。
+- Debug/Release 合并清单均为 `versionCode 68`、`0.3.0-alpha67`，且没有
   `INTERNET` 或 `ACCESS_NETWORK_STATE`。
 - 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha66-debug.apk`
-  - 56,057,515 字节
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha67-debug.apk`
+  - 56,090,283 字节
   - SHA-256
-    `1193f5e5a9fc78b7d93e41172233a9c4de10034ef11ea89dd72c3ca4854dedbd`
+    `b2dab846c93d442aa48fe9ad30d7ae9da529c33e00ccdb05985fd4b497b99044`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha66-release-unsigned.apk`
-  - 52,220,664 字节
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha67-release-unsigned.apk`
+  - 52,253,432 字节
   - SHA-256
-    `5fd328b894f7e3b412f622b986b323d4e59b6501cd17e237afb72458ef43e9fd`
+    `d9072dc4eb030ff1b614aead6826e73649186bf68a6ae30e7c798f5363f8c3f2`
 
 ## 7. 尚未完成
 
 ### 可在本地继续实现
 
-建议一次只完成一个增量：
-
-1. `VX-05` 命主反馈主题标签候选增强。
+当前需求审计中没有仍可在既定边界内继续实现的本地能力。VX-01～VX-10 和核心阶段均已
+完成当前自动化及 API 35 模拟器证据；不得为了保持开发进行而擅自创造新需求。
 
 ### 外部门禁
 
@@ -224,44 +238,27 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：命主反馈主题标签候选增强
+## 8. 下一唯一任务：等待外部门禁变化并做现场复核
 
 ### 目标
 
-实现 `VX-05` 命主反馈主题标签候选增强；必须保留完整命主反馈和既有事件事实，以本地
-确定性规则提取可解释、可编辑、可逐条确认的主题标签候选，不自动覆盖来源或替用户
-确认主题。
+保持 alpha67 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；若没有
+新增授权样本或权限，不修改产品代码，只报告仍受门禁约束的项目。
 
-### 建议所有权
+### 可能解除门禁的输入
 
-- 在 `core:domain` 定义版本化反馈主题候选、来源定位、规范标签、规则证据、审核状态和
-  结构化失败；提取器使用公开接口，页面不内置关键词规则。
-- 确定性解析适配放在合适的解析层，复用既有 `OWNER_FEEDBACK` 与事件分类事实；不得把
-  候选主题冒充用户已经确认的标签。
-- 只有逐条采用才进入现有正式标签/分类聚合边界；拒绝、编辑和恢复不得覆盖反馈原文、
-  事件或其版本历史。
-
-### 当前已知边界
-
-- 首版只做可解释的主题标签建议，不生成新的命理结论或事件事实。
-- 空反馈、错误来源类型、无可解释候选和规则版本不支持必须分开返回。
-- 候选必须幂等、去重，并能在来源内容或 revision 变化后判定过期。
-
-### 最小验收
-
-1. 领域合同覆盖错误来源、空反馈、无候选、多候选、重复标签、来源定位和版本过期。
-2. 相同来源重复提取得到相同候选；每个候选保留可解释的来源证据。
-3. UI 支持逐条采用、编辑和拒绝；任何动作都不覆盖完整反馈或事件历史。
-4. API 35 模拟器从正式命主反馈进入候选页，确认一条后写入正式标签/分类并在重建后
-   读回。
-5. 更新受影响治理文档、下一 alpha、全量构建和本地准确提交。
+- 用户批准的基本资料、命主反馈或师傅点评真实问真样本，可推进 IM-13/QA-07 分页面验收。
+- 用户明确批准联网、字段范围、脱敏预览和外部服务后，才可设计 VX-11。
+- 用户明确授权 OPPO 与同签名安装后，才可执行 QA-08。
+- 正式签名材料与发布授权齐备后，才可执行 QA-10。
 
 ### 禁止项
 
-- 不自动确认候选、不覆盖反馈原文、不把主题候选称为用户事实或算法真值。
-- 不默认联网、调用外部 AI 或发送命例资料。
+- 不用合成数据冒充真实问真页面准确率或 OPPO 设备证据。
+- 不默认联网、调用外部 AI、发送命例资料或自行选择外部服务。
 - 不接触 OPPO、不清数据、不卸载真机 App。
 - 不提交真实姓名、八字、截图、密钥或构建产物。
+- 不 push、不发布；没有新授权时不制造下一 alpha。
 
 ## 9. 下一轮启动检查
 
@@ -270,9 +267,11 @@ cd "/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi"
 git rev-parse --show-toplevel
 git branch --show-current
 git status --porcelain=v1 | awk 'END { print "entries=" NR }'
-rg -n -m 20 '反馈主题标签|VX-05' docs app/src core --glob '!**/build/**'
+rg -n -m 20 'VX-11|IM-13|QA-08|QA-10|外部门禁' \
+  docs/REQUIREMENT_GAP_AUDIT.md docs/CURRENT_HANDOFF.md
 ```
 
-若现场与本文件不一致，以现场为准，先修正文档再实现。不要读取旧对话全文。
+若现场与本文件不一致，以现场代码和最新测试证据为准，先修正文档。无新资料或授权时，
+直接保持等待，不要求用户再次发送“继续”提示，也不越过外部门禁。不要读取旧对话全文。
 
 可直接使用的启动提示见 `docs/next-codex-prompt.md`。

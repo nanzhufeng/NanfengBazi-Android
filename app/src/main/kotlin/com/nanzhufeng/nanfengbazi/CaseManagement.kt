@@ -6,6 +6,11 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionFailure
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionResult
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionFailure
@@ -580,6 +585,122 @@ class CaseMetadataUseCase(
         return persistCase(caseRepository, updated, expectedRevision)
     }
 
+    suspend fun adoptFeedbackThemeCandidate(
+        caseId: String,
+        expectedRevision: Long,
+        candidate: FeedbackThemeCandidate,
+    ): FeedbackThemeAdoptionResult {
+        if (candidate.status != FeedbackThemeCandidateStatus.PENDING) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.CANDIDATE_NOT_PENDING,
+                "该主题候选已经处理，请选择仍待确认的候选。",
+            )
+        }
+        val tagName = candidate.proposedTagName.trim()
+        if (tagName.isEmpty()) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.EMPTY_TAG_NAME,
+                "采用的主题标签不能为空。",
+            )
+        }
+        if (tagName.length > MAX_METADATA_NAME_LENGTH) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.TAG_NAME_TOO_LONG,
+                "标签名称不能超过 $MAX_METADATA_NAME_LENGTH 个字符。",
+            )
+        }
+        val existing: BaziCase
+        val catalog: List<com.nanzhufeng.nanfengbazi.domain.model.CaseSummary>
+        try {
+            existing = caseRepository.findById(caseId)
+                ?: return feedbackThemeFailure(
+                    FeedbackThemeAdoptionErrorCode.CASE_NOT_FOUND,
+                    "命例不存在，未写入主题标签。",
+                )
+            catalog = caseRepository.search(CaseSearchRequest())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.STORAGE_FAILED,
+                "无法读取最新命例，未写入主题标签。请返回详情后重试。",
+            )
+        }
+        val source = existing.textRecords.firstOrNull { it.id == candidate.sourceRecordId }
+            ?: return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.SOURCE_NOT_FOUND,
+                "来源反馈已不存在，候选已过期；请重新提取。",
+            )
+        if (source.type != CaseTextRecordType.OWNER_FEEDBACK) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.SOURCE_TYPE_CHANGED,
+                "来源记录已不再是命主反馈，候选已过期。",
+            )
+        }
+        val sourceRevision = existing.textRecordRevisions
+            .filter { it.recordId == source.id }
+            .maxOfOrNull { it.version }
+            ?: 0
+        if (sourceRevision != candidate.sourceRevision) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.SOURCE_REVISION_STALE,
+                "命主反馈原文已有新版本，请重新提取后再确认。",
+            )
+        }
+        if (!candidate.isExactEvidenceOf(source.content)) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.SOURCE_EVIDENCE_STALE,
+                "主题候选已无法从当前反馈原文精确读回，请重新提取。",
+            )
+        }
+        if (existing.revision != expectedRevision) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.CASE_REVISION_CONFLICT,
+                "命例已被其他操作更新，请返回详情后重试。",
+            )
+        }
+        val normalizedName = tagName.normalizedMetadataName()
+        if (existing.tags.any { it.name.normalizedMetadataName() == normalizedName }) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.TAG_ALREADY_PRESENT,
+                "命例已包含同名标签，未重复写入。",
+            )
+        }
+        if (existing.tags.size >= MAX_METADATA_COUNT) {
+            return feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.TOO_MANY_TAGS,
+                "每个命例最多设置 $MAX_METADATA_COUNT 个标签。",
+            )
+        }
+        val knownTag = (catalog.flatMap { it.tags } + existing.tags)
+            .firstOrNull { it.name.normalizedMetadataName() == normalizedName }
+        val adoptedTag = knownTag ?: CaseTag(idGenerator.nextId(), tagName)
+        val updated = existing.copy(
+            tags = existing.tags + adoptedTag,
+            updatedAt = clock.instant(),
+        )
+        return when (val persisted = persistCase(caseRepository, updated, expectedRevision)) {
+            is CaseMutationResult.Saved -> FeedbackThemeAdoptionResult.Saved(
+                caseId = persisted.caseId,
+                revision = persisted.revision,
+                tagId = adoptedTag.id,
+                tagName = adoptedTag.name,
+            )
+            is CaseMutationResult.RevisionConflict -> feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.CASE_REVISION_CONFLICT,
+                "命例已被其他操作更新，请返回详情后重试。",
+            )
+            is CaseMutationResult.StorageFailed -> feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.STORAGE_FAILED,
+                persisted.message,
+            )
+            else -> feedbackThemeFailure(
+                FeedbackThemeAdoptionErrorCode.STORAGE_FAILED,
+                "主题标签未保存，请返回详情后重试。",
+            )
+        }
+    }
+
     private sealed interface NameValidation {
         data class Valid(val names: List<String>) : NameValidation
         data class Invalid(val message: String) : NameValidation
@@ -606,6 +727,11 @@ class CaseMetadataUseCase(
         const val MAX_METADATA_COUNT = 10
     }
 }
+
+private fun feedbackThemeFailure(
+    code: FeedbackThemeAdoptionErrorCode,
+    message: String,
+) = FeedbackThemeAdoptionResult.Failure(FeedbackThemeAdoptionFailure(code, message))
 
 private fun String.normalizedMetadataName(): String = lowercase()
 

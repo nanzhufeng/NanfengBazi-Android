@@ -158,3 +158,4 @@
 | 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |
 | 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` → 摘要页/剪贴板/图片合同 | 只投影唯一已采用快照和正式资料计数；固定字段来源与缺失状态，页面和图片不得重算或生成主观解释 |
 | 师傅点评观点候选 | `MasterCommentaryCandidateExtractor` → `DeterministicMasterCommentaryCandidateExtractor` → `TextRecordUseCase.adoptCommentaryCandidate()` | 完整点评原文和历史仍是唯一来源；解析层只产出稳定区间、分类建议与规则证据，UI 不含规则；编辑/拒绝为审核状态，采用只新增正式分析并校验来源 revision、区间与聚合 revision |
+| 命主反馈主题候选 | `FeedbackThemeCandidateExtractor` → `DeterministicFeedbackThemeCandidateExtractor` → `CaseMetadataUseCase.adoptFeedbackThemeCandidate()` | 完整反馈、历史和既有事件仍是来源事实；解析层按稳定区间聚合规范主题，UI 不含规则；编辑/拒绝为审核状态，采用只追加正式标签并校验来源 revision、证据与聚合 revision |

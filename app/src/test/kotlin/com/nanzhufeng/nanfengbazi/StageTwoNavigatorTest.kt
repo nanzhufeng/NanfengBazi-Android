@@ -31,6 +31,11 @@ class StageTwoNavigatorTest {
         )
         assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
         assertEquals(
+            AppDestination.FeedbackThemeCandidates("case-1", "feedback-1"),
+            navigator.openFeedbackThemeCandidates("case-1", "feedback-1"),
+        )
+        assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
+        assertEquals(
             AppDestination.EditTextRecord("case-1", null),
             navigator.openTextRecord("case-1", null),
         )

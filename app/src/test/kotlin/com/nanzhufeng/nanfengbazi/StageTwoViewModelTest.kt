@@ -57,6 +57,8 @@ import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupEvidence
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
@@ -537,6 +539,78 @@ class StageTwoViewModelTest {
             viewModel.state.value.commentaryCandidateAdoptionFailure?.code,
         )
         assertEquals(1, repository.stored.getValue(stored.id).textRecords.size)
+    }
+
+    @Test
+    fun `反馈主题候选可编辑拒绝采用且采用只追加正式标签`() = runTest {
+        val feedback = ownerFeedback()
+        val stored = sampleStoredCase("case-feedback-theme-candidates").copy(
+            textRecords = listOf(feedback),
+            textRecordRevisions = listOf(commentaryRevision(feedback, 1)),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+        viewModel.openFeedbackThemeCandidates(feedback.id)
+        val initial = requireNotNull(viewModel.state.value.feedbackThemeCandidateSet)
+        assertEquals(2, initial.candidates.size)
+        val first = initial.candidates.first()
+        val second = initial.candidates.last()
+        viewModel.updateFeedbackThemeCandidateTag(first.id, "事业复盘")
+        viewModel.rejectFeedbackThemeCandidate(second.id)
+        viewModel.adoptFeedbackThemeCandidate(first.id)
+
+        assertEquals(
+            AppDestination.FeedbackThemeCandidates(stored.id, feedback.id),
+            viewModel.state.value.destination,
+        )
+        val decisions = requireNotNull(
+            viewModel.state.value.feedbackThemeCandidateSet,
+        ).candidates
+        assertEquals(FeedbackThemeCandidateStatus.ADOPTED, decisions.first().status)
+        assertEquals(FeedbackThemeCandidateStatus.REJECTED, decisions.last().status)
+        val refreshed = repository.stored.getValue(stored.id)
+        assertEquals(listOf(feedback), refreshed.textRecords)
+        assertEquals(stored.textRecordRevisions, refreshed.textRecordRevisions)
+        assertEquals(stored.events, refreshed.events)
+        assertEquals(listOf("事业复盘"), refreshed.tags.map { it.name })
+    }
+
+    @Test
+    fun `反馈在主题候选打开后修改会结构化拒绝旧候选且零写入`() = runTest {
+        val feedback = ownerFeedback()
+        val stored = sampleStoredCase("case-feedback-theme-stale").copy(
+            textRecords = listOf(feedback),
+            textRecordRevisions = listOf(commentaryRevision(feedback, 1)),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+        viewModel.openFeedbackThemeCandidates(feedback.id)
+        val candidateId = requireNotNull(viewModel.state.value.feedbackThemeCandidateSet)
+            .candidates
+            .first()
+            .id
+        TextRecordUseCase(repository).save(
+            stored.id,
+            stored.revision,
+            feedback.id,
+            TextRecordDraft(
+                CaseTextRecordType.OWNER_FEEDBACK,
+                "工作反馈已经修改。健康也需复查",
+            ),
+        )
+        val afterSourceEdit = repository.stored.getValue(stored.id)
+
+        viewModel.adoptFeedbackThemeCandidate(candidateId)
+
+        assertEquals(
+            FeedbackThemeAdoptionErrorCode.SOURCE_REVISION_STALE,
+            viewModel.state.value.feedbackThemeAdoptionFailure?.code,
+        )
+        assertEquals(afterSourceEdit, repository.stored.getValue(stored.id))
+        assertTrue(repository.stored.getValue(stored.id).tags.isEmpty())
     }
 
     @Test
@@ -1401,6 +1475,14 @@ class StageTwoViewModelTest {
         id = "commentary-1",
         type = CaseTextRecordType.MASTER_COMMENTARY,
         content = "事业需要核对。财运也需核对",
+        createdAt = FixedInstant,
+        updatedAt = FixedInstant,
+    )
+
+    private fun ownerFeedback() = CaseTextRecord(
+        id = "feedback-1",
+        type = CaseTextRecordType.OWNER_FEEDBACK,
+        content = "工作发生变化。健康需要复查",
         createdAt = FixedInstant,
         updatedAt = FixedInstant,
     )

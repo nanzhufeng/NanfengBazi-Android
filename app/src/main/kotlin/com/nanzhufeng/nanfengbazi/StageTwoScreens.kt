@@ -89,6 +89,8 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
@@ -339,6 +341,8 @@ fun NanfengBaziApp(
                                 onEditRecord = viewModel::openTextRecord,
                                 onOpenCommentaryCandidates =
                                     viewModel::openMasterCommentaryCandidates,
+                                onOpenFeedbackThemeCandidates =
+                                    viewModel::openFeedbackThemeCandidates,
                                 onAddEvent = { viewModel.openEvent() },
                                 onEditEvent = viewModel::openEvent,
                                 onDuplicate = viewModel::duplicateCase,
@@ -424,6 +428,17 @@ fun NanfengBaziApp(
                             onRestoreRejected =
                                 viewModel::restoreRejectedMasterCommentaryCandidate,
                             onAdopt = viewModel::adoptMasterCommentaryCandidate,
+                            modifier = Modifier.padding(padding),
+                        )
+                    is AppDestination.FeedbackThemeCandidates ->
+                        FeedbackThemeCandidateScreen(
+                            state = state,
+                            onBack = viewModel::navigateBack,
+                            onTagChange = viewModel::updateFeedbackThemeCandidateTag,
+                            onReject = viewModel::rejectFeedbackThemeCandidate,
+                            onRestoreRejected =
+                                viewModel::restoreRejectedFeedbackThemeCandidate,
+                            onAdopt = viewModel::adoptFeedbackThemeCandidate,
                             modifier = Modifier.padding(padding),
                         )
                     is AppDestination.EditCase -> CaseFormScreen(
@@ -4666,6 +4681,266 @@ private fun MasterCommentaryCandidateCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun FeedbackThemeCandidateScreen(
+    state: StageTwoUiState,
+    onBack: () -> Unit,
+    onTagChange: (String, String) -> Unit,
+    onReject: (String) -> Unit,
+    onRestoreRejected: (String) -> Unit,
+    onAdopt: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("feedback_theme_candidates_screen"),
+    ) {
+        TopAppBar(
+            title = { Text("命主反馈主题候选") },
+            navigationIcon = {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("返回")
+                }
+            },
+        )
+        val candidateSet = state.feedbackThemeCandidateSet
+        when {
+            candidateSet == null && state.feedbackThemeCandidateFailure != null -> ErrorBox(
+                message = "${state.feedbackThemeCandidateFailure.message}" +
+                    "（${state.feedbackThemeCandidateFailure.code}）",
+                actionLabel = "返回详情",
+                onAction = onBack,
+            )
+            candidateSet == null && state.feedbackThemeAdoptionFailure != null -> ErrorBox(
+                message = "${state.feedbackThemeAdoptionFailure.message}" +
+                    "（${state.feedbackThemeAdoptionFailure.code}）",
+                actionLabel = "返回详情",
+                onAction = onBack,
+            )
+            candidateSet == null -> LoadingBox("正在提取可定位的反馈主题…")
+            else -> LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .testTag("feedback_theme_candidates_list"),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("feedback_theme_candidates_notice"),
+                        colors = CardDefaults.cardColors(
+                            containerColor =
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "本地确定性候选 · 规则 v${candidateSet.ruleVersion}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "共 ${candidateSet.candidates.size} 个主题，来源反馈版本 " +
+                                    "v${candidateSet.sourceRevision}。候选只是标签建议，" +
+                                    "不代表用户确认，也不是本机排盘算法真值。",
+                                modifier = Modifier.padding(top = 6.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "只有逐条采用才会给命例新增正式标签；编辑、拒绝和采用都不会" +
+                                    "覆盖完整命主反馈、历史版本或既有事件。",
+                                modifier = Modifier.padding(top = 6.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                state.feedbackThemeAdoptionFailure?.let { failure ->
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("feedback_theme_candidate_error"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                        ) {
+                            Text(
+                                "${failure.message}（${failure.code}）",
+                                modifier = Modifier.padding(14.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
+                items(
+                    items = candidateSet.candidates,
+                    key = { it.id },
+                ) { candidate ->
+                    FeedbackThemeCandidateCard(
+                        candidate = candidate,
+                        saving = state.feedbackThemeSavingId == candidate.id,
+                        anySaving = state.feedbackThemeSavingId != null ||
+                            state.detailLoading ||
+                            state.detail == null,
+                        onTagChange = { onTagChange(candidate.id, it) },
+                        onReject = { onReject(candidate.id) },
+                        onRestoreRejected = { onRestoreRejected(candidate.id) },
+                        onAdopt = { onAdopt(candidate.id) },
+                    )
+                }
+                item { Spacer(Modifier.height(16.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeedbackThemeCandidateCard(
+    candidate: FeedbackThemeCandidate,
+    saving: Boolean,
+    anySaving: Boolean,
+    onTagChange: (String) -> Unit,
+    onReject: () -> Unit,
+    onRestoreRejected: () -> Unit,
+    onAdopt: () -> Unit,
+) {
+    val pending = candidate.status == FeedbackThemeCandidateStatus.PENDING
+    val statusText = when (candidate.status) {
+        FeedbackThemeCandidateStatus.PENDING -> "待确认"
+        FeedbackThemeCandidateStatus.ADOPTED -> "已采用为正式标签"
+        FeedbackThemeCandidateStatus.REJECTED -> "已拒绝"
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { stateDescription = statusText }
+            .testTag("feedback_theme_candidate_card"),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                statusText,
+                modifier = Modifier.testTag(
+                    "feedback_theme_status_${candidate.status.name}",
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = when (candidate.status) {
+                    FeedbackThemeCandidateStatus.PENDING -> MaterialTheme.colorScheme.primary
+                    FeedbackThemeCandidateStatus.ADOPTED -> Color(0xFF2E7D32)
+                    FeedbackThemeCandidateStatus.REJECTED ->
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Text(
+                "规范主题：${candidate.canonicalTagName} · 事件分类建议：" +
+                    candidate.suggestedEventCategory.displayName(),
+                modifier = Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            OutlinedTextField(
+                value = candidate.proposedTagName,
+                onValueChange = onTagChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .testTag("feedback_theme_tag_input"),
+                label = { Text("采用标签（可修改）") },
+                enabled = pending && !anySaving,
+                singleLine = true,
+            )
+            candidate.sourceEvidence.forEach { evidence ->
+                Text(
+                    "来源片段 [${evidence.range.startInclusive}, " +
+                        "${evidence.range.endExclusive})",
+                    modifier = Modifier.padding(top = 10.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    evidence.excerpt,
+                    modifier = Modifier
+                        .padding(top = 3.dp)
+                        .testTag("feedback_theme_source_evidence"),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "命中：${evidence.matchedTerms.joinToString("、")}",
+                    modifier = Modifier.padding(top = 3.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "${candidate.ruleExplanation}（${candidate.ruleId}）",
+                modifier = Modifier.padding(top = 10.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when (candidate.status) {
+                FeedbackThemeCandidateStatus.PENDING -> Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onReject,
+                        enabled = !anySaving,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("reject_feedback_theme_candidate"),
+                    ) {
+                        Text("拒绝")
+                    }
+                    Button(
+                        onClick = onAdopt,
+                        enabled = !anySaving && candidate.proposedTagName.isNotBlank(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("adopt_feedback_theme_candidate"),
+                    ) {
+                        if (saving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.height(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("采用")
+                        }
+                    }
+                }
+                FeedbackThemeCandidateStatus.REJECTED -> OutlinedButton(
+                    onClick = onRestoreRejected,
+                    enabled = !anySaving,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp)
+                        .heightIn(min = 48.dp)
+                        .testTag("restore_feedback_theme_candidate"),
+                ) {
+                    Text("恢复为待确认")
+                }
+                FeedbackThemeCandidateStatus.ADOPTED -> Text(
+                    "正式标签已写入；完整反馈原文和事件均保持不变。",
+                    modifier = Modifier.padding(top = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun CaseDetailScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
@@ -4676,6 +4951,7 @@ private fun CaseDetailScreen(
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
     onOpenCommentaryCandidates: (String) -> Unit,
+    onOpenFeedbackThemeCandidates: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
@@ -4729,6 +5005,7 @@ private fun CaseDetailScreen(
                     onAddRecord = onAddRecord,
                     onEditRecord = onEditRecord,
                     onOpenCommentaryCandidates = onOpenCommentaryCandidates,
+                    onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
                     onAddEvent = onAddEvent,
                     onEditEvent = onEditEvent,
                     onDuplicate = onDuplicate,
@@ -4805,6 +5082,7 @@ private fun CaseDetailContent(
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
     onOpenCommentaryCandidates: (String) -> Unit,
+    onOpenFeedbackThemeCandidates: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
@@ -5426,6 +5704,23 @@ private fun CaseDetailContent(
                                         .testTag("open_commentary_candidates_button"),
                                 ) {
                                     Text("提取观点候选")
+                                }
+                            }
+                            if (
+                                record.type == CaseTextRecordType.OWNER_FEEDBACK &&
+                                case.deletedAt == null
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onOpenFeedbackThemeCandidates(record.id)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("open_feedback_theme_candidates_button"),
+                                ) {
+                                    Text("提取主题标签候选")
                                 }
                             }
                         }

@@ -3,6 +3,11 @@ package com.nanzhufeng.nanfengbazi
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
 import com.nanzhufeng.nanfengbazi.domain.CommentaryTextRange
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionResult
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeSourceEvidence
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeTextRange
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionResult
@@ -645,6 +650,121 @@ class CaseManagementTest {
     }
 
     @Test
+    fun `采用反馈主题只追加正式标签并复用全局同名身份`() = runTest {
+        val feedback = feedbackRecord("工作有变化。")
+        val stored = sampleStoredCase("case-feedback-theme").copy(
+            textRecords = listOf(feedback),
+            textRecordRevisions = listOf(feedbackRevision(feedback, 1)),
+            events = listOf(sampleEvent()),
+        )
+        val repository = FakeCaseRepository().apply {
+            this.stored[stored.id] = stored
+            this.stored["case-catalog-theme"] = sampleStoredCase("case-catalog-theme").copy(
+                tags = listOf(CaseTag("tag-career-existing", "事业")),
+            )
+        }
+        val useCase = CaseMetadataUseCase(repository, fixedClock, IdGenerator { "unused" })
+
+        val result = useCase.adoptFeedbackThemeCandidate(
+            caseId = stored.id,
+            expectedRevision = stored.revision,
+            candidate = feedbackThemeCandidate(feedback),
+        )
+
+        assertEquals(
+            FeedbackThemeAdoptionResult.Saved(
+                caseId = stored.id,
+                revision = 2,
+                tagId = "tag-career-existing",
+                tagName = "事业",
+            ),
+            result,
+        )
+        val saved = repository.stored.getValue(stored.id)
+        assertEquals(listOf(CaseTag("tag-career-existing", "事业")), saved.tags)
+        assertEquals(listOf(feedback), saved.textRecords)
+        assertEquals(stored.textRecordRevisions, saved.textRecordRevisions)
+        assertEquals(stored.events, saved.events)
+    }
+
+    @Test
+    fun `反馈来源版本或证据过期均零写入拒绝`() = runTest {
+        val feedback = feedbackRecord("工作有变化。")
+        val stored = sampleStoredCase("case-feedback-theme-stale").copy(
+            textRecords = listOf(feedback),
+            textRecordRevisions = listOf(feedbackRevision(feedback, 2)),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val useCase = CaseMetadataUseCase(repository)
+
+        val revisionFailure = useCase.adoptFeedbackThemeCandidate(
+            stored.id,
+            stored.revision,
+            feedbackThemeCandidate(feedback, sourceRevision = 1),
+        ) as FeedbackThemeAdoptionResult.Failure
+        assertEquals(
+            FeedbackThemeAdoptionErrorCode.SOURCE_REVISION_STALE,
+            revisionFailure.failure.code,
+        )
+        val rangeFailure = useCase.adoptFeedbackThemeCandidate(
+            stored.id,
+            stored.revision,
+            feedbackThemeCandidate(feedback, sourceRevision = 2).copy(
+                sourceEvidence = listOf(
+                    FeedbackThemeSourceEvidence(
+                        FeedbackThemeTextRange(0, 2),
+                        "事业",
+                        listOf("事业"),
+                    ),
+                ),
+            ),
+        ) as FeedbackThemeAdoptionResult.Failure
+        assertEquals(
+            FeedbackThemeAdoptionErrorCode.SOURCE_EVIDENCE_STALE,
+            rangeFailure.failure.code,
+        )
+        assertEquals(stored, repository.stored.getValue(stored.id))
+    }
+
+    @Test
+    fun `反馈主题同名标签和标签上限分别拒绝`() = runTest {
+        val feedback = feedbackRecord("工作有变化。")
+        val duplicate = sampleStoredCase("case-feedback-theme-duplicate").copy(
+            textRecords = listOf(feedback),
+            textRecordRevisions = listOf(feedbackRevision(feedback, 1)),
+            tags = listOf(CaseTag("tag-career", "事业")),
+        )
+        val full = sampleStoredCase("case-feedback-theme-full").copy(
+            textRecords = listOf(feedback),
+            textRecordRevisions = listOf(feedbackRevision(feedback, 1)),
+            tags = (1..10).map { CaseTag("tag-$it", "标签$it") },
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[duplicate.id] = duplicate
+            stored[full.id] = full
+        }
+        val useCase = CaseMetadataUseCase(repository)
+
+        val duplicateFailure = useCase.adoptFeedbackThemeCandidate(
+            duplicate.id,
+            duplicate.revision,
+            feedbackThemeCandidate(feedback),
+        ) as FeedbackThemeAdoptionResult.Failure
+        val fullFailure = useCase.adoptFeedbackThemeCandidate(
+            full.id,
+            full.revision,
+            feedbackThemeCandidate(feedback),
+        ) as FeedbackThemeAdoptionResult.Failure
+        assertEquals(
+            FeedbackThemeAdoptionErrorCode.TAG_ALREADY_PRESENT,
+            duplicateFailure.failure.code,
+        )
+        assertEquals(FeedbackThemeAdoptionErrorCode.TOO_MANY_TAGS, fullFailure.failure.code)
+        assertEquals(duplicate, repository.stored.getValue(duplicate.id))
+        assertEquals(full, repository.stored.getValue(full.id))
+    }
+
+    @Test
     fun `软删除完整保留聚合并可恢复`() = runTest {
         val record = CaseTextRecord(
             id = "record-preserved",
@@ -721,4 +841,53 @@ class CaseManagementTest {
         assertTrue(copied.attachments.isEmpty())
         assertTrue(copied.fieldEvidence.isEmpty())
     }
+
+    private fun feedbackRecord(content: String) = CaseTextRecord(
+        id = "feedback-record",
+        type = CaseTextRecordType.OWNER_FEEDBACK,
+        content = content,
+        createdAt = FixedInstant,
+        updatedAt = FixedInstant,
+    )
+
+    private fun feedbackRevision(record: CaseTextRecord, version: Int) =
+        CaseTextRecordRevision(
+            id = "feedback-revision-$version",
+            recordId = record.id,
+            version = version,
+            changeType = RecordChangeType.CREATED,
+            snapshot = record,
+            changedAt = FixedInstant,
+        )
+
+    private fun feedbackThemeCandidate(
+        record: CaseTextRecord,
+        sourceRevision: Int = 1,
+    ) = FeedbackThemeCandidate(
+        id = "feedback-theme-career",
+        sourceRecordId = record.id,
+        sourceRevision = sourceRevision,
+        canonicalTagName = "事业",
+        proposedTagName = "事业",
+        suggestedEventCategory = CaseEventCategory.CAREER,
+        sourceEvidence = listOf(
+            FeedbackThemeSourceEvidence(
+                FeedbackThemeTextRange(0, 5),
+                "工作有变化",
+                listOf("工作"),
+            ),
+        ),
+        ruleId = "feedback-theme-career-v1",
+        ruleExplanation = "合成主题候选",
+    )
+
+    private fun sampleEvent() = CaseEvent(
+        id = "feedback-event",
+        title = "合成事件",
+        category = CaseEventCategory.CAREER,
+        year = 2020,
+        datePrecision = EventDatePrecision.YEAR,
+        rawText = "合成反馈事件",
+        createdAt = FixedInstant,
+    )
 }

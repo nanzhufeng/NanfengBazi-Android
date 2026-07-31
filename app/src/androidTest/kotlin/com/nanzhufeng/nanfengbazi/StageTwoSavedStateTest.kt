@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
@@ -292,6 +293,108 @@ class StageTwoSavedStateTest {
                 it.type == CaseTextRecordType.ANALYSIS
             }.content,
         )
+    }
+
+    @Test
+    fun savedStateRestoresFeedbackThemeDecisionsAndFormalAdoption() = runBlocking {
+        val application = ApplicationProvider.getApplicationContext<NanfengBaziApplication>()
+        val container = application.container
+        val original = createViewModel(container)
+        val alias = "反馈主题状态-${System.currentTimeMillis()}"
+        original.openCreate()
+        original.updateForm {
+            it.copy(
+                alias = alias,
+                name = "合成反馈主题样例",
+                sex = SexForFortuneDirection.MAN,
+                year = "1994",
+                month = "3",
+                day = "8",
+                hour = "10",
+                minute = "10",
+                second = "0",
+                locationName = "合成反馈主题地区",
+            )
+        }
+        original.submitCase(allowDuplicate = true)
+        waitUntil("保存反馈主题合成命例") {
+            original.state.value.destination == AppDestination.CaseList &&
+                !original.state.value.saving
+        }
+        original.updateQuery("")
+        waitUntil("读取反馈主题合成命例") {
+            original.state.value.cases.any { it.alias == alias }
+        }
+        val caseId = requireNotNull(
+            original.state.value.cases.firstOrNull { it.alias == alias }?.id,
+        )
+        original.openDetail(caseId)
+        waitUntil("读取反馈主题详情") { original.state.value.detail?.id == caseId }
+        original.openTextRecord()
+        original.updateRecordDraft {
+            it.copy(
+                type = CaseTextRecordType.OWNER_FEEDBACK,
+                content = "工作有变化。健康需要复查",
+            )
+        }
+        original.saveTextRecord(null)
+        waitUntil("保存命主反馈") {
+            original.state.value.destination == AppDestination.CaseDetail(caseId) &&
+                original.state.value.detail?.textRecords?.isNotEmpty() == true
+        }
+        val feedback = requireNotNull(
+            original.state.value.detail?.textRecords?.firstOrNull {
+                it.type == CaseTextRecordType.OWNER_FEEDBACK
+            },
+        )
+        original.openFeedbackThemeCandidates(feedback.id)
+        val initial = requireNotNull(original.state.value.feedbackThemeCandidateSet)
+        val firstId = initial.candidates.first().id
+        val secondId = initial.candidates.last().id
+        original.updateFeedbackThemeCandidateTag(firstId, "事业复盘")
+        original.rejectFeedbackThemeCandidate(secondId)
+        val handle = SavedStateHandle()
+        original.saveRestorableStateTo(handle)
+
+        val restored = createViewModel(container, handle)
+        waitUntil("恢复反馈主题候选") {
+            restored.state.value.feedbackThemeCandidateSet != null &&
+                restored.state.value.detail?.id == caseId &&
+                !restored.state.value.detailLoading
+        }
+        assertEquals(
+            AppDestination.FeedbackThemeCandidates(caseId, feedback.id),
+            restored.state.value.destination,
+        )
+        val restoredCandidates =
+            requireNotNull(restored.state.value.feedbackThemeCandidateSet).candidates
+        assertEquals("事业复盘", restoredCandidates.first().proposedTagName)
+        assertEquals(
+            FeedbackThemeCandidateStatus.REJECTED,
+            restoredCandidates.last().status,
+        )
+
+        restored.adoptFeedbackThemeCandidate(firstId)
+        waitUntil("采用反馈主题候选") {
+            restored.state.value.feedbackThemeSavingId == null &&
+                (
+                    restored.state.value.feedbackThemeCandidateSet
+                        ?.candidates
+                        ?.first()
+                        ?.status == FeedbackThemeCandidateStatus.ADOPTED ||
+                        restored.state.value.feedbackThemeAdoptionFailure != null
+                    )
+        }
+        assertEquals(null, restored.state.value.feedbackThemeAdoptionFailure)
+        val detail = requireNotNull(restored.state.value.detail)
+        assertEquals(
+            "工作有变化。健康需要复查",
+            detail.textRecords.single {
+                it.type == CaseTextRecordType.OWNER_FEEDBACK
+            }.content,
+        )
+        assertEquals(listOf("事业复盘"), detail.tags.map { it.name })
+        assertEquals(0, detail.events.size)
     }
 
     private suspend fun waitUntil(

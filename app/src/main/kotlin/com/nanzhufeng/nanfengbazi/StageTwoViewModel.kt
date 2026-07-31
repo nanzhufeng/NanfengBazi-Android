@@ -54,6 +54,19 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
 import com.nanzhufeng.nanfengbazi.domain.CommentaryTextRange
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionFailure
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionResult
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateErrorCode
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateExtractionInput
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateExtractionResult
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateExtractor
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateFailure
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateSet
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeSourceEvidence
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeTextRange
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
@@ -89,6 +102,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.imageparser.DeterministicMasterCommentaryCandidateExtractor
+import com.nanzhufeng.nanfengbazi.imageparser.DeterministicFeedbackThemeCandidateExtractor
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PushbackInputStream
@@ -118,6 +132,10 @@ sealed interface AppDestination {
     data class CaseDetail(val caseId: String) : AppDestination
     data class CaseObjectiveSummary(val caseId: String) : AppDestination
     data class MasterCommentaryCandidates(
+        val caseId: String,
+        val recordId: String,
+    ) : AppDestination
+    data class FeedbackThemeCandidates(
         val caseId: String,
         val recordId: String,
     ) : AppDestination
@@ -181,6 +199,11 @@ class StageTwoNavigator {
         return push(AppDestination.MasterCommentaryCandidates(caseId, recordId))
     }
 
+    fun openFeedbackThemeCandidates(
+        caseId: String,
+        recordId: String,
+    ): AppDestination = push(AppDestination.FeedbackThemeCandidates(caseId, recordId))
+
     fun openEditCase(caseId: String): AppDestination {
         return push(AppDestination.EditCase(caseId))
     }
@@ -242,6 +265,12 @@ class StageTwoNavigator {
             }
 
             is AppDestination.MasterCommentaryCandidates -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.FeedbackThemeCandidates -> {
                 stack += AppDestination.CaseList
                 stack += AppDestination.CaseDetail(destination.caseId)
                 stack += destination
@@ -354,6 +383,10 @@ data class StageTwoUiState(
     val commentaryCandidateAdoptionFailure:
         MasterCommentaryCandidateAdoptionFailure? = null,
     val commentaryCandidateSavingId: String? = null,
+    val feedbackThemeCandidateSet: FeedbackThemeCandidateSet? = null,
+    val feedbackThemeCandidateFailure: FeedbackThemeCandidateFailure? = null,
+    val feedbackThemeAdoptionFailure: FeedbackThemeAdoptionFailure? = null,
+    val feedbackThemeSavingId: String? = null,
     val singleCaseExportConfirmationVisible: Boolean = false,
     val singleCasePasswordExportVisible: Boolean = false,
     val singleCasePasswordImportVisible: Boolean = false,
@@ -413,6 +446,8 @@ class StageTwoViewModel(
         CaseObjectiveSummaryContract,
     private val commentaryCandidateExtractor: MasterCommentaryCandidateExtractor =
         DeterministicMasterCommentaryCandidateExtractor(),
+    private val feedbackThemeCandidateExtractor: FeedbackThemeCandidateExtractor =
+        DeterministicFeedbackThemeCandidateExtractor(),
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -510,6 +545,25 @@ class StageTwoViewModel(
             } else {
                 null
             }
+            val feedbackDestination =
+                mutableState.value.destination as? AppDestination.FeedbackThemeCandidates
+            val feedbackRecord = if (restoredCase != null && feedbackDestination != null) {
+                restoredCase.textRecords.firstOrNull { it.id == feedbackDestination.recordId }
+            } else {
+                null
+            }
+            val feedbackResult = if (restoredCase != null && feedbackRecord != null) {
+                feedbackThemeCandidateExtractor.extract(
+                    FeedbackThemeCandidateExtractionInput(
+                        sourceRecordId = feedbackRecord.id,
+                        sourceRecordType = feedbackRecord.type,
+                        sourceContent = feedbackRecord.content,
+                        sourceRevision = restoredCase.sourceRecordRevision(feedbackRecord.id),
+                    ),
+                )
+            } else {
+                null
+            }
             mutableState.update {
                 if (restoredCase == null) {
                     it.copy(
@@ -524,6 +578,10 @@ class StageTwoViewModel(
                         commentaryCandidateFailure = null,
                         commentaryCandidateAdoptionFailure = null,
                         commentaryCandidateSavingId = null,
+                        feedbackThemeCandidateSet = null,
+                        feedbackThemeCandidateFailure = null,
+                        feedbackThemeAdoptionFailure = null,
+                        feedbackThemeSavingId = null,
                         message = "上次打开的命例无法恢复，已返回命例列表。",
                     )
                 } else {
@@ -577,6 +635,39 @@ class StageTwoViewModel(
                                     "来源点评已不存在，候选无法恢复。",
                                 ),
                             commentaryCandidateSavingId = null,
+                        )
+                        feedbackResult is FeedbackThemeCandidateExtractionResult.Success ->
+                            it.copy(
+                                detail = restoredCase,
+                                detailLoading = false,
+                                detailError = null,
+                                feedbackThemeCandidateSet = feedbackResult.candidateSet
+                                    .mergeDecisionsFrom(it.feedbackThemeCandidateSet),
+                                feedbackThemeCandidateFailure = null,
+                                feedbackThemeAdoptionFailure = null,
+                                feedbackThemeSavingId = null,
+                            )
+                        feedbackResult is FeedbackThemeCandidateExtractionResult.Failure ->
+                            it.copy(
+                                detail = restoredCase,
+                                detailLoading = false,
+                                detailError = null,
+                                feedbackThemeCandidateSet = null,
+                                feedbackThemeCandidateFailure = feedbackResult.failure,
+                                feedbackThemeAdoptionFailure = null,
+                                feedbackThemeSavingId = null,
+                            )
+                        feedbackDestination != null -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            feedbackThemeCandidateSet = null,
+                            feedbackThemeCandidateFailure = null,
+                            feedbackThemeAdoptionFailure = FeedbackThemeAdoptionFailure(
+                                FeedbackThemeAdoptionErrorCode.SOURCE_NOT_FOUND,
+                                "来源反馈已不存在，候选无法恢复。",
+                            ),
+                            feedbackThemeSavingId = null,
                         )
                         else -> it.copy(
                             detail = restoredCase,
@@ -2826,6 +2917,10 @@ class StageTwoViewModel(
                 commentaryCandidateFailure = null,
                 commentaryCandidateAdoptionFailure = null,
                 commentaryCandidateSavingId = null,
+                feedbackThemeCandidateSet = null,
+                feedbackThemeCandidateFailure = null,
+                feedbackThemeAdoptionFailure = null,
+                feedbackThemeSavingId = null,
                 message = null,
             )
         }
@@ -3063,6 +3158,160 @@ class StageTwoViewModel(
                 commentaryCandidateSet = it.commentaryCandidateSet
                     ?.updateCandidate(candidateId, transform),
                 commentaryCandidateAdoptionFailure = null,
+            )
+        }
+    }
+
+    fun openFeedbackThemeCandidates(recordId: String) {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
+        val record = detail.textRecords.firstOrNull { it.id == recordId } ?: return
+        val result = feedbackThemeCandidateExtractor.extract(
+            FeedbackThemeCandidateExtractionInput(
+                sourceRecordId = record.id,
+                sourceRecordType = record.type,
+                sourceContent = record.content,
+                sourceRevision = detail.sourceRecordRevision(record.id),
+            ),
+        )
+        mutableState.update {
+            when (result) {
+                is FeedbackThemeCandidateExtractionResult.Success -> it.copy(
+                    destination = navigator.openFeedbackThemeCandidates(detail.id, record.id),
+                    feedbackThemeCandidateSet = result.candidateSet,
+                    feedbackThemeCandidateFailure = null,
+                    feedbackThemeAdoptionFailure = null,
+                    feedbackThemeSavingId = null,
+                    message = null,
+                )
+                is FeedbackThemeCandidateExtractionResult.Failure -> it.copy(
+                    destination = navigator.openFeedbackThemeCandidates(detail.id, record.id),
+                    feedbackThemeCandidateSet = null,
+                    feedbackThemeCandidateFailure = result.failure,
+                    feedbackThemeAdoptionFailure = null,
+                    feedbackThemeSavingId = null,
+                    message = null,
+                )
+            }
+        }
+    }
+
+    fun updateFeedbackThemeCandidateTag(candidateId: String, tagName: String) {
+        updateFeedbackThemeCandidate(candidateId) {
+            if (it.status == FeedbackThemeCandidateStatus.PENDING) {
+                it.copy(proposedTagName = tagName)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun rejectFeedbackThemeCandidate(candidateId: String) {
+        updateFeedbackThemeCandidate(candidateId) {
+            if (it.status == FeedbackThemeCandidateStatus.PENDING) {
+                it.copy(status = FeedbackThemeCandidateStatus.REJECTED)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun restoreRejectedFeedbackThemeCandidate(candidateId: String) {
+        updateFeedbackThemeCandidate(candidateId) {
+            if (it.status == FeedbackThemeCandidateStatus.REJECTED) {
+                it.copy(status = FeedbackThemeCandidateStatus.PENDING)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun adoptFeedbackThemeCandidate(candidateId: String) {
+        val current = mutableState.value
+        val detail = current.detail
+        if (detail == null) {
+            mutableState.update {
+                it.copy(
+                    feedbackThemeAdoptionFailure = FeedbackThemeAdoptionFailure(
+                        FeedbackThemeAdoptionErrorCode.CONTEXT_NOT_READY,
+                        "命例详情仍在恢复，请稍候再采用。",
+                    ),
+                )
+            }
+            return
+        }
+        val candidate = current.feedbackThemeCandidateSet
+            ?.candidates
+            ?.firstOrNull { it.id == candidateId }
+            ?: return
+        if (current.feedbackThemeSavingId != null) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    feedbackThemeSavingId = candidateId,
+                    feedbackThemeAdoptionFailure = null,
+                )
+            }
+            when (
+                val result = caseMetadata.adoptFeedbackThemeCandidate(
+                    caseId = detail.id,
+                    expectedRevision = detail.revision,
+                    candidate = candidate,
+                )
+            ) {
+                is FeedbackThemeAdoptionResult.Saved -> {
+                    val refreshed = try {
+                        caseRepository.findById(detail.id)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    mutableState.update {
+                        if (refreshed == null) {
+                            it.copy(
+                                feedbackThemeSavingId = null,
+                                feedbackThemeAdoptionFailure = FeedbackThemeAdoptionFailure(
+                                    FeedbackThemeAdoptionErrorCode.STORAGE_FAILED,
+                                    "标签已保存，但详情刷新失败。请返回详情重新打开。",
+                                ),
+                            )
+                        } else {
+                            it.copy(
+                                detail = refreshed,
+                                feedbackThemeCandidateSet = it.feedbackThemeCandidateSet
+                                    ?.updateCandidate(candidateId) { currentCandidate ->
+                                        currentCandidate.copy(
+                                            status = FeedbackThemeCandidateStatus.ADOPTED,
+                                        )
+                                    },
+                                feedbackThemeSavingId = null,
+                                feedbackThemeAdoptionFailure = null,
+                                message = "已新增正式命例标签；完整命主反馈未修改。",
+                            )
+                        }
+                    }
+                    refreshCases()
+                }
+                is FeedbackThemeAdoptionResult.Failure -> mutableState.update {
+                    it.copy(
+                        feedbackThemeSavingId = null,
+                        feedbackThemeAdoptionFailure = result.failure,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updateFeedbackThemeCandidate(
+        candidateId: String,
+        transform: (FeedbackThemeCandidate) -> FeedbackThemeCandidate,
+    ) {
+        mutableState.update {
+            it.copy(
+                feedbackThemeCandidateSet = it.feedbackThemeCandidateSet
+                    ?.updateCandidate(candidateId, transform),
+                feedbackThemeAdoptionFailure = null,
             )
         }
     }
@@ -3648,6 +3897,8 @@ class StageTwoViewModel(
         }
         val leavingCommentaryCandidates =
             mutableState.value.destination is AppDestination.MasterCommentaryCandidates
+        val leavingFeedbackThemeCandidates =
+            mutableState.value.destination is AppDestination.FeedbackThemeCandidates
         mutableState.update {
             it.copy(
                 destination = navigator.back(),
@@ -3669,6 +3920,22 @@ class StageTwoViewModel(
                     it.commentaryCandidateAdoptionFailure
                 },
                 commentaryCandidateSavingId = null,
+                feedbackThemeCandidateSet = if (leavingFeedbackThemeCandidates) {
+                    null
+                } else {
+                    it.feedbackThemeCandidateSet
+                },
+                feedbackThemeCandidateFailure = if (leavingFeedbackThemeCandidates) {
+                    null
+                } else {
+                    it.feedbackThemeCandidateFailure
+                },
+                feedbackThemeAdoptionFailure = if (leavingFeedbackThemeCandidates) {
+                    null
+                } else {
+                    it.feedbackThemeAdoptionFailure
+                },
+                feedbackThemeSavingId = null,
             )
         }
     }
@@ -3690,6 +3957,10 @@ class StageTwoViewModel(
                 commentaryCandidateFailure = null,
                 commentaryCandidateAdoptionFailure = null,
                 commentaryCandidateSavingId = null,
+                feedbackThemeCandidateSet = null,
+                feedbackThemeCandidateFailure = null,
+                feedbackThemeAdoptionFailure = null,
+                feedbackThemeSavingId = null,
             )
         }
     }
@@ -3930,6 +4201,7 @@ private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.CaseDetail -> caseId
     is AppDestination.CaseObjectiveSummary -> caseId
     is AppDestination.MasterCommentaryCandidates -> caseId
+    is AppDestination.FeedbackThemeCandidates -> caseId
     is AppDestination.EditCase -> caseId
     is AppDestination.AddBirthTimeCandidate -> caseId
     is AppDestination.EditMetadata -> caseId
@@ -3970,6 +4242,17 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     commentaryCandidateAdoptionFailure?.let {
         putString("commentaryCandidateAdoptionFailureCode", it.code.name)
         putString("commentaryCandidateAdoptionFailureMessage", it.message)
+    }
+    feedbackThemeCandidateSet?.let {
+        putBundle("feedbackThemeCandidateSet", it.toSavedStateBundle())
+    }
+    feedbackThemeCandidateFailure?.let {
+        putString("feedbackThemeCandidateFailureCode", it.code.name)
+        putString("feedbackThemeCandidateFailureMessage", it.message)
+    }
+    feedbackThemeAdoptionFailure?.let {
+        putString("feedbackThemeAdoptionFailureCode", it.code.name)
+        putString("feedbackThemeAdoptionFailureMessage", it.message)
     }
     putString("fortuneObservationDate", fortuneObservationDate)
     putString("fortuneObservationTime", fortuneObservationTime)
@@ -4037,6 +4320,26 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
                     getString("commentaryCandidateAdoptionFailureMessage").orEmpty(),
                 )
             },
+        feedbackThemeCandidateSet =
+            getBundle("feedbackThemeCandidateSet")?.toFeedbackThemeCandidateSet(),
+        feedbackThemeCandidateFailure =
+            enumValueOrNull<FeedbackThemeCandidateErrorCode>(
+                getString("feedbackThemeCandidateFailureCode"),
+            )?.let { code ->
+                FeedbackThemeCandidateFailure(
+                    code,
+                    getString("feedbackThemeCandidateFailureMessage").orEmpty(),
+                )
+            },
+        feedbackThemeAdoptionFailure =
+            enumValueOrNull<FeedbackThemeAdoptionErrorCode>(
+                getString("feedbackThemeAdoptionFailureCode"),
+            )?.let { code ->
+                FeedbackThemeAdoptionFailure(
+                    code,
+                    getString("feedbackThemeAdoptionFailureMessage").orEmpty(),
+                )
+            },
         editForm = getBundle("editForm")?.toCaseFormState() ?: CaseFormState(),
         candidateLabel = getString("candidateLabel").orEmpty(),
         candidateForm = getBundle("candidateForm")?.toCaseFormState() ?: CaseFormState(),
@@ -4066,6 +4369,11 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
         }
         is AppDestination.MasterCommentaryCandidates -> {
             putString("type", "master_commentary_candidates")
+            putString("caseId", caseId)
+            putString("recordId", recordId)
+        }
+        is AppDestination.FeedbackThemeCandidates -> {
+            putString("type", "feedback_theme_candidates")
             putString("caseId", caseId)
             putString("recordId", recordId)
         }
@@ -4108,6 +4416,11 @@ private fun Bundle.toAppDestination(): AppDestination {
         "master_commentary_candidates" -> caseId?.let {
             getString("recordId")?.let { recordId ->
                 AppDestination.MasterCommentaryCandidates(it, recordId)
+            }
+        }
+        "feedback_theme_candidates" -> caseId?.let {
+            getString("recordId")?.let { recordId ->
+                AppDestination.FeedbackThemeCandidates(it, recordId)
             }
         }
         "edit_case" -> caseId?.let(AppDestination::EditCase)
@@ -4233,6 +4546,118 @@ private fun MasterCommentaryCandidateSet.mergeDecisionsFrom(
             fresh.copy(
                 proposedContent = previous.proposedContent,
                 proposedCategory = previous.proposedCategory,
+                status = previous.status,
+            )
+        },
+    )
+}
+
+private fun FeedbackThemeCandidateSet.toSavedStateBundle(): Bundle = Bundle().apply {
+    putInt("ruleVersion", ruleVersion)
+    putString("sourceRecordId", sourceRecordId)
+    putInt("sourceRevision", sourceRevision)
+    putParcelableArrayList(
+        "candidates",
+        ArrayList(candidates.map { it.toSavedStateBundle() }),
+    )
+}
+
+@Suppress("DEPRECATION")
+private fun Bundle.toFeedbackThemeCandidateSet(): FeedbackThemeCandidateSet? = runCatching {
+    FeedbackThemeCandidateSet(
+        ruleVersion = getInt("ruleVersion"),
+        sourceRecordId = requireNotNull(getString("sourceRecordId")),
+        sourceRevision = getInt("sourceRevision"),
+        candidates = getParcelableArrayList<Bundle>("candidates")
+            .orEmpty()
+            .mapNotNull { it.toFeedbackThemeCandidate() },
+    )
+}.getOrNull()
+
+private fun FeedbackThemeCandidate.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("id", id)
+    putString("sourceRecordId", sourceRecordId)
+    putInt("sourceRevision", sourceRevision)
+    putString("canonicalTagName", canonicalTagName)
+    putString("proposedTagName", proposedTagName)
+    putString("suggestedEventCategory", suggestedEventCategory.name)
+    putString("ruleId", ruleId)
+    putString("ruleExplanation", ruleExplanation)
+    putString("status", status.name)
+    putParcelableArrayList(
+        "sourceEvidence",
+        ArrayList(sourceEvidence.map { it.toSavedStateBundle() }),
+    )
+}
+
+@Suppress("DEPRECATION")
+private fun Bundle.toFeedbackThemeCandidate(): FeedbackThemeCandidate? = runCatching {
+    FeedbackThemeCandidate(
+        id = requireNotNull(getString("id")),
+        sourceRecordId = requireNotNull(getString("sourceRecordId")),
+        sourceRevision = getInt("sourceRevision"),
+        canonicalTagName = requireNotNull(getString("canonicalTagName")),
+        proposedTagName = getString("proposedTagName").orEmpty(),
+        suggestedEventCategory = enumValueOrDefault(
+            getString("suggestedEventCategory"),
+            CaseEventCategory.GENERAL,
+        ),
+        sourceEvidence = getParcelableArrayList<Bundle>("sourceEvidence")
+            .orEmpty()
+            .mapNotNull { it.toFeedbackThemeSourceEvidence() },
+        ruleId = requireNotNull(getString("ruleId")),
+        ruleExplanation = requireNotNull(getString("ruleExplanation")),
+        status = enumValueOrDefault(
+            getString("status"),
+            FeedbackThemeCandidateStatus.PENDING,
+        ),
+    )
+}.getOrNull()
+
+private fun FeedbackThemeSourceEvidence.toSavedStateBundle(): Bundle = Bundle().apply {
+    putInt("startInclusive", range.startInclusive)
+    putInt("endExclusive", range.endExclusive)
+    putString("excerpt", excerpt)
+    putStringArrayList("matchedTerms", ArrayList(matchedTerms))
+}
+
+private fun Bundle.toFeedbackThemeSourceEvidence(): FeedbackThemeSourceEvidence? = runCatching {
+    FeedbackThemeSourceEvidence(
+        range = FeedbackThemeTextRange(
+            startInclusive = getInt("startInclusive"),
+            endExclusive = getInt("endExclusive"),
+        ),
+        excerpt = requireNotNull(getString("excerpt")),
+        matchedTerms = getStringArrayList("matchedTerms").orEmpty(),
+    )
+}.getOrNull()
+
+private fun FeedbackThemeCandidateSet.updateCandidate(
+    candidateId: String,
+    transform: (FeedbackThemeCandidate) -> FeedbackThemeCandidate,
+): FeedbackThemeCandidateSet = copy(
+    candidates = candidates.map { candidate ->
+        if (candidate.id == candidateId) transform(candidate) else candidate
+    },
+)
+
+private fun FeedbackThemeCandidateSet.mergeDecisionsFrom(
+    saved: FeedbackThemeCandidateSet?,
+): FeedbackThemeCandidateSet {
+    if (
+        saved == null ||
+        saved.ruleVersion != ruleVersion ||
+        saved.sourceRecordId != sourceRecordId ||
+        saved.sourceRevision != sourceRevision
+    ) {
+        return this
+    }
+    val savedById = saved.candidates.associateBy { it.id }
+    return copy(
+        candidates = candidates.map { fresh ->
+            val previous = savedById[fresh.id] ?: return@map fresh
+            fresh.copy(
+                proposedTagName = previous.proposedTagName,
                 status = previous.status,
             )
         },
