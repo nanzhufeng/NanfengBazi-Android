@@ -125,6 +125,7 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparation
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
+import com.nanzhufeng.nanfengbazi.data.backup.BackupDatabasePreflight
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import java.io.File
@@ -900,6 +901,17 @@ private fun FullBackupRestoreWorkspace(
                                 "${manifest.counts.events} · 附件 ${manifest.counts.attachments}",
                         )
                         Text("已校验文件：${preview.sourceFileCount}")
+                        Text(
+                            if (
+                                preview.databasePreflight ==
+                                BackupDatabasePreflight.INDEPENDENT_ROOM_ROUND_TRIP_VERIFIED
+                            ) {
+                                "独立临时数据库预演：通过"
+                            } else {
+                                "独立临时数据库预演：未执行"
+                            },
+                            modifier = Modifier.testTag("full_backup_database_preflight"),
+                        )
                         if (conflictedCases.isEmpty()) {
                             Text("当前库未发现稳定 ID、出生输入或四柱冲突。")
                         } else {

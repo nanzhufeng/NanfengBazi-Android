@@ -111,10 +111,10 @@
 | 单命例附件包预览/提交 | 私有临时区防御性展开；提交重读同一来源并复核 manifest/文档，重建附件身份及引用 | `SingleCaseBundleService.preview/commitImport/commitMerge` → 共享附件事务 | 零写入预览、错密码拒绝、来源变化拒绝、失败回滚与重试 |
 | 单命例附件包密码容器 | 独立 magic/type 的保护版本 1；ZIP 流式进入 PBKDF2-HMAC-SHA256 + AES-256-GCM | `SingleCaseBundleEncryption`，只由 `SingleCaseBundleService` 调用 | 不整包入内存；预览和提交分别输入密码并认证 |
 | 完整备份导出 | 明文风险确认后写出 ZIP，或把 ZIP 流式写入独立 v1 密码容器 `.nfbak` | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP/密码容器、manifest/文件哈希与导出计数 |
-| 完整备份只读预览 | 系统打开文档；密码文件先认证解密，再校验 ZIP，并逐命例对照当前库稳定 ID/出生输入/四柱 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 普通/密码文件显示候选原因、本地 revision 与回收站状态；非空库零写入 |
+| 完整备份只读预览 | 系统打开文档；密码文件先认证解密，再校验 ZIP、写入独立临时 Room 数据库完整读回，并逐命例对照当前库稳定 ID/出生输入/四柱 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 临时库约束/实体/领域聚合往返通过；普通/密码文件显示候选原因、本地 revision 与回收站状态；非空库零写入 |
 | 完整备份密码容器 | 独立保护版本 1；PBKDF2-HMAC-SHA256 600,000 次、AES-256-GCM 与参数 AAD；不整包入内存 | `BackupEncryption`，只由 `CaseBackupService` 调用 | 参数边界、认证失败、明文不可见及 Android `.nfbak` 往返 |
 | 完整备份恢复计划 | Android 逐例选择按原 ID/跳过/保留两份/范围合并；全部覆盖后重新读取当前冲突并绑定 manifest | `FullBackupPreviewDialog` → `StageTwoViewModel` → `CaseBackupService.prepareRestorePlan` | 决策完备性、目标/范围约束、回收站拒绝和 `PREVIEW_STALE`；计划通过仍零写入 |
-| 完整备份恢复执行 | 明文/密码备份最终确认后重读同一文件；按原 ID、保留两份、跳过或范围合并 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.executeRestorePlan` | 文件与完整来源聚合一致、提交前冲突复查、子项 ID 重建、Room 原子事务 |
+| 完整备份恢复执行 | 明文/密码备份最终确认后重读同一文件并再次执行独立临时库预演；按原 ID、保留两份、跳过或范围合并 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.executeRestorePlan` | 文件与完整来源聚合一致、临时库再次通过、提交前冲突复查、子项 ID 重建、Room 原子事务 |
 | 带附件范围合并 | 只收集所选记录/事件中实际新增内容引用的来源附件；跨模块按来源附件 ID 去重 | `SingleCaseExchangeService` 分析/重映射 → `CaseBackupService` 文件事务 | 新附件 ID/路径、引用一致；失败只清理本事务文件，目标既有附件和字段证据不变 |
 | 恢复附件事务 | 导入命例的附件复制到事务专属暂存目录，校验后原子切换；不覆盖现有路径 | `CaseBackupService` → App 私有附件根目录 | 数据库失败只移除本次目录；现有命例和附件保持不变 |
 | 中断恢复日志 | 启动及下次执行前扫描事务日志；无 DB 事实则回收附件，事实与附件完全一致则收尾 | `StageTwoViewModel` → `CaseBackupService.recoverInterruptedRestores` | 部分写入、载荷变化或附件不一致时停止自动处理并保留现场 |

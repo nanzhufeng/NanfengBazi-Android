@@ -75,7 +75,13 @@ data class RestorePreview(
     val manifest: BackupManifest,
     val sourceFileCount: Int,
     val cases: List<BackupCaseRestorePreview> = emptyList(),
+    val databasePreflight: BackupDatabasePreflight = BackupDatabasePreflight.NOT_RUN,
 )
+
+enum class BackupDatabasePreflight {
+    NOT_RUN,
+    INDEPENDENT_ROOM_ROUND_TRIP_VERIFIED,
+}
 
 enum class BackupCaseConflictReason {
     STABLE_ID_EXISTS,

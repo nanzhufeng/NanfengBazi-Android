@@ -1,5 +1,7 @@
 package com.nanzhufeng.nanfengbazi.data.backup
 
+import android.content.Context
+import androidx.room.Room
 import androidx.room.withTransaction
 import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
@@ -94,6 +96,7 @@ class CaseBackupService(
     secureRandom: SecureRandom = SecureRandom(),
     passwordKdfIterations: Int = PasswordCrypto.DEFAULT_KDF_ITERATIONS,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
+    private val stagingDatabaseContext: Context? = null,
 ) : CaseBackupOperations {
     private val dao = database.caseDao()
     private val encryption = BackupEncryption(secureRandom, passwordKdfIterations)
@@ -857,6 +860,9 @@ class CaseBackupService(
             validateReferences(snapshot, extracted, manifest)?.let {
                 return rejectedAndClean(stagingRoot, it.first, it.second)
             }
+            validateInIndependentDatabase(snapshot)?.let {
+                return rejectedAndClean(stagingRoot, it.first, it.second)
+            }
 
             val stagedAttachments = stagingRoot.resolve(ATTACHMENTS_DIRECTORY)
             Files.createDirectories(stagedAttachments)
@@ -894,22 +900,27 @@ class CaseBackupService(
         }
     }
 
-    private suspend fun readSnapshot(): RoomDataSnapshot = RoomDataSnapshot(
-        cases = dao.allCases(),
-        calculationSnapshots = dao.allCalculationSnapshots(),
-        textRecords = dao.allTextRecords(),
-        textRecordRevisions = dao.allTextRecordRevisions(),
-        events = dao.allEvents(),
-        eventRevisions = dao.allEventRevisions(),
-        attachments = dao.allAttachments(),
-        fieldEvidence = dao.allFieldEvidence(),
-        groups = dao.allGroups(),
-        tags = dao.allTags(),
-        caseGroupCrossRefs = dao.allCaseGroupCrossRefs(),
-        caseTagCrossRefs = dao.allCaseTagCrossRefs(),
-    )
+    private suspend fun readSnapshot(
+        sourceDatabase: NanfengBaziDatabase = database,
+    ): RoomDataSnapshot {
+        val sourceDao = sourceDatabase.caseDao()
+        return RoomDataSnapshot(
+            cases = sourceDao.allCases(),
+            calculationSnapshots = sourceDao.allCalculationSnapshots(),
+            textRecords = sourceDao.allTextRecords(),
+            textRecordRevisions = sourceDao.allTextRecordRevisions(),
+            events = sourceDao.allEvents(),
+            eventRevisions = sourceDao.allEventRevisions(),
+            attachments = sourceDao.allAttachments(),
+            fieldEvidence = sourceDao.allFieldEvidence(),
+            groups = sourceDao.allGroups(),
+            tags = sourceDao.allTags(),
+            caseGroupCrossRefs = sourceDao.allCaseGroupCrossRefs(),
+            caseTagCrossRefs = sourceDao.allCaseTagCrossRefs(),
+        )
+    }
 
-    private fun readValidatedExecutionSource(
+    private suspend fun readValidatedExecutionSource(
         input: InputStream,
         stagingRoot: Path,
         encrypted: Boolean,
@@ -930,6 +941,9 @@ class CaseBackupService(
         }
         val snapshot = parseSnapshot(extracted)
         validateReferences(snapshot, extracted, manifest)?.let { error ->
+            return ExecutionSourceResult.Rejected(error.first, error.second)
+        }
+        validateInIndependentDatabase(snapshot)?.let { error ->
             return ExecutionSourceResult.Rejected(error.first, error.second)
         }
         return ExecutionSourceResult.Success(manifest, snapshot, extracted)
@@ -1153,11 +1167,19 @@ class CaseBackupService(
         validateReferences(snapshot, extracted, manifest)?.let { error ->
             return BackupPreviewResult.Rejected(error.first, error.second)
         }
+        val databasePreflight = validateInIndependentDatabase(snapshot)?.let { error ->
+            return BackupPreviewResult.Rejected(error.first, error.second)
+        } ?: if (stagingDatabaseContext == null) {
+            BackupDatabasePreflight.NOT_RUN
+        } else {
+            BackupDatabasePreflight.INDEPENDENT_ROOM_ROUND_TRIP_VERIFIED
+        }
         return BackupPreviewResult.Success(
             RestorePreview(
                 manifest = manifest,
                 sourceFileCount = extracted.size,
                 cases = buildCaseRestorePreviews(snapshot),
+                databasePreflight = databasePreflight,
             ),
         )
     }
@@ -1624,19 +1646,54 @@ class CaseBackupService(
         return null
     }
 
-    private suspend fun insertSnapshot(snapshot: RoomDataSnapshot) {
-        snapshot.cases.forEach { dao.insertCase(it) }
-        dao.insertGroups(snapshot.groups)
-        dao.insertTags(snapshot.tags)
-        dao.insertAttachments(snapshot.attachments)
-        dao.insertCalculationSnapshots(snapshot.calculationSnapshots)
-        dao.insertTextRecords(snapshot.textRecords)
-        dao.insertTextRecordRevisions(snapshot.textRecordRevisions)
-        dao.insertEvents(snapshot.events)
-        dao.insertEventRevisions(snapshot.eventRevisions)
-        dao.insertFieldEvidence(snapshot.fieldEvidence)
-        dao.insertCaseGroupCrossRefs(snapshot.caseGroupCrossRefs)
-        dao.insertCaseTagCrossRefs(snapshot.caseTagCrossRefs)
+    private suspend fun validateInIndependentDatabase(
+        snapshot: RoomDataSnapshot,
+    ): Pair<String, String>? {
+        val context = stagingDatabaseContext ?: return null
+        val stagingDatabase = Room.inMemoryDatabaseBuilder(
+            context.applicationContext,
+            NanfengBaziDatabase::class.java,
+        ).build()
+        return try {
+            stagingDatabase.withTransaction {
+                insertSnapshot(snapshot, stagingDatabase)
+            }
+            val reread = stagingDatabase.withTransaction {
+                readSnapshot(stagingDatabase)
+            }
+            if (reread != snapshot || reread.toDomainCases() != snapshot.toDomainCases()) {
+                "STAGING_DATABASE_ROUND_TRIP_MISMATCH" to
+                    "备份写入独立临时数据库后内容不一致，已停止恢复。"
+            } else {
+                null
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            "STAGING_DATABASE_REJECTED" to
+                "备份无法完整写入独立临时数据库，已停止恢复且未触碰正式数据。"
+        } finally {
+            stagingDatabase.close()
+        }
+    }
+
+    private suspend fun insertSnapshot(
+        snapshot: RoomDataSnapshot,
+        targetDatabase: NanfengBaziDatabase = database,
+    ) {
+        val targetDao = targetDatabase.caseDao()
+        snapshot.cases.forEach { targetDao.insertCase(it) }
+        targetDao.insertGroups(snapshot.groups)
+        targetDao.insertTags(snapshot.tags)
+        targetDao.insertAttachments(snapshot.attachments)
+        targetDao.insertCalculationSnapshots(snapshot.calculationSnapshots)
+        targetDao.insertTextRecords(snapshot.textRecords)
+        targetDao.insertTextRecordRevisions(snapshot.textRecordRevisions)
+        targetDao.insertEvents(snapshot.events)
+        targetDao.insertEventRevisions(snapshot.eventRevisions)
+        targetDao.insertFieldEvidence(snapshot.fieldEvidence)
+        targetDao.insertCaseGroupCrossRefs(snapshot.caseGroupCrossRefs)
+        targetDao.insertCaseTagCrossRefs(snapshot.caseTagCrossRefs)
     }
 
     private fun rejectedAndClean(

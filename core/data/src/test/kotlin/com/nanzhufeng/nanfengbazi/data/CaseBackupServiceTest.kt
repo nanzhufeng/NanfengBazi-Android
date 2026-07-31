@@ -10,6 +10,7 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseConflictReason
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseMergePreparationResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreAction
 import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
+import com.nanzhufeng.nanfengbazi.data.backup.BackupDatabasePreflight
 import com.nanzhufeng.nanfengbazi.data.backup.BackupFileManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupManifest
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
@@ -56,6 +57,51 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class CaseBackupServiceTest {
     private val fixedClock = Clock.fixed(FixtureInstant, ZoneOffset.UTC)
+
+    @Test
+    fun `完整备份预览先经过独立临时数据库完整往返`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-backup-preflight-")
+        val backup = ByteArrayOutputStream()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sourceAttachments = root.resolve("source-attachments")
+        val sourceFile = sourceAttachments.resolve("case-1/source/screen.png")
+        Files.createDirectories(sourceFile.parent)
+        Files.write(sourceFile, "脱敏截图夹具".encodeToByteArray())
+        try {
+            withDatabase { source ->
+                val repository = RoomCaseRepository(source)
+                repository.save(sampleCase(), expectedRevision = null)
+                assertTrue(
+                    CaseBackupService(source, fixedClock).export(
+                        backup,
+                        sourceAttachments,
+                        "0.3.0-test",
+                        BackupProtection.UnencryptedSensitiveDataConfirmed,
+                    ) is BackupExportResult.Success,
+                )
+            }
+
+            withDatabase { destination ->
+                val result = CaseBackupService(
+                    database = destination,
+                    clock = fixedClock,
+                    stagingDatabaseContext = context,
+                ).preview(
+                    ByteArrayInputStream(backup.toByteArray()),
+                    root.resolve("work"),
+                )
+
+                assertTrue(result.toString(), result is BackupPreviewResult.Success)
+                assertEquals(
+                    BackupDatabasePreflight.INDEPENDENT_ROOM_ROUND_TRIP_VERIFIED,
+                    (result as BackupPreviewResult.Success).preview.databasePreflight,
+                )
+                assertNull(RoomCaseRepository(destination).findById("case-1"))
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
 
     @Test
     fun `完整备份恢复保持命例和附件字节一致`() = runTest {

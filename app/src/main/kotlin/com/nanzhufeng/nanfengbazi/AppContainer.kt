@@ -56,7 +56,10 @@ class DefaultAppContainer(
 
     override val caseRepository: CaseRepository = RoomCaseRepository(database)
     override val baziEngine: BaziEngine = TymeBaziEngine()
-    override val caseBackupService: CaseBackupOperations = CaseBackupService(database)
+    override val caseBackupService: CaseBackupOperations = CaseBackupService(
+        database = database,
+        stagingDatabaseContext = application,
+    )
     override val singleCaseBundleService: SingleCaseBundleOperations =
         SingleCaseBundleService(database)
     override val importSessionRepository: ImportSessionRepository =
