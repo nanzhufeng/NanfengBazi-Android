@@ -1060,6 +1060,65 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `客观摘要读取当前采用快照并复制同一文本且保持详情返回链`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-objective-summary")
+        repository.stored[stored.id] = stored
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+
+        viewModel.openObjectiveSummary()
+
+        val summary = requireNotNull(viewModel.state.value.objectiveSummary)
+        assertEquals(
+            AppDestination.CaseObjectiveSummary(stored.id),
+            viewModel.state.value.destination,
+        )
+        var copiedText: String? = null
+        viewModel.copyObjectiveSummary {
+            copiedText = it
+            true
+        }
+        assertEquals(summary.copyText, copiedText)
+        assertTrue(viewModel.state.value.objectiveSummaryCopied)
+        assertNull(viewModel.state.value.objectiveSummaryFailure)
+
+        viewModel.navigateBack()
+        assertEquals(
+            AppDestination.CaseDetail(stored.id),
+            viewModel.state.value.destination,
+        )
+        assertEquals(stored.id, viewModel.state.value.detail?.id)
+    }
+
+    @Test
+    fun `剪贴板不可用和写入异常返回不同结构化失败且摘要保留`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-objective-copy-error")
+        repository.stored[stored.id] = stored
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+        viewModel.openObjectiveSummary()
+        val summary = requireNotNull(viewModel.state.value.objectiveSummary)
+
+        viewModel.copyObjectiveSummary { false }
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryErrorCode
+                .CLIPBOARD_UNAVAILABLE,
+            viewModel.state.value.objectiveSummaryFailure?.code,
+        )
+        assertEquals(summary, viewModel.state.value.objectiveSummary)
+
+        viewModel.copyObjectiveSummary { error("synthetic clipboard failure") }
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryErrorCode.COPY_FAILED,
+            viewModel.state.value.objectiveSummaryFailure?.code,
+        )
+        assertEquals(summary, viewModel.state.value.objectiveSummary)
+        assertFalse(viewModel.state.value.objectiveSummaryCopied)
+    }
+
+    @Test
     fun `图片导出与分享复用同一渲染字节并保持详情`() = runTest {
         val repository = FakeCaseRepository()
         val stored = sampleStoredCase("case-image")

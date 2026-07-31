@@ -41,6 +41,13 @@ import com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode
 import com.nanzhufeng.nanfengbazi.domain.CaseImageExportInput
 import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult
 import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryContract
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryErrorCode
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryFailure
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryGenerator
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryInput
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryResult
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -95,6 +102,7 @@ sealed interface AppDestination {
     data object CreateCase : AppDestination
     data object ScreenshotImportReview : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
+    data class CaseObjectiveSummary(val caseId: String) : AppDestination
     data class EditCase(val caseId: String) : AppDestination
     data class AddBirthTimeCandidate(val caseId: String) : AppDestination
     data class EditMetadata(val caseId: String) : AppDestination
@@ -142,6 +150,10 @@ class StageTwoNavigator {
 
     fun openDetail(caseId: String): AppDestination {
         return push(AppDestination.CaseDetail(caseId))
+    }
+
+    fun openObjectiveSummary(caseId: String): AppDestination {
+        return push(AppDestination.CaseObjectiveSummary(caseId))
     }
 
     fun openEditCase(caseId: String): AppDestination {
@@ -195,6 +207,12 @@ class StageTwoNavigator {
 
             is AppDestination.CaseDetail -> {
                 stack += AppDestination.CaseList
+                stack += destination
+            }
+
+            is AppDestination.CaseObjectiveSummary -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
                 stack += destination
             }
 
@@ -296,6 +314,10 @@ data class StageTwoUiState(
     val caseImageBusy: Boolean = false,
     val caseImageError: String? = null,
     val caseImageLastResultCode: CaseImageExportErrorCode? = null,
+    val objectiveSummary: CaseObjectiveSummary? = null,
+    val objectiveSummaryLoading: Boolean = false,
+    val objectiveSummaryFailure: CaseObjectiveSummaryFailure? = null,
+    val objectiveSummaryCopied: Boolean = false,
     val singleCaseExportConfirmationVisible: Boolean = false,
     val singleCasePasswordExportVisible: Boolean = false,
     val singleCasePasswordImportVisible: Boolean = false,
@@ -351,6 +373,8 @@ class StageTwoViewModel(
     private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     private val fourPillarsLookup: FourPillarsLookup? = null,
     private val caseImageRenderer: CaseImageRenderer? = null,
+    private val objectiveSummaryGenerator: CaseObjectiveSummaryGenerator =
+        CaseObjectiveSummaryContract,
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -416,6 +440,16 @@ class StageTwoViewModel(
             } catch (_: Exception) {
                 null
             }
+            val summaryResult = if (
+                restoredCase != null &&
+                mutableState.value.destination is AppDestination.CaseObjectiveSummary
+            ) {
+                objectiveSummaryGenerator.generate(
+                    CaseObjectiveSummaryInput(restoredCase),
+                )
+            } else {
+                null
+            }
             mutableState.update {
                 if (restoredCase == null) {
                     it.copy(
@@ -423,14 +457,35 @@ class StageTwoViewModel(
                         detail = null,
                         detailLoading = false,
                         detailError = null,
+                        objectiveSummary = null,
+                        objectiveSummaryLoading = false,
+                        objectiveSummaryFailure = null,
                         message = "上次打开的命例无法恢复，已返回命例列表。",
                     )
                 } else {
-                    it.copy(
-                        detail = restoredCase,
-                        detailLoading = false,
-                        detailError = null,
-                    )
+                    when (summaryResult) {
+                        is CaseObjectiveSummaryResult.Success -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            objectiveSummary = summaryResult.summary,
+                            objectiveSummaryLoading = false,
+                            objectiveSummaryFailure = null,
+                        )
+                        is CaseObjectiveSummaryResult.Rejected -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            objectiveSummary = null,
+                            objectiveSummaryLoading = false,
+                            objectiveSummaryFailure = summaryResult.failure,
+                        )
+                        null -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                        )
+                    }
                 }
             }
             if (mutableState.value.detailSection == CaseDetailSection.FORTUNE) {
@@ -2665,6 +2720,10 @@ class StageTwoViewModel(
                 caseImageBusy = false,
                 caseImageError = null,
                 caseImageLastResultCode = null,
+                objectiveSummary = null,
+                objectiveSummaryLoading = false,
+                objectiveSummaryFailure = null,
+                objectiveSummaryCopied = false,
                 message = null,
             )
         }
@@ -2710,6 +2769,123 @@ class StageTwoViewModel(
                         detailError = "命例详情读取失败，请返回列表后重试。",
                     )
                 }
+            }
+        }
+    }
+
+    fun openObjectiveSummary() {
+        val detail = mutableState.value.detail ?: return
+        mutableState.update {
+            it.copy(
+                destination = navigator.openObjectiveSummary(detail.id),
+                objectiveSummary = null,
+                objectiveSummaryLoading = true,
+                objectiveSummaryFailure = null,
+                objectiveSummaryCopied = false,
+                message = null,
+            )
+        }
+        loadObjectiveSummary(detail.id)
+    }
+
+    private fun loadObjectiveSummary(caseId: String) {
+        viewModelScope.launch {
+            val result = try {
+                val current = caseRepository.findById(caseId)
+                if (current == null) {
+                    CaseObjectiveSummaryResult.Rejected(
+                        CaseObjectiveSummaryFailure(
+                            CaseObjectiveSummaryErrorCode.SUMMARY_UNAVAILABLE,
+                            "未找到该命例，无法生成客观摘要。",
+                        ),
+                    )
+                } else {
+                    objectiveSummaryGenerator.generate(
+                        CaseObjectiveSummaryInput(current),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                CaseObjectiveSummaryResult.Rejected(
+                    CaseObjectiveSummaryFailure(
+                        CaseObjectiveSummaryErrorCode.SUMMARY_UNAVAILABLE,
+                        "客观摘要生成失败，命例数据未被修改。",
+                    ),
+                )
+            }
+            mutableState.update {
+                when (result) {
+                    is CaseObjectiveSummaryResult.Success -> it.copy(
+                        objectiveSummary = result.summary,
+                        objectiveSummaryLoading = false,
+                        objectiveSummaryFailure = null,
+                    )
+                    is CaseObjectiveSummaryResult.Rejected -> it.copy(
+                        objectiveSummary = null,
+                        objectiveSummaryLoading = false,
+                        objectiveSummaryFailure = result.failure,
+                    )
+                }
+            }
+        }
+    }
+
+    fun retryObjectiveSummary() {
+        val caseId = (mutableState.value.destination as? AppDestination.CaseObjectiveSummary)
+            ?.caseId
+            ?: return
+        mutableState.update {
+            it.copy(
+                objectiveSummaryLoading = true,
+                objectiveSummaryFailure = null,
+                objectiveSummaryCopied = false,
+            )
+        }
+        loadObjectiveSummary(caseId)
+    }
+
+    fun copyObjectiveSummary(writeToClipboard: (String) -> Boolean) {
+        val summary = mutableState.value.objectiveSummary
+        if (summary == null) {
+            mutableState.update {
+                it.copy(
+                    objectiveSummaryCopied = false,
+                    objectiveSummaryFailure = CaseObjectiveSummaryFailure(
+                        CaseObjectiveSummaryErrorCode.SUMMARY_UNAVAILABLE,
+                        "客观摘要尚未生成，请重试后再复制。",
+                    ),
+                )
+            }
+            return
+        }
+        val failure = try {
+            if (writeToClipboard(summary.copyText)) {
+                null
+            } else {
+                CaseObjectiveSummaryFailure(
+                    CaseObjectiveSummaryErrorCode.CLIPBOARD_UNAVAILABLE,
+                    "系统剪贴板不可用，请稍后重试。",
+                )
+            }
+        } catch (_: Exception) {
+            CaseObjectiveSummaryFailure(
+                CaseObjectiveSummaryErrorCode.COPY_FAILED,
+                "复制客观摘要失败，摘要仍保留在当前页面。",
+            )
+        }
+        mutableState.update {
+            if (failure == null) {
+                it.copy(
+                    objectiveSummaryCopied = true,
+                    objectiveSummaryFailure = null,
+                    message = "客观摘要已复制；其中包含出生资料，请妥善使用。",
+                )
+            } else {
+                it.copy(
+                    objectiveSummaryCopied = false,
+                    objectiveSummaryFailure = failure,
+                )
             }
         }
     }
@@ -3209,6 +3385,10 @@ class StageTwoViewModel(
                 formError = null,
                 previewing = false,
                 instantCalculation = null,
+                objectiveSummary = null,
+                objectiveSummaryLoading = false,
+                objectiveSummaryFailure = null,
+                objectiveSummaryCopied = false,
             )
         }
     }
@@ -3447,6 +3627,7 @@ class StageTwoViewModel(
 
 private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.CaseDetail -> caseId
+    is AppDestination.CaseObjectiveSummary -> caseId
     is AppDestination.EditCase -> caseId
     is AppDestination.AddBirthTimeCandidate -> caseId
     is AppDestination.EditMetadata -> caseId
@@ -3522,6 +3703,7 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         fortuneObservationDate = getString("fortuneObservationDate").orEmpty(),
         fortuneObservationTime = getString("fortuneObservationTime") ?: "12:00",
         detailLoading = destination.caseIdOrNull() != null,
+        objectiveSummaryLoading = destination is AppDestination.CaseObjectiveSummary,
         editForm = getBundle("editForm")?.toCaseFormState() ?: CaseFormState(),
         candidateLabel = getString("candidateLabel").orEmpty(),
         candidateForm = getBundle("candidateForm")?.toCaseFormState() ?: CaseFormState(),
@@ -3543,6 +3725,10 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
         AppDestination.ScreenshotImportReview -> putString("type", "screenshot_review")
         is AppDestination.CaseDetail -> {
             putString("type", "case_detail")
+            putString("caseId", caseId)
+        }
+        is AppDestination.CaseObjectiveSummary -> {
+            putString("type", "case_objective_summary")
             putString("caseId", caseId)
         }
         is AppDestination.EditCase -> {
@@ -3580,6 +3766,7 @@ private fun Bundle.toAppDestination(): AppDestination {
         "create_case" -> AppDestination.CreateCase
         "screenshot_review" -> AppDestination.ScreenshotImportReview
         "case_detail" -> caseId?.let(AppDestination::CaseDetail)
+        "case_objective_summary" -> caseId?.let(AppDestination::CaseObjectiveSummary)
         "edit_case" -> caseId?.let(AppDestination::EditCase)
         "birth_time_candidate" -> caseId?.let(AppDestination::AddBirthTimeCandidate)
         "edit_metadata" -> caseId?.let(AppDestination::EditMetadata)

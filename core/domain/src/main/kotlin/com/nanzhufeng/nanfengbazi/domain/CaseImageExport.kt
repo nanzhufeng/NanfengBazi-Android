@@ -2,21 +2,10 @@ package com.nanzhufeng.nanfengbazi.domain
 
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
-import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
-import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
-import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
-import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
-import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
-import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
-import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
-import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
-import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
-import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
-import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 
 const val CASE_IMAGE_DOCUMENT_VERSION: Int = 1
 
@@ -170,149 +159,27 @@ object CaseImageExportContract {
                 ),
             )
         }
-        val adopted = input.caseData.calculationSnapshots.filter { it.adopted }
-        if (adopted.isEmpty()) {
-            return CaseImageFactsResult.Rejected(
-                CaseImageExportFailure(
-                    CaseImageExportErrorCode.NO_ADOPTED_SNAPSHOT,
-                    "该命例没有已采用的计算快照，无法生成可复算命盘图片。",
-                ),
+        val summary = when (
+            val result = CaseObjectiveSummaryContract.generate(
+                CaseObjectiveSummaryInput(input.caseData),
             )
-        }
-        if (adopted.size > 1) {
-            return CaseImageFactsResult.Rejected(
-                CaseImageExportFailure(
-                    CaseImageExportErrorCode.MULTIPLE_ADOPTED_SNAPSHOTS,
-                    "该命例存在多个已采用快照，请先修复计算档案。",
-                ),
-            )
-        }
-
-        val snapshot = adopted.single()
-        val result = snapshot.result
-        val inputFacts = result.normalizedInput
-        val identityRows = buildList {
-            add(CaseImageRenderRow("命例别名", input.caseData.alias))
-            add(
-                CaseImageRenderRow(
-                    "姓名",
-                    when (input.caseData.name.state) {
-                        FieldValueState.PRESENT -> input.caseData.name.value.orEmpty()
-                        FieldValueState.ABSENT -> "未提供"
-                        FieldValueState.CLEARED -> "已明确清空"
-                    },
-                ),
-            )
-            add(
-                CaseImageRenderRow(
-                    "性别口径",
-                    input.caseData.sexForFortuneDirection.displayName(),
-                ),
-            )
-            add(CaseImageRenderRow("出生历法与时间", inputFacts.calendarInput.displayText()))
-            add(CaseImageRenderRow("IANA 时区", inputFacts.timeZoneId))
-            add(
-                CaseImageRenderRow(
-                    "UTC offset",
-                    inputFacts.resolvedUtcOffsetSeconds?.toOffsetText() ?: "未记录",
-                ),
-            )
-            add(CaseImageRenderRow("时间精度", inputFacts.timePrecision.displayName()))
-            add(CaseImageRenderRow("时间来源", inputFacts.timeSourceType.displayName()))
-            add(
-                CaseImageRenderRow(
-                    "地点",
-                    inputFacts.locationName?.takeIf(String::isNotBlank) ?: "未记录",
-                ),
-            )
-            add(
-                CaseImageRenderRow(
-                    "经纬度",
-                    if (inputFacts.longitude != null && inputFacts.latitude != null) {
-                        "${inputFacts.longitude}, ${inputFacts.latitude}"
-                    } else {
-                        "未记录"
-                    },
-                ),
-            )
-        }
-        val pillars = result.fourPillars
-        val chartRows = buildList {
-            add(
-                CaseImageRenderRow(
-                    "四柱",
-                    "${pillars.year}　${pillars.month}　${pillars.day}　${pillars.hour}",
-                ),
-            )
-            result.basicChartDetails?.let { details ->
-                add(CaseImageRenderRow("生肖", details.zodiac))
-                add(CaseImageRenderRow("星座", details.westernZodiac))
-                add(CaseImageRenderRow("日主", details.dayMaster))
-            }
-            add(CaseImageRenderRow("胎元", result.fetalOrigin))
-            add(CaseImageRenderRow("胎息", result.fetalBreath))
-            add(CaseImageRenderRow("命宫", result.ownSign))
-            add(CaseImageRenderRow("身宫", result.bodySign))
-        }
-        val pillarRows = result.basicChartDetails?.pillars
-            ?.sortedBy { it.position.ordinal }
-            ?.flatMap { pillar ->
-                listOf(
-                    CaseImageRenderRow(
-                        pillar.position.displayName(),
-                        "${pillar.heavenStem}${pillar.earthBranch}｜主星 ${pillar.primaryTenGod}｜" +
-                            "星运 ${pillar.terrain}｜自坐 ${pillar.selfSittingTerrain}｜" +
-                            "空亡 ${pillar.voidEarthBranches.joinToString("、")}｜纳音 ${pillar.naYin}",
-                    ),
-                    CaseImageRenderRow(
-                        "${pillar.position.displayName()}藏干",
-                        pillar.hiddenStems.joinToString("；") {
-                            "${it.heavenStem} ${it.type} ${it.tenGod} ${it.element}"
-                        }.ifEmpty { "未记录" },
-                    ),
-                )
-            }
-            .orEmpty()
-        val profile = result.profile
-        val evidenceRows = listOf(
-            CaseImageRenderRow("图片文档版本", "v${input.documentVersion}"),
-            CaseImageRenderRow("命例修订号", input.caseData.revision.toString()),
-            CaseImageRenderRow("采用快照", snapshot.id),
-            CaseImageRenderRow("引擎", "${result.evidence.engineName} ${result.evidence.engineVersion}"),
-            CaseImageRenderRow("规则版本", result.evidence.ruleVersion),
-            CaseImageRenderRow("计算配置", profile.id),
-            CaseImageRenderRow("子时口径", profile.ratHourRule.displayName()),
-            CaseImageRenderRow("时间口径", profile.solarTimeMode.displayName()),
-        )
-        val fortuneRows = buildList {
-            val start = result.fortuneStart
-            add(CaseImageRenderRow("起运方向", start.direction.displayName()))
-            add(CaseImageRenderRow("精确交运", start.startAt.displayText()))
-            add(
-                CaseImageRenderRow(
-                    "起运年龄",
-                    "${start.years}年 ${start.months}月 ${start.days}日 " +
-                        "${start.hours}时 ${start.minutes}分",
-                ),
-            )
-            result.decadeFortunes.forEachIndexed { index, decade ->
-                add(
-                    CaseImageRenderRow(
-                        "大运 ${index + 1}",
-                        "${decade.name}｜${decade.startAge}–${decade.endAge}岁｜" +
-                            "${decade.startYear}–${decade.endYear}",
-                    ),
-                )
+        ) {
+            is CaseObjectiveSummaryResult.Success -> result.summary
+            is CaseObjectiveSummaryResult.Rejected -> {
+                return CaseImageFactsResult.Rejected(result.failure.toImageFailure())
             }
         }
         val blocks = buildList {
-            add(CaseImageRenderBlock.Rows("采用资料", identityRows))
-            add(CaseImageRenderBlock.Rows("基础命盘", chartRows))
-            if (pillarRows.isNotEmpty()) {
-                add(CaseImageRenderBlock.Rows("四柱明细", pillarRows))
+            summary.sections.forEach { section ->
+                add(
+                    CaseImageRenderBlock.Rows(
+                        title = section.imageTitle(),
+                        rows = section.fields.map { field ->
+                            CaseImageRenderRow(field.label, field.value)
+                        },
+                    ),
+                )
             }
-            add(CaseImageRenderBlock.Rows("起运与大运", fortuneRows))
-            add(CaseImageRenderBlock.Rows("计算档案", evidenceRows))
             input.caseData.textRecords
                 .takeIf(List<CaseTextRecord>::isNotEmpty)
                 ?.let { records ->
@@ -338,84 +205,49 @@ object CaseImageExportContract {
             CaseImageRenderFacts(
                 documentVersion = input.documentVersion,
                 scope = input.scope,
-                caseId = input.caseData.id,
-                caseRevision = input.caseData.revision,
-                adoptedSnapshotId = snapshot.id,
-                title = input.caseData.name.value ?: input.caseData.alias,
+                caseId = summary.caseId,
+                caseRevision = summary.caseRevision,
+                adoptedSnapshotId = summary.adoptedSnapshotId,
+                title = summary.title,
                 subtitle = "南枫八字 · 已采用命盘",
                 suggestedFileStem = input.caseData.alias.take(48),
                 blocks = blocks,
                 provenanceNotice =
-                    "本图只使用当前已采用的本机计算快照与正式记录；" +
-                        "问真来源截图值、未采用候选和旧快照未作为计算真值。",
+                    "命盘字段复用客观摘要 v${summary.version} 的唯一采用快照投影；" +
+                        "正式记录按当前命例原文附加。来源截图值、未采用候选和旧快照" +
+                        "未作为计算真值。",
                 privacyNotice =
-                    "图片包含出生资料及研究记录。保存后请妥善保管；分享后由目标应用负责传输与存储。",
+                    "图片包含出生资料及研究记录。保存后请妥善保管；" +
+                        "分享后由目标应用负责传输与存储。",
             ),
         )
     }
 }
 
-private fun BirthCalendarInput.displayText(): String = when (this) {
-    is BirthCalendarInput.Solar -> "公历 ${dateTime.displayText()}"
-    is BirthCalendarInput.Lunar ->
-        "农历 ${if (dateTime.isLeapMonth) "闰" else ""}${dateTime.displayText()}"
-}
+private fun CaseObjectiveSummaryFailure.toImageFailure(): CaseImageExportFailure =
+    CaseImageExportFailure(
+        code = when (code) {
+            CaseObjectiveSummaryErrorCode.UNSUPPORTED_SUMMARY_VERSION ->
+                CaseImageExportErrorCode.UNSUPPORTED_DOCUMENT_VERSION
+            CaseObjectiveSummaryErrorCode.NO_ADOPTED_SNAPSHOT ->
+                CaseImageExportErrorCode.NO_ADOPTED_SNAPSHOT
+            CaseObjectiveSummaryErrorCode.MULTIPLE_ADOPTED_SNAPSHOTS ->
+                CaseImageExportErrorCode.MULTIPLE_ADOPTED_SNAPSHOTS
+            CaseObjectiveSummaryErrorCode.SUMMARY_UNAVAILABLE,
+            CaseObjectiveSummaryErrorCode.CLIPBOARD_UNAVAILABLE,
+            CaseObjectiveSummaryErrorCode.COPY_FAILED,
+            -> CaseImageExportErrorCode.RENDER_FAILED
+        },
+        message = message,
+    )
 
-private fun CivilDateTime.displayText(): String =
-    "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
-
-private fun LunarDateTime.displayText(): String =
-    "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
-
-private fun Int.toOffsetText(): String {
-    val sign = if (this >= 0) "+" else "-"
-    val absolute = kotlin.math.abs(this)
-    return "UTC$sign%02d:%02d".format(absolute / 3600, absolute % 3600 / 60)
-}
-
-private fun SexForFortuneDirection.displayName(): String = when (this) {
-    SexForFortuneDirection.WOMAN -> "女"
-    SexForFortuneDirection.MAN -> "男"
-}
-
-private fun TimePrecision.displayName(): String = when (this) {
-    TimePrecision.EXACT_TO_SECOND -> "精确到秒"
-    TimePrecision.EXACT_TO_MINUTE -> "精确到分钟"
-    TimePrecision.APPROXIMATE -> "大约时间"
-    TimePrecision.HOUR_ONLY -> "仅小时"
-    TimePrecision.DOUBLE_HOUR_ONLY -> "仅时辰"
-    TimePrecision.UNKNOWN -> "未知"
-}
-
-private fun TimeSourceType.displayName(): String = when (this) {
-    TimeSourceType.SELF_REPORTED -> "本人提供"
-    TimeSourceType.FAMILY_REPORTED -> "家人提供"
-    TimeSourceType.OFFICIAL_RECORD -> "正式记录"
-    TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
-    TimeSourceType.OTHER_RECORD -> "其他记录"
-    TimeSourceType.UNKNOWN -> "未知"
-}
-
-private fun PillarPosition.displayName(): String = when (this) {
-    PillarPosition.YEAR -> "年柱"
-    PillarPosition.MONTH -> "月柱"
-    PillarPosition.DAY -> "日柱"
-    PillarPosition.HOUR -> "时柱"
-}
-
-private fun RatHourRule.displayName(): String = when (this) {
-    RatHourRule.TYME_DEFAULT -> "23:00 起按次日"
-    RatHourRule.LATE_RAT_SAME_DAY -> "晚子时仍按当天"
-}
-
-private fun SolarTimeMode.displayName(): String = when (this) {
-    SolarTimeMode.CIVIL_TIME -> "民用时"
-    SolarTimeMode.TRUE_SOLAR_TIME -> "真太阳时"
-}
-
-private fun FortuneDirection.displayName(): String = when (this) {
-    FortuneDirection.FORWARD -> "顺排"
-    FortuneDirection.BACKWARD -> "逆排"
+private fun CaseObjectiveSummarySection.imageTitle(): String = when (id) {
+    "birth_facts" -> "采用资料"
+    "chart_facts" -> "基础命盘"
+    "fortune_facts" -> "起运与大运"
+    "calculation_evidence" -> "计算档案"
+    "formal_record_index" -> "研究资料索引"
+    else -> title
 }
 
 private fun CaseTextRecord.displayText(): String {

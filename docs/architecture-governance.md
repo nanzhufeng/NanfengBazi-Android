@@ -156,3 +156,4 @@
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
 | 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1900–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；页面与表单进入 `SavedStateHandle`，候选不自动保存 |
 | 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |
+| 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` → 摘要页/剪贴板/图片合同 | 只投影唯一已采用快照和正式资料计数；固定字段来源与缺失状态，页面和图片不得重算或生成主观解释 |

@@ -144,16 +144,36 @@ class StageTwoSavedStateTest {
             restoredEditor.state.value.destination,
         )
 
-        restoredEditor.duplicateCase()
+        restoredEditor.openObjectiveSummary()
+        waitUntil { restoredEditor.state.value.objectiveSummary != null }
+        val summaryHandle = SavedStateHandle()
+        restoredEditor.saveRestorableStateTo(summaryHandle)
+        val restoredSummary = createViewModel(container, summaryHandle)
+        waitUntil { restoredSummary.state.value.objectiveSummary != null }
+        assertEquals(
+            AppDestination.CaseObjectiveSummary(caseId),
+            restoredSummary.state.value.destination,
+        )
+        assertEquals(
+            restoredEditor.state.value.objectiveSummary?.copyText,
+            restoredSummary.state.value.objectiveSummary?.copyText,
+        )
+        restoredSummary.navigateBack()
+        assertEquals(
+            AppDestination.CaseDetail(caseId),
+            restoredSummary.state.value.destination,
+        )
+
+        restoredSummary.duplicateCase()
         waitUntil {
-            val detailId = restoredEditor.state.value.detail?.id
-            detailId != null && detailId != caseId && !restoredEditor.state.value.mutationSaving
+            val detailId = restoredSummary.state.value.detail?.id
+            detailId != null && detailId != caseId && !restoredSummary.state.value.mutationSaving
         }
-        restoredEditor.backToList()
-        restoredEditor.openCaseComparison()
-        waitUntil { restoredEditor.state.value.comparisonReport != null }
+        restoredSummary.backToList()
+        restoredSummary.openCaseComparison()
+        waitUntil { restoredSummary.state.value.comparisonReport != null }
         val comparisonHandle = SavedStateHandle()
-        restoredEditor.saveRestorableStateTo(comparisonHandle)
+        restoredSummary.saveRestorableStateTo(comparisonHandle)
         val restoredComparison = createViewModel(container, comparisonHandle)
         waitUntil { restoredComparison.state.value.comparisonReport != null }
 

@@ -69,6 +69,7 @@ private fun AppDestination.diagnosticName(): String = when (this) {
     AppDestination.CreateCase -> "CREATE_CASE"
     AppDestination.ScreenshotImportReview -> "SCREENSHOT_IMPORT_REVIEW"
     is AppDestination.CaseDetail -> "CASE_DETAIL"
+    is AppDestination.CaseObjectiveSummary -> "CASE_OBJECTIVE_SUMMARY"
     is AppDestination.EditCase -> "EDIT_CASE"
     is AppDestination.AddBirthTimeCandidate -> "ADD_BIRTH_TIME_CANDIDATE"
     is AppDestination.EditMetadata -> "EDIT_METADATA"

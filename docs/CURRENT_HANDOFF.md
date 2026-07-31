@@ -1,4 +1,4 @@
-# 当前交接：alpha64 命盘图片导出与长图分享
+# 当前交接：alpha65 客观命盘摘要
 
 更新日期：2026-07-31
 
@@ -7,13 +7,13 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha64 本地代码基线：本文件所在提交；上一基线为
-  `f886b07 feat: harden real Wenzhen list imports`。
-- 版本：`versionCode 65`，`versionName 0.3.0-alpha64`
+- alpha65 本地代码基线：本文件所在提交；上一基线为
+  `6d594f8 feat: add versioned chart image export`。
+- 版本：`versionCode 66`，`versionName 0.3.0-alpha65`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha64 验收时 ADB 仅 `emulator-5554` 在线，API 35。
-- 本轮图片导出设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
-  四柱均未进入 Git 或导出夹具。
+- alpha65 验收时 ADB 仅 `emulator-5554` 在线，API 35。
+- 本轮客观摘要设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
+  四柱均未进入 Git、剪贴板夹具或截图证据。
 - 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
@@ -52,6 +52,7 @@
 | 排盘计算 | `BaziEngine.calculate()` → `TymeBaziEngine` | UI、OCR、数据库直接调用历法库 |
 | 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | UI 直接调用 Tyme4j、展示未经复核候选或把候选自动保存为命例 |
 | 命盘图片导出 | `CaseImageExportContract` → `CaseImageRenderer` | 截取 Compose 可见视口、保存/分享各拼一套内容或重新排盘 |
+| 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` | UI、剪贴板或图片各自拼字段、重算旧快照或生成主观解释 |
 | 计算配置 | `CalculationProfile` | 页面用默认值重解释旧快照 |
 | 命例聚合写入 | `CaseRepository` | 页面或导入器直接写 DAO |
 | 完整备份恢复 | `CaseBackupService` | UI 自行解析、合并或恢复 |
@@ -138,11 +139,24 @@
 - 图片固定显示文档/命例修订、计算档案、来源边界和隐私提示；分享只声明交给目标应用，
   不误报为已经发送。
 
+### alpha65
+
+- `core:domain` 增加客观摘要 v1、固定五层章节、字段来源、缺失状态、稳定失败码和
+  `CaseObjectiveSummaryGenerator` 公开入口；只允许唯一已采用快照进入摘要。
+- 摘要覆盖出生资料、四柱与基础盘、起运大运、计算档案和正式资料计数；旧快照缺少
+  转换、基础盘、前后节或精确边界时明确显示未记录，不按当前规则反推。
+- 师傅点评、命主反馈、关键事件和附件只进入计数，不读取原文生成算法结论；模板标题、
+  标签和说明有禁止性文案扫描。
+- 详情页增加客观摘要入口，系统剪贴板不可用和异常分别返回结构化失败；复制成功由
+  剪贴板读回验证，页面与命例稳定 ID 可经 Activity 及新 ViewModel 重建恢复。
+- 图片导出改为复用同一客观摘要字段投影；修正图片曾把 `FortuneStart.startAt` 误标为
+  精确交运的问题，现在与详情统一读取 `FortuneStart.endAt`。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha64 clean 命令：
+alpha65 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -152,24 +166,33 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 结果：
 
-- 405 个 Gradle 任务成功。
-- 400 次单元测试执行，0 failure、0 error、0 skipped。
-- Lint 0 error；app 12 条依赖更新 warning，两个支撑模块共 8 条 warning。
-- API 35 `emulator-5554` 图片渲染专项 2/2、正式命例—系统文件—分享选择器链路
-  1/1 通过；系统读回 PNG 为 1080×7495、397,731 bytes，SHA-256
-  `306229cb0f65060588f36f40311042ce4132390e6fa1d0d66bb851f3fad1c793`。
+- 405 个 Gradle task 成功（388 executed，17 up-to-date）；411 次 JVM 测试执行
+  零失败、零跳过。
+- Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
+  均为已知非阻断项。
+- API 35 `emulator-5554` 正式合成命例—摘要—剪贴板—Activity 重建 1/1 通过，
+  独立 SavedState 新 ViewModel 恢复 2/2 通过。
+- 图片渲染与系统导出/分享回归 3/3 通过；系统读回 PNG 为 1080×9469、
+  560,682 字节，SHA-256
+  `dce8539893ace85a7a116198a5148699809c1ab625c81fcf310273a578d16cfa`，
+  视觉检查章节层级、长图边界和底部来源/隐私提示完整。该合成图片已从模拟器和本机
+  临时目录删除。
+- Debug/Release 合并清单均为 `versionCode 66`、`0.3.0-alpha65`，且没有
+  `INTERNET` 或 `ACCESS_NETWORK_STATE`。
 - 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha64-debug.apk`
-  - 55,975,595 bytes
-  - SHA-256 `00d6ca8a81f539021cfc9df3b52fac24ffb54eac1f7c7c7aeb5a85a5ca3199af`
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha65-debug.apk`
+  - 55,991,979 字节
+  - SHA-256
+    `e3ce78da9510ffdd51713aa4a1d57a7ba8f94edd3dd13a8095e9ebdb35eb9655`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha64-release-unsigned.apk`
-  - 52,155,070 bytes
-  - SHA-256 `7dab9eb8af4cc62ae8d0a08bb3ef2fe07683dc3535e84cd81b6902cdc956543c`
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha65-release-unsigned.apk`
+  - 52,171,454 字节
+  - SHA-256
+    `9ac4c2ef262085a63b600e419c9fff6fdbbed98be5cd16a654f38cf173b62744`
 
 ## 7. 尚未完成
 
@@ -177,9 +200,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 建议一次只完成一个增量：
 
-1. `VX-10` 客观命盘摘要，只消费确定性字段和证据。
-2. `VX-04` 师傅点评观点候选增强。
-3. `VX-05` 命主反馈主题标签候选增强。
+1. `VX-04` 师傅点评观点候选增强。
+2. `VX-05` 命主反馈主题标签候选增强。
 
 ### 外部门禁
 
@@ -190,38 +212,39 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：客观命盘摘要
+## 8. 下一唯一任务：师傅点评观点候选增强
 
 ### 目标
 
-实现 `VX-10` 客观命盘摘要；摘要必须只消费当前已采用快照中的确定性字段和版本证据，
-为研究者提供可复制、可追溯的结构化概览，不生成吉凶、合婚或确定性人生判断。
+实现 `VX-04` 师傅点评观点候选增强；必须保留完整点评原文，以确定性规则提取可定位、
+可编辑、可逐条确认的观点候选，不自动把候选写成正式分析或算法结论。
 
 ### 建议所有权
 
-- 在 `core:domain` 定义版本化客观摘要输入、章节、字段、来源和结构化失败。
-- 摘要只读取唯一已采用 `CaseCalculationSnapshot`，共享既有字段展示语义；UI 不重算。
-- 图片导出可以在后续消费摘要合同，但摘要本轮不得反向依赖 Android 或图片渲染器。
-- 问真来源字段、人工点评和命主反馈只可作为明确标注的“已有记录计数”，不得被总结成
-  算法结论。
+- 在 `core:domain` 定义版本化点评观点候选、原文区间、候选类别、规则证据、确认状态和
+  结构化失败；提取器使用公开接口，页面不内置关键词规则。
+- 确定性解析适配放在合适的输入/解析层；每个候选必须保留原文片段和字符区间，不改写
+  原点评，不调用网络或外部 AI。
+- 候选只有用户逐条确认后才可进入正式分析记录；拒绝或编辑不得覆盖原始
+  `MASTER_COMMENTARY` 及其历史。
 
 ### 当前已知边界
 
-- 首版优先覆盖输入历法、四柱、日主、基础盘、起运大运和计算档案等已版本化事实。
-- 旧快照缺字段时显示缺失，不根据四柱反推补造。
-- “客观摘要”不是 AI 解读；禁止自动生成性格、事业、财运、婚姻、健康吉凶等文案。
+- 首版只做可解释的句段候选和保守类别建议，不尝试判断观点是否正确。
+- 原文为空、非师傅点评记录、无可解释候选和规则版本不支持必须分开返回。
+- 候选必须幂等、去重，并能在原文修改或记录 revision 变化后判定过期。
 
 ### 最小验收
 
-1. 领域合同覆盖唯一采用快照、无快照、多个采用快照、旧字段缺失和稳定章节顺序。
-2. 对相同快照重复生成结果确定；字段值与详情/图片导出同源，不出现第二算法真值。
-3. 自动测试扫描摘要标签与生成文本，不含禁止的吉凶、合婚和确定性人生结论。
-4. API 35 模拟器从正式命例进入摘要页面，复制客观摘要并在 Activity 重建后保持入口。
+1. 领域合同覆盖非点评记录、空原文、无候选、多候选、重复句、边界区间和版本过期。
+2. 相同原文重复提取得到相同候选；候选片段必须能按区间从原文精确读回。
+3. UI 支持逐条采用、编辑和拒绝；任何动作都不覆盖完整点评原文。
+4. API 35 模拟器从正式师傅点评进入候选页，确认一条后写入正式分析并在重建后读回。
 5. 更新受影响治理文档、下一 alpha、全量构建和本地准确提交。
 
 ### 禁止项
 
-- 不重新计算或改写已采用快照，不把来源截图值覆盖本机真值。
+- 不自动确认候选、不覆盖点评原文、不把观点候选称为算法真值。
 - 不默认联网、调用外部 AI 或发送命例资料。
 - 不接触 OPPO、不清数据、不卸载真机 App。
 - 不提交真实姓名、八字、截图、密钥或构建产物。
@@ -232,8 +255,8 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 cd "/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi"
 git rev-parse --show-toplevel
 git branch --show-current
-git status --short
-rg -n -m 20 '客观命盘摘要|VX-10' docs app/src core --glob '!**/build/**'
+git status --porcelain=v1 | awk 'END { print "entries=" NR }'
+rg -n -m 20 '点评观点候选|VX-04' docs app/src core --glob '!**/build/**'
 ```
 
 若现场与本文件不一致，以现场为准，先修正文档再实现。不要读取旧对话全文。

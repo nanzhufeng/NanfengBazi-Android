@@ -130,6 +130,8 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupDatabasePreflight
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
+import com.nanzhufeng.nanfengbazi.domain.displayName
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -162,6 +164,7 @@ fun NanfengBaziApp(
     onExecuteFullBackupDocument: (CharArray?) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
     val commitSingleCaseImport = onCommitSingleCaseImport
@@ -335,6 +338,7 @@ fun NanfengBaziApp(
                                 onEditEvent = viewModel::openEvent,
                                 onDuplicate = viewModel::duplicateCase,
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
+                                onOpenObjectiveSummary = viewModel::openObjectiveSummary,
                                 onExportCaseImage = {
                                     viewModel.requestCaseImageDelivery(
                                         CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
@@ -383,6 +387,26 @@ fun NanfengBaziApp(
                             detailContent(Modifier.padding(padding))
                         }
                     }
+                    is AppDestination.CaseObjectiveSummary -> CaseObjectiveSummaryScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onRetry = viewModel::retryObjectiveSummary,
+                        onCopy = {
+                            viewModel.copyObjectiveSummary { text ->
+                                val clipboard = context
+                                    .getSystemService(ClipboardManager::class.java)
+                                if (clipboard == null) {
+                                    false
+                                } else {
+                                    clipboard.setPrimaryClip(
+                                        ClipData.newPlainText("南枫八字客观命盘摘要", text),
+                                    )
+                                    true
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(padding),
+                    )
                     is AppDestination.EditCase -> CaseFormScreen(
                         title = "编辑命例",
                         screenTag = "edit_case_screen",
@@ -4159,6 +4183,175 @@ private fun SexButton(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun CaseObjectiveSummaryScreen(
+    state: StageTwoUiState,
+    onBack: () -> Unit,
+    onRetry: () -> Unit,
+    onCopy: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("objective_summary_screen"),
+    ) {
+        TopAppBar(
+            title = { Text(state.objectiveSummary?.title ?: "客观命盘摘要") },
+            navigationIcon = {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("返回")
+                }
+            },
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                state.objectiveSummaryLoading ->
+                    LoadingBox("正在读取已采用快照并生成客观摘要…")
+                state.objectiveSummary == null && state.objectiveSummaryFailure != null ->
+                    ErrorBox(
+                        message = "${state.objectiveSummaryFailure.message}" +
+                            "（${state.objectiveSummaryFailure.code}）",
+                        actionLabel = "重试",
+                        onAction = onRetry,
+                    )
+                state.objectiveSummary != null -> ObjectiveSummaryContent(
+                    summary = state.objectiveSummary,
+                    copied = state.objectiveSummaryCopied,
+                    copyFailure = state.objectiveSummaryFailure,
+                    onCopy = onCopy,
+                )
+                else -> ErrorBox(
+                    message = "客观摘要尚未生成（SUMMARY_UNAVAILABLE）。",
+                    actionLabel = "重试",
+                    onAction = onRetry,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ObjectiveSummaryContent(
+    summary: CaseObjectiveSummary,
+    copied: Boolean,
+    copyFailure: com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryFailure?,
+    onCopy: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+            .testTag("objective_summary_list"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("objective_summary_notice"),
+                colors = CardDefaults.cardColors(
+                    containerColor =
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                ),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "客观摘要 v${summary.version}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        summary.provenanceNotice,
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        summary.interpretationNotice,
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        item {
+            Button(
+                onClick = onCopy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("copy_objective_summary_button"),
+            ) {
+                Text(if (copied) "已复制客观摘要" else "复制客观摘要")
+            }
+        }
+        if (copyFailure != null) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("objective_summary_copy_error"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Text(
+                        "${copyFailure.message}（${copyFailure.code}）",
+                        modifier = Modifier.padding(14.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+        }
+        summary.sections.forEach { section ->
+            item(key = section.id) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("objective_summary_section_${section.id}"),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            section.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        section.fields.forEachIndexed { index, field ->
+                            if (index > 0) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                            }
+                            Text(
+                                field.label,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            Text(
+                                field.value,
+                                modifier = Modifier.padding(top = 3.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                "来源：${field.source.displayName()}",
+                                modifier = Modifier.padding(top = 3.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun CaseDetailScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
@@ -4172,6 +4365,7 @@ private fun CaseDetailScreen(
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
+    onOpenObjectiveSummary: () -> Unit,
     onExportCaseImage: () -> Unit,
     onShareCaseImage: () -> Unit,
     onMoveToTrash: () -> Unit,
@@ -4223,6 +4417,7 @@ private fun CaseDetailScreen(
                     onEditEvent = onEditEvent,
                     onDuplicate = onDuplicate,
                     onExportSingleCase = onExportSingleCase,
+                    onOpenObjectiveSummary = onOpenObjectiveSummary,
                     onExportCaseImage = onExportCaseImage,
                     onShareCaseImage = onShareCaseImage,
                     onMoveToTrash = onMoveToTrash,
@@ -4297,6 +4492,7 @@ private fun CaseDetailContent(
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
+    onOpenObjectiveSummary: () -> Unit,
     onExportCaseImage: () -> Unit,
     onShareCaseImage: () -> Unit,
     onMoveToTrash: () -> Unit,
@@ -4398,6 +4594,17 @@ private fun CaseDetailContent(
                 ) {
                     Text(if (caseImageBusy) "正在生成…" else "分享长图")
                 }
+            }
+            OutlinedButton(
+                onClick = onOpenObjectiveSummary,
+                enabled = !singleCaseExchangeBusy && !mutationSaving && !caseImageBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .heightIn(min = 48.dp)
+                    .testTag("open_objective_summary_button"),
+            ) {
+                Text("客观命盘摘要")
             }
             OutlinedButton(
                 onClick = onExportSingleCase,
