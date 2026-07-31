@@ -284,6 +284,58 @@ class ScreenshotImportCommitterTest {
         assertEquals(null, evidenceByKey["professional.observed_at"]?.calculatedValue)
     }
 
+    @Test
+    fun `基本排盘提交后保存分柱计算值且日柱主星按元男对照`() = runTest {
+        val fixture = fixture(
+            pillars = FourPillars("壬申", "戊申", "壬申", "丙午"),
+            adoptAll = true,
+            extraFields = listOf(
+                "identity.constellation" to TypedFieldValue.Text("处女座"),
+                "identity.zodiac" to TypedFieldValue.Text("猴"),
+                "chart.year.main_star" to TypedFieldValue.Text("比肩"),
+                "chart.day.main_star" to TypedFieldValue.Text("元男"),
+                "chart.month.hidden_stems" to TypedFieldValue.Text("庚金\n壬水\n戊土"),
+                "chart.month.secondary_stars" to TypedFieldValue.Text("偏印\n比肩\n七杀"),
+                "chart.hour.fortune_stage" to TypedFieldValue.Text("胎"),
+                "chart.hour.self_stage" to TypedFieldValue.Text("帝旺"),
+                "chart.year.void" to TypedFieldValue.Text("戌亥"),
+                "chart.hour.nayin" to TypedFieldValue.Text("错误纳音"),
+                "chart.year.spirits" to TypedFieldValue.Text("太极贵人"),
+            ),
+        )
+
+        val result = fixture.committer.commitCandidate("session-1", "candidate-1")
+
+        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        val evidenceByKey = fixture.caseRepository.cases.values.single()
+            .fieldEvidence
+            .associateBy(CaseFieldEvidence::fieldKey)
+        assertEquals(
+            TypedFieldValue.Text("元男"),
+            evidenceByKey["chart.day.main_star"]?.calculatedValue,
+        )
+        assertEquals(
+            TypedFieldValue.Text("处女座"),
+            evidenceByKey["identity.constellation"]?.calculatedValue,
+        )
+        assertEquals(
+            TypedFieldValue.Text("猴"),
+            evidenceByKey["identity.zodiac"]?.calculatedValue,
+        )
+        assertEquals(1f, evidenceByKey["chart.day.main_star"]?.consistencyConfidence)
+        assertEquals(
+            TypedFieldValue.Text("庚金\n壬水\n戊土"),
+            evidenceByKey["chart.month.hidden_stems"]?.calculatedValue,
+        )
+        assertEquals(
+            TypedFieldValue.Text("天河水"),
+            evidenceByKey["chart.hour.nayin"]?.calculatedValue,
+        )
+        assertEquals(0f, evidenceByKey["chart.hour.nayin"]?.consistencyConfidence)
+        assertEquals(null, evidenceByKey["chart.year.spirits"]?.calculatedValue)
+        assertEquals(null, evidenceByKey["chart.year.spirits"]?.consistencyConfidence)
+    }
+
     private suspend fun fixture(
         pillars: FourPillars,
         adoptAll: Boolean,

@@ -132,6 +132,17 @@ class ScreenshotImportViewModelTest {
             userEdited = false,
             createdAt = now,
         )
+        val chartField = CaseFieldEvidence(
+            id = "field-chart-year-main-star",
+            attachmentId = "image-1",
+            fieldKey = "chart.year.main_star",
+            rawText = "主星·年柱\n比肩",
+            normalizedValue = TypedFieldValue.Text("比肩"),
+            parserConfidence = 0.95f,
+            parserRuleId = "fixture",
+            userEdited = false,
+            createdAt = now,
+        )
         val longText = ImportedLongTextEvidence(
             id = "text-1",
             imageId = "image-1",
@@ -156,13 +167,13 @@ class ScreenshotImportViewModelTest {
                     createdAt = now,
                 ),
             ),
-            extractedFields = listOf(field, professionalField),
+            extractedFields = listOf(field, professionalField, chartField),
             extractedLongTexts = listOf(longText),
             caseCandidates = listOf(
                 ImportCaseCandidate(
                     id = "candidate-1",
                     imageIds = listOf("image-1"),
-                    fieldEvidenceIds = listOf(field.id, professionalField.id),
+                    fieldEvidenceIds = listOf(field.id, professionalField.id, chartField.id),
                     longTextEvidenceIds = listOf(longText.id),
                     suggestedAlias = "案例甲",
                     groupingConfidence = 0.9f,
@@ -199,6 +210,14 @@ class ScreenshotImportViewModelTest {
         assertEquals(
             "提交后按观察时刻自动复算；不会覆盖本地排盘",
             professionalReview.calculationValue,
+        )
+        val chartReview = initial.reviewCandidates.single().fields.single {
+            it.id == chartField.id
+        }
+        assertEquals("年柱 · 主星", chartReview.label)
+        assertEquals(
+            "提交后与本机基础排盘自动对照；不会覆盖本地排盘",
+            chartReview.calculationValue,
         )
         assertTrue(!initial.reviewCandidates.single().longTexts.single().adopted)
         assertTrue(

@@ -30,6 +30,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.ImportSession
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
+import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -272,7 +274,9 @@ class ScreenshotImportCommitter(
                 "来源四柱与本机复算不一致，已阻止写入；请人工补充时间或修正 OCR。",
             )
         }
-        val comparedFields = fields.withProfessionalComparisons(calculation)
+        val comparedFields = fields
+            .withBasicChartComparisons(calculation)
+            .withProfessionalComparisons(calculation)
         val normalizedBirthInput = calculation.normalizedInput
         val now = clock.instant()
         val snapshotId = "$caseId-snapshot"
@@ -375,13 +379,87 @@ class ScreenshotImportCommitter(
             FIELD_PROFESSIONAL_NATAL_HOUR to
                 TypedFieldValue.Text(calculation.fourPillars.hour),
         )
-        return map { field ->
-            val calculated = calculatedByKey[field.fieldKey] ?: return@map field
-            field.copy(
-                calculatedValue = calculated,
-                consistencyConfidence = if (field.normalizedValue == calculated) 1f else 0f,
+        return withCalculatedValues(calculatedByKey)
+    }
+
+    private fun List<CaseFieldEvidence>.withBasicChartComparisons(
+        calculation: com.nanzhufeng.nanfengbazi.domain.model.CalculationResult,
+    ): List<CaseFieldEvidence> {
+        val details = calculation.basicChartDetails ?: return this
+        val sex = calculation.normalizedInput.sexForFortuneDirection
+        val calculatedByKey = buildMap<String, TypedFieldValue> {
+            put(
+                FIELD_CONSTELLATION,
+                TypedFieldValue.Text(
+                    details.westernZodiac.let { if (it.endsWith("座")) it else "${it}座" },
+                ),
             )
+            put(FIELD_ZODIAC, TypedFieldValue.Text(details.zodiac))
+            details.pillars.forEach { pillar ->
+                val column = when (pillar.position) {
+                    PillarPosition.YEAR -> "year"
+                    PillarPosition.MONTH -> "month"
+                    PillarPosition.DAY -> "day"
+                    PillarPosition.HOUR -> "hour"
+                }
+                put(
+                    "chart.$column.main_star",
+                    TypedFieldValue.Text(pillar.mainStarForSourceComparison(sex)),
+                )
+                put(
+                    "chart.$column.hidden_stems",
+                    TypedFieldValue.Text(
+                        pillar.hiddenStems.joinToString("\n") {
+                            "${it.heavenStem}${it.element}"
+                        },
+                    ),
+                )
+                put(
+                    "chart.$column.secondary_stars",
+                    TypedFieldValue.Text(
+                        pillar.hiddenStems.joinToString("\n") { it.tenGod },
+                    ),
+                )
+                put(
+                    "chart.$column.fortune_stage",
+                    TypedFieldValue.Text(pillar.terrain),
+                )
+                put(
+                    "chart.$column.self_stage",
+                    TypedFieldValue.Text(pillar.selfSittingTerrain),
+                )
+                put(
+                    "chart.$column.void",
+                    TypedFieldValue.Text(pillar.voidEarthBranches.joinToString("")),
+                )
+                put(
+                    "chart.$column.nayin",
+                    TypedFieldValue.Text(pillar.naYin),
+                )
+            }
         }
+        return withCalculatedValues(calculatedByKey)
+    }
+
+    private fun PillarDetail.mainStarForSourceComparison(
+        sex: SexForFortuneDirection,
+    ): String = if (position == PillarPosition.DAY) {
+        when (sex) {
+            SexForFortuneDirection.MAN -> "元男"
+            SexForFortuneDirection.WOMAN -> "元女"
+        }
+    } else {
+        primaryTenGod
+    }
+
+    private fun List<CaseFieldEvidence>.withCalculatedValues(
+        calculatedByKey: Map<String, TypedFieldValue?>,
+    ): List<CaseFieldEvidence> = map { field ->
+        val calculated = calculatedByKey[field.fieldKey] ?: return@map field
+        field.copy(
+            calculatedValue = calculated,
+            consistencyConfidence = if (field.normalizedValue == calculated) 1f else 0f,
+        )
     }
 
     private suspend fun copyAttachments(
@@ -635,6 +713,8 @@ class ScreenshotImportCommitter(
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
+        const val FIELD_CONSTELLATION = "identity.constellation"
+        const val FIELD_ZODIAC = "identity.zodiac"
         const val FIELD_SOLAR_DATE = "birth.solar_date"
         const val FIELD_SOLAR_DATETIME = "birth.solar_datetime"
         const val FIELD_LOCATION = "birth.location"

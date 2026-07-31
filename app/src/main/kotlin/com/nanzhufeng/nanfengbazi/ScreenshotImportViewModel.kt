@@ -775,6 +775,14 @@ class ScreenshotImportViewModel(
                 calculationValue = field.calculatedValue?.displayValue() ?: when {
                     field.fieldKey == "chart.four_pillars" ->
                         "提交前按采用的出生资料复算"
+                    field.fieldKey.startsWith("chart.") &&
+                        field.fieldKey.endsWith(".spirits") ->
+                        "神煞仅保留来源证据；当前不自动复算"
+                    field.fieldKey == "identity.constellation" ||
+                        field.fieldKey == "identity.zodiac" ->
+                        "提交后与本机基础排盘自动对照；不会覆盖本地排盘"
+                    field.fieldKey.startsWith("chart.") ->
+                        "提交后与本机基础排盘自动对照；不会覆盖本地排盘"
                     field.fieldKey.startsWith("professional.") ->
                         "提交后按观察时刻自动复算；不会覆盖本地排盘"
                     else -> "不参与命盘计算"

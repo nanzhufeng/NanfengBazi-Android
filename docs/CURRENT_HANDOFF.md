@@ -309,6 +309,12 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     只能保存有效干支；
   - alpha54 API 35 `ScreenshotShareFlowTest` 3/3 通过，其中合成专业细盘经系统分享、
     私有复制、真实 bundled ML Kit、分类和十字段解析完整通过；
+  - alpha55 将 P1 基本排盘的主星、藏干、副星、星运、自坐、空亡、纳音及基本资料的
+    生肖、星座接入正式提交后的来源值/本机计算值逐字段对照；日柱主星按“元男/元女”、
+    星座按带“座”的问真展示语义比较；神煞明确只保留来源证据；
+  - alpha55 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
+    357 项通过；API 35 的 `MlKitLongScreenshotTest` 与 `ScreenshotShareFlowTest`
+    合计 7/7 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -316,17 +322,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha54-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha55-debug.apk`
 
 - 大小：55,794,755 bytes
-- SHA-256：`25c41d7aa9186428a9c4247d92bbdfe12dbb68f9c217ca1f590bd0d36b7e8ec2`
+- SHA-256：`69d199f4c2078c7ddd4584312b0393f3f715c5f20a7fb075135eee8df7c11eae`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha54-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha55-release-unsigned.apk`
 
 - 大小：52,039,810 bytes
-- SHA-256：`b423052c99b9098714e190ad0c5e82962e745bd605f2599f19f2162531dc8465`
+- SHA-256：`8832f316660dfcba61c6e33081f8b563c08e7de4e793b20d7952782e7303e259`
 
 ## 当前限制与风险
 
@@ -358,7 +364,7 @@ Debug 验收构建：
 
 继续 Stage 7，优先顺序：
 
-1. 补齐 P1 基本排盘来源值/本地计算值自动对照及基本资料非核心衍生字段；
+1. 补齐基本资料其余非核心衍生字段，并单独设计版本化神煞合同；
 2. 补齐通用可复制诊断、计算档案升级差异和剩余节气/生肖边界门禁；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 

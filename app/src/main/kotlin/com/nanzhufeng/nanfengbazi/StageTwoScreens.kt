@@ -4332,6 +4332,18 @@ private fun CaseDetailContent(
                         evidence.calculatedValue?.evidenceDisplayValue()
                             ?: if (evidence.fieldKey == "chart.four_pillars") {
                                 adopted?.result?.fourPillars?.display() ?: "无已采用计算快照"
+                            } else if (
+                                evidence.fieldKey.startsWith("chart.") &&
+                                evidence.fieldKey.endsWith(".spirits")
+                            ) {
+                                "神煞仅保留来源证据；当前不自动复算"
+                            } else if (
+                                evidence.fieldKey == "identity.constellation" ||
+                                evidence.fieldKey == "identity.zodiac"
+                            ) {
+                                "未完成基础排盘自动对照"
+                            } else if (evidence.fieldKey.startsWith("chart.")) {
+                                "未完成基础排盘自动对照"
                             } else if (evidence.fieldKey.startsWith("professional.")) {
                                 "未完成专业流运自动对照"
                             } else {
