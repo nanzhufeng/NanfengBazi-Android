@@ -93,6 +93,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -4218,6 +4219,10 @@ private fun CaseDetailContent(
                     DetailRow("引擎", adopted.result.evidence.engineName)
                     DetailRow("引擎版本", adopted.result.evidence.engineVersion)
                     DetailRow("规则版本", adopted.result.evidence.ruleVersion)
+                    CalculationArchiveComparisonView(
+                        snapshots = case.calculationSnapshots,
+                        current = adopted,
+                    )
                     adopted.result.calendarConversion?.let { conversion ->
                         DetailRow("换算公历", conversion.solarDateTime.display())
                         val lunar = conversion.lunarDateTime
@@ -4897,6 +4902,96 @@ private fun AnnualFortuneDetailsView(
                     style = style,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CalculationArchiveComparisonView(
+    snapshots: List<CaseCalculationSnapshot>,
+    current: CaseCalculationSnapshot,
+) {
+    val previous = snapshots.asReversed().firstOrNull { it.id != current.id }
+    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("calculation_archive_comparison"),
+    ) {
+        Text(
+            "计算档案差异",
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        if (previous == null) {
+            Text(
+                "暂无历史计算快照；当前档案会继续保留，后续重算后可在这里核对差异。",
+                modifier = Modifier.padding(top = 6.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+        val comparison = remember(previous, current) {
+            compareCalculationSnapshots(previous, current)
+        }
+        Text(
+            comparison.attributionSummary,
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .testTag("calculation_archive_attribution"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        DetailRow(
+            "档案",
+            "${previous.result.profile.id} → ${current.result.profile.id}",
+        )
+        DetailRow(
+            "引擎版本变化",
+            "${previous.result.evidence.engineVersion} → " +
+                current.result.evidence.engineVersion,
+        )
+        DetailRow(
+            "规则版本变化",
+            "${previous.result.evidence.ruleVersion} → " +
+                current.result.evidence.ruleVersion,
+        )
+        if (comparison.outcomeConsistent) {
+            Text(
+                "核心排盘结果一致。",
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .testTag("calculation_archive_consistent"),
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        } else {
+            Text(
+                "发现 ${comparison.outcomeChanges.size} 项结果变化：",
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .testTag("calculation_archive_changed"),
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.SemiBold,
+            )
+            comparison.outcomeChanges.forEachIndexed { index, change ->
+                Text(
+                    "${change.label}：${change.previousValue} → ${change.currentValue}",
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .testTag("calculation_archive_change_$index"),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        val olderCount = (snapshots.size - 2).coerceAtLeast(0)
+        if (olderCount > 0) {
+            Text(
+                "另保留 $olderCount 条更早快照；当前仅与最近一条历史快照比较。",
+                modifier = Modifier.padding(top = 6.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

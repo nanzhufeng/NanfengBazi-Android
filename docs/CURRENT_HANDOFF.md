@@ -1,4 +1,4 @@
-# 当前交接：Stage 7F 问真基本资料确定性衍生字段完成
+# 当前交接：Stage 7F 计算档案差异与生肖边界完成
 
 更新日期：2026-07-31
 
@@ -22,6 +22,8 @@
   导入会话；只输出版本、去身份化状态、稳定错误码、计数和有界诊断 ID，不复制用户资料。
 - Stage 7F 已把问真基本资料页的前一节、后一节、胎元、胎息、命宫和身宫接入字段证据
   与提交后本机对照；前后“节”独立于相邻二十四节气，避免处暑—白露与立秋—白露混淆。
+- Stage 7F 已在基本排盘页接入当前/最近历史快照差异，先区分出生输入、计算口径和版本
+  变化，再逐项比较确定性结果；1900–2100 跨年段的立春前/时/后 1 秒生肖门禁已覆盖。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -329,6 +331,10 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     均 1/1 通过；
   - alpha57 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
     405 项通过，349 次测试执行零失败/零跳过，Lint 0 错误（20 条依赖版本 warning）；
+  - alpha58 基本排盘页接入当前/最近历史快照差异与可归因性说明；API 35 创建—编辑—
+    同版本重算—结果一致专项 1/1 通过；1900–2100 每 10 年立春三时点门禁通过；
+  - alpha58 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
+    405 项通过，356 次测试执行零失败/零跳过，Lint 0 错误（19 条依赖版本 warning）；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -336,17 +342,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha57-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha58-debug.apk`
 
 - 大小：55,811,139 bytes
-- SHA-256：`9620493df5c570612443d50ce02123b2443b115a148a18c48d988f7783a5c1fe`
+- SHA-256：`e6fc33ac5d248d722778f9c409c62b778214ef2409252c0da2eb97cbe5870e3d`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha57-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha58-release-unsigned.apk`
 
 - 大小：52,056,194 bytes
-- SHA-256：`e5e27a6cefcd24aa7a7ba9cf5bf0b4063aeec96402259c898189014eba674786`
+- SHA-256：`0ba780d1011975984b2eee26c3ba43471849bdddd70bbe45ba376d48a4b71637`
 
 ## 当前限制与风险
 
@@ -379,9 +385,8 @@ Debug 验收构建：
 
 继续 Stage 7，优先顺序：
 
-1. 补齐计算档案升级差异和剩余生肖/节气边界门禁；
-2. 对星宿、命卦、五行比例和神煞只先设计来源保真合同，不在无算法证据时生成计算值；
-3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
+1. 对星宿、命卦、五行比例和神煞设计来源保真合同，不在无算法证据时生成计算值；
+2. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于
 整个产品已经落地。

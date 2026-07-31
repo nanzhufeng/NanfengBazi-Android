@@ -836,6 +836,17 @@ class StageTwoFlowTest {
                 hasText("命例资料已重新排盘并保存；旧计算快照仍保留。"),
             ).fetchSemanticsNodes().isEmpty()
         }
+        composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
+        composeRule.onNodeWithTag("calculation_archive_comparison")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("同一输入与同一版本重新计算，可核对结果稳定性。")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("核心排盘结果一致。")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("detail_tab_basic_info").performScrollTo().performClick()
 
         composeRule.onNodeWithTag("edit_metadata_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("metadata_groups").performTextInput("合成分组")

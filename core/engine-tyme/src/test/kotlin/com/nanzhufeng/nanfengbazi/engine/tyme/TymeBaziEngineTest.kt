@@ -224,6 +224,62 @@ class TymeBaziEngineTest {
     }
 
     @Test
+    fun `1900到2100跨年段立春前时后1秒同步切换年柱生肖与前后节`() = runTest {
+        val zodiacByBranch = mapOf(
+            '子' to "鼠",
+            '丑' to "牛",
+            '寅' to "虎",
+            '卯' to "兔",
+            '辰' to "龙",
+            '巳' to "蛇",
+            '午' to "马",
+            '未' to "羊",
+            '申' to "猴",
+            '酉' to "鸡",
+            '戌' to "狗",
+            '亥' to "猪",
+        )
+
+        (1900..2100 step 10).forEach { year ->
+            val spring = SolarTerm.fromIndex(year, 3).julianDay.solarTime
+            val before = engine.calculate(
+                spring.next(-1).toBirthInput(),
+                CalculationProfile.tymeDefault(),
+            )
+            val at = engine.calculate(
+                spring.toBirthInput(),
+                CalculationProfile.tymeDefault(),
+            )
+            val after = engine.calculate(
+                spring.next(1).toBirthInput(),
+                CalculationProfile.tymeDefault(),
+            )
+
+            assertNotEquals("$year 立春前后年柱必须切换", before.fourPillars.year, at.fourPillars.year)
+            assertEquals("$year 立春后一秒年柱必须稳定", at.fourPillars.year, after.fourPillars.year)
+            assertEquals(
+                "$year 立春前生肖必须跟随年柱地支",
+                zodiacByBranch.getValue(before.fourPillars.year.last()),
+                before.basicChartDetails?.zodiac,
+            )
+            assertEquals(
+                "$year 立春时生肖必须跟随新年柱地支",
+                zodiacByBranch.getValue(at.fourPillars.year.last()),
+                at.basicChartDetails?.zodiac,
+            )
+            assertEquals(at.basicChartDetails?.zodiac, after.basicChartDetails?.zodiac)
+            assertEquals("大寒", before.basicChartDetails?.previousSolarTerm?.name)
+            assertEquals("立春", before.basicChartDetails?.nextSolarTerm?.name)
+            assertEquals("小寒", before.basicChartDetails?.previousJie?.name)
+            assertEquals("立春", before.basicChartDetails?.nextJie?.name)
+            assertEquals("立春", at.basicChartDetails?.previousSolarTerm?.name)
+            assertEquals("雨水", at.basicChartDetails?.nextSolarTerm?.name)
+            assertEquals("立春", at.basicChartDetails?.previousJie?.name)
+            assertEquals("惊蛰", at.basicChartDetails?.nextJie?.name)
+        }
+    }
+
+    @Test
     fun `计算完成后恢复调用方原有 provider`() = runTest {
         val original = ChildLimit.provider
         val marker = China95ChildLimitProvider()
