@@ -1,4 +1,4 @@
-# 当前交接：alpha65 客观命盘摘要
+# 当前交接：alpha66 师傅点评观点候选
 
 更新日期：2026-07-31
 
@@ -7,12 +7,12 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha65 本地代码基线：本文件所在提交；上一基线为
-  `6d594f8 feat: add versioned chart image export`。
-- 版本：`versionCode 66`，`versionName 0.3.0-alpha65`
+- alpha66 本地代码基线：本文件所在提交；上一基线为
+  `9223f92 feat: add objective chart summary`。
+- 版本：`versionCode 67`，`versionName 0.3.0-alpha66`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha65 验收时 ADB 仅 `emulator-5554` 在线，API 35。
-- 本轮客观摘要设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
+- alpha66 验收时 ADB 仅 `emulator-5554` 在线，API 35。
+- 本轮点评候选设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
   四柱均未进入 Git、剪贴板夹具或截图证据。
 - 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
@@ -152,11 +152,26 @@
 - 图片导出改为复用同一客观摘要字段投影；修正图片曾把 `FortuneStart.startAt` 误标为
   精确交运的问题，现在与详情统一读取 `FortuneStart.endAt`。
 
+### alpha66
+
+- `core:domain` 增加点评候选 v1、UTF-16 半开原文区间、规则证据、审核状态、结构化
+  提取/采用错误和 `MasterCommentaryCandidateExtractor` 公开入口。
+- `core:image-parser` 增加本地确定性实现：只按中文/ASCII 标点与换行切分可定位句段，
+  重复句保留首次出现，候选稳定 ID 绑定来源记录、revision、区间和原文；九类建议采用
+  保守本地词表，UI 不含第二套规则。
+- 点评候选页明确显示规则版本、来源 revision、原文区间、分类建议、规则证据及
+  “候选不代表观点正确、不是本机算法结论”；支持编辑、拒绝、恢复和逐条采用。
+- 编辑/拒绝只属于 `SavedStateHandle` 审核状态；采用通过既有 `TextRecordUseCase`
+  重读聚合，核对来源类型、revision、区间原文和聚合 revision，只新增正式
+  `ANALYSIS`，完整点评、历史与附件引用保持不变。
+- 修复恢复竞态：候选 Bundle 先恢复、详情尚未重载时按钮禁用，调用层返回
+  `CONTEXT_NOT_READY`，不再无声丢弃采用操作。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha65 clean 命令：
+alpha66 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -166,33 +181,31 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 结果：
 
-- 405 个 Gradle task 成功（388 executed，17 up-to-date）；411 次 JVM 测试执行
-  零失败、零跳过。
+- 405 个 Gradle task 成功（388 executed，17 up-to-date）；431 次 JVM 测试执行
+  零失败、零错误、零跳过。
 - Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
   均为已知非阻断项。
-- API 35 `emulator-5554` 正式合成命例—摘要—剪贴板—Activity 重建 1/1 通过，
-  独立 SavedState 新 ViewModel 恢复 2/2 通过。
-- 图片渲染与系统导出/分享回归 3/3 通过；系统读回 PNG 为 1080×9469、
-  560,682 字节，SHA-256
-  `dce8539893ace85a7a116198a5148699809c1ab625c81fcf310273a578d16cfa`，
-  视觉检查章节层级、长图边界和底部来源/隐私提示完整。该合成图片已从模拟器和本机
-  临时目录删除。
-- Debug/Release 合并清单均为 `versionCode 66`、`0.3.0-alpha65`，且没有
+- API 35 `emulator-5554` 点评候选主流程与三个独立 SavedState 场景合并复验 4/4
+  通过：正式点评进入候选页，拒绝一条、编辑并改类后采用一条，Activity 重建保留审核
+  状态，返回详情可见原点评未变且正式分析新增。
+- 1140×2616 候选页截图完成视觉检查：标题、规则/来源说明、非算法真值提示、原文区间、
+  编辑框、横向分类、规则证据和采用/拒绝动作层级清楚；截图仅存临时目录并已删除。
+- Debug/Release 合并清单均为 `versionCode 67`、`0.3.0-alpha66`，且没有
   `INTERNET` 或 `ACCESS_NETWORK_STATE`。
 - 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha65-debug.apk`
-  - 55,991,979 字节
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha66-debug.apk`
+  - 56,057,515 字节
   - SHA-256
-    `e3ce78da9510ffdd51713aa4a1d57a7ba8f94edd3dd13a8095e9ebdb35eb9655`
+    `1193f5e5a9fc78b7d93e41172233a9c4de10034ef11ea89dd72c3ca4854dedbd`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha65-release-unsigned.apk`
-  - 52,171,454 字节
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha66-release-unsigned.apk`
+  - 52,220,664 字节
   - SHA-256
-    `9ac4c2ef262085a63b600e419c9fff6fdbbed98be5cd16a654f38cf173b62744`
+    `5fd328b894f7e3b412f622b986b323d4e59b6501cd17e237afb72458ef43e9fd`
 
 ## 7. 尚未完成
 
@@ -200,8 +213,7 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 建议一次只完成一个增量：
 
-1. `VX-04` 师傅点评观点候选增强。
-2. `VX-05` 命主反馈主题标签候选增强。
+1. `VX-05` 命主反馈主题标签候选增强。
 
 ### 外部门禁
 
@@ -212,39 +224,41 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：师傅点评观点候选增强
+## 8. 下一唯一任务：命主反馈主题标签候选增强
 
 ### 目标
 
-实现 `VX-04` 师傅点评观点候选增强；必须保留完整点评原文，以确定性规则提取可定位、
-可编辑、可逐条确认的观点候选，不自动把候选写成正式分析或算法结论。
+实现 `VX-05` 命主反馈主题标签候选增强；必须保留完整命主反馈和既有事件事实，以本地
+确定性规则提取可解释、可编辑、可逐条确认的主题标签候选，不自动覆盖来源或替用户
+确认主题。
 
 ### 建议所有权
 
-- 在 `core:domain` 定义版本化点评观点候选、原文区间、候选类别、规则证据、确认状态和
+- 在 `core:domain` 定义版本化反馈主题候选、来源定位、规范标签、规则证据、审核状态和
   结构化失败；提取器使用公开接口，页面不内置关键词规则。
-- 确定性解析适配放在合适的输入/解析层；每个候选必须保留原文片段和字符区间，不改写
-  原点评，不调用网络或外部 AI。
-- 候选只有用户逐条确认后才可进入正式分析记录；拒绝或编辑不得覆盖原始
-  `MASTER_COMMENTARY` 及其历史。
+- 确定性解析适配放在合适的解析层，复用既有 `OWNER_FEEDBACK` 与事件分类事实；不得把
+  候选主题冒充用户已经确认的标签。
+- 只有逐条采用才进入现有正式标签/分类聚合边界；拒绝、编辑和恢复不得覆盖反馈原文、
+  事件或其版本历史。
 
 ### 当前已知边界
 
-- 首版只做可解释的句段候选和保守类别建议，不尝试判断观点是否正确。
-- 原文为空、非师傅点评记录、无可解释候选和规则版本不支持必须分开返回。
-- 候选必须幂等、去重，并能在原文修改或记录 revision 变化后判定过期。
+- 首版只做可解释的主题标签建议，不生成新的命理结论或事件事实。
+- 空反馈、错误来源类型、无可解释候选和规则版本不支持必须分开返回。
+- 候选必须幂等、去重，并能在来源内容或 revision 变化后判定过期。
 
 ### 最小验收
 
-1. 领域合同覆盖非点评记录、空原文、无候选、多候选、重复句、边界区间和版本过期。
-2. 相同原文重复提取得到相同候选；候选片段必须能按区间从原文精确读回。
-3. UI 支持逐条采用、编辑和拒绝；任何动作都不覆盖完整点评原文。
-4. API 35 模拟器从正式师傅点评进入候选页，确认一条后写入正式分析并在重建后读回。
+1. 领域合同覆盖错误来源、空反馈、无候选、多候选、重复标签、来源定位和版本过期。
+2. 相同来源重复提取得到相同候选；每个候选保留可解释的来源证据。
+3. UI 支持逐条采用、编辑和拒绝；任何动作都不覆盖完整反馈或事件历史。
+4. API 35 模拟器从正式命主反馈进入候选页，确认一条后写入正式标签/分类并在重建后
+   读回。
 5. 更新受影响治理文档、下一 alpha、全量构建和本地准确提交。
 
 ### 禁止项
 
-- 不自动确认候选、不覆盖点评原文、不把观点候选称为算法真值。
+- 不自动确认候选、不覆盖反馈原文、不把主题候选称为用户事实或算法真值。
 - 不默认联网、调用外部 AI 或发送命例资料。
 - 不接触 OPPO、不清数据、不卸载真机 App。
 - 不提交真实姓名、八字、截图、密钥或构建产物。
@@ -256,7 +270,7 @@ cd "/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi"
 git rev-parse --show-toplevel
 git branch --show-current
 git status --porcelain=v1 | awk 'END { print "entries=" NR }'
-rg -n -m 20 '点评观点候选|VX-04' docs app/src core --glob '!**/build/**'
+rg -n -m 20 '反馈主题标签|VX-05' docs app/src core --glob '!**/build/**'
 ```
 
 若现场与本文件不一致，以现场为准，先修正文档再实现。不要读取旧对话全文。

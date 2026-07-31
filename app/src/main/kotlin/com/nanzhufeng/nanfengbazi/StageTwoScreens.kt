@@ -73,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -88,6 +89,8 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
@@ -334,6 +337,8 @@ fun NanfengBaziApp(
                                 onEditMetadata = viewModel::openMetadata,
                                 onAddRecord = { viewModel.openTextRecord() },
                                 onEditRecord = viewModel::openTextRecord,
+                                onOpenCommentaryCandidates =
+                                    viewModel::openMasterCommentaryCandidates,
                                 onAddEvent = { viewModel.openEvent() },
                                 onEditEvent = viewModel::openEvent,
                                 onDuplicate = viewModel::duplicateCase,
@@ -407,6 +412,20 @@ fun NanfengBaziApp(
                         },
                         modifier = Modifier.padding(padding),
                     )
+                    is AppDestination.MasterCommentaryCandidates ->
+                        MasterCommentaryCandidateScreen(
+                            state = state,
+                            onBack = viewModel::navigateBack,
+                            onContentChange =
+                                viewModel::updateMasterCommentaryCandidateContent,
+                            onCategoryChange =
+                                viewModel::updateMasterCommentaryCandidateCategory,
+                            onReject = viewModel::rejectMasterCommentaryCandidate,
+                            onRestoreRejected =
+                                viewModel::restoreRejectedMasterCommentaryCandidate,
+                            onAdopt = viewModel::adoptMasterCommentaryCandidate,
+                            modifier = Modifier.padding(padding),
+                        )
                     is AppDestination.EditCase -> CaseFormScreen(
                         title = "编辑命例",
                         screenTag = "edit_case_screen",
@@ -4352,6 +4371,301 @@ private fun ObjectiveSummaryContent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun MasterCommentaryCandidateScreen(
+    state: StageTwoUiState,
+    onBack: () -> Unit,
+    onContentChange: (String, String) -> Unit,
+    onCategoryChange: (String, AnalysisCategory) -> Unit,
+    onReject: (String) -> Unit,
+    onRestoreRejected: (String) -> Unit,
+    onAdopt: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("master_commentary_candidates_screen"),
+    ) {
+        TopAppBar(
+            title = { Text("师傅点评观点候选") },
+            navigationIcon = {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("返回")
+                }
+            },
+        )
+        val candidateSet = state.commentaryCandidateSet
+        when {
+            candidateSet == null && state.commentaryCandidateFailure != null -> ErrorBox(
+                message = "${state.commentaryCandidateFailure.message}" +
+                    "（${state.commentaryCandidateFailure.code}）",
+                actionLabel = "返回详情",
+                onAction = onBack,
+            )
+            candidateSet == null && state.commentaryCandidateAdoptionFailure != null -> ErrorBox(
+                message = "${state.commentaryCandidateAdoptionFailure.message}" +
+                    "（${state.commentaryCandidateAdoptionFailure.code}）",
+                actionLabel = "返回详情",
+                onAction = onBack,
+            )
+            candidateSet == null -> LoadingBox("正在提取可定位的点评句段…")
+            else -> LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .testTag("master_commentary_candidates_list"),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("master_commentary_candidates_notice"),
+                        colors = CardDefaults.cardColors(
+                            containerColor =
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                "本地确定性候选 · 规则 v${candidateSet.ruleVersion}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "共 ${candidateSet.candidates.size} 条，来源点评版本 " +
+                                    "v${candidateSet.sourceRevision}。候选只用于人工整理，" +
+                                    "不代表观点正确，也不是本机排盘算法结论。",
+                                modifier = Modifier.padding(top = 6.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "只有逐条采用才会新增正式分析记录；编辑、拒绝和采用都不会" +
+                                    "覆盖完整师傅点评原文。",
+                                modifier = Modifier.padding(top = 6.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                state.commentaryCandidateAdoptionFailure?.let { failure ->
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("commentary_candidate_error"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                        ) {
+                            Text(
+                                "${failure.message}（${failure.code}）",
+                                modifier = Modifier.padding(14.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
+                items(
+                    items = candidateSet.candidates,
+                    key = { it.id },
+                ) { candidate ->
+                    MasterCommentaryCandidateCard(
+                        candidate = candidate,
+                        saving = state.commentaryCandidateSavingId == candidate.id,
+                        anySaving = state.commentaryCandidateSavingId != null ||
+                            state.detailLoading ||
+                            state.detail == null,
+                        onContentChange = { onContentChange(candidate.id, it) },
+                        onCategoryChange = { onCategoryChange(candidate.id, it) },
+                        onReject = { onReject(candidate.id) },
+                        onRestoreRejected = { onRestoreRejected(candidate.id) },
+                        onAdopt = { onAdopt(candidate.id) },
+                    )
+                }
+                item {
+                    Spacer(Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MasterCommentaryCandidateCard(
+    candidate: MasterCommentaryCandidate,
+    saving: Boolean,
+    anySaving: Boolean,
+    onContentChange: (String) -> Unit,
+    onCategoryChange: (AnalysisCategory) -> Unit,
+    onReject: () -> Unit,
+    onRestoreRejected: () -> Unit,
+    onAdopt: () -> Unit,
+) {
+    val pending = candidate.status == MasterCommentaryCandidateStatus.PENDING
+    val statusText = when (candidate.status) {
+        MasterCommentaryCandidateStatus.PENDING -> "待确认"
+        MasterCommentaryCandidateStatus.ADOPTED -> "已采用为正式分析"
+        MasterCommentaryCandidateStatus.REJECTED -> "已拒绝"
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { stateDescription = statusText }
+            .testTag("commentary_candidate_card"),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                statusText,
+                modifier = Modifier.testTag(
+                    "commentary_candidate_status_${candidate.status.name}",
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = when (candidate.status) {
+                    MasterCommentaryCandidateStatus.PENDING ->
+                        MaterialTheme.colorScheme.primary
+                    MasterCommentaryCandidateStatus.ADOPTED -> Color(0xFF2E7D32)
+                    MasterCommentaryCandidateStatus.REJECTED ->
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Text(
+                "原文片段 [${candidate.sourceRange.startInclusive}, " +
+                    "${candidate.sourceRange.endExclusive})",
+                modifier = Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                candidate.sourceExcerpt,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .testTag("commentary_candidate_source"),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedTextField(
+                value = candidate.proposedContent,
+                onValueChange = onContentChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp)
+                    .testTag("commentary_candidate_content"),
+                label = { Text("采用内容") },
+                enabled = pending && !anySaving,
+                minLines = 2,
+            )
+            Text(
+                "分类建议（可修改）",
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AnalysisCategory.entries.forEach { category ->
+                    val categoryModifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("commentary_category_${category.name}")
+                    if (candidate.proposedCategory == category) {
+                        Button(
+                            onClick = { onCategoryChange(category) },
+                            enabled = pending && !anySaving,
+                            modifier = categoryModifier,
+                        ) {
+                            Text(category.displayName())
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { onCategoryChange(category) },
+                            enabled = pending && !anySaving,
+                            modifier = categoryModifier,
+                        ) {
+                            Text(category.displayName())
+                        }
+                    }
+                }
+            }
+            Text(
+                candidate.ruleEvidence.joinToString("；") { evidence ->
+                    buildString {
+                        append(evidence.explanation)
+                        if (evidence.matchedTerms.isNotEmpty()) {
+                            append(" 命中：")
+                            append(evidence.matchedTerms.joinToString("、"))
+                        }
+                    }
+                },
+                modifier = Modifier.padding(top = 10.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when (candidate.status) {
+                MasterCommentaryCandidateStatus.PENDING -> Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = onReject,
+                        enabled = !anySaving,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("reject_commentary_candidate"),
+                    ) {
+                        Text("拒绝")
+                    }
+                    Button(
+                        onClick = onAdopt,
+                        enabled = !anySaving && candidate.proposedContent.isNotBlank(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("adopt_commentary_candidate"),
+                    ) {
+                        if (saving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.height(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text("采用")
+                        }
+                    }
+                }
+                MasterCommentaryCandidateStatus.REJECTED -> OutlinedButton(
+                    onClick = onRestoreRejected,
+                    enabled = !anySaving,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp)
+                        .heightIn(min = 48.dp)
+                        .testTag("restore_commentary_candidate"),
+                ) {
+                    Text("恢复为待确认")
+                }
+                MasterCommentaryCandidateStatus.ADOPTED -> Text(
+                    "正式分析已写入；如需修改，请在详情的分析记录中编辑。",
+                    modifier = Modifier.padding(top = 12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun CaseDetailScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
@@ -4361,6 +4675,7 @@ private fun CaseDetailScreen(
     onEditMetadata: () -> Unit,
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
+    onOpenCommentaryCandidates: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
@@ -4413,6 +4728,7 @@ private fun CaseDetailScreen(
                     onEditMetadata = onEditMetadata,
                     onAddRecord = onAddRecord,
                     onEditRecord = onEditRecord,
+                    onOpenCommentaryCandidates = onOpenCommentaryCandidates,
                     onAddEvent = onAddEvent,
                     onEditEvent = onEditEvent,
                     onDuplicate = onDuplicate,
@@ -4488,6 +4804,7 @@ private fun CaseDetailContent(
     onEditMetadata: () -> Unit,
     onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
+    onOpenCommentaryCandidates: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
@@ -5094,6 +5411,23 @@ private fun CaseDetailContent(
                                 modifier = Modifier.padding(top = 4.dp),
                                 maxLines = 4,
                             )
+                            if (
+                                record.type == CaseTextRecordType.MASTER_COMMENTARY &&
+                                case.deletedAt == null
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onOpenCommentaryCandidates(record.id)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("open_commentary_candidates_button"),
+                                ) {
+                                    Text("提取观点候选")
+                                }
+                            }
                         }
                     }
                 }

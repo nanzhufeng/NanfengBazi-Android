@@ -51,6 +51,8 @@ import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryResult
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
+import com.nanzhufeng.nanfengbazi.domain.CommentaryTextRange
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
@@ -58,6 +60,17 @@ import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupEvidence
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionFailure
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionResult
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateErrorCode
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateExtractionInput
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateExtractionResult
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateExtractor
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateFailure
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateSet
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.RenderedCaseImage
@@ -75,6 +88,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.imageparser.DeterministicMasterCommentaryCandidateExtractor
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PushbackInputStream
@@ -103,6 +117,10 @@ sealed interface AppDestination {
     data object ScreenshotImportReview : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
     data class CaseObjectiveSummary(val caseId: String) : AppDestination
+    data class MasterCommentaryCandidates(
+        val caseId: String,
+        val recordId: String,
+    ) : AppDestination
     data class EditCase(val caseId: String) : AppDestination
     data class AddBirthTimeCandidate(val caseId: String) : AppDestination
     data class EditMetadata(val caseId: String) : AppDestination
@@ -154,6 +172,13 @@ class StageTwoNavigator {
 
     fun openObjectiveSummary(caseId: String): AppDestination {
         return push(AppDestination.CaseObjectiveSummary(caseId))
+    }
+
+    fun openMasterCommentaryCandidates(
+        caseId: String,
+        recordId: String,
+    ): AppDestination {
+        return push(AppDestination.MasterCommentaryCandidates(caseId, recordId))
     }
 
     fun openEditCase(caseId: String): AppDestination {
@@ -211,6 +236,12 @@ class StageTwoNavigator {
             }
 
             is AppDestination.CaseObjectiveSummary -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.MasterCommentaryCandidates -> {
                 stack += AppDestination.CaseList
                 stack += AppDestination.CaseDetail(destination.caseId)
                 stack += destination
@@ -318,6 +349,11 @@ data class StageTwoUiState(
     val objectiveSummaryLoading: Boolean = false,
     val objectiveSummaryFailure: CaseObjectiveSummaryFailure? = null,
     val objectiveSummaryCopied: Boolean = false,
+    val commentaryCandidateSet: MasterCommentaryCandidateSet? = null,
+    val commentaryCandidateFailure: MasterCommentaryCandidateFailure? = null,
+    val commentaryCandidateAdoptionFailure:
+        MasterCommentaryCandidateAdoptionFailure? = null,
+    val commentaryCandidateSavingId: String? = null,
     val singleCaseExportConfirmationVisible: Boolean = false,
     val singleCasePasswordExportVisible: Boolean = false,
     val singleCasePasswordImportVisible: Boolean = false,
@@ -375,6 +411,8 @@ class StageTwoViewModel(
     private val caseImageRenderer: CaseImageRenderer? = null,
     private val objectiveSummaryGenerator: CaseObjectiveSummaryGenerator =
         CaseObjectiveSummaryContract,
+    private val commentaryCandidateExtractor: MasterCommentaryCandidateExtractor =
+        DeterministicMasterCommentaryCandidateExtractor(),
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -450,6 +488,28 @@ class StageTwoViewModel(
             } else {
                 null
             }
+            val candidateDestination =
+                mutableState.value.destination as? AppDestination.MasterCommentaryCandidates
+            val commentaryRecord = if (restoredCase != null && candidateDestination != null) {
+                restoredCase.textRecords.firstOrNull {
+                    it.id == candidateDestination.recordId
+                }
+            } else {
+                null
+            }
+            val candidateResult = if (restoredCase != null && commentaryRecord != null) {
+                commentaryCandidateExtractor.extract(
+                    MasterCommentaryCandidateExtractionInput(
+                        sourceRecordId = commentaryRecord.id,
+                        sourceRecordType = commentaryRecord.type,
+                        sourceContent = commentaryRecord.content,
+                        sourceRevision =
+                            restoredCase.sourceRecordRevision(commentaryRecord.id),
+                    ),
+                )
+            } else {
+                null
+            }
             mutableState.update {
                 if (restoredCase == null) {
                     it.copy(
@@ -460,11 +520,15 @@ class StageTwoViewModel(
                         objectiveSummary = null,
                         objectiveSummaryLoading = false,
                         objectiveSummaryFailure = null,
+                        commentaryCandidateSet = null,
+                        commentaryCandidateFailure = null,
+                        commentaryCandidateAdoptionFailure = null,
+                        commentaryCandidateSavingId = null,
                         message = "上次打开的命例无法恢复，已返回命例列表。",
                     )
                 } else {
-                    when (summaryResult) {
-                        is CaseObjectiveSummaryResult.Success -> it.copy(
+                    when {
+                        summaryResult is CaseObjectiveSummaryResult.Success -> it.copy(
                             detail = restoredCase,
                             detailLoading = false,
                             detailError = null,
@@ -472,7 +536,7 @@ class StageTwoViewModel(
                             objectiveSummaryLoading = false,
                             objectiveSummaryFailure = null,
                         )
-                        is CaseObjectiveSummaryResult.Rejected -> it.copy(
+                        summaryResult is CaseObjectiveSummaryResult.Rejected -> it.copy(
                             detail = restoredCase,
                             detailLoading = false,
                             detailError = null,
@@ -480,7 +544,41 @@ class StageTwoViewModel(
                             objectiveSummaryLoading = false,
                             objectiveSummaryFailure = summaryResult.failure,
                         )
-                        null -> it.copy(
+                        candidateResult is
+                            MasterCommentaryCandidateExtractionResult.Success -> it.copy(
+                                detail = restoredCase,
+                                detailLoading = false,
+                                detailError = null,
+                                commentaryCandidateSet = candidateResult.candidateSet
+                                    .mergeDecisionsFrom(it.commentaryCandidateSet),
+                                commentaryCandidateFailure = null,
+                                commentaryCandidateAdoptionFailure = null,
+                                commentaryCandidateSavingId = null,
+                            )
+                        candidateResult is
+                            MasterCommentaryCandidateExtractionResult.Failure -> it.copy(
+                                detail = restoredCase,
+                                detailLoading = false,
+                                detailError = null,
+                                commentaryCandidateSet = null,
+                                commentaryCandidateFailure = candidateResult.failure,
+                                commentaryCandidateAdoptionFailure = null,
+                                commentaryCandidateSavingId = null,
+                            )
+                        candidateDestination != null -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            commentaryCandidateSet = null,
+                            commentaryCandidateFailure = null,
+                            commentaryCandidateAdoptionFailure =
+                                MasterCommentaryCandidateAdoptionFailure(
+                                    MasterCommentaryCandidateAdoptionErrorCode.SOURCE_NOT_FOUND,
+                                    "来源点评已不存在，候选无法恢复。",
+                                ),
+                            commentaryCandidateSavingId = null,
+                        )
+                        else -> it.copy(
                             detail = restoredCase,
                             detailLoading = false,
                             detailError = null,
@@ -2724,6 +2822,10 @@ class StageTwoViewModel(
                 objectiveSummaryLoading = false,
                 objectiveSummaryFailure = null,
                 objectiveSummaryCopied = false,
+                commentaryCandidateSet = null,
+                commentaryCandidateFailure = null,
+                commentaryCandidateAdoptionFailure = null,
+                commentaryCandidateSavingId = null,
                 message = null,
             )
         }
@@ -2786,6 +2888,183 @@ class StageTwoViewModel(
             )
         }
         loadObjectiveSummary(detail.id)
+    }
+
+    fun openMasterCommentaryCandidates(recordId: String) {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
+        val record = detail.textRecords.firstOrNull { it.id == recordId } ?: return
+        val result = commentaryCandidateExtractor.extract(
+            MasterCommentaryCandidateExtractionInput(
+                sourceRecordId = record.id,
+                sourceRecordType = record.type,
+                sourceContent = record.content,
+                sourceRevision = detail.sourceRecordRevision(record.id),
+            ),
+        )
+        mutableState.update {
+            when (result) {
+                is MasterCommentaryCandidateExtractionResult.Success -> it.copy(
+                    destination = navigator.openMasterCommentaryCandidates(
+                        detail.id,
+                        record.id,
+                    ),
+                    commentaryCandidateSet = result.candidateSet,
+                    commentaryCandidateFailure = null,
+                    commentaryCandidateAdoptionFailure = null,
+                    commentaryCandidateSavingId = null,
+                    message = null,
+                )
+                is MasterCommentaryCandidateExtractionResult.Failure -> it.copy(
+                    destination = navigator.openMasterCommentaryCandidates(
+                        detail.id,
+                        record.id,
+                    ),
+                    commentaryCandidateSet = null,
+                    commentaryCandidateFailure = result.failure,
+                    commentaryCandidateAdoptionFailure = null,
+                    commentaryCandidateSavingId = null,
+                    message = null,
+                )
+            }
+        }
+    }
+
+    fun updateMasterCommentaryCandidateContent(candidateId: String, content: String) {
+        updateMasterCommentaryCandidate(candidateId) {
+            if (it.status == MasterCommentaryCandidateStatus.PENDING) {
+                it.copy(proposedContent = content)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun updateMasterCommentaryCandidateCategory(
+        candidateId: String,
+        category: AnalysisCategory,
+    ) {
+        updateMasterCommentaryCandidate(candidateId) {
+            if (it.status == MasterCommentaryCandidateStatus.PENDING) {
+                it.copy(proposedCategory = category)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun rejectMasterCommentaryCandidate(candidateId: String) {
+        updateMasterCommentaryCandidate(candidateId) {
+            if (it.status == MasterCommentaryCandidateStatus.PENDING) {
+                it.copy(status = MasterCommentaryCandidateStatus.REJECTED)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun restoreRejectedMasterCommentaryCandidate(candidateId: String) {
+        updateMasterCommentaryCandidate(candidateId) {
+            if (it.status == MasterCommentaryCandidateStatus.REJECTED) {
+                it.copy(status = MasterCommentaryCandidateStatus.PENDING)
+            } else {
+                it
+            }
+        }
+    }
+
+    fun adoptMasterCommentaryCandidate(candidateId: String) {
+        val current = mutableState.value
+        val detail = current.detail
+        if (detail == null) {
+            mutableState.update {
+                it.copy(
+                    commentaryCandidateAdoptionFailure =
+                        MasterCommentaryCandidateAdoptionFailure(
+                            MasterCommentaryCandidateAdoptionErrorCode.CONTEXT_NOT_READY,
+                            "命例详情仍在恢复，请稍候再采用。",
+                        ),
+                )
+            }
+            return
+        }
+        val candidate = current.commentaryCandidateSet
+            ?.candidates
+            ?.firstOrNull { it.id == candidateId }
+            ?: return
+        if (current.commentaryCandidateSavingId != null) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    commentaryCandidateSavingId = candidateId,
+                    commentaryCandidateAdoptionFailure = null,
+                )
+            }
+            when (
+                val result = textRecords.adoptCommentaryCandidate(
+                    caseId = detail.id,
+                    expectedRevision = detail.revision,
+                    candidate = candidate,
+                )
+            ) {
+                is MasterCommentaryCandidateAdoptionResult.Saved -> {
+                    val refreshed = try {
+                        caseRepository.findById(detail.id)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    mutableState.update {
+                        if (refreshed == null) {
+                            it.copy(
+                                commentaryCandidateSavingId = null,
+                                commentaryCandidateAdoptionFailure =
+                                    MasterCommentaryCandidateAdoptionFailure(
+                                        MasterCommentaryCandidateAdoptionErrorCode.STORAGE_FAILED,
+                                        "分析已保存，但详情刷新失败。请返回详情重新打开。",
+                                    ),
+                            )
+                        } else {
+                            it.copy(
+                                detail = refreshed,
+                                commentaryCandidateSet = it.commentaryCandidateSet
+                                    ?.updateCandidate(candidateId) { current ->
+                                        current.copy(
+                                            status =
+                                                MasterCommentaryCandidateStatus.ADOPTED,
+                                        )
+                                    },
+                                commentaryCandidateSavingId = null,
+                                commentaryCandidateAdoptionFailure = null,
+                                message = "已新增正式分析记录；完整师傅点评未修改。",
+                            )
+                        }
+                    }
+                    refreshCases()
+                }
+                is MasterCommentaryCandidateAdoptionResult.Failure ->
+                    mutableState.update {
+                        it.copy(
+                            commentaryCandidateSavingId = null,
+                            commentaryCandidateAdoptionFailure = result.failure,
+                        )
+                    }
+            }
+        }
+    }
+
+    private fun updateMasterCommentaryCandidate(
+        candidateId: String,
+        transform: (MasterCommentaryCandidate) -> MasterCommentaryCandidate,
+    ) {
+        mutableState.update {
+            it.copy(
+                commentaryCandidateSet = it.commentaryCandidateSet
+                    ?.updateCandidate(candidateId, transform),
+                commentaryCandidateAdoptionFailure = null,
+            )
+        }
     }
 
     private fun loadObjectiveSummary(caseId: String) {
@@ -3367,11 +3646,29 @@ class StageTwoViewModel(
         if (mutableState.value.destination == AppDestination.FourPillarsLookup) {
             fourPillarsLookupJob?.cancel()
         }
+        val leavingCommentaryCandidates =
+            mutableState.value.destination is AppDestination.MasterCommentaryCandidates
         mutableState.update {
             it.copy(
                 destination = navigator.back(),
                 mutationError = null,
                 formError = null,
+                commentaryCandidateSet = if (leavingCommentaryCandidates) {
+                    null
+                } else {
+                    it.commentaryCandidateSet
+                },
+                commentaryCandidateFailure = if (leavingCommentaryCandidates) {
+                    null
+                } else {
+                    it.commentaryCandidateFailure
+                },
+                commentaryCandidateAdoptionFailure = if (leavingCommentaryCandidates) {
+                    null
+                } else {
+                    it.commentaryCandidateAdoptionFailure
+                },
+                commentaryCandidateSavingId = null,
             )
         }
     }
@@ -3389,6 +3686,10 @@ class StageTwoViewModel(
                 objectiveSummaryLoading = false,
                 objectiveSummaryFailure = null,
                 objectiveSummaryCopied = false,
+                commentaryCandidateSet = null,
+                commentaryCandidateFailure = null,
+                commentaryCandidateAdoptionFailure = null,
+                commentaryCandidateSavingId = null,
             )
         }
     }
@@ -3628,6 +3929,7 @@ class StageTwoViewModel(
 private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.CaseDetail -> caseId
     is AppDestination.CaseObjectiveSummary -> caseId
+    is AppDestination.MasterCommentaryCandidates -> caseId
     is AppDestination.EditCase -> caseId
     is AppDestination.AddBirthTimeCandidate -> caseId
     is AppDestination.EditMetadata -> caseId
@@ -3658,6 +3960,17 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
     putString("detailSection", detailSection.name)
+    commentaryCandidateSet?.let {
+        putBundle("commentaryCandidateSet", it.toSavedStateBundle())
+    }
+    commentaryCandidateFailure?.let {
+        putString("commentaryCandidateFailureCode", it.code.name)
+        putString("commentaryCandidateFailureMessage", it.message)
+    }
+    commentaryCandidateAdoptionFailure?.let {
+        putString("commentaryCandidateAdoptionFailureCode", it.code.name)
+        putString("commentaryCandidateAdoptionFailureMessage", it.message)
+    }
     putString("fortuneObservationDate", fortuneObservationDate)
     putString("fortuneObservationTime", fortuneObservationTime)
     putBundle("form", form.toSavedStateBundle())
@@ -3704,6 +4017,26 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         fortuneObservationTime = getString("fortuneObservationTime") ?: "12:00",
         detailLoading = destination.caseIdOrNull() != null,
         objectiveSummaryLoading = destination is AppDestination.CaseObjectiveSummary,
+        commentaryCandidateSet =
+            getBundle("commentaryCandidateSet")?.toMasterCommentaryCandidateSet(),
+        commentaryCandidateFailure =
+            enumValueOrNull<MasterCommentaryCandidateErrorCode>(
+                getString("commentaryCandidateFailureCode"),
+            )?.let { code ->
+                MasterCommentaryCandidateFailure(
+                    code,
+                    getString("commentaryCandidateFailureMessage").orEmpty(),
+                )
+            },
+        commentaryCandidateAdoptionFailure =
+            enumValueOrNull<MasterCommentaryCandidateAdoptionErrorCode>(
+                getString("commentaryCandidateAdoptionFailureCode"),
+            )?.let { code ->
+                MasterCommentaryCandidateAdoptionFailure(
+                    code,
+                    getString("commentaryCandidateAdoptionFailureMessage").orEmpty(),
+                )
+            },
         editForm = getBundle("editForm")?.toCaseFormState() ?: CaseFormState(),
         candidateLabel = getString("candidateLabel").orEmpty(),
         candidateForm = getBundle("candidateForm")?.toCaseFormState() ?: CaseFormState(),
@@ -3730,6 +4063,11 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
         is AppDestination.CaseObjectiveSummary -> {
             putString("type", "case_objective_summary")
             putString("caseId", caseId)
+        }
+        is AppDestination.MasterCommentaryCandidates -> {
+            putString("type", "master_commentary_candidates")
+            putString("caseId", caseId)
+            putString("recordId", recordId)
         }
         is AppDestination.EditCase -> {
             putString("type", "edit_case")
@@ -3767,6 +4105,11 @@ private fun Bundle.toAppDestination(): AppDestination {
         "screenshot_review" -> AppDestination.ScreenshotImportReview
         "case_detail" -> caseId?.let(AppDestination::CaseDetail)
         "case_objective_summary" -> caseId?.let(AppDestination::CaseObjectiveSummary)
+        "master_commentary_candidates" -> caseId?.let {
+            getString("recordId")?.let { recordId ->
+                AppDestination.MasterCommentaryCandidates(it, recordId)
+            }
+        }
         "edit_case" -> caseId?.let(AppDestination::EditCase)
         "birth_time_candidate" -> caseId?.let(AppDestination::AddBirthTimeCandidate)
         "edit_metadata" -> caseId?.let(AppDestination::EditMetadata)
@@ -3779,6 +4122,128 @@ private fun Bundle.toAppDestination(): AppDestination {
         else -> AppDestination.CaseList
     } ?: AppDestination.CaseList
 }
+
+private fun MasterCommentaryCandidateSet.toSavedStateBundle(): Bundle = Bundle().apply {
+    putInt("ruleVersion", ruleVersion)
+    putString("sourceRecordId", sourceRecordId)
+    putInt("sourceRevision", sourceRevision)
+    putParcelableArrayList(
+        "candidates",
+        ArrayList(candidates.map { it.toSavedStateBundle() }),
+    )
+}
+
+@Suppress("DEPRECATION")
+private fun Bundle.toMasterCommentaryCandidateSet(): MasterCommentaryCandidateSet? =
+    runCatching {
+        val sourceRecordId = requireNotNull(getString("sourceRecordId"))
+        val candidates = getParcelableArrayList<Bundle>("candidates")
+            .orEmpty()
+            .mapNotNull { it.toMasterCommentaryCandidate() }
+        MasterCommentaryCandidateSet(
+            ruleVersion = getInt("ruleVersion"),
+            sourceRecordId = sourceRecordId,
+            sourceRevision = getInt("sourceRevision"),
+            candidates = candidates,
+        )
+    }.getOrNull()
+
+private fun MasterCommentaryCandidate.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("id", id)
+    putString("sourceRecordId", sourceRecordId)
+    putInt("sourceRevision", sourceRevision)
+    putInt("startInclusive", sourceRange.startInclusive)
+    putInt("endExclusive", sourceRange.endExclusive)
+    putString("sourceExcerpt", sourceExcerpt)
+    putString("proposedContent", proposedContent)
+    putString("proposedCategory", proposedCategory.name)
+    putString("status", status.name)
+    putParcelableArrayList(
+        "ruleEvidence",
+        ArrayList(ruleEvidence.map { it.toSavedStateBundle() }),
+    )
+}
+
+@Suppress("DEPRECATION")
+private fun Bundle.toMasterCommentaryCandidate(): MasterCommentaryCandidate? =
+    runCatching {
+        MasterCommentaryCandidate(
+            id = requireNotNull(getString("id")),
+            sourceRecordId = requireNotNull(getString("sourceRecordId")),
+            sourceRevision = getInt("sourceRevision"),
+            sourceRange = CommentaryTextRange(
+                startInclusive = getInt("startInclusive"),
+                endExclusive = getInt("endExclusive"),
+            ),
+            sourceExcerpt = requireNotNull(getString("sourceExcerpt")),
+            proposedContent = getString("proposedContent").orEmpty(),
+            proposedCategory = enumValueOrDefault(
+                getString("proposedCategory"),
+                AnalysisCategory.GENERAL,
+            ),
+            ruleEvidence = getParcelableArrayList<Bundle>("ruleEvidence")
+                .orEmpty()
+                .mapNotNull { it.toCommentaryCandidateRuleEvidence() },
+            status = enumValueOrDefault(
+                getString("status"),
+                MasterCommentaryCandidateStatus.PENDING,
+            ),
+        )
+    }.getOrNull()
+
+private fun CommentaryCandidateRuleEvidence.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("ruleId", ruleId)
+    putString("explanation", explanation)
+    putStringArrayList("matchedTerms", ArrayList(matchedTerms))
+}
+
+private fun Bundle.toCommentaryCandidateRuleEvidence(): CommentaryCandidateRuleEvidence? =
+    runCatching {
+        CommentaryCandidateRuleEvidence(
+            ruleId = requireNotNull(getString("ruleId")),
+            explanation = requireNotNull(getString("explanation")),
+            matchedTerms = getStringArrayList("matchedTerms").orEmpty(),
+        )
+    }.getOrNull()
+
+private fun MasterCommentaryCandidateSet.updateCandidate(
+    candidateId: String,
+    transform: (MasterCommentaryCandidate) -> MasterCommentaryCandidate,
+): MasterCommentaryCandidateSet = copy(
+    candidates = candidates.map {
+        if (it.id == candidateId) transform(it) else it
+    },
+)
+
+private fun MasterCommentaryCandidateSet.mergeDecisionsFrom(
+    saved: MasterCommentaryCandidateSet?,
+): MasterCommentaryCandidateSet {
+    if (
+        saved == null ||
+        saved.ruleVersion != ruleVersion ||
+        saved.sourceRecordId != sourceRecordId ||
+        saved.sourceRevision != sourceRevision
+    ) {
+        return this
+    }
+    val savedById = saved.candidates.associateBy { it.id }
+    return copy(
+        candidates = candidates.map { fresh ->
+            val previous = savedById[fresh.id] ?: return@map fresh
+            fresh.copy(
+                proposedContent = previous.proposedContent,
+                proposedCategory = previous.proposedCategory,
+                status = previous.status,
+            )
+        },
+    )
+}
+
+private fun BaziCase.sourceRecordRevision(recordId: String): Int =
+    textRecordRevisions
+        .filter { it.recordId == recordId }
+        .maxOfOrNull { it.version }
+        ?: 0
 
 private fun CaseFormState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("alias", alias)

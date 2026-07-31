@@ -57,10 +57,16 @@ import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupEvidence
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
+import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -453,6 +459,84 @@ class StageTwoViewModelTest {
             viewModel.state.value.detail?.events?.single()?.category,
         )
         assertEquals(3L, viewModel.state.value.detail?.revision)
+    }
+
+    @Test
+    fun `点评候选可编辑拒绝采用且采用后原点评不变`() = runTest {
+        val commentary = masterCommentary()
+        val stored = sampleStoredCase("case-commentary-candidates").copy(
+            textRecords = listOf(commentary),
+            textRecordRevisions = listOf(commentaryRevision(commentary, 1)),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+        viewModel.openMasterCommentaryCandidates(commentary.id)
+        val initial = requireNotNull(viewModel.state.value.commentaryCandidateSet)
+        assertEquals(2, initial.candidates.size)
+        val first = initial.candidates.first()
+        val second = initial.candidates.last()
+        viewModel.updateMasterCommentaryCandidateContent(first.id, "编辑后的事业观点")
+        viewModel.updateMasterCommentaryCandidateCategory(
+            first.id,
+            AnalysisCategory.WEALTH,
+        )
+        viewModel.rejectMasterCommentaryCandidate(second.id)
+        viewModel.adoptMasterCommentaryCandidate(first.id)
+
+        assertEquals(
+            AppDestination.MasterCommentaryCandidates(stored.id, commentary.id),
+            viewModel.state.value.destination,
+        )
+        val decisions = requireNotNull(viewModel.state.value.commentaryCandidateSet).candidates
+        assertEquals(MasterCommentaryCandidateStatus.ADOPTED, decisions.first().status)
+        assertEquals(MasterCommentaryCandidateStatus.REJECTED, decisions.last().status)
+        val refreshed = repository.stored.getValue(stored.id)
+        assertEquals(commentary, refreshed.textRecords.first())
+        assertEquals(
+            "编辑后的事业观点",
+            refreshed.textRecords.single { it.type == CaseTextRecordType.ANALYSIS }.content,
+        )
+        assertEquals(
+            AnalysisCategory.WEALTH,
+            refreshed.textRecords.single { it.type == CaseTextRecordType.ANALYSIS }
+                .analysisCategory,
+        )
+    }
+
+    @Test
+    fun `点评在候选打开后修改会结构化拒绝旧候选`() = runTest {
+        val commentary = masterCommentary()
+        val stored = sampleStoredCase("case-commentary-stale").copy(
+            textRecords = listOf(commentary),
+            textRecordRevisions = listOf(commentaryRevision(commentary, 1)),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+        viewModel.openMasterCommentaryCandidates(commentary.id)
+        val candidateId = requireNotNull(viewModel.state.value.commentaryCandidateSet)
+            .candidates
+            .first()
+            .id
+        TextRecordUseCase(repository).save(
+            stored.id,
+            stored.revision,
+            commentary.id,
+            TextRecordDraft(
+                CaseTextRecordType.MASTER_COMMENTARY,
+                "事业原文已经修改。财运也需核对",
+            ),
+        )
+
+        viewModel.adoptMasterCommentaryCandidate(candidateId)
+
+        assertEquals(
+            MasterCommentaryCandidateAdoptionErrorCode.SOURCE_REVISION_STALE,
+            viewModel.state.value.commentaryCandidateAdoptionFailure?.code,
+        )
+        assertEquals(1, repository.stored.getValue(stored.id).textRecords.size)
     }
 
     @Test
@@ -1312,6 +1396,26 @@ class StageTwoViewModelTest {
             ioDispatcher = dispatcher,
         )
     }
+
+    private fun masterCommentary() = CaseTextRecord(
+        id = "commentary-1",
+        type = CaseTextRecordType.MASTER_COMMENTARY,
+        content = "事业需要核对。财运也需核对",
+        createdAt = FixedInstant,
+        updatedAt = FixedInstant,
+    )
+
+    private fun commentaryRevision(
+        commentary: CaseTextRecord,
+        version: Int,
+    ) = CaseTextRecordRevision(
+        id = "${commentary.id}:revision:$version",
+        recordId = commentary.id,
+        version = version,
+        changeType = RecordChangeType.CREATED,
+        snapshot = commentary,
+        changedAt = FixedInstant,
+    )
 
     private class RecordingCaseImageRenderer :
         com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer {

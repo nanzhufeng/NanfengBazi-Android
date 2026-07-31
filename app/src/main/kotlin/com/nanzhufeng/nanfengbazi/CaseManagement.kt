@@ -6,6 +6,10 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionFailure
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
@@ -718,7 +722,123 @@ class TextRecordUseCase(
             expectedRevision = expectedRevision,
         )
     }
+
+    suspend fun adoptCommentaryCandidate(
+        caseId: String,
+        expectedRevision: Long,
+        candidate: MasterCommentaryCandidate,
+    ): MasterCommentaryCandidateAdoptionResult {
+        if (
+            candidate.status !=
+            com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus.PENDING
+        ) {
+            return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.CANDIDATE_NOT_PENDING,
+                "该观点候选已经处理，请选择仍待确认的候选。",
+            )
+        }
+        val content = candidate.proposedContent.trim()
+        if (content.isEmpty()) {
+            return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.EMPTY_ADOPTED_CONTENT,
+                "采用内容不能为空；可编辑后再确认。",
+            )
+        }
+        val existing = when (val loaded = loadCase(caseRepository, caseId)) {
+            is CaseLoadResult.Found -> loaded.case
+            CaseLoadResult.NotFound -> return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.CASE_NOT_FOUND,
+                "命例不存在，未写入分析记录。",
+            )
+            CaseLoadResult.Failed -> return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.STORAGE_FAILED,
+                "无法读取最新命例，未写入分析记录。请返回详情后重试。",
+            )
+        }
+        val source = existing.textRecords
+            .firstOrNull { it.id == candidate.sourceRecordId }
+            ?: return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.SOURCE_NOT_FOUND,
+                "来源点评已不存在，候选已过期；请返回详情重新提取。",
+            )
+        if (source.type != CaseTextRecordType.MASTER_COMMENTARY) {
+            return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.SOURCE_TYPE_CHANGED,
+                "来源记录已不再是师傅点评，候选已过期。",
+            )
+        }
+        val currentSourceRevision = existing.textRecordRevisions
+            .filter { it.recordId == source.id }
+            .maxOfOrNull { it.version }
+            ?: 0
+        if (currentSourceRevision != candidate.sourceRevision) {
+            return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.SOURCE_REVISION_STALE,
+                "师傅点评原文已有新版本，请重新提取后再确认。",
+            )
+        }
+        if (!candidate.isExactExcerptOf(source.content)) {
+            return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.SOURCE_RANGE_STALE,
+                "候选片段已无法从当前原文精确读回，请重新提取。",
+            )
+        }
+        if (existing.revision != expectedRevision) {
+            return adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.CASE_REVISION_CONFLICT,
+                "命例已被其他操作更新，请返回详情后重试。",
+            )
+        }
+
+        val now = clock.instant()
+        val analysis = CaseTextRecord(
+            id = idGenerator.nextId(),
+            type = CaseTextRecordType.ANALYSIS,
+            content = content,
+            analysisCategory = candidate.proposedCategory,
+            sourceAttachmentId = source.sourceAttachmentId,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val updated = existing.copy(
+            textRecords = existing.textRecords + analysis,
+            textRecordRevisions = existing.textRecordRevisions.appendRecordRevision(
+                snapshot = analysis,
+                changeType = RecordChangeType.CREATED,
+                changedAt = now,
+            ),
+            updatedAt = now,
+        )
+        return when (
+            val persisted = persistCase(caseRepository, updated, expectedRevision)
+        ) {
+            is CaseMutationResult.Saved -> MasterCommentaryCandidateAdoptionResult.Saved(
+                caseId = persisted.caseId,
+                revision = persisted.revision,
+                analysisRecordId = analysis.id,
+            )
+            is CaseMutationResult.RevisionConflict -> adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.CASE_REVISION_CONFLICT,
+                "命例已被其他操作更新，请返回详情后重试。",
+            )
+            is CaseMutationResult.StorageFailed -> adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.STORAGE_FAILED,
+                persisted.message,
+            )
+            else -> adoptionFailure(
+                MasterCommentaryCandidateAdoptionErrorCode.STORAGE_FAILED,
+                "分析记录未保存，请返回详情后重试。",
+            )
+        }
+    }
 }
+
+private fun adoptionFailure(
+    code: MasterCommentaryCandidateAdoptionErrorCode,
+    message: String,
+) = MasterCommentaryCandidateAdoptionResult.Failure(
+    MasterCommentaryCandidateAdoptionFailure(code, message),
+)
 
 data class EventDraft(
     val year: String = "",

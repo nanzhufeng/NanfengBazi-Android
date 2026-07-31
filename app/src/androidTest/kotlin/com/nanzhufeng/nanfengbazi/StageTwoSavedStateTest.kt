@@ -4,12 +4,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import java.time.Clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -186,9 +188,122 @@ class StageTwoSavedStateTest {
         assertNotNull(restoredComparison.state.value.comparisonReport)
     }
 
-    private suspend fun waitUntil(condition: () -> Boolean) {
-        withTimeout(15_000) {
-            while (!condition()) delay(50)
+    @Test
+    fun savedStateRestoresCommentaryCandidateDecisionsAndFormalAdoption() = runBlocking {
+        val application = ApplicationProvider.getApplicationContext<NanfengBaziApplication>()
+        val container = application.container
+        val original = createViewModel(container)
+        val alias = "点评候选状态-${System.currentTimeMillis()}"
+        original.openCreate()
+        original.updateForm {
+            it.copy(
+                alias = alias,
+                name = "合成点评候选样例",
+                sex = SexForFortuneDirection.WOMAN,
+                year = "1996",
+                month = "8",
+                day = "15",
+                hour = "9",
+                minute = "20",
+                second = "0",
+                locationName = "合成点评候选地区",
+            )
+        }
+        original.submitCase(allowDuplicate = true)
+        waitUntil("保存合成命例") {
+            original.state.value.destination == AppDestination.CaseList &&
+                !original.state.value.saving
+        }
+        original.updateQuery("")
+        waitUntil("列表读取合成命例") {
+            original.state.value.cases.any { it.alias == alias }
+        }
+        val caseId = requireNotNull(
+            original.state.value.cases.firstOrNull { it.alias == alias }?.id,
+        )
+        original.openDetail(caseId)
+        waitUntil("读取合成命例详情") { original.state.value.detail?.id == caseId }
+        original.openTextRecord()
+        original.updateRecordDraft {
+            it.copy(
+                type = CaseTextRecordType.MASTER_COMMENTARY,
+                content = "事业需要人工核对。财运也需要人工核对",
+            )
+        }
+        original.saveTextRecord(null)
+        waitUntil("保存师傅点评") {
+            original.state.value.destination == AppDestination.CaseDetail(caseId) &&
+                original.state.value.detail?.textRecords?.isNotEmpty() == true
+        }
+        val commentary = requireNotNull(
+            original.state.value.detail?.textRecords?.firstOrNull {
+                it.type == CaseTextRecordType.MASTER_COMMENTARY
+            },
+        )
+        original.openMasterCommentaryCandidates(commentary.id)
+        val initial = requireNotNull(original.state.value.commentaryCandidateSet)
+        val firstId = initial.candidates.first().id
+        val secondId = initial.candidates.last().id
+        original.updateMasterCommentaryCandidateContent(firstId, "状态恢复后的正式分析")
+        original.rejectMasterCommentaryCandidate(secondId)
+        val handle = SavedStateHandle()
+        original.saveRestorableStateTo(handle)
+
+        val restored = createViewModel(container, handle)
+        waitUntil("恢复点评候选") {
+            restored.state.value.commentaryCandidateSet != null &&
+                restored.state.value.detail?.id == caseId &&
+                !restored.state.value.detailLoading
+        }
+        assertEquals(
+            AppDestination.MasterCommentaryCandidates(caseId, commentary.id),
+            restored.state.value.destination,
+        )
+        val restoredCandidates =
+            requireNotNull(restored.state.value.commentaryCandidateSet).candidates
+        assertEquals("状态恢复后的正式分析", restoredCandidates.first().proposedContent)
+        assertEquals(
+            MasterCommentaryCandidateStatus.REJECTED,
+            restoredCandidates.last().status,
+        )
+
+        restored.adoptMasterCommentaryCandidate(firstId)
+        waitUntil("采用点评候选") {
+            restored.state.value.commentaryCandidateSavingId == null &&
+                (
+                    restored.state.value.commentaryCandidateSet
+                        ?.candidates
+                        ?.first()
+                        ?.status == MasterCommentaryCandidateStatus.ADOPTED ||
+                        restored.state.value.commentaryCandidateAdoptionFailure != null
+                    )
+        }
+        assertEquals(null, restored.state.value.commentaryCandidateAdoptionFailure)
+        val detail = requireNotNull(restored.state.value.detail)
+        assertEquals(
+            "事业需要人工核对。财运也需要人工核对",
+            detail.textRecords.single {
+                it.type == CaseTextRecordType.MASTER_COMMENTARY
+            }.content,
+        )
+        assertEquals(
+            "状态恢复后的正式分析",
+            detail.textRecords.single {
+                it.type == CaseTextRecordType.ANALYSIS
+            }.content,
+        )
+    }
+
+    private suspend fun waitUntil(
+        description: String = "状态满足",
+        condition: () -> Boolean,
+    ) {
+        try {
+            withTimeout(15_000) {
+                while (!condition()) delay(50)
+            }
+        } catch (_: TimeoutCancellationException) {
+            throw AssertionError("等待超时：$description")
         }
     }
 

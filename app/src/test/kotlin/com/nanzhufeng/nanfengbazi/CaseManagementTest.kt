@@ -1,6 +1,11 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
+import com.nanzhufeng.nanfengbazi.domain.CommentaryTextRange
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionErrorCode
+import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateAdoptionResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -16,6 +21,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import java.time.Clock
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
@@ -278,6 +284,129 @@ class CaseManagementTest {
     }
 
     @Test
+    fun `采用点评候选新增分析但完整原点评与历史保持不变`() = runTest {
+        val commentary = CaseTextRecord(
+            id = "commentary-1",
+            type = CaseTextRecordType.MASTER_COMMENTARY,
+            content = "事业需要核对。财运也需核对",
+            sourceAttachmentId = "attachment-1",
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
+        val commentaryRevision = CaseTextRecordRevision(
+            id = "commentary-1:revision:1",
+            recordId = commentary.id,
+            version = 1,
+            changeType = RecordChangeType.CREATED,
+            snapshot = commentary,
+            changedAt = FixedInstant,
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-commentary"] = sampleStoredCase("case-commentary").copy(
+                textRecords = listOf(commentary),
+                textRecordRevisions = listOf(commentaryRevision),
+                attachments = listOf(
+                    SourceAttachment(
+                        id = "attachment-1",
+                        relativePath = "attachments/commentary.jpg",
+                        originalFileName = "commentary.jpg",
+                        mimeType = "image/jpeg",
+                        sha256 = "0".repeat(64),
+                        byteSize = 1,
+                        createdAt = FixedInstant,
+                    ),
+                ),
+            )
+        }
+        val useCase = TextRecordUseCase(
+            repository,
+            fixedClock,
+            IdGenerator { "analysis-from-candidate" },
+        )
+        val candidate = candidate().copy(
+            proposedContent = "编辑后保留事实边界的观点",
+            proposedCategory = AnalysisCategory.CAREER,
+        )
+
+        val result = useCase.adoptCommentaryCandidate(
+            "case-commentary",
+            1,
+            candidate,
+        )
+
+        assertEquals(
+            MasterCommentaryCandidateAdoptionResult.Saved(
+                "case-commentary",
+                2,
+                "analysis-from-candidate",
+            ),
+            result,
+        )
+        val stored = repository.stored.getValue("case-commentary")
+        assertEquals(commentary, stored.textRecords.first())
+        assertEquals(commentaryRevision, stored.textRecordRevisions.first())
+        val analysis = stored.textRecords.last()
+        assertEquals(CaseTextRecordType.ANALYSIS, analysis.type)
+        assertEquals("编辑后保留事实边界的观点", analysis.content)
+        assertEquals(AnalysisCategory.CAREER, analysis.analysisCategory)
+        assertEquals("attachment-1", analysis.sourceAttachmentId)
+        assertEquals(RecordChangeType.CREATED, stored.textRecordRevisions.last().changeType)
+    }
+
+    @Test
+    fun `点评版本和原文区间过期均零写入拒绝`() = runTest {
+        val commentary = CaseTextRecord(
+            id = "commentary-1",
+            type = CaseTextRecordType.MASTER_COMMENTARY,
+            content = "事业需要核对。财运也需核对",
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-commentary-stale"] = sampleStoredCase("case-commentary-stale").copy(
+                textRecords = listOf(commentary),
+                textRecordRevisions = listOf(
+                    CaseTextRecordRevision(
+                        id = "commentary-1:revision:2",
+                        recordId = commentary.id,
+                        version = 2,
+                        changeType = RecordChangeType.UPDATED,
+                        snapshot = commentary,
+                        changedAt = FixedInstant,
+                    ),
+                ),
+            )
+        }
+        val useCase = TextRecordUseCase(repository, fixedClock)
+
+        val revisionFailure = useCase.adoptCommentaryCandidate(
+            "case-commentary-stale",
+            1,
+            candidate(),
+        ) as MasterCommentaryCandidateAdoptionResult.Failure
+        assertEquals(
+            MasterCommentaryCandidateAdoptionErrorCode.SOURCE_REVISION_STALE,
+            revisionFailure.failure.code,
+        )
+
+        repository.stored["case-commentary-stale"] =
+            repository.stored.getValue("case-commentary-stale").copy(
+                textRecordRevisions = emptyList(),
+                textRecords = listOf(commentary.copy(content = "原文已被替换")),
+            )
+        val rangeFailure = useCase.adoptCommentaryCandidate(
+            "case-commentary-stale",
+            1,
+            candidate().copy(sourceRevision = 0),
+        ) as MasterCommentaryCandidateAdoptionResult.Failure
+        assertEquals(
+            MasterCommentaryCandidateAdoptionErrorCode.SOURCE_RANGE_STALE,
+            rangeFailure.failure.code,
+        )
+        assertEquals(1, repository.stored.getValue("case-commentary-stale").textRecords.size)
+    }
+
+    @Test
     fun `空记录与无效事件日期不会写入`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-invalid"] = sampleStoredCase("case-invalid")
@@ -312,6 +441,19 @@ class CaseManagementTest {
         )
         assertTrue(repository.stored.getValue("case-invalid").events.isEmpty())
     }
+
+    private fun candidate() = MasterCommentaryCandidate(
+        id = "candidate-1",
+        sourceRecordId = "commentary-1",
+        sourceRevision = 1,
+        sourceRange = CommentaryTextRange(0, 6),
+        sourceExcerpt = "事业需要核对",
+        proposedContent = "事业需要核对",
+        proposedCategory = AnalysisCategory.CAREER,
+        ruleEvidence = listOf(
+            CommentaryCandidateRuleEvidence("test-rule", "合成测试规则"),
+        ),
+    )
 
     @Test
     fun `旧记录首次修改先补建基线版本`() = runTest {
