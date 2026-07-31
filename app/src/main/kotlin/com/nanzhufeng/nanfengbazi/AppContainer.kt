@@ -13,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.RoomImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
@@ -27,6 +28,7 @@ import java.nio.file.Path
 interface AppContainer {
     val caseRepository: CaseRepository
     val baziEngine: BaziEngine
+    val caseImageRenderer: CaseImageRenderer
     val fourPillarsLookup: FourPillarsLookup
     val caseBackupService: CaseBackupOperations
     val singleCaseBundleService: SingleCaseBundleOperations
@@ -59,6 +61,7 @@ class DefaultAppContainer(
 
     override val caseRepository: CaseRepository = RoomCaseRepository(database)
     override val baziEngine: BaziEngine = TymeBaziEngine()
+    override val caseImageRenderer: CaseImageRenderer = AndroidCaseImageRenderer()
     override val fourPillarsLookup: FourPillarsLookup = TymeFourPillarsLookup(baziEngine)
     override val caseBackupService: CaseBackupOperations = CaseBackupService(
         database = database,

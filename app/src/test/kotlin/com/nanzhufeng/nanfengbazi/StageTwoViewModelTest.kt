@@ -77,6 +77,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -1058,6 +1059,128 @@ class StageTwoViewModelTest {
         )
     }
 
+    @Test
+    fun `图片导出与分享复用同一渲染字节并保持详情`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-image")
+        repository.stored[stored.id] = stored
+        val renderer = RecordingCaseImageRenderer()
+        val viewModel = createViewModel(repository, caseImageRenderer = renderer)
+        viewModel.openDetail(stored.id)
+
+        var exportFileName: String? = null
+        viewModel.requestCaseImageDelivery(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
+        )
+        viewModel.confirmCaseImageDelivery { _, name -> exportFileName = name }
+        val exported = ByteArrayOutputStream()
+        viewModel.exportPreparedCaseImage { exported }
+
+        var sharePrepared = false
+        viewModel.requestCaseImageDelivery(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SHARE_LONG_IMAGE,
+        )
+        viewModel.confirmCaseImageDelivery { _, _ -> sharePrepared = true }
+        val shared = ByteArrayOutputStream()
+        var shareFileReady = false
+        viewModel.copyPreparedCaseImageForShare(
+            openOutput = { shared },
+            onReady = { shareFileReady = true },
+        )
+
+        assertEquals(1, renderer.calls)
+        assertTrue(exportFileName?.endsWith("_南枫八字命盘.png") == true)
+        assertTrue(sharePrepared)
+        assertTrue(shareFileReady)
+        assertArrayEquals(renderer.bytes, exported.toByteArray())
+        assertArrayEquals(renderer.bytes, shared.toByteArray())
+        assertEquals(
+            AppDestination.CaseDetail(stored.id),
+            viewModel.state.value.destination,
+        )
+    }
+
+    @Test
+    fun `系统输出不可用返回结构化失败且详情不丢失`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-image-output")
+        repository.stored[stored.id] = stored
+        val viewModel = createViewModel(
+            repository,
+            caseImageRenderer = RecordingCaseImageRenderer(),
+        )
+        viewModel.openDetail(stored.id)
+        viewModel.requestCaseImageDelivery(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
+        )
+        viewModel.confirmCaseImageDelivery { _, _ -> }
+
+        viewModel.exportPreparedCaseImage { null }
+
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode.OUTPUT_UNAVAILABLE,
+            viewModel.state.value.caseImageLastResultCode,
+        )
+        assertEquals(
+            AppDestination.CaseDetail(stored.id),
+            viewModel.state.value.destination,
+        )
+    }
+
+    @Test
+    fun `取消系统保存保留已生成图片与详情`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-image-cancel")
+        repository.stored[stored.id] = stored
+        val renderer = RecordingCaseImageRenderer()
+        val viewModel = createViewModel(repository, caseImageRenderer = renderer)
+        viewModel.openDetail(stored.id)
+        viewModel.requestCaseImageDelivery(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
+        )
+        viewModel.confirmCaseImageDelivery { _, _ -> }
+
+        viewModel.cancelPreparedCaseImageDelivery(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
+        )
+        viewModel.requestCaseImageDelivery(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SHARE_LONG_IMAGE,
+        )
+        viewModel.confirmCaseImageDelivery { _, _ -> }
+
+        assertEquals(1, renderer.calls)
+        assertEquals(
+            AppDestination.CaseDetail(stored.id),
+            viewModel.state.value.destination,
+        )
+    }
+
+    @Test
+    fun `无分享目标和分享取消均返回稳定结果码且不离开详情`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-image-share-errors")
+        repository.stored[stored.id] = stored
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+
+        viewModel.reportNoCaseImageShareTarget()
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode.NO_SHARE_TARGET,
+            viewModel.state.value.caseImageLastResultCode,
+        )
+        viewModel.dismissCaseImageError()
+        viewModel.completeCaseImageShare(cancelled = true)
+
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode.USER_CANCELLED,
+            viewModel.state.value.caseImageLastResultCode,
+        )
+        assertEquals(
+            AppDestination.CaseDetail(stored.id),
+            viewModel.state.value.destination,
+        )
+    }
+
     private fun createViewModel(
         repository: FakeCaseRepository,
         bundleOperations: SingleCaseBundleOperations? = null,
@@ -1066,6 +1189,7 @@ class StageTwoViewModelTest {
         engine: BaziEngine = RecordingEngine(),
         fortunePositionResolver: FortunePositionResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
+        caseImageRenderer: com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer? = null,
     ): StageTwoViewModel {
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
@@ -1115,6 +1239,7 @@ class StageTwoViewModelTest {
             observationClock = fixedClock,
             fortunePositionResolver = fortunePositionResolver,
             fourPillarsLookup = fourPillarsLookup,
+            caseImageRenderer = caseImageRenderer,
             singleCaseExchange = SingleCaseExchangeService(
                 repository = repository,
                 clock = fixedClock,
@@ -1127,6 +1252,33 @@ class StageTwoViewModelTest {
             backupWorkRoot = backupRoot?.resolve("work"),
             ioDispatcher = dispatcher,
         )
+    }
+
+    private class RecordingCaseImageRenderer :
+        com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer {
+        var calls = 0
+        val bytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 1, 2, 3)
+
+        override suspend fun render(
+            input: com.nanzhufeng.nanfengbazi.domain.CaseImageExportInput,
+        ): com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult {
+            calls += 1
+            val facts = (
+                com.nanzhufeng.nanfengbazi.domain.CaseImageExportContract.prepare(input)
+                    as com.nanzhufeng.nanfengbazi.domain.CaseImageFactsResult.Prepared
+                ).facts
+            return com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult.Success(
+                com.nanzhufeng.nanfengbazi.domain.RenderedCaseImage(
+                    facts = facts,
+                    mimeType = "image/png",
+                    fileExtension = "png",
+                    bytes = bytes,
+                    widthPixels = 1080,
+                    heightPixels = 2400,
+                    sha256 = "0".repeat(64),
+                ),
+            )
+        }
     }
 
     private class RecordingSingleCaseBundleOperations(

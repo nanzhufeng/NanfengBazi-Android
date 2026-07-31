@@ -1,4 +1,4 @@
-# 当前交接：alpha63 问真列表真实样本闭环
+# 当前交接：alpha64 命盘图片导出与长图分享
 
 更新日期：2026-07-31
 
@@ -7,13 +7,13 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha63 本地代码基线：本文件所在提交；上一基线为
-  `b41052b feat: add four pillars reverse lookup`。
-- 版本：`versionCode 64`，`versionName 0.3.0-alpha63`
+- alpha64 本地代码基线：本文件所在提交；上一基线为
+  `f886b07 feat: harden real Wenzhen list imports`。
+- 版本：`versionCode 65`，`versionName 0.3.0-alpha64`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha63 验收时 ADB 仅 `emulator-5554` 在线，API 35。
-- 本轮只临时处理用户明确授权的两张真实问真用户列表长图；原图、OCR 原文、姓名、
-  生日和四柱均未进入 Git，模拟器验收数据已在进程重建验证后清除。
+- alpha64 验收时 ADB 仅 `emulator-5554` 在线，API 35。
+- 本轮图片导出设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
+  四柱均未进入 Git 或导出夹具。
 - 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
@@ -51,6 +51,7 @@
 |---|---|---|
 | 排盘计算 | `BaziEngine.calculate()` → `TymeBaziEngine` | UI、OCR、数据库直接调用历法库 |
 | 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | UI 直接调用 Tyme4j、展示未经复核候选或把候选自动保存为命例 |
+| 命盘图片导出 | `CaseImageExportContract` → `CaseImageRenderer` | 截取 Compose 可见视口、保存/分享各拼一套内容或重新排盘 |
 | 计算配置 | `CalculationProfile` | 页面用默认值重解释旧快照 |
 | 命例聚合写入 | `CaseRepository` | 页面或导入器直接写 DAO |
 | 完整备份恢复 | `CaseBackupService` | UI 自行解析、合并或恢复 |
@@ -124,11 +125,24 @@
 - 一条真实候选完成私有复制、OCR、字段采用、反查、正向复算、附件复制、Room 写入，
   并在宿主进程强停后成功读取；验收后模拟器敏感数据已清除。
 
+### alpha64
+
+- `core:domain` 增加图片文档 v1、导出输入、结构化渲染事实、稳定失败码和
+  `CaseImageRenderer` 公开端口；只允许唯一已采用快照和当前正式记录进入图片。
+- Android 渲染器生成完整 1080px 宽 PNG，支持中文、长记录换行和 24,000px/像素上限；
+  超限明确拒绝，不截取当前 Compose 视口。
+- 详情页增加“导出图片”和“分享长图”，两者按命例 revision 与采用快照复用同一
+  `RenderedCaseImage` 字节；命例事实变化后缓存自动失效。
+- SAF 系统文件写入、受限 FileProvider 和系统分享选择器已接通；取消、输出失败、无
+  分享目标及启动失败均返回结构化结果，并保留当前详情和已生成图片。
+- 图片固定显示文档/命例修订、计算档案、来源边界和隐私提示；分享只声明交给目标应用，
+  不误报为已经发送。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha63 clean 命令：
+alpha64 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -139,22 +153,23 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 结果：
 
 - 405 个 Gradle 任务成功。
-- 387 次单元测试执行，0 failure、0 error、0 skipped。
-- Lint 0 error；app 12 条 warning，两个支撑模块共 8 条 warning。
-- API 35 `emulator-5554` 正式合成分享 UI 在 parser v8、反查提交和免责声明改造后
-  1/1 通过；两张授权真实列表的脱敏识别/复算与一条正式写入/进程重建专项均通过。
+- 400 次单元测试执行，0 failure、0 error、0 skipped。
+- Lint 0 error；app 12 条依赖更新 warning，两个支撑模块共 8 条 warning。
+- API 35 `emulator-5554` 图片渲染专项 2/2、正式命例—系统文件—分享选择器链路
+  1/1 通过；系统读回 PNG 为 1080×7495、397,731 bytes，SHA-256
+  `306229cb0f65060588f36f40311042ce4132390e6fa1d0d66bb851f3fad1c793`。
 - 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha63-debug.apk`
-  - 55,909,443 bytes
-  - SHA-256 `833e0d7c8911c6fb6476458805961d3730d6e93ec9e1d00d8b4cd66ed12cd438`
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha64-debug.apk`
+  - 55,975,595 bytes
+  - SHA-256 `00d6ca8a81f539021cfc9df3b52fac24ffb54eac1f7c7c7aeb5a85a5ca3199af`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha63-release-unsigned.apk`
-  - 52,121,730 bytes
-  - SHA-256 `322a1d458048001bd06e666f22c3d736d0ff3ed6abf694c6172f0dacaa9e1c84`
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha64-release-unsigned.apk`
+  - 52,155,070 bytes
+  - SHA-256 `7dab9eb8af4cc62ae8d0a08bb3ef2fe07683dc3535e84cd81b6902cdc956543c`
 
 ## 7. 尚未完成
 
@@ -162,10 +177,9 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 建议一次只完成一个增量：
 
-1. `VX-07` 图片导出与 `VX-08` 长图分享，共用版本化渲染结果。
-2. `VX-10` 客观命盘摘要，只消费确定性字段和证据。
-3. `VX-04` 师傅点评观点候选增强。
-4. `VX-05` 命主反馈主题标签候选增强。
+1. `VX-10` 客观命盘摘要，只消费确定性字段和证据。
+2. `VX-04` 师傅点评观点候选增强。
+3. `VX-05` 命主反馈主题标签候选增强。
 
 ### 外部门禁
 
@@ -176,32 +190,33 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：图片导出与长图分享
+## 8. 下一唯一任务：客观命盘摘要
 
 ### 目标
 
-实现 `VX-07` 图片导出和 `VX-08` 长图分享；两者必须消费同一版本化渲染结果，导出的
-内容与当前已采用快照及正式研究资料一致，并通过 Android 系统文件/分享入口真实交付。
+实现 `VX-10` 客观命盘摘要；摘要必须只消费当前已采用快照中的确定性字段和版本证据，
+为研究者提供可复制、可追溯的结构化概览，不生成吉凶、合婚或确定性人生判断。
 
 ### 建议所有权
 
-- 先在 `core:domain` 定义版本化导出输入、渲染事实和结构化失败。
-- `app` 只负责 Compose/Android 渲染适配、系统文件写入和分享 Intent。
-- 图片导出与长图分享必须复用同一渲染服务，不得各自拼接第二套展示真值。
-- 来源截图证据与本机计算值继续分离；不得把未采用候选或旧快照冒充当前盘。
+- 在 `core:domain` 定义版本化客观摘要输入、章节、字段、来源和结构化失败。
+- 摘要只读取唯一已采用 `CaseCalculationSnapshot`，共享既有字段展示语义；UI 不重算。
+- 图片导出可以在后续消费摘要合同，但摘要本轮不得反向依赖 Android 或图片渲染器。
+- 问真来源字段、人工点评和命主反馈只可作为明确标注的“已有记录计数”，不得被总结成
+  算法结论。
 
 ### 当前已知边界
 
-- 当前没有正式图片渲染合同；不得直接截图当前可见 Compose 视口冒充完整长图。
-- 导出必须明确版本、范围、隐私提示和失败恢复；系统分享目标属于外部条件。
-- 首版只导出已经存在的确定性字段和正式记录，不自动生成吉凶、合婚或主观结论。
+- 首版优先覆盖输入历法、四柱、日主、基础盘、起运大运和计算档案等已版本化事实。
+- 旧快照缺字段时显示缺失，不根据四柱反推补造。
+- “客观摘要”不是 AI 解读；禁止自动生成性格、事业、财运、婚姻、健康吉凶等文案。
 
 ### 最小验收
 
-1. 版本化渲染输入和输出合同覆盖已采用快照、缺失字段和长内容。
-2. 图片导出与分享使用同一渲染字节，尺寸、分页/长图和中文字体可验证。
-3. 系统文件写入失败、分享目标不存在和用户取消均有结构化结果且不丢当前页面状态。
-4. API 35 模拟器完成真实命例—导出—系统文件读回，以及长图分享 Intent 流程。
+1. 领域合同覆盖唯一采用快照、无快照、多个采用快照、旧字段缺失和稳定章节顺序。
+2. 对相同快照重复生成结果确定；字段值与详情/图片导出同源，不出现第二算法真值。
+3. 自动测试扫描摘要标签与生成文本，不含禁止的吉凶、合婚和确定性人生结论。
+4. API 35 模拟器从正式命例进入摘要页面，复制客观摘要并在 Activity 重建后保持入口。
 5. 更新受影响治理文档、下一 alpha、全量构建和本地准确提交。
 
 ### 禁止项
@@ -218,7 +233,7 @@ cd "/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi"
 git rev-parse --show-toplevel
 git branch --show-current
 git status --short
-rg -n -m 20 '图片导出|VX-07' docs app/src core --glob '!**/build/**'
+rg -n -m 20 '客观命盘摘要|VX-10' docs app/src core --glob '!**/build/**'
 ```
 
 若现场与本文件不一致，以现场为准，先修正文档再实现。不要读取旧对话全文。

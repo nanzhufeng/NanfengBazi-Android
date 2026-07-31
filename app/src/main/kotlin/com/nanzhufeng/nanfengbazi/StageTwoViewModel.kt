@@ -36,6 +36,11 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
+import com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode
+import com.nanzhufeng.nanfengbazi.domain.CaseImageExportInput
+import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult
+import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -48,6 +53,7 @@ import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupEvidence
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
+import com.nanzhufeng.nanfengbazi.domain.RenderedCaseImage
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -286,6 +292,10 @@ data class StageTwoUiState(
     val mutationSaving: Boolean = false,
     val mutationError: String? = null,
     val deleteConfirmationVisible: Boolean = false,
+    val caseImageConfirmationMode: CaseImageDeliveryMode? = null,
+    val caseImageBusy: Boolean = false,
+    val caseImageError: String? = null,
+    val caseImageLastResultCode: CaseImageExportErrorCode? = null,
     val singleCaseExportConfirmationVisible: Boolean = false,
     val singleCasePasswordExportVisible: Boolean = false,
     val singleCasePasswordImportVisible: Boolean = false,
@@ -340,6 +350,7 @@ class StageTwoViewModel(
     private val fortunePositionResolver: FortunePositionResolver? = null,
     private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     private val fourPillarsLookup: FourPillarsLookup? = null,
+    private val caseImageRenderer: CaseImageRenderer? = null,
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -362,6 +373,7 @@ class StageTwoViewModel(
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
     private var pendingFullBackupPassword: CharArray? = null
+    private var pendingCaseImage: RenderedCaseImage? = null
 
     init {
         if (mutableState.value.fortuneObservationDate.isBlank()) {
@@ -1136,6 +1148,212 @@ class StageTwoViewModel(
 
     fun dismissFullBackupError() {
         mutableState.update { it.copy(fullBackupError = null) }
+    }
+
+    fun requestCaseImageDelivery(mode: CaseImageDeliveryMode) {
+        val detail = mutableState.value.detail
+        if (detail == null || mutableState.value.caseImageBusy) return
+        mutableState.update {
+            it.copy(
+                caseImageConfirmationMode = mode,
+                caseImageError = null,
+                caseImageLastResultCode = null,
+            )
+        }
+    }
+
+    fun cancelCaseImageConfirmation() {
+        mutableState.update { it.copy(caseImageConfirmationMode = null) }
+    }
+
+    fun confirmCaseImageDelivery(
+        onPrepared: (CaseImageDeliveryMode, String) -> Unit,
+    ) {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        val mode = current.caseImageConfirmationMode ?: return
+        val renderer = caseImageRenderer
+        if (renderer == null) {
+            setCaseImageFailure(
+                CaseImageExportErrorCode.RENDER_FAILED,
+                "当前环境未配置命盘图片渲染器。",
+            )
+            return
+        }
+        mutableState.update {
+            it.copy(
+                caseImageConfirmationMode = null,
+                caseImageBusy = true,
+                caseImageError = null,
+                caseImageLastResultCode = null,
+            )
+        }
+        viewModelScope.launch {
+            val cached = pendingCaseImage?.takeIf { image ->
+                image.facts.caseId == detail.id &&
+                    image.facts.caseRevision == detail.revision &&
+                    detail.calculationSnapshots.any {
+                        it.adopted && it.id == image.facts.adoptedSnapshotId
+                    }
+            }
+            val result = if (cached != null) {
+                CaseImageRenderResult.Success(cached)
+            } else {
+                renderer.render(CaseImageExportInput(detail))
+            }
+            when (result) {
+                is CaseImageRenderResult.Success -> {
+                    pendingCaseImage = result.image
+                    mutableState.update { it.copy(caseImageBusy = false) }
+                    onPrepared(
+                        mode,
+                        result.image.facts.suggestedFileStem.toSafeImageFileName(),
+                    )
+                }
+
+                is CaseImageRenderResult.Rejected ->
+                    setCaseImageFailure(
+                        result.failure.code,
+                        result.failure.message,
+                    )
+            }
+        }
+    }
+
+    fun exportPreparedCaseImage(openOutput: () -> OutputStream?) {
+        val image = pendingCaseImage
+        if (image == null) {
+            setCaseImageFailure(
+                CaseImageExportErrorCode.RENDER_FAILED,
+                "已生成的命盘图片已失效，请重新选择导出。",
+            )
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(caseImageBusy = true, caseImageError = null) }
+            val failure = writeCaseImageBytes(image, openOutput)
+            if (failure == null) {
+                mutableState.update {
+                    it.copy(
+                        caseImageBusy = false,
+                        caseImageLastResultCode = null,
+                        message = "命盘长图已保存到所选系统位置。",
+                    )
+                }
+            } else {
+                setCaseImageFailure(failure.code, failure.message)
+            }
+        }
+    }
+
+    fun copyPreparedCaseImageForShare(
+        openOutput: () -> OutputStream?,
+        onReady: () -> Unit,
+    ) {
+        val image = pendingCaseImage
+        if (image == null) {
+            setCaseImageFailure(
+                CaseImageExportErrorCode.RENDER_FAILED,
+                "已生成的命盘图片已失效，请重新选择分享。",
+            )
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(caseImageBusy = true, caseImageError = null) }
+            val failure = writeCaseImageBytes(image, openOutput)
+            if (failure == null) {
+                onReady()
+            } else {
+                setCaseImageFailure(failure.code, failure.message)
+            }
+        }
+    }
+
+    fun cancelPreparedCaseImageDelivery(mode: CaseImageDeliveryMode) {
+        mutableState.update {
+            it.copy(
+                caseImageBusy = false,
+                caseImageLastResultCode = CaseImageExportErrorCode.USER_CANCELLED,
+                message = when (mode) {
+                    CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE ->
+                        "已取消保存，当前详情和已生成图片仍保留。"
+                    CaseImageDeliveryMode.SHARE_LONG_IMAGE ->
+                        "已取消分享，当前详情和已生成图片仍保留。"
+                },
+            )
+        }
+    }
+
+    fun reportNoCaseImageShareTarget() {
+        setCaseImageFailure(
+            CaseImageExportErrorCode.NO_SHARE_TARGET,
+            "系统中没有可接收 PNG 图片的分享目标；可先使用“导出图片”保存文件。",
+        )
+    }
+
+    fun reportCaseImageShareLaunchFailed() {
+        setCaseImageFailure(
+            CaseImageExportErrorCode.SHARE_LAUNCH_FAILED,
+            "系统分享面板无法打开；当前详情和图片仍保留，可重试或改为保存文件。",
+        )
+    }
+
+    fun completeCaseImageShare(cancelled: Boolean) {
+        mutableState.update {
+            it.copy(
+                caseImageBusy = false,
+                caseImageLastResultCode =
+                    if (cancelled) CaseImageExportErrorCode.USER_CANCELLED else null,
+                message = if (cancelled) {
+                    "分享面板已关闭；南枫八字无法证明图片已由目标应用发送。"
+                } else {
+                    "图片已交给目标应用；是否实际发送以目标应用状态为准。"
+                },
+            )
+        }
+    }
+
+    fun dismissCaseImageError() {
+        mutableState.update { it.copy(caseImageError = null) }
+    }
+
+    private suspend fun writeCaseImageBytes(
+        image: RenderedCaseImage,
+        openOutput: () -> OutputStream?,
+    ) = try {
+        withContext(ioDispatcher) {
+            val output = openOutput()
+                ?: return@withContext com.nanzhufeng.nanfengbazi.domain.CaseImageExportFailure(
+                    CaseImageExportErrorCode.OUTPUT_UNAVAILABLE,
+                    "无法打开目标文件。",
+                )
+            output.use {
+                it.write(image.bytes)
+                it.flush()
+            }
+            null
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        com.nanzhufeng.nanfengbazi.domain.CaseImageExportFailure(
+            CaseImageExportErrorCode.WRITE_FAILED,
+            "命盘图片写入失败；当前详情和已生成图片仍保留。",
+        )
+    }
+
+    private fun setCaseImageFailure(
+        code: CaseImageExportErrorCode,
+        message: String,
+    ) {
+        mutableState.update {
+            it.copy(
+                caseImageConfirmationMode = null,
+                caseImageBusy = false,
+                caseImageError = "$message（${code.name}）",
+                caseImageLastResultCode = code,
+            )
+        }
     }
 
     fun requestSingleCaseExport() {
@@ -2433,6 +2651,9 @@ class StageTwoViewModel(
     }
 
     fun openDetail(caseId: String) {
+        if (pendingCaseImage?.facts?.caseId != caseId) {
+            pendingCaseImage = null
+        }
         mutableState.update {
             it.copy(
                 destination = navigator.openDetail(caseId),
@@ -2440,6 +2661,10 @@ class StageTwoViewModel(
                 detailSection = CaseDetailSection.BASIC_INFO,
                 detailLoading = true,
                 detailError = null,
+                caseImageConfirmationMode = null,
+                caseImageBusy = false,
+                caseImageError = null,
+                caseImageLastResultCode = null,
                 message = null,
             )
         }
@@ -3190,6 +3415,7 @@ class StageTwoViewModel(
                 professionalFortuneResolver =
                     com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
                 fourPillarsLookup = container.fourPillarsLookup,
+                caseImageRenderer = container.caseImageRenderer,
                 singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
@@ -3490,6 +3716,15 @@ private inline fun <reified T : Enum<T>> enumValueOrNull(value: String?): T? =
     value?.let { candidate ->
         enumValues<T>().firstOrNull { it.name == candidate }
     }
+
+private fun String.toSafeImageFileName(): String {
+    val safeStem = trim()
+        .replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_")
+        .trim('.', ' ')
+        .take(48)
+        .ifBlank { "命例" }
+    return "${safeStem}_南枫八字命盘.png"
+}
 
 private inline fun <reified T : Enum<T>> enumValueOrDefault(
     value: String?,

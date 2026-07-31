@@ -129,6 +129,7 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
 import com.nanzhufeng.nanfengbazi.data.backup.BackupDatabasePreflight
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
+import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -152,6 +153,8 @@ fun NanfengBaziApp(
     onCommitSingleCaseImport: ((SingleCaseImportDecision) -> Unit)? = null,
     onCommitSingleCaseMerge: (() -> Unit)? = null,
     onCommitPasswordSingleCaseDocument: (CharArray) -> Unit = {},
+    onCreateCaseImageDocument: (String) -> Unit = {},
+    onSharePreparedCaseImage: () -> Unit = {},
     onCreateFullBackupDocument: (String) -> Unit = {},
     onCreateEncryptedFullBackupDocument: (String) -> Unit = {},
     onOpenFullBackupDocument: () -> Unit = {},
@@ -332,6 +335,16 @@ fun NanfengBaziApp(
                                 onEditEvent = viewModel::openEvent,
                                 onDuplicate = viewModel::duplicateCase,
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
+                                onExportCaseImage = {
+                                    viewModel.requestCaseImageDelivery(
+                                        CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
+                                    )
+                                },
+                                onShareCaseImage = {
+                                    viewModel.requestCaseImageDelivery(
+                                        CaseImageDeliveryMode.SHARE_LONG_IMAGE,
+                                    )
+                                },
                                 onMoveToTrash = viewModel::requestMoveToTrash,
                                 onRestore = viewModel::restoreCase,
                                 onSelectSection = viewModel::selectDetailSection,
@@ -452,6 +465,72 @@ fun NanfengBaziApp(
                     },
                     dismissButton = {
                         TextButton(onClick = viewModel::cancelMoveToTrash) {
+                            Text("取消")
+                        }
+                    },
+                )
+            }
+            state.caseImageConfirmationMode?.let { mode ->
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelCaseImageConfirmation,
+                    title = {
+                        Text(
+                            if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
+                                "导出命盘长图？"
+                            } else {
+                                "分享命盘长图？"
+                            },
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "图片会使用当前已采用的本机计算快照和正式记录，" +
+                                    "不会重新排盘，也不会把问真来源值或旧快照当作当前结果。",
+                            )
+                            Text(
+                                "图片包含姓名、出生资料、命盘和研究记录。" +
+                                    if (mode == CaseImageDeliveryMode.SHARE_LONG_IMAGE) {
+                                        "继续后会把同一 PNG 交给你选择的外部应用；" +
+                                            "是否实际发送由目标应用决定。"
+                                    } else {
+                                        "请只保存到可信位置。"
+                                    },
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.confirmCaseImageDelivery { preparedMode, fileName ->
+                                    when (preparedMode) {
+                                        CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE ->
+                                            onCreateCaseImageDocument(fileName)
+                                        CaseImageDeliveryMode.SHARE_LONG_IMAGE ->
+                                            onSharePreparedCaseImage()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag(
+                                if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
+                                    "confirm_case_image_export"
+                                } else {
+                                    "confirm_case_image_share"
+                                },
+                            ),
+                        ) {
+                            Text(
+                                if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
+                                    "生成并选择位置"
+                                } else {
+                                    "生成并打开分享"
+                                },
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = viewModel::cancelCaseImageConfirmation) {
                             Text("取消")
                         }
                     },
@@ -777,6 +856,23 @@ fun NanfengBaziApp(
                     onChooseField = viewModel::chooseFullBackupMergeField,
                     onConfirm = viewModel::confirmFullBackupMergeDecision,
                     onDismiss = viewModel::cancelFullBackupCaseMerge,
+                )
+            }
+            state.caseImageError?.let { error ->
+                AlertDialog(
+                    onDismissRequest = viewModel::dismissCaseImageError,
+                    title = { Text("命盘图片处理失败") },
+                    text = {
+                        Text(
+                            error,
+                            modifier = Modifier.testTag("case_image_error"),
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = viewModel::dismissCaseImageError) {
+                            Text("知道了")
+                        }
+                    },
                 )
             }
             state.singleCaseExchangeError?.let { error ->
@@ -4076,6 +4172,8 @@ private fun CaseDetailScreen(
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
+    onExportCaseImage: () -> Unit,
+    onShareCaseImage: () -> Unit,
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
     onSelectSection: (CaseDetailSection) -> Unit,
@@ -4125,10 +4223,13 @@ private fun CaseDetailScreen(
                     onEditEvent = onEditEvent,
                     onDuplicate = onDuplicate,
                     onExportSingleCase = onExportSingleCase,
+                    onExportCaseImage = onExportCaseImage,
+                    onShareCaseImage = onShareCaseImage,
                     onMoveToTrash = onMoveToTrash,
                     onRestore = onRestore,
                     selectedSection = state.detailSection,
                     singleCaseExchangeBusy = state.singleCaseExchangeBusy,
+                    caseImageBusy = state.caseImageBusy,
                     mutationSaving = state.mutationSaving,
                     mutationError = state.mutationError,
                     fortuneObservationDate = state.fortuneObservationDate,
@@ -4196,10 +4297,13 @@ private fun CaseDetailContent(
     onEditEvent: (String) -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
+    onExportCaseImage: () -> Unit,
+    onShareCaseImage: () -> Unit,
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
     selectedSection: CaseDetailSection,
     singleCaseExchangeBusy: Boolean,
+    caseImageBusy: Boolean,
     mutationSaving: Boolean,
     mutationError: String?,
     fortuneObservationDate: String,
@@ -4266,6 +4370,33 @@ private fun CaseDetailContent(
                         .testTag("trash_case_button"),
                 ) {
                     Text("移入回收站")
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onExportCaseImage,
+                    enabled = !singleCaseExchangeBusy && !mutationSaving && !caseImageBusy,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("export_case_image_button"),
+                ) {
+                    Text(if (caseImageBusy) "正在生成…" else "导出图片")
+                }
+                OutlinedButton(
+                    onClick = onShareCaseImage,
+                    enabled = !singleCaseExchangeBusy && !mutationSaving && !caseImageBusy,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("share_case_image_button"),
+                ) {
+                    Text(if (caseImageBusy) "正在生成…" else "分享长图")
                 }
             }
             OutlinedButton(

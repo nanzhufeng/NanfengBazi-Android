@@ -24,6 +24,7 @@
 | `CalculationResult` | `core:domain` | 测试；后续仓储 | 只保存展示文本、不保存版本 |
 | `BaziEngine` | `core:domain` | 后续用例层 | 多套平行计算入口 |
 | 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` | `StageTwoViewModel` | UI 直接调用 Tyme4j、把候选当出生分钟唯一证明或保存为正式命例 |
+| 命盘图片导出 | `CaseImageExportContract` → `CaseImageRenderer` | 系统文件保存、长图分享 | 截取 Compose 可见视口、两套导出拼接、重新排盘或采用问真来源值 |
 | 真太阳时校正 | `TrueSolarTimeCalculator` + `core:solar-time` | `TymeBaziEngine` | 页面自行加分钟、覆盖原始民用时或把 Tyme 类型名当算法 |
 | Tyme4j 状态隔离 | `core:engine-tyme` | `TymeBaziEngine` | 其他模块访问全局 provider |
 | `BaziCase` 与字段空值语义 | `core:domain` | 仓储、备份 | 页面或 OCR 用空串改写真值 |
@@ -154,3 +155,4 @@
 | 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
 | 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1900–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；页面与表单进入 `SavedStateHandle`，候选不自动保存 |
+| 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |

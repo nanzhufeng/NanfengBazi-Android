@@ -1,6 +1,8 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -14,11 +16,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.FileProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private var pendingLargeBatchUris: List<Uri>? = null
@@ -126,6 +131,26 @@ class MainActivity : ComponentActivity() {
                     viewModel.clearPendingFullBackupExport()
                 }
             }
+            val createCaseImageDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.CreateDocument("image/png"),
+            ) { uri ->
+                if (uri != null) {
+                    viewModel.exportPreparedCaseImage {
+                        contentResolver.openOutputStream(uri, "w")
+                    }
+                } else {
+                    viewModel.cancelPreparedCaseImageDelivery(
+                        CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
+                    )
+                }
+            }
+            val shareCaseImage = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult(),
+            ) { result ->
+                viewModel.completeCaseImageShare(
+                    cancelled = result.resultCode != Activity.RESULT_OK,
+                )
+            }
             val openFullBackupDocument = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocument(),
             ) { uri ->
@@ -205,6 +230,63 @@ class MainActivity : ComponentActivity() {
                 onCommitPasswordSingleCaseDocument = { password ->
                     viewModel.commitPendingSingleCaseBundle(password) {
                         lastSingleCaseUri?.let(contentResolver::openInputStream)
+                    }
+                },
+                onCreateCaseImageDocument = createCaseImageDocument::launch,
+                onSharePreparedCaseImage = {
+                    val shareDirectory = File(cacheDir, CASE_IMAGE_SHARE_DIRECTORY)
+                    val shareFile = File(shareDirectory, CASE_IMAGE_SHARE_FILE_NAME)
+                    val directoryReady = shareDirectory.isDirectory ||
+                        shareDirectory.mkdirs()
+                    if (!directoryReady) {
+                        viewModel.reportCaseImageShareLaunchFailed()
+                    } else {
+                        viewModel.copyPreparedCaseImageForShare(
+                            openOutput = { shareFile.outputStream() },
+                            onReady = {
+                                val uri = runCatching {
+                                    FileProvider.getUriForFile(
+                                        this,
+                                        "$packageName.fileprovider",
+                                        shareFile,
+                                    )
+                                }.getOrNull()
+                                if (uri == null) {
+                                    viewModel.reportCaseImageShareLaunchFailed()
+                                } else {
+                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        clipData = ClipData.newUri(
+                                            contentResolver,
+                                            "南枫八字命盘长图",
+                                            uri,
+                                        )
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    val hasTarget = packageManager
+                                        .queryIntentActivities(
+                                            sendIntent,
+                                            PackageManager.MATCH_DEFAULT_ONLY,
+                                        )
+                                        .isNotEmpty()
+                                    if (!hasTarget) {
+                                        viewModel.reportNoCaseImageShareTarget()
+                                    } else {
+                                        runCatching {
+                                            shareCaseImage.launch(
+                                                Intent.createChooser(
+                                                    sendIntent,
+                                                    "分享命盘长图",
+                                                ),
+                                            )
+                                        }.onFailure {
+                                            viewModel.reportCaseImageShareLaunchFailed()
+                                        }
+                                    }
+                                }
+                            },
+                        )
                     }
                 },
                 onCreateFullBackupDocument = createFullBackupDocument::launch,
@@ -335,3 +417,5 @@ internal fun shouldRequestLargeBatchNotificationPermission(
     !permissionGranted
 
 private const val POST_NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
+private const val CASE_IMAGE_SHARE_DIRECTORY = "case-image-share"
+private const val CASE_IMAGE_SHARE_FILE_NAME = "shared-case-chart.png"
