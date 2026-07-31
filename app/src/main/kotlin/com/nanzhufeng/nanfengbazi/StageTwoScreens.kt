@@ -3664,7 +3664,13 @@ private fun String.evidenceFieldLabel(): String = when (this) {
     "birth.location" -> "出生地区"
     "birth.latitude" -> "纬度"
     "birth.longitude" -> "经度"
+    "birth.previous_jie" -> "前一节"
+    "birth.next_jie" -> "后一节"
     "chart.four_pillars" -> "四柱"
+    "chart.fetal_origin" -> "胎元"
+    "chart.fetal_breath" -> "胎息"
+    "chart.own_sign" -> "命宫"
+    "chart.body_sign" -> "身宫"
     "professional.observed_at" -> "专业细盘 · 观察时刻"
     "professional.flow_year" -> "专业细盘 · 流年柱"
     "professional.flow_month" -> "专业细盘 · 流月柱"
@@ -4932,6 +4938,23 @@ private fun BasicChartDetailsView(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val previousJie = details.previousJie
+        val nextJie = details.nextJie
+        if (previousJie != null && nextJie != null) {
+            Text(
+                "问真同口径前一节 ${previousJie.name} " +
+                    previousJie.at.display(),
+                modifier = Modifier.padding(top = 2.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "问真同口径后一节 ${nextJie.name} ${nextJie.at.display()}",
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         BasicChartTableRow(
             label = "",
             values = listOf("年柱", "月柱", "日柱", "时柱"),

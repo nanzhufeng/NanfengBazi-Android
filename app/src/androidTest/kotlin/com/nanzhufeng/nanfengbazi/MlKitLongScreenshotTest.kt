@@ -158,6 +158,12 @@ class MlKitLongScreenshotTest {
                 "birth.true_solar_datetime" in fieldKeys,
             )
             assertTrue("应提取出生地区；OCR=${document.rawText}", "birth.location" in fieldKeys)
+            assertTrue("应提取前一节；OCR=${document.rawText}", "birth.previous_jie" in fieldKeys)
+            assertTrue("应提取后一节；OCR=${document.rawText}", "birth.next_jie" in fieldKeys)
+            assertTrue("应提取胎元；OCR=${document.rawText}", "chart.fetal_origin" in fieldKeys)
+            assertTrue("应提取胎息；OCR=${document.rawText}", "chart.fetal_breath" in fieldKeys)
+            assertTrue("应提取命宫；OCR=${document.rawText}", "chart.own_sign" in fieldKeys)
+            assertTrue("应提取身宫；OCR=${document.rawText}", "chart.body_sign" in fieldKeys)
             assertTrue(result.fields.all { it.adoptedValue == null && it.boundingBox != null })
         } finally {
             engine.close()
@@ -253,7 +259,7 @@ class MlKitLongScreenshotTest {
     }
 
     private fun createBasicInfoSyntheticImage(): ByteArray {
-        val bitmap = Bitmap.createBitmap(1080, 1700, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(1080, 2500, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -272,6 +278,10 @@ class MlKitLongScreenshotTest {
             "地址经纬：北纬33.72 东经118.68",
             "星座：处女座 属相：猴",
             "壬申 戊申 壬申 丙午",
+            "立秋：1992-08-07 14:27:24",
+            "白露：1992-09-07 17:18:20",
+            "胎元：己亥 胎息：丙寅",
+            "命宫：壬寅 身宫：癸卯",
         ).forEachIndexed { index, line ->
             canvas.drawText(line, 56f, 150f + index * 145f, paint)
         }

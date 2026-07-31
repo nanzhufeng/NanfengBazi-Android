@@ -147,6 +147,8 @@ data class BasicChartDetails(
     val pillars: List<PillarDetail>,
     val previousSolarTerm: SolarTermPoint,
     val nextSolarTerm: SolarTermPoint,
+    val previousJie: SolarTermPoint? = null,
+    val nextJie: SolarTermPoint? = null,
 ) {
     init {
         require(

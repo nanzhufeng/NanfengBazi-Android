@@ -1,4 +1,4 @@
-# 当前交接：Stage 7F 通用脱敏诊断包完成
+# 当前交接：Stage 7F 问真基本资料确定性衍生字段完成
 
 更新日期：2026-07-31
 
@@ -20,6 +20,8 @@
   规则版本并支持复制诊断。
 - Stage 7F 已在设置页提供统一脱敏诊断包，覆盖通用页面、单命例交换、完整备份与截图
   导入会话；只输出版本、去身份化状态、稳定错误码、计数和有界诊断 ID，不复制用户资料。
+- Stage 7F 已把问真基本资料页的前一节、后一节、胎元、胎息、命宫和身宫接入字段证据
+  与提交后本机对照；前后“节”独立于相邻二十四节气，避免处暑—白露与立秋—白露混淆。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -322,6 +324,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     “四主入口—设置—真实剪贴板读取”专项 1/1 通过；
   - alpha56 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
     405 项通过，349 次测试执行零失败/零跳过，Lint 0 错误；
+  - alpha57 将问真基本资料的前一节、后一节、胎元、胎息、命宫和身宫接入来源证据与
+    提交后本机计算对照；API 35 的真实离线 OCR 基本资料专项和真太阳时跨时辰详情专项
+    均 1/1 通过；
+  - alpha57 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
+    405 项通过，349 次测试执行零失败/零跳过，Lint 0 错误（20 条依赖版本 warning）；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -329,17 +336,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha56-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha57-debug.apk`
 
-- 大小：55,794,755 bytes
-- SHA-256：`b512bc75a00cdb1a4e7332881fb706f060474c301f3b158c377a8765e12dd2f2`
+- 大小：55,811,139 bytes
+- SHA-256：`9620493df5c570612443d50ce02123b2443b115a148a18c48d988f7783a5c1fe`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha56-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha57-release-unsigned.apk`
 
 - 大小：52,056,194 bytes
-- SHA-256：`92ff52a9da47664c221ed6aaed0718c445fef19c34eda25a279619224c6002ce`
+- SHA-256：`e5e27a6cefcd24aa7a7ba9cf5bf0b4063aeec96402259c898189014eba674786`
 
 ## 当前限制与风险
 
@@ -354,7 +361,8 @@ Debug 验收构建：
   反馈年份事件候选、P1 基本排盘分柱证据和逐命例候选问题摘要也已接入核对链路；
   P2 专业细盘的观察时刻、九列干支、合并 OCR 块空间拆分及提交后来源值/本机值自动
   对照已实现；
-  大批次前台任务模式已按数量/字节/像素门槛接通，基本资料非核心衍生字段尚未实现。
+  大批次前台任务模式已按数量/字节/像素门槛接通；基本资料的前一节、后一节、胎元、
+  胎息、命宫和身宫已结构化并对照，星宿、命卦、五行比例和神煞仍只保留原图。
   Android 13+ 的 8 图以上路径已补上下文授权说明和拒绝后继续提示；少于 8 图但因
   总字节/像素触发前台模式时不会预先请求通知权限，拒绝或未授权时任务仍执行，但自定义
   通知与取消动作可能只通过系统任务管理入口呈现。基本排盘真实问真截图的 OCR 分块与
@@ -371,8 +379,8 @@ Debug 验收构建：
 
 继续 Stage 7，优先顺序：
 
-1. 补齐基本资料其余非核心衍生字段，并单独设计版本化神煞合同；
-2. 补齐计算档案升级差异和剩余节气/生肖边界门禁；
+1. 补齐计算档案升级差异和剩余生肖/节气边界门禁；
+2. 对星宿、命卦、五行比例和神煞只先设计来源保真合同，不在无算法证据时生成计算值；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

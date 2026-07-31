@@ -221,6 +221,8 @@ class TymeBaziEngine(
         }
         val previousTerm = civilSolarTime.term
         val nextTerm = previousTerm.next(1)
+        val previousJie = if (previousTerm.isJie) previousTerm else previousTerm.next(-1)
+        val nextJie = previousJie.next(2)
 
         return BasicChartDetails(
             zodiac = eightChar.year.earthBranch.zodiac.name,
@@ -229,6 +231,8 @@ class TymeBaziEngine(
             pillars = pillars,
             previousSolarTerm = previousTerm.toDomainPoint(),
             nextSolarTerm = nextTerm.toDomainPoint(),
+            previousJie = previousJie.toDomainPoint(),
+            nextJie = nextJie.toDomainPoint(),
         )
     }
 

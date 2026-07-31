@@ -14,6 +14,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.tyme.eightchar.ChildLimit
 import com.tyme.eightchar.provider.impl.China95ChildLimitProvider
@@ -396,6 +397,10 @@ class TymeBaziEngineTest {
         assertEquals("壬", basic.dayMaster)
         assertEquals("处暑", basic.previousSolarTerm.name)
         assertEquals("白露", basic.nextSolarTerm.name)
+        assertEquals("立秋", basic.previousJie?.name)
+        assertEquals("白露", basic.nextJie?.name)
+        assertEquals(SolarTermType.JIE, basic.previousJie?.type)
+        assertEquals(SolarTermType.JIE, basic.nextJie?.type)
         val pillars = basic.pillars.associateBy { it.position }
         assertEquals(
             listOf("比肩", "七杀", "比肩", "偏财"),

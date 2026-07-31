@@ -44,6 +44,7 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.LocalDate
+import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -395,6 +396,16 @@ class ScreenshotImportCommitter(
                 ),
             )
             put(FIELD_ZODIAC, TypedFieldValue.Text(details.zodiac))
+            put(FIELD_FETAL_ORIGIN, TypedFieldValue.Text(calculation.fetalOrigin))
+            put(FIELD_FETAL_BREATH, TypedFieldValue.Text(calculation.fetalBreath))
+            put(FIELD_OWN_SIGN, TypedFieldValue.Text(calculation.ownSign))
+            put(FIELD_BODY_SIGN, TypedFieldValue.Text(calculation.bodySign))
+            details.previousJie?.let { term ->
+                put(FIELD_PREVIOUS_JIE, TypedFieldValue.Text(term.sourceDisplay()))
+            }
+            details.nextJie?.let { term ->
+                put(FIELD_NEXT_JIE, TypedFieldValue.Text(term.sourceDisplay()))
+            }
             details.pillars.forEach { pillar ->
                 val column = when (pillar.position) {
                     PillarPosition.YEAR -> "year"
@@ -720,7 +731,13 @@ class ScreenshotImportCommitter(
         const val FIELD_LOCATION = "birth.location"
         const val FIELD_LATITUDE = "birth.latitude"
         const val FIELD_LONGITUDE = "birth.longitude"
+        const val FIELD_PREVIOUS_JIE = "birth.previous_jie"
+        const val FIELD_NEXT_JIE = "birth.next_jie"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
+        const val FIELD_FETAL_ORIGIN = "chart.fetal_origin"
+        const val FIELD_FETAL_BREATH = "chart.fetal_breath"
+        const val FIELD_OWN_SIGN = "chart.own_sign"
+        const val FIELD_BODY_SIGN = "chart.body_sign"
         const val FIELD_PROFESSIONAL_OBSERVED_AT = "professional.observed_at"
         const val FIELD_PROFESSIONAL_FLOW_YEAR = "professional.flow_year"
         const val FIELD_PROFESSIONAL_FLOW_MONTH = "professional.flow_month"
@@ -755,3 +772,14 @@ class ScreenshotImportCommitter(
         )
     }
 }
+
+private fun com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint.sourceDisplay(): String =
+    "$name %04d-%02d-%02d %02d:%02d:%02d".format(
+        Locale.ROOT,
+        at.year,
+        at.month,
+        at.day,
+        at.hour,
+        at.minute,
+        at.second,
+    )

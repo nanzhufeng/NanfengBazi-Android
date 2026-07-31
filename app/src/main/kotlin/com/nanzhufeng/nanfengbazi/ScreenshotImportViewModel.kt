@@ -28,6 +28,7 @@ import java.io.InputStream
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -887,7 +888,13 @@ class ScreenshotImportViewModel(
         "birth.location" -> "出生地区"
         "birth.latitude" -> "纬度"
         "birth.longitude" -> "经度"
+        "birth.previous_jie" -> "前一节"
+        "birth.next_jie" -> "后一节"
         "chart.four_pillars" -> "四柱"
+        "chart.fetal_origin" -> "胎元"
+        "chart.fetal_breath" -> "胎息"
+        "chart.own_sign" -> "命宫"
+        "chart.body_sign" -> "身宫"
         "professional.observed_at" -> "专业细盘 · 观察时刻"
         "professional.flow_year" -> "专业细盘 · 流年柱"
         "professional.flow_month" -> "专业细盘 · 流月柱"
@@ -989,6 +996,31 @@ class ScreenshotImportViewModel(
                     )
                 }
 
+            "birth.previous_jie",
+            "birth.next_jie",
+            -> BASIC_JIE_VALUE_PATTERN.matchEntire(value)
+                ?.let { match ->
+                    val dateTime = runCatching {
+                        LocalDateTime.parse(match.groupValues[2].replace(' ', 'T'))
+                    }.getOrNull() ?: return null
+                    TypedFieldValue.Text(
+                        "${match.groupValues[1]} " +
+                            "%04d-%02d-%02d %02d:%02d:%02d".format(
+                                Locale.ROOT,
+                                dateTime.year,
+                                dateTime.monthValue,
+                                dateTime.dayOfMonth,
+                                dateTime.hour,
+                                dateTime.minute,
+                                dateTime.second,
+                            ),
+                    )
+                }
+
+            "chart.fetal_origin",
+            "chart.fetal_breath",
+            "chart.own_sign",
+            "chart.body_sign",
             "professional.flow_year",
             "professional.flow_month",
             "professional.flow_day",
@@ -1016,7 +1048,14 @@ class ScreenshotImportViewModel(
         -> "时间必须使用 YYYY-MM-DD HH:MM:SS 格式并且是真实时间。"
         "birth.latitude" -> "纬度必须是 -90 到 90 之间的数字。"
         "birth.longitude" -> "经度必须是 -180 到 180 之间的数字。"
+        "birth.previous_jie",
+        "birth.next_jie",
+        -> "节气必须填写“名称 YYYY-MM-DD HH:MM:SS”，例如：立秋 1992-08-07 14:27:24。"
         "chart.four_pillars" -> "四柱必须按“年柱 月柱 日柱 时柱”填写，例如：壬申 戊申 壬申 丙午。"
+        "chart.fetal_origin",
+        "chart.fetal_breath",
+        "chart.own_sign",
+        "chart.body_sign",
         "professional.flow_year",
         "professional.flow_month",
         "professional.flow_day",
@@ -1041,7 +1080,7 @@ class ScreenshotImportViewModel(
     }
 
     private companion object {
-        const val PARSER_VERSION = "wenzhen-p0-v5"
+        const val PARSER_VERSION = "wenzhen-p0-v6"
         val REQUIRED_COMMIT_FIELD_KEYS = listOf(
             "identity.alias",
             "identity.sex",
@@ -1050,6 +1089,10 @@ class ScreenshotImportViewModel(
         )
         val FOUR_PILLAR_PATTERN = Regex(
             "[甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥]",
+        )
+        val BASIC_JIE_VALUE_PATTERN = Regex(
+            "(立春|惊蛰|清明|立夏|芒种|小暑|立秋|白露|寒露|立冬|大雪|小寒)" +
+                "\\s+(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})",
         )
         val EVENT_FIELD_PATTERN = Regex(
             "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",

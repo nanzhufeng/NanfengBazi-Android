@@ -486,7 +486,7 @@ class ScreenshotShareFlowTest {
         }
         assertTrue(professionalFields.values.all { it.adoptedValue == null })
         assertTrue(
-            professionalFields.values.all { it.parserRuleId == "wenzhen-p0-parser-v5" },
+            professionalFields.values.all { it.parserRuleId == "wenzhen-p0-parser-v6" },
         )
     }
 

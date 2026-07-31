@@ -147,3 +147,4 @@
 | 流月/流日/流时 | `ProfessionalFortuneResolver.locate()` | 流月只在十二节切换；流日明确服从快照中的子时规则；观察时刻按民用时直接计算，不冒充已完成观察地点真太阳时校正 |
 | 子时口径 | `LunarHour.resolveEightChar()` | 默认与晚子时两种 provider 按调用显式选择，不读取或改写 Tyme4j 全局 `LunarHour.provider` |
 | 页面消费 | `StageTwoViewModel` → 岁运标签 | 观察日期、时分进入 `SavedStateHandle`；页面显示四层流柱、前后节气、档案/规则版本并支持复制诊断，只消费已采用快照 |
+| 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |

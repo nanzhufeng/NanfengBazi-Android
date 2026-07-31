@@ -301,6 +301,16 @@ class ScreenshotImportCommitterTest {
                 "chart.year.void" to TypedFieldValue.Text("戌亥"),
                 "chart.hour.nayin" to TypedFieldValue.Text("错误纳音"),
                 "chart.year.spirits" to TypedFieldValue.Text("太极贵人"),
+                "chart.fetal_origin" to TypedFieldValue.Text("甲子"),
+                "chart.fetal_breath" to TypedFieldValue.Text("甲子"),
+                "chart.own_sign" to TypedFieldValue.Text("甲子"),
+                "chart.body_sign" to TypedFieldValue.Text("甲子"),
+                "birth.previous_jie" to TypedFieldValue.Text(
+                    "立秋 1992-08-07 14:27:24",
+                ),
+                "birth.next_jie" to TypedFieldValue.Text(
+                    "白露 1992-09-07 17:18:20",
+                ),
             ),
         )
 
@@ -334,6 +344,28 @@ class ScreenshotImportCommitterTest {
         assertEquals(0f, evidenceByKey["chart.hour.nayin"]?.consistencyConfidence)
         assertEquals(null, evidenceByKey["chart.year.spirits"]?.calculatedValue)
         assertEquals(null, evidenceByKey["chart.year.spirits"]?.consistencyConfidence)
+        val storedCalculation = fixture.caseRepository.cases.values.single()
+            .calculationSnapshots
+            .single { it.adopted }
+            .result
+        assertEquals(
+            TypedFieldValue.Text(storedCalculation.fetalOrigin),
+            evidenceByKey["chart.fetal_origin"]?.calculatedValue,
+        )
+        assertEquals(
+            TypedFieldValue.Text(storedCalculation.fetalBreath),
+            evidenceByKey["chart.fetal_breath"]?.calculatedValue,
+        )
+        assertEquals(
+            TypedFieldValue.Text(storedCalculation.ownSign),
+            evidenceByKey["chart.own_sign"]?.calculatedValue,
+        )
+        assertEquals(
+            TypedFieldValue.Text(storedCalculation.bodySign),
+            evidenceByKey["chart.body_sign"]?.calculatedValue,
+        )
+        assertTrue(evidenceByKey["birth.previous_jie"]?.calculatedValue != null)
+        assertTrue(evidenceByKey["birth.next_jie"]?.calculatedValue != null)
     }
 
     private suspend fun fixture(

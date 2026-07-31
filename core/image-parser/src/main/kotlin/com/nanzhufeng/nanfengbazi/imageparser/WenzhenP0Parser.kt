@@ -14,6 +14,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import java.security.MessageDigest
 import java.time.LocalDateTime
+import java.util.Locale
 
 data class WenzhenP0ParseResult(
     val fields: List<CaseFieldEvidence>,
@@ -446,6 +447,63 @@ class WenzhenP0Parser(
                     parserConfidence = 0.9f,
                 ),
             )
+        }
+        BASIC_INFO_GANZHI_FIELDS.forEach { definition ->
+            document.firstMatch(definition.pattern)?.let { match ->
+                add(
+                    field(
+                        image = image,
+                        document = document,
+                        rowKey = "basic-info",
+                        fieldKey = definition.fieldKey,
+                        rawText = match.block.text,
+                        value = TypedFieldValue.Text(match.value),
+                        confidence = match.block.confidence,
+                        boundingBox = match.block.boundingBox,
+                        parserConfidence = 0.92f,
+                    ),
+                )
+            }
+        }
+        val birthAt = document.firstDateTimeMatch(SOLAR_DATETIME_PATTERN)
+            ?.value
+            ?.toLocalDateTime()
+        if (birthAt != null) {
+            val terms = document.solarTermMatches()
+            terms.filter { it.at <= birthAt }
+                .maxByOrNull(SolarTermBlockMatch::at)
+                ?.let { term ->
+                    add(
+                        field(
+                            image = image,
+                            document = document,
+                            rowKey = "basic-info",
+                            fieldKey = FIELD_PREVIOUS_JIE,
+                            rawText = term.rawText,
+                            value = TypedFieldValue.Text(term.canonicalValue),
+                            confidence = term.block.confidence,
+                            boundingBox = term.block.boundingBox,
+                            parserConfidence = 0.94f,
+                        ),
+                    )
+                }
+            terms.filter { it.at > birthAt }
+                .minByOrNull(SolarTermBlockMatch::at)
+                ?.let { term ->
+                    add(
+                        field(
+                            image = image,
+                            document = document,
+                            rowKey = "basic-info",
+                            fieldKey = FIELD_NEXT_JIE,
+                            rawText = term.rawText,
+                            value = TypedFieldValue.Text(term.canonicalValue),
+                            confidence = term.block.confidence,
+                            boundingBox = term.block.boundingBox,
+                            parserConfidence = 0.94f,
+                        ),
+                    )
+                }
         }
     }
 
@@ -959,6 +1017,28 @@ class WenzhenP0Parser(
             )
         }
 
+    private fun OcrDocument.solarTermMatches(): List<SolarTermBlockMatch> =
+        blocks.flatMap { block ->
+            SOLAR_TERM_DATETIME_PATTERN.findAll(block.text).mapNotNull { match ->
+                val at = runCatching {
+                    LocalDateTime.of(
+                        match.groupValues[2].toInt(),
+                        match.groupValues[3].toInt(),
+                        match.groupValues[4].toInt(),
+                        match.groupValues[5].toInt(),
+                        match.groupValues[6].toInt(),
+                        match.groupValues[7].ifBlank { "0" }.toInt(),
+                    )
+                }.getOrNull() ?: return@mapNotNull null
+                SolarTermBlockMatch(
+                    block = block,
+                    rawText = match.value,
+                    name = match.groupValues[1],
+                    at = at,
+                )
+            }.toList()
+        }
+
     private fun extractCompactFourPillars(blocks: List<OcrTextBlock>): String? {
         val stems = blocks.firstNotNullOfOrNull { block ->
             STEM_SEQUENCE.find(block.text)?.groupValues?.drop(1)
@@ -1064,6 +1144,21 @@ class WenzhenP0Parser(
         val longitude: Double,
     )
 
+    private data class SolarTermBlockMatch(
+        val block: OcrTextBlock,
+        val rawText: String,
+        val name: String,
+        val at: LocalDateTime,
+    ) {
+        val canonicalValue: String
+            get() = "$name ${at.format(BASIC_INFO_DATE_TIME_FORMATTER)}"
+    }
+
+    private data class BasicInfoGanzhiFieldDefinition(
+        val fieldKey: String,
+        val pattern: Regex,
+    )
+
     private data class FeedbackEventAnchor(
         val blockIndex: Int,
         val year: Int,
@@ -1109,7 +1204,7 @@ class WenzhenP0Parser(
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
         private const val PROFESSIONAL_HEADER_ROW_TOLERANCE_PX = 48
         private const val PROFESSIONAL_PILLAR_SCAN_HEADER_HEIGHT_MULTIPLIER = 8
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v5"
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v6"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -1122,6 +1217,12 @@ class WenzhenP0Parser(
         const val FIELD_LONGITUDE = "birth.longitude"
         const val FIELD_CONSTELLATION = "identity.constellation"
         const val FIELD_ZODIAC = "identity.zodiac"
+        const val FIELD_PREVIOUS_JIE = "birth.previous_jie"
+        const val FIELD_NEXT_JIE = "birth.next_jie"
+        const val FIELD_FETAL_ORIGIN = "chart.fetal_origin"
+        const val FIELD_FETAL_BREATH = "chart.fetal_breath"
+        const val FIELD_OWN_SIGN = "chart.own_sign"
+        const val FIELD_BODY_SIGN = "chart.body_sign"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
         const val FIELD_PROFESSIONAL_OBSERVED_AT = "professional.observed_at"
         const val FIELD_EVENT_PREFIX = "event.candidate."
@@ -1232,6 +1333,31 @@ class WenzhenP0Parser(
         val ZODIAC_PATTERN = Regex(
             "(?:属相|屬相|生肖)\\s*[:：]\\s*([^\\s（(]{1,8})",
         )
+        val BASIC_INFO_GANZHI_FIELDS = listOf(
+            BasicInfoGanzhiFieldDefinition(
+                FIELD_FETAL_ORIGIN,
+                Regex("(?:胎元)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
+            ),
+            BasicInfoGanzhiFieldDefinition(
+                FIELD_FETAL_BREATH,
+                Regex("(?:胎息)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
+            ),
+            BasicInfoGanzhiFieldDefinition(
+                FIELD_OWN_SIGN,
+                Regex("(?:命宫|命宮)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
+            ),
+            BasicInfoGanzhiFieldDefinition(
+                FIELD_BODY_SIGN,
+                Regex("(?:身宫|身宮)\\s*[:：]?\\s*([$STEMS][$BRANCHES])"),
+            ),
+        )
+        val SOLAR_TERM_DATETIME_PATTERN = Regex(
+            "(立春|惊蛰|清明|立夏|芒种|小暑|立秋|白露|寒露|立冬|大雪|小寒)" +
+                "\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-](\\d{1,2})日?" +
+                "\\s*(\\d{1,2})[:：](\\d{1,2})(?:[:：](\\d{1,2}))?",
+        )
+        val BASIC_INFO_DATE_TIME_FORMATTER =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
         val EVENT_HEADING_PATTERN = Regex(
             "^\\s*((?:19|20)\\d{2})\\s*年\\s*" +
                 "([甲乙丙丁戊己庚辛壬癸][子丑寅卯辰巳午未申酉戌亥])?(?=\\s|$)",
@@ -1244,3 +1370,12 @@ class WenzhenP0Parser(
         )
     }
 }
+
+private fun CivilDateTime.toLocalDateTime(): LocalDateTime = LocalDateTime.of(
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+)

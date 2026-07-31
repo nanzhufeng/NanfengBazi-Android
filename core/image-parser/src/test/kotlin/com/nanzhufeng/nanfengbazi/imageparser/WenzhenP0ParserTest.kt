@@ -124,6 +124,10 @@ class WenzhenP0ParserTest {
                 block("coordinates", "地址经纬：北纬33.72 东经118.68", 24, 330, 560, 370),
                 block("identity-tags", "星座：处女座(Virgo) 属相：猴", 24, 380, 560, 420),
                 block("pillars", "壬申 戊申 壬申 丙午", 24, 430, 560, 470),
+                block("previous-jie", "立秋：1992-08-07 14:27:24", 24, 480, 560, 520),
+                block("next-jie", "白露：1992-09-07 17:18:20", 24, 530, 560, 570),
+                block("fetal", "胎元：己亥（平地木） 胎息：丙寅（炉中火）", 24, 580, 680, 620),
+                block("palaces", "命宫：壬寅（金箔金） 身宫：癸卯（金箔金）", 24, 630, 680, 670),
             ),
         )
 
@@ -148,7 +152,13 @@ class WenzhenP0ParserTest {
                 "birth.location",
                 "birth.latitude",
                 "birth.longitude",
+                "birth.previous_jie",
+                "birth.next_jie",
                 "chart.four_pillars",
+                "chart.fetal_origin",
+                "chart.fetal_breath",
+                "chart.own_sign",
+                "chart.body_sign",
             ),
             fieldsByKey.keys,
         )
@@ -176,6 +186,26 @@ class WenzhenP0ParserTest {
             "118.68",
             (fieldsByKey.getValue("birth.longitude").normalizedValue as
                 TypedFieldValue.DecimalNumber).canonicalValue,
+        )
+        assertEquals(
+            "立秋 1992-08-07 14:27:24",
+            (fieldsByKey.getValue("birth.previous_jie").normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "白露 1992-09-07 17:18:20",
+            (fieldsByKey.getValue("birth.next_jie").normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "己亥",
+            (fieldsByKey.getValue("chart.fetal_origin").normalizedValue as
+                TypedFieldValue.Text).value,
+        )
+        assertEquals(
+            "癸卯",
+            (fieldsByKey.getValue("chart.body_sign").normalizedValue as
+                TypedFieldValue.Text).value,
         )
         assertTrue(result.fields.all { it.boundingBox != null && it.adoptedValue == null })
         assertEquals(result.fields.map { it.id }.toSet(), result.candidates.single().fieldEvidenceIds.toSet())
