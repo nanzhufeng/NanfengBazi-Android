@@ -1,5 +1,7 @@
 package com.nanzhufeng.nanfengbazi.imageparser
 
+import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.EvidenceBoundingBox
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
@@ -279,6 +281,201 @@ class WenzhenP0ParserTest {
             result.candidates.single().fieldEvidenceIds.containsAll(
                 chartFields.map { it.id },
             ),
+        )
+    }
+
+    @Test
+    fun `专业细盘按九列提取干支和观察时刻且默认只作为来源证据`() {
+        val image = image("professional-chart", WenzhenPageType.PROFESSIONAL_CHART)
+        val labels = listOf(
+            "流时",
+            "流日",
+            "流月",
+            "流年",
+            "大运",
+            "年柱",
+            "月柱",
+            "日柱",
+            "时柱",
+        )
+        val pillars = listOf(
+            "丙子",
+            "乙未",
+            "乙未",
+            "丙午",
+            "辛亥",
+            "壬申",
+            "戊申",
+            "壬申",
+            "丙午",
+        )
+        val blocks = buildList {
+            labels.forEachIndexed { index, label ->
+                val left = 20 + index * 80
+                add(block("header-$index", label, left, 80, left + 58, 112))
+                add(block("star-$index", "偏财", left, 125, left + 58, 153))
+                add(block("stem-$index", pillars[index].take(1), left, 165, left + 58, 195))
+                add(block("branch-$index", pillars[index].takeLast(1), left, 205, left + 58, 235))
+            }
+            add(
+                block(
+                    "observed",
+                    "已选日期：2026年7月30日 星期四 子时",
+                    20,
+                    520,
+                    600,
+                    560,
+                ),
+            )
+        }
+        val document = document(image.id, blocks)
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        val professional = result.fields.filter { it.fieldKey.startsWith("professional.") }
+        assertEquals(10, professional.size)
+        assertEquals(
+            CivilDateTime(2026, 7, 30, 23, 0, 0),
+            (professional.single {
+                it.fieldKey == "professional.observed_at"
+            }.normalizedValue as TypedFieldValue.DateTimeValue).value,
+        )
+        listOf(
+            "flow_hour",
+            "flow_day",
+            "flow_month",
+            "flow_year",
+            "decade",
+            "natal_year",
+            "natal_month",
+            "natal_day",
+            "natal_hour",
+        ).forEachIndexed { index, key ->
+            assertEquals(
+                pillars[index],
+                (professional.single {
+                    it.fieldKey == "professional.$key"
+                }.normalizedValue as TypedFieldValue.Text).value,
+            )
+        }
+        assertTrue(professional.all { it.adoptedValue == null && it.boundingBox != null })
+        assertTrue(
+            result.candidates.single().fieldEvidenceIds.containsAll(
+                professional.map(CaseFieldEvidence::id),
+            ),
+        )
+    }
+
+    @Test
+    fun `专业细盘九列表头不完整时不推断错位干支`() {
+        val image = image("incomplete-professional-chart", WenzhenPageType.PROFESSIONAL_CHART)
+        val document = document(
+            imageId = image.id,
+            blocks = listOf(
+                block("flow-hour", "流时", 20, 80, 78, 112),
+                block("flow-day", "流日", 100, 80, 158, 112),
+                block("flow-year", "流年", 260, 80, 318, 112),
+                block("stem", "丙", 20, 165, 78, 195),
+                block("branch", "子", 20, 205, 78, 235),
+                block(
+                    "observed",
+                    "已选日期：2026年7月30日 23:00",
+                    20,
+                    325,
+                    520,
+                    360,
+                ),
+            ),
+        )
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        val professional = result.fields.filter { it.fieldKey.startsWith("professional.") }
+        assertEquals(listOf("professional.observed_at"), professional.map { it.fieldKey })
+        assertEquals(
+            CivilDateTime(2026, 7, 30, 23, 0, 0),
+            (professional.single().normalizedValue as TypedFieldValue.DateTimeValue).value,
+        )
+    }
+
+    @Test
+    fun `专业细盘表头被OCR合并为一行时仍按空间拆回九列`() {
+        val image = image("merged-professional-chart", WenzhenPageType.PROFESSIONAL_CHART)
+        val labels = "流时流日流月流年大运年柱月柱日杜时柱"
+        val pillars = listOf("丙子", "乙未", "乙未", "丙午", "辛亥", "壬申", "戊申", "壬申", "丙午")
+        val blocks = buildList {
+            add(block("merged-headers", labels, 20, 80, 920, 120))
+            add(
+                block(
+                    "merged-stems",
+                    pillars.joinToString("") { it.take(1) },
+                    20,
+                    165,
+                    920,
+                    195,
+                ),
+            )
+            add(
+                block(
+                    "merged-branches",
+                    pillars.joinToString("") { it.takeLast(1) },
+                    20,
+                    205,
+                    920,
+                    235,
+                ),
+            )
+            add(
+                block(
+                    "observed-ocr-confusion",
+                    "已迷日期：2026年7月30日 23:00",
+                    20,
+                    300,
+                    520,
+                    340,
+                ),
+            )
+        }
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document(image.id, blocks)),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        val professional = result.fields.filter { it.fieldKey.startsWith("professional.") }
+        assertEquals(10, professional.size)
+        assertEquals(
+            CivilDateTime(2026, 7, 30, 23, 0, 0),
+            (professional.single {
+                it.fieldKey == "professional.observed_at"
+            }.normalizedValue as TypedFieldValue.DateTimeValue).value,
+        )
+        assertEquals(
+            pillars,
+            listOf(
+                "flow_hour",
+                "flow_day",
+                "flow_month",
+                "flow_year",
+                "decade",
+                "natal_year",
+                "natal_month",
+                "natal_day",
+                "natal_hour",
+            ).map { key ->
+                (professional.single {
+                    it.fieldKey == "professional.$key"
+                }.normalizedValue as TypedFieldValue.Text).value
+            },
         )
     }
 

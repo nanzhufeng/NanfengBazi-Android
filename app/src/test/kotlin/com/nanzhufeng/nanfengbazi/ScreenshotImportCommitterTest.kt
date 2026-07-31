@@ -9,6 +9,10 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.FortunePosition
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -23,6 +27,9 @@ import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.canTransitionTo
@@ -213,12 +220,77 @@ class ScreenshotImportCommitterTest {
         assertTrue(events.all { it.normalizedText.value != null })
     }
 
+    @Test
+    fun `专业细盘提交后保存本机复算值并逐字段标记一致性`() = runTest {
+        val observedAt = CivilDateTime(2026, 7, 30, 23, 0, 0)
+        val fixture = fixture(
+            pillars = FourPillars("壬申", "戊申", "壬申", "丙午"),
+            adoptAll = true,
+            extraFields = listOf(
+                "professional.observed_at" to TypedFieldValue.DateTimeValue(observedAt),
+                "professional.flow_year" to TypedFieldValue.Text("丙午"),
+                "professional.flow_month" to TypedFieldValue.Text("乙未"),
+                "professional.flow_day" to TypedFieldValue.Text("甲午"),
+                "professional.flow_hour" to TypedFieldValue.Text("丙子"),
+                "professional.decade" to TypedFieldValue.Text("辛亥"),
+                "professional.natal_year" to TypedFieldValue.Text("壬申"),
+                "professional.natal_month" to TypedFieldValue.Text("戊申"),
+                "professional.natal_day" to TypedFieldValue.Text("壬申"),
+                "professional.natal_hour" to TypedFieldValue.Text("丙午"),
+            ),
+            professionalFortuneResolver = ProfessionalFortuneResolver { result, time ->
+                ProfessionalFortunePosition(
+                    position = FortunePosition(
+                        observedAt = time,
+                        annualFortune = result.annualFortunes.first(),
+                        decadeFortune = result.decadeFortunes.first().copy(name = "辛亥"),
+                        status = FortunePositionStatus.WITHIN_DECADE,
+                    ),
+                    flowPillars = FourPillars("丙午", "乙未", "乙未", "丙子"),
+                    previousSolarTerm = SolarTermPoint(
+                        name = "小暑",
+                        type = SolarTermType.JIE,
+                        at = CivilDateTime(2026, 7, 7, 0, 0, 0),
+                    ),
+                    nextSolarTerm = SolarTermPoint(
+                        name = "立秋",
+                        type = SolarTermType.JIE,
+                        at = CivilDateTime(2026, 8, 7, 0, 0, 0),
+                    ),
+                    observationTimeMode = SolarTimeMode.CIVIL_TIME,
+                    profileId = result.profile.id,
+                    ruleVersion = result.profile.ruleVersion,
+                )
+            },
+        )
+
+        val result = fixture.committer.commitCandidate("session-1", "candidate-1")
+
+        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        val evidenceByKey = fixture.caseRepository.cases.values.single()
+            .fieldEvidence
+            .associateBy(CaseFieldEvidence::fieldKey)
+        val matching = requireNotNull(evidenceByKey["professional.flow_year"])
+        assertEquals(TypedFieldValue.Text("丙午"), matching.calculatedValue)
+        assertEquals(1f, matching.consistencyConfidence)
+        val mismatching = requireNotNull(evidenceByKey["professional.flow_day"])
+        assertEquals(TypedFieldValue.Text("乙未"), mismatching.calculatedValue)
+        assertEquals(TypedFieldValue.Text("甲午"), mismatching.normalizedValue)
+        assertEquals(0f, mismatching.consistencyConfidence)
+        assertEquals(
+            TypedFieldValue.Text("壬申"),
+            evidenceByKey["professional.natal_day"]?.calculatedValue,
+        )
+        assertEquals(null, evidenceByKey["professional.observed_at"]?.calculatedValue)
+    }
+
     private suspend fun fixture(
         pillars: FourPillars,
         adoptAll: Boolean,
         folderSuffix: String = "",
         extraFields: List<Pair<String, TypedFieldValue>> = emptyList(),
         unadoptedExtraKeys: Set<String> = emptySet(),
+        professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     ): Fixture {
         val now = Instant.parse("2026-01-01T00:00:00Z")
         val importRoot =
@@ -311,6 +383,7 @@ class ScreenshotImportCommitterTest {
                 importImageStore = imageStore,
                 attachmentRoot = attachmentRoot,
                 clock = Clock.fixed(now, ZoneOffset.UTC),
+                professionalFortuneResolver = professionalFortuneResolver,
             ),
             importRepository = importRepository,
             caseRepository = caseRepository,

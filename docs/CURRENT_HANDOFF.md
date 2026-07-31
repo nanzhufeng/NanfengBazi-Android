@@ -301,6 +301,14 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha53 API 35 的普通/真太阳时专业岁运、晚子时保存快照与诊断复制专项均通过；
     完整 `StageTwoFlowTest` 与 `StageTwoSavedStateTest` 共 12/12 通过，并修复搜索、
     转场、农历语义点击及恢复筛选的测试竞态；
+  - alpha54 接入问真 P2 专业细盘：同一表头行完整时提取观察时刻及流时、流日、流月、
+    流年、大运和原局四柱，缺列不猜测；支持 ML Kit 合并表头/干支块按原框空间拆分，
+    并归一化设备已观测的“专业細盘、日杜、已迷日期”等错字；
+  - alpha54 正式提交后按观察时刻复算四层流柱和当前大运，将来源规范值、本机计算值、
+    采用值与逐字段一致性分开持久化；观察时刻人工修正保持强类型时间，九列人工修正
+    只能保存有效干支；
+  - alpha54 API 35 `ScreenshotShareFlowTest` 3/3 通过，其中合成专业细盘经系统分享、
+    私有复制、真实 bundled ML Kit、分类和十字段解析完整通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -308,17 +316,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha53-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha54-debug.apk`
 
-- 大小：55,778,371 bytes
-- SHA-256：`83628bacdacff79e6898c9b9f8540b3506d2dc8bcfdc858f1918235d7b25869b`
+- 大小：55,794,755 bytes
+- SHA-256：`25c41d7aa9186428a9c4247d92bbdfe12dbb68f9c217ca1f590bd0d36b7e8ec2`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha53-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha54-release-unsigned.apk`
 
 - 大小：52,039,810 bytes
-- SHA-256：`e94cf30129a1973b04ecd3f3db8f9b1da1f0ac5be2a51707a3a9835da810e4b5`
+- SHA-256：`b423052c99b9098714e190ad0c5e82962e745bd605f2599f19f2162531dc8465`
 
 ## 当前限制与风险
 
@@ -331,6 +339,8 @@ Debug 验收构建：
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
   及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
   反馈年份事件候选、P1 基本排盘分柱证据和逐命例候选问题摘要也已接入核对链路；
+  P2 专业细盘的观察时刻、九列干支、合并 OCR 块空间拆分及提交后来源值/本机值自动
+  对照已实现；
   大批次前台任务模式已按数量/字节/像素门槛接通，基本资料非核心衍生字段尚未实现。
   Android 13+ 的 8 图以上路径已补上下文授权说明和拒绝后继续提示；少于 8 图但因
   总字节/像素触发前台模式时不会预先请求通知权限，拒绝或未授权时任务仍执行，但自定义
@@ -348,7 +358,7 @@ Debug 验收构建：
 
 继续 Stage 7，优先顺序：
 
-1. 推进问真 P2 专业细盘截图证据和来源值/本地计算值自动对照；
+1. 补齐 P1 基本排盘来源值/本地计算值自动对照及基本资料非核心衍生字段；
 2. 补齐通用可复制诊断、计算档案升级差异和剩余节气/生肖边界门禁；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 

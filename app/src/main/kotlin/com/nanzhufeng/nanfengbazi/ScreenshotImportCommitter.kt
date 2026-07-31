@@ -7,6 +7,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
@@ -67,6 +68,7 @@ class ScreenshotImportCommitter(
     private val importImageStore: PrivateImportImageStore,
     private val attachmentRoot: Path,
     private val clock: Clock = Clock.systemUTC(),
+    private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
 ) {
     suspend fun commitCandidate(
         sessionId: String,
@@ -270,6 +272,7 @@ class ScreenshotImportCommitter(
                 "来源四柱与本机复算不一致，已阻止写入；请人工补充时间或修正 OCR。",
             )
         }
+        val comparedFields = fields.withProfessionalComparisons(calculation)
         val normalizedBirthInput = calculation.normalizedInput
         val now = clock.instant()
         val snapshotId = "$caseId-snapshot"
@@ -328,7 +331,7 @@ class ScreenshotImportCommitter(
                 ),
             ),
             attachments = attachments,
-            fieldEvidence = fields,
+            fieldEvidence = comparedFields,
             createdAt = now,
             updatedAt = now,
         )
@@ -336,6 +339,49 @@ class ScreenshotImportCommitter(
             case = case,
             imagesById = session.images.associateBy { it.id },
         )
+    }
+
+    private fun List<CaseFieldEvidence>.withProfessionalComparisons(
+        calculation: com.nanzhufeng.nanfengbazi.domain.model.CalculationResult,
+    ): List<CaseFieldEvidence> {
+        val resolver = professionalFortuneResolver ?: return this
+        val observedAt = singleOrNull {
+            it.fieldKey == FIELD_PROFESSIONAL_OBSERVED_AT
+        }?.normalizedValue
+            ?.let { it as? TypedFieldValue.DateTimeValue }
+            ?.value
+            ?: return this
+        val professional = runCatching {
+            resolver.locate(calculation, observedAt)
+        }.getOrNull() ?: return this
+        val calculatedByKey = mapOf(
+            FIELD_PROFESSIONAL_FLOW_YEAR to
+                TypedFieldValue.Text(professional.flowPillars.year),
+            FIELD_PROFESSIONAL_FLOW_MONTH to
+                TypedFieldValue.Text(professional.flowPillars.month),
+            FIELD_PROFESSIONAL_FLOW_DAY to
+                TypedFieldValue.Text(professional.flowPillars.day),
+            FIELD_PROFESSIONAL_FLOW_HOUR to
+                TypedFieldValue.Text(professional.flowPillars.hour),
+            FIELD_PROFESSIONAL_DECADE to professional.position.decadeFortune
+                ?.name
+                ?.let(TypedFieldValue::Text),
+            FIELD_PROFESSIONAL_NATAL_YEAR to
+                TypedFieldValue.Text(calculation.fourPillars.year),
+            FIELD_PROFESSIONAL_NATAL_MONTH to
+                TypedFieldValue.Text(calculation.fourPillars.month),
+            FIELD_PROFESSIONAL_NATAL_DAY to
+                TypedFieldValue.Text(calculation.fourPillars.day),
+            FIELD_PROFESSIONAL_NATAL_HOUR to
+                TypedFieldValue.Text(calculation.fourPillars.hour),
+        )
+        return map { field ->
+            val calculated = calculatedByKey[field.fieldKey] ?: return@map field
+            field.copy(
+                calculatedValue = calculated,
+                consistencyConfidence = if (field.normalizedValue == calculated) 1f else 0f,
+            )
+        }
     }
 
     private suspend fun copyAttachments(
@@ -595,6 +641,16 @@ class ScreenshotImportCommitter(
         const val FIELD_LATITUDE = "birth.latitude"
         const val FIELD_LONGITUDE = "birth.longitude"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
+        const val FIELD_PROFESSIONAL_OBSERVED_AT = "professional.observed_at"
+        const val FIELD_PROFESSIONAL_FLOW_YEAR = "professional.flow_year"
+        const val FIELD_PROFESSIONAL_FLOW_MONTH = "professional.flow_month"
+        const val FIELD_PROFESSIONAL_FLOW_DAY = "professional.flow_day"
+        const val FIELD_PROFESSIONAL_FLOW_HOUR = "professional.flow_hour"
+        const val FIELD_PROFESSIONAL_DECADE = "professional.decade"
+        const val FIELD_PROFESSIONAL_NATAL_YEAR = "professional.natal_year"
+        const val FIELD_PROFESSIONAL_NATAL_MONTH = "professional.natal_month"
+        const val FIELD_PROFESSIONAL_NATAL_DAY = "professional.natal_day"
+        const val FIELD_PROFESSIONAL_NATAL_HOUR = "professional.natal_hour"
         const val FIELD_EVENT_PREFIX = "event.candidate."
         const val TIME_ZONE_EVIDENCE_VERSION = "Asia-Shanghai-fixed-UTC+08-import-v1"
         val HOUR_BY_BRANCH = mapOf(

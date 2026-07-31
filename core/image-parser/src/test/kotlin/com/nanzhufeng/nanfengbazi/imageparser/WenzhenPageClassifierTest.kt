@@ -43,6 +43,15 @@ class WenzhenPageClassifierTest {
         assertTrue(result.matchedAnchors.contains("用户列表"))
     }
 
+    @Test
+    fun `专业细盘标题被识别为繁体细时仍可分类`() {
+        val result = classifier.classify(
+            document("問真八字 專業細盘 大運 流年 流月 流日 流時"),
+        )
+        assertEquals(WenzhenPageType.PROFESSIONAL_CHART, result.pageType)
+        assertTrue(result.matchedAnchors.contains("专业细盘"))
+    }
+
     private fun document(text: String): OcrDocument = OcrDocument(
         imageId = "image-1",
         rawText = text,

@@ -38,7 +38,9 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import androidx.lifecycle.ViewModelProvider
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ImportStatus
+import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
@@ -58,6 +60,21 @@ class ScreenshotShareFlowTest {
 
     @After
     fun tearDown() {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val container = (activity.application as NanfengBaziApplication).container
+            runBlocking {
+                container.importSessionRepository.list().forEach { session ->
+                    session.images.forEach { image ->
+                        java.nio.file.Files.deleteIfExists(
+                            activity.filesDir.toPath()
+                                .resolve("import-images")
+                                .resolve(image.relativePath),
+                        )
+                    }
+                    container.importSessionRepository.delete(session.id, session.revision)
+                }
+            }
+        }
         syntheticImageUris.forEach {
             ApplicationProvider.getApplicationContext<android.content.Context>()
                 .contentResolver
@@ -379,6 +396,100 @@ class ScreenshotShareFlowTest {
             .assertIsDisplayed()
     }
 
+    @Test
+    fun 系统分享合成专业细盘后提取九列干支和观察时刻() {
+        val uri = createSyntheticWenzhenProfessionalChartImage()
+        syntheticImageUris += uri
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.consumeSharedImages(intent)
+        }
+        composeRule.waitUntil(timeoutMillis = 90_000) {
+            var recognized = false
+            composeRule.activityRule.scenario.onActivity { activity ->
+                val container = (activity.application as NanfengBaziApplication).container
+                runBlocking {
+                    recognized = container.importSessionRepository
+                        .list()
+                        .singleOrNull {
+                            it.images.singleOrNull()?.originalFileName ==
+                                "synthetic-wenzhen-professional.png"
+                        }
+                        ?.status == ImportStatus.NEEDS_REVIEW
+                }
+            }
+            recognized
+        }
+
+        var pageType: WenzhenPageType? = null
+        var ocrText = ""
+        var professionalFields = emptyMap<String, CaseFieldEvidenceSnapshot>()
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val container = (activity.application as NanfengBaziApplication).container
+            runBlocking {
+                val session = container.importSessionRepository
+                    .list()
+                    .single {
+                        it.images.singleOrNull()?.originalFileName ==
+                            "synthetic-wenzhen-professional.png"
+                    }
+                pageType = session.images.single().pageType
+                ocrText = session.ocrDocuments.single().rawText
+                professionalFields = session.extractedFields
+                    .filter { it.fieldKey.startsWith("professional.") }
+                    .associate { field ->
+                        field.fieldKey to CaseFieldEvidenceSnapshot(
+                            normalizedValue = field.normalizedValue,
+                            adoptedValue = field.adoptedValue,
+                            parserRuleId = field.parserRuleId,
+                        )
+                    }
+                val image = session.images.single()
+                java.nio.file.Files.deleteIfExists(
+                    activity.filesDir.toPath()
+                        .resolve("import-images")
+                        .resolve(image.relativePath),
+                )
+                container.importSessionRepository.delete(session.id, session.revision)
+            }
+        }
+        assertEquals("OCR=$ocrText", WenzhenPageType.PROFESSIONAL_CHART, pageType)
+        assertEquals("OCR=$ocrText", 10, professionalFields.size)
+        assertEquals(
+            TypedFieldValue.DateTimeValue(
+                CivilDateTime(2026, 7, 30, 23, 0, 0),
+            ),
+            professionalFields["professional.observed_at"]?.normalizedValue,
+        )
+        val expectedPillars = mapOf(
+            "professional.flow_hour" to "甲子",
+            "professional.flow_day" to "甲子",
+            "professional.flow_month" to "甲子",
+            "professional.flow_year" to "甲子",
+            "professional.decade" to "甲子",
+            "professional.natal_year" to "甲子",
+            "professional.natal_month" to "甲子",
+            "professional.natal_day" to "甲子",
+            "professional.natal_hour" to "甲子",
+        )
+        expectedPillars.forEach { (key, value) ->
+            assertEquals(
+                "OCR=$ocrText",
+                TypedFieldValue.Text(value),
+                professionalFields[key]?.normalizedValue,
+            )
+        }
+        assertTrue(professionalFields.values.all { it.adoptedValue == null })
+        assertTrue(
+            professionalFields.values.all { it.parserRuleId == "wenzhen-p0-parser-v5" },
+        )
+    }
+
     private fun createSyntheticWenzhenListImage(): Uri {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val values = ContentValues().apply {
@@ -420,4 +531,68 @@ class ScreenshotShareFlowTest {
         bitmap.recycle()
         return uri
     }
+
+    private fun createSyntheticWenzhenProfessionalChartImage(): Uri {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val values = ContentValues().apply {
+            put(
+                MediaStore.Images.Media.DISPLAY_NAME,
+                "synthetic-wenzhen-professional.png",
+            )
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/NanfengBaziTests")
+        }
+        val uri = requireNotNull(
+            context.contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                values,
+            ),
+        )
+        val bitmap = Bitmap.createBitmap(2160, 1800, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        paint.textSize = 64f
+        canvas.drawText("问真八字", 60f, 110f, paint)
+        canvas.drawText("专业细盘", 60f, 230f, paint)
+        paint.textSize = 64f
+        canvas.drawText("大运 流年 流月 流日 流时", 60f, 350f, paint)
+        val labels = listOf(
+            "流时",
+            "流日",
+            "流月",
+            "流年",
+            "大运",
+            "年柱",
+            "月柱",
+            "日柱",
+            "时柱",
+        )
+        val pillars = List(labels.size) { "甲子" }
+        labels.forEachIndexed { index, label ->
+            val left = 30f + index * 230f
+            paint.textSize = 72f
+            canvas.drawText(label, left, 520f, paint)
+            paint.textSize = 88f
+            canvas.drawText(pillars[index], left + 10f, 780f, paint)
+        }
+        paint.textSize = 88f
+        canvas.drawText("已选日期：2026年7月30日 23:00", 60f, 1250f, paint)
+        requireNotNull(context.contentResolver.openOutputStream(uri, "w")).use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                "合成专业细盘测试图片写入失败"
+            }
+        }
+        bitmap.recycle()
+        return uri
+    }
+
+    private data class CaseFieldEvidenceSnapshot(
+        val normalizedValue: TypedFieldValue?,
+        val adoptedValue: TypedFieldValue?,
+        val parserRuleId: String,
+    )
 }

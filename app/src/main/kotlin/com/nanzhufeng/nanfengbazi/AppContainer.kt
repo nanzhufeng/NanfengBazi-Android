@@ -85,6 +85,8 @@ class DefaultAppContainer(
             baziEngine = baziEngine,
             importImageStore = importImageStore,
             attachmentRoot = backupAttachmentRoot,
+            professionalFortuneResolver =
+                com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
         )
 
     private companion object {

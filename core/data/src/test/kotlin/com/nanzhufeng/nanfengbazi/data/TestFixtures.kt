@@ -202,6 +202,7 @@ internal fun sampleCase(
                 fieldKey = "occupation",
                 rawText = "职业 测试职业",
                 normalizedValue = TypedFieldValue.Text("测试职业"),
+                calculatedValue = TypedFieldValue.Text("测试职业"),
                 adoptedValue = TypedFieldValue.Text("测试职业"),
                 ocrConfidence = 0.98f,
                 parserConfidence = 0.97f,

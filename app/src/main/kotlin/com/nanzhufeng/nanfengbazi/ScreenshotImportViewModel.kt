@@ -772,10 +772,12 @@ class ScreenshotImportViewModel(
                 label = field.fieldKey.displayLabel(),
                 sourceValue = field.rawText,
                 normalizedValue = field.normalizedValue?.displayValue(),
-                calculationValue = if (field.fieldKey == "chart.four_pillars") {
-                    "提交前按采用的出生资料复算"
-                } else {
-                    "不参与命盘计算"
+                calculationValue = field.calculatedValue?.displayValue() ?: when {
+                    field.fieldKey == "chart.four_pillars" ->
+                        "提交前按采用的出生资料复算"
+                    field.fieldKey.startsWith("professional.") ->
+                        "提交后按观察时刻自动复算；不会覆盖本地排盘"
+                    else -> "不参与命盘计算"
                 },
                 adoptedValue = field.adoptedValue?.displayValue(),
                 confidencePercent = listOfNotNull(
@@ -844,6 +846,16 @@ class ScreenshotImportViewModel(
         "birth.latitude" -> "纬度"
         "birth.longitude" -> "经度"
         "chart.four_pillars" -> "四柱"
+        "professional.observed_at" -> "专业细盘 · 观察时刻"
+        "professional.flow_year" -> "专业细盘 · 流年柱"
+        "professional.flow_month" -> "专业细盘 · 流月柱"
+        "professional.flow_day" -> "专业细盘 · 流日柱"
+        "professional.flow_hour" -> "专业细盘 · 流时柱"
+        "professional.decade" -> "专业细盘 · 当前大运"
+        "professional.natal_year" -> "专业细盘 · 年柱"
+        "professional.natal_month" -> "专业细盘 · 月柱"
+        "professional.natal_day" -> "专业细盘 · 日柱"
+        "professional.natal_hour" -> "专业细盘 · 时柱"
         else -> CHART_FIELD_PATTERN.matchEntire(this)
             ?.let { match ->
                 "${CHART_COLUMN_LABELS.getValue(match.groupValues[1])} · " +
@@ -895,6 +907,7 @@ class ScreenshotImportViewModel(
 
             "birth.solar_datetime",
             "birth.true_solar_datetime",
+            "professional.observed_at",
             -> runCatching { LocalDateTime.parse(value.replace(' ', 'T')) }
                 .getOrNull()
                 ?.let { dateTime ->
@@ -934,6 +947,19 @@ class ScreenshotImportViewModel(
                     )
                 }
 
+            "professional.flow_year",
+            "professional.flow_month",
+            "professional.flow_day",
+            "professional.flow_hour",
+            "professional.decade",
+            "professional.natal_year",
+            "professional.natal_month",
+            "professional.natal_day",
+            "professional.natal_hour",
+            -> value
+                .takeIf(FOUR_PILLAR_PATTERN::matches)
+                ?.let(TypedFieldValue::Text)
+
             else -> value.takeIf(String::isNotEmpty)?.let(TypedFieldValue::Text)
         }
     }
@@ -944,10 +970,21 @@ class ScreenshotImportViewModel(
         "birth.solar_date" -> "公历生日必须使用 YYYY-MM-DD 格式并且是真实日期。"
         "birth.solar_datetime",
         "birth.true_solar_datetime",
+        "professional.observed_at",
         -> "时间必须使用 YYYY-MM-DD HH:MM:SS 格式并且是真实时间。"
         "birth.latitude" -> "纬度必须是 -90 到 90 之间的数字。"
         "birth.longitude" -> "经度必须是 -180 到 180 之间的数字。"
         "chart.four_pillars" -> "四柱必须按“年柱 月柱 日柱 时柱”填写，例如：壬申 戊申 壬申 丙午。"
+        "professional.flow_year",
+        "professional.flow_month",
+        "professional.flow_day",
+        "professional.flow_hour",
+        "professional.decade",
+        "professional.natal_year",
+        "professional.natal_month",
+        "professional.natal_day",
+        "professional.natal_hour",
+        -> "干支必须填写一组有效天干地支，例如：丙午。"
         else -> "修正值不能为空。"
     }
 
@@ -962,7 +999,7 @@ class ScreenshotImportViewModel(
     }
 
     private companion object {
-        const val PARSER_VERSION = "wenzhen-p0-v4"
+        const val PARSER_VERSION = "wenzhen-p0-v5"
         val REQUIRED_COMMIT_FIELD_KEYS = listOf(
             "identity.alias",
             "identity.sex",

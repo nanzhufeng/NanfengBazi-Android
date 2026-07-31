@@ -3639,6 +3639,16 @@ private fun String.evidenceFieldLabel(): String = when (this) {
     "birth.latitude" -> "纬度"
     "birth.longitude" -> "经度"
     "chart.four_pillars" -> "四柱"
+    "professional.observed_at" -> "专业细盘 · 观察时刻"
+    "professional.flow_year" -> "专业细盘 · 流年柱"
+    "professional.flow_month" -> "专业细盘 · 流月柱"
+    "professional.flow_day" -> "专业细盘 · 流日柱"
+    "professional.flow_hour" -> "专业细盘 · 流时柱"
+    "professional.decade" -> "专业细盘 · 当前大运"
+    "professional.natal_year" -> "专业细盘 · 年柱"
+    "professional.natal_month" -> "专业细盘 · 月柱"
+    "professional.natal_day" -> "专业细盘 · 日柱"
+    "professional.natal_hour" -> "专业细盘 · 时柱"
     else -> CHART_EVIDENCE_FIELD_PATTERN.matchEntire(this)
         ?.let { match ->
             "${CHART_EVIDENCE_COLUMN_LABELS.getValue(match.groupValues[1])} · " +
@@ -4319,12 +4329,21 @@ private fun CaseDetailContent(
                     )
                     DetailRow(
                         "计算值",
-                        if (evidence.fieldKey == "chart.four_pillars") {
-                            adopted?.result?.fourPillars?.display() ?: "无已采用计算快照"
-                        } else {
-                            "不参与命盘计算"
-                        },
+                        evidence.calculatedValue?.evidenceDisplayValue()
+                            ?: if (evidence.fieldKey == "chart.four_pillars") {
+                                adopted?.result?.fourPillars?.display() ?: "无已采用计算快照"
+                            } else if (evidence.fieldKey.startsWith("professional.")) {
+                                "未完成专业流运自动对照"
+                            } else {
+                                "不参与命盘计算"
+                            },
                     )
+                    evidence.consistencyConfidence?.let { confidence ->
+                        DetailRow(
+                            "自动对照",
+                            if (confidence == 1f) "一致" else "不一致，保留来源待核对",
+                        )
+                    }
                     DetailRow("人工修正", if (evidence.userEdited) "是" else "否")
                     HorizontalDivider(modifier = Modifier.padding(bottom = 10.dp))
                 }

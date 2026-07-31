@@ -48,6 +48,9 @@ class WenzhenP0Parser(
                 if (image.pageType == WenzhenPageType.BASIC_CHART) {
                     fields += parseBasicChartFields(image, document)
                 }
+                if (image.pageType == WenzhenPageType.PROFESSIONAL_CHART) {
+                    fields += parseProfessionalChartFields(image, document)
+                }
                 if (image.pageType == WenzhenPageType.FEEDBACK) {
                     fields += parseFeedbackEventFields(image, document)
                 }
@@ -537,6 +540,245 @@ class WenzhenP0Parser(
         }
     }
 
+    private fun parseProfessionalChartFields(
+        image: ImportImageRef,
+        document: OcrDocument,
+    ): List<CaseFieldEvidence> {
+        val blocks = document.blocks.filter { it.boundingBox != null }
+        val headers = findProfessionalColumnAnchors(blocks)
+        val pillarFields = if (headers.size == PROFESSIONAL_COLUMN_DEFINITIONS.size) {
+            parseProfessionalPillars(image, document, blocks, headers)
+        } else {
+            emptyList()
+        }
+        return buildList {
+            parseProfessionalObservedAt(image, document)?.let(::add)
+            addAll(pillarFields)
+        }
+    }
+
+    private fun findProfessionalColumnAnchors(
+        blocks: List<OcrTextBlock>,
+    ): List<ProfessionalColumnAnchor> {
+        val candidates = blocks.flatMap { block ->
+            val normalized = block.text.normalizeProfessionalText()
+            val box = requireNotNull(block.boundingBox)
+            PROFESSIONAL_COLUMN_DEFINITIONS.mapNotNull { definition ->
+                val start = normalized.indexOf(definition.label)
+                if (start < 0) return@mapNotNull null
+                val anchorBlock = if (normalized == definition.label) {
+                    block
+                } else {
+                    val textLength = normalized.length.coerceAtLeast(1)
+                    val width = (box.right - box.left).coerceAtLeast(textLength)
+                    val left = box.left + start * width / textLength
+                    val right = (
+                        box.left +
+                            (start + definition.label.length) * width / textLength
+                        ).coerceAtLeast(left + 1)
+                        .coerceAtMost(box.right.coerceAtLeast(left + 1))
+                    block.copy(
+                        id = "${block.id}-professional-${definition.key}",
+                        text = definition.label,
+                        boundingBox = EvidenceBoundingBox(left, box.top, right, box.bottom),
+                    )
+                }
+                ProfessionalColumnAnchor(definition, anchorBlock)
+            }
+        }
+        val rows = mutableListOf<MutableList<ProfessionalColumnAnchor>>()
+        candidates.sortedBy { it.block.centerY() }.forEach { candidate ->
+            val matchingRow = rows.lastOrNull()?.takeIf { row ->
+                kotlin.math.abs(row.last().block.centerY() - candidate.block.centerY()) <=
+                    PROFESSIONAL_HEADER_ROW_TOLERANCE_PX
+            }
+            if (matchingRow == null) {
+                rows += mutableListOf(candidate)
+            } else {
+                matchingRow += candidate
+            }
+        }
+        val bestRow = rows.maxByOrNull { row ->
+            row.map { it.definition.key }.distinct().size
+        }.orEmpty()
+        return PROFESSIONAL_COLUMN_DEFINITIONS.mapNotNull { definition ->
+            bestRow.firstOrNull { it.definition == definition }
+        }
+    }
+
+    private fun OcrTextBlock.centerY(): Int =
+        requireNotNull(boundingBox).let { box -> (box.top + box.bottom) / 2 }
+
+    private fun parseProfessionalObservedAt(
+        image: ImportImageRef,
+        document: OcrDocument,
+    ): CaseFieldEvidence? {
+        val sourceBlock = document.blocks.firstOrNull { block ->
+            PROFESSIONAL_OBSERVED_DATE_PATTERN.containsMatchIn(
+                block.text.normalizeProfessionalText(),
+            )
+        } ?: return null
+        val normalized = sourceBlock.text.normalizeProfessionalText()
+        val match = PROFESSIONAL_OBSERVED_DATE_PATTERN.find(normalized) ?: return null
+        val representativeHour = PROFESSIONAL_EXPLICIT_TIME_PATTERN.find(normalized)
+            ?.let { time ->
+                time.groupValues[1].toInt() to time.groupValues[2].toInt()
+            }
+            ?: PROFESSIONAL_DOUBLE_HOUR_PATTERN.find(normalized)
+                ?.groupValues
+                ?.get(1)
+                ?.let(PROFESSIONAL_DOUBLE_HOUR_START::get)
+                ?.let { hour -> hour to 0 }
+            ?: return null
+        val value = runCatching {
+            LocalDateTime.of(
+                match.groupValues[1].toInt(),
+                match.groupValues[2].toInt(),
+                match.groupValues[3].toInt(),
+                representativeHour.first,
+                representativeHour.second,
+            )
+        }.getOrNull() ?: return null
+        return field(
+            image = image,
+            document = document,
+            rowKey = "professional-observed-at",
+            fieldKey = FIELD_PROFESSIONAL_OBSERVED_AT,
+            rawText = sourceBlock.text,
+            value = TypedFieldValue.DateTimeValue(
+                CivilDateTime(
+                    year = value.year,
+                    month = value.monthValue,
+                    day = value.dayOfMonth,
+                    hour = value.hour,
+                    minute = value.minute,
+                    second = 0,
+                ),
+            ),
+            confidence = sourceBlock.confidence,
+            boundingBox = sourceBlock.boundingBox,
+            parserConfidence = if (
+                PROFESSIONAL_EXPLICIT_TIME_PATTERN.containsMatchIn(normalized)
+            ) {
+                0.9f
+            } else {
+                0.78f
+            },
+        )
+    }
+
+    private fun parseProfessionalPillars(
+        image: ImportImageRef,
+        document: OcrDocument,
+        blocks: List<OcrTextBlock>,
+        headers: List<ProfessionalColumnAnchor>,
+    ): List<CaseFieldEvidence> {
+        val pillarBlocks = blocks.flatMap { it.splitProfessionalPillarCells() }
+        val orderedHeaders = headers.sortedBy {
+            requireNotNull(it.block.boundingBox).let { box -> (box.left + box.right) / 2 }
+        }
+        val centers = orderedHeaders.map {
+            requireNotNull(it.block.boundingBox).let { box -> (box.left + box.right) / 2 }
+        }
+        val tableTop = orderedHeaders.minOf { requireNotNull(it.block.boundingBox).bottom }
+        val headerHeight = orderedHeaders.maxOf {
+            requireNotNull(it.block.boundingBox).let { box -> box.bottom - box.top }
+        }
+        val tableBottom = tableTop + maxOf(
+            PROFESSIONAL_PILLAR_SCAN_HEIGHT_PX,
+            headerHeight * PROFESSIONAL_PILLAR_SCAN_HEADER_HEIGHT_MULTIPLIER,
+        )
+        return buildList {
+            orderedHeaders.forEachIndexed { index, anchor ->
+                val leftBoundary = if (index == 0) {
+                    Int.MIN_VALUE
+                } else {
+                    (centers[index - 1] + centers[index]) / 2
+                }
+                val rightBoundary = if (index == centers.lastIndex) {
+                    Int.MAX_VALUE
+                } else {
+                    (centers[index] + centers[index + 1]) / 2
+                }
+                val candidates = pillarBlocks.filter { block ->
+                    block.id != anchor.block.id &&
+                        requireNotNull(block.boundingBox).let { box ->
+                            val centerX = (box.left + box.right) / 2
+                            box.top >= tableTop &&
+                                box.top <= tableBottom &&
+                                centerX in leftBoundary until rightBoundary
+                        }
+                }.sortedBy { requireNotNull(it.boundingBox).top }
+                val parsed = candidates.toProfessionalPillar() ?: return@forEachIndexed
+                add(
+                    field(
+                        image = image,
+                        document = document,
+                        rowKey = "professional-${anchor.definition.key}",
+                        fieldKey = "professional.${anchor.definition.key}",
+                        rawText = "${anchor.definition.label}\n${parsed.pillar}",
+                        value = TypedFieldValue.Text(parsed.pillar),
+                        confidence =
+                            parsed.blocks.mapNotNull(OcrTextBlock::confidence).averageOrNull(),
+                        boundingBox = (listOf(anchor.block) + parsed.blocks).unionBoundingBox(),
+                        parserConfidence = if (parsed.blocks.size == 1) 0.9f else 0.84f,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun OcrTextBlock.splitProfessionalPillarCells(): List<OcrTextBlock> {
+        val normalized = text.normalizeProfessionalText()
+        val tokens = when {
+            PROFESSIONAL_PILLAR_SEQUENCE_PATTERN.matches(normalized) ->
+                normalized.chunked(2)
+            PROFESSIONAL_STEM_SEQUENCE_PATTERN.matches(normalized) ->
+                normalized.map(Char::toString)
+            PROFESSIONAL_BRANCH_SEQUENCE_PATTERN.matches(normalized) ->
+                normalized.map(Char::toString)
+            else -> return listOf(this)
+        }
+        if (tokens.size <= 1) return listOf(this)
+        val box = boundingBox ?: return listOf(this)
+        val width = (box.right - box.left).coerceAtLeast(tokens.size)
+        return tokens.mapIndexed { index, token ->
+            val left = box.left + index * width / tokens.size
+            val right = (box.left + (index + 1) * width / tokens.size)
+                .coerceAtLeast(left + 1)
+                .coerceAtMost(box.right.coerceAtLeast(left + 1))
+            copy(
+                id = "$id-professional-cell-$index",
+                text = token,
+                boundingBox = EvidenceBoundingBox(left, box.top, right, box.bottom),
+            )
+        }
+    }
+
+    private fun List<OcrTextBlock>.toProfessionalPillar(): ParsedProfessionalPillar? {
+        forEach { block ->
+            PROFESSIONAL_PILLAR_PATTERN.find(block.text.normalizeProfessionalText())
+                ?.value
+                ?.let { return ParsedProfessionalPillar(it, listOf(block)) }
+        }
+        val stem = firstNotNullOfOrNull { block ->
+            PROFESSIONAL_STEM_ONLY_PATTERN.matchEntire(block.text.normalizeProfessionalText())
+                ?.value
+                ?.let { it to block }
+        } ?: return null
+        val branch = dropWhile { it.id != stem.second.id }
+            .drop(1)
+            .firstNotNullOfOrNull { block ->
+                PROFESSIONAL_BRANCH_ONLY_PATTERN.matchEntire(
+                    block.text.normalizeProfessionalText(),
+                )?.value?.let { it to block }
+            } ?: return null
+        return ParsedProfessionalPillar(
+            pillar = stem.first + branch.first,
+            blocks = listOf(stem.second, branch.second),
+        )
+    }
+
     private fun parseChartRow(
         image: ImportImageRef,
         document: OcrDocument,
@@ -738,6 +980,14 @@ class WenzhenP0Parser(
         .replace('納', '纳')
         .replace('｜', '|')
 
+    private fun String.normalizeProfessionalText(): String = trim()
+        .replace("已迷日期", "已选日期")
+        .replace('運', '运')
+        .replace('時', '时')
+        .replace('選', '选')
+        .replace('杜', '柱')
+        .replace(Regex("\\s+"), "")
+
     private fun ChartRowDefinition.tokenizeValues(text: String): List<String> {
         val splitValues = text.split(CHART_VALUE_SEPARATOR_PATTERN)
             .filter(String::isNotBlank)
@@ -839,10 +1089,27 @@ class WenzhenP0Parser(
         val block: OcrTextBlock,
     )
 
+    private data class ProfessionalColumnDefinition(
+        val key: String,
+        val label: String,
+    )
+
+    private data class ProfessionalColumnAnchor(
+        val definition: ProfessionalColumnDefinition,
+        val block: OcrTextBlock,
+    )
+
+    private data class ParsedProfessionalPillar(
+        val pillar: String,
+        val blocks: List<OcrTextBlock>,
+    )
+
     private companion object {
         private const val STEMS = "甲乙丙丁戊己庚辛壬癸"
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v4"
+        private const val PROFESSIONAL_HEADER_ROW_TOLERANCE_PX = 48
+        private const val PROFESSIONAL_PILLAR_SCAN_HEADER_HEIGHT_MULTIPLIER = 8
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v5"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -856,6 +1123,7 @@ class WenzhenP0Parser(
         const val FIELD_CONSTELLATION = "identity.constellation"
         const val FIELD_ZODIAC = "identity.zodiac"
         const val FIELD_FOUR_PILLARS = "chart.four_pillars"
+        const val FIELD_PROFESSIONAL_OBSERVED_AT = "professional.observed_at"
         const val FIELD_EVENT_PREFIX = "event.candidate."
         val CHART_COLUMN_KEYS = listOf("year", "month", "day", "hour")
         val CHART_COLUMN_LABELS = listOf("年柱", "月柱", "日柱", "时柱")
@@ -890,6 +1158,47 @@ class WenzhenP0Parser(
         val CHART_TABLE_TERMINATOR_PATTERN = Regex(
             "^(?:智能干支图示|AI指令|原局天干|原局地支|原局整柱)",
         )
+        val PROFESSIONAL_COLUMN_DEFINITIONS = listOf(
+            ProfessionalColumnDefinition("flow_hour", "流时"),
+            ProfessionalColumnDefinition("flow_day", "流日"),
+            ProfessionalColumnDefinition("flow_month", "流月"),
+            ProfessionalColumnDefinition("flow_year", "流年"),
+            ProfessionalColumnDefinition("decade", "大运"),
+            ProfessionalColumnDefinition("natal_year", "年柱"),
+            ProfessionalColumnDefinition("natal_month", "月柱"),
+            ProfessionalColumnDefinition("natal_day", "日柱"),
+            ProfessionalColumnDefinition("natal_hour", "时柱"),
+        )
+        val PROFESSIONAL_PILLAR_PATTERN = Regex("[$STEMS][$BRANCHES]")
+        val PROFESSIONAL_STEM_ONLY_PATTERN = Regex("[$STEMS]")
+        val PROFESSIONAL_BRANCH_ONLY_PATTERN = Regex("[$BRANCHES]")
+        val PROFESSIONAL_PILLAR_SEQUENCE_PATTERN = Regex("(?:[$STEMS][$BRANCHES]){2,}")
+        val PROFESSIONAL_STEM_SEQUENCE_PATTERN = Regex("[$STEMS]{2,}")
+        val PROFESSIONAL_BRANCH_SEQUENCE_PATTERN = Regex("[$BRANCHES]{2,}")
+        val PROFESSIONAL_OBSERVED_DATE_PATTERN = Regex(
+            "(?:已选日期|选定日期|日期)[:：]?(\\d{4})年(\\d{1,2})月(\\d{1,2})日",
+        )
+        val PROFESSIONAL_EXPLICIT_TIME_PATTERN = Regex(
+            "(?:日|\\s)([01]?\\d|2[0-3])[:：](\\d{2})",
+        )
+        val PROFESSIONAL_DOUBLE_HOUR_PATTERN = Regex(
+            "([子丑寅卯辰巳午未申酉戌亥])时",
+        )
+        val PROFESSIONAL_DOUBLE_HOUR_START = mapOf(
+            "子" to 23,
+            "丑" to 1,
+            "寅" to 3,
+            "卯" to 5,
+            "辰" to 7,
+            "巳" to 9,
+            "午" to 11,
+            "未" to 13,
+            "申" to 15,
+            "酉" to 17,
+            "戌" to 19,
+            "亥" to 21,
+        )
+        const val PROFESSIONAL_PILLAR_SCAN_HEIGHT_PX = 220
         const val MAX_NAME_DATE_DISTANCE_PX = 240
         const val ROW_VERTICAL_TOLERANCE_PX = 24
         const val LAST_ROW_TAIL_PX = 140

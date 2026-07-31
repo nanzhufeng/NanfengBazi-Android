@@ -98,6 +98,10 @@ class RoomCaseRepositoryTest {
 
         val restored = repository.findById(source.id)
         assertEquals(source.copy(revision = 1), restored)
+        assertEquals(
+            source.fieldEvidence.single().calculatedValue,
+            restored?.fieldEvidence?.single()?.calculatedValue,
+        )
         val nameResults = repository.search(CaseSearchRequest(query = "测试甲"))
         assertEquals(listOf("case-1"), nameResults.map { it.id })
         assertEquals(

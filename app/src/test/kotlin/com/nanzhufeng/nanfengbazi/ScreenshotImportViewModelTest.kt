@@ -5,6 +5,7 @@ import com.nanzhufeng.nanfengbazi.domain.ImportSessionDeleteResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ImportCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
 import com.nanzhufeng.nanfengbazi.domain.model.ImportSourceApp
@@ -118,6 +119,19 @@ class ScreenshotImportViewModelTest {
             userEdited = false,
             createdAt = now,
         )
+        val professionalField = CaseFieldEvidence(
+            id = "field-professional-observed-at",
+            attachmentId = "image-1",
+            fieldKey = "professional.observed_at",
+            rawText = "已选日期：2026年7月30日 子时",
+            normalizedValue = TypedFieldValue.DateTimeValue(
+                CivilDateTime(2026, 7, 30, 23, 0, 0),
+            ),
+            parserConfidence = 0.95f,
+            parserRuleId = "fixture",
+            userEdited = false,
+            createdAt = now,
+        )
         val longText = ImportedLongTextEvidence(
             id = "text-1",
             imageId = "image-1",
@@ -142,13 +156,13 @@ class ScreenshotImportViewModelTest {
                     createdAt = now,
                 ),
             ),
-            extractedFields = listOf(field),
+            extractedFields = listOf(field, professionalField),
             extractedLongTexts = listOf(longText),
             caseCandidates = listOf(
                 ImportCaseCandidate(
                     id = "candidate-1",
                     imageIds = listOf("image-1"),
-                    fieldEvidenceIds = listOf(field.id),
+                    fieldEvidenceIds = listOf(field.id, professionalField.id),
                     longTextEvidenceIds = listOf(longText.id),
                     suggestedAlias = "案例甲",
                     groupingConfidence = 0.9f,
@@ -174,7 +188,18 @@ class ScreenshotImportViewModelTest {
         val initial = withTimeout(5_000) {
             viewModel.state.first { it.reviewCandidates.size == 1 }
         }
-        assertEquals(null, initial.reviewCandidates.single().fields.single().adoptedValue)
+        assertEquals(
+            null,
+            initial.reviewCandidates.single().fields.single { it.id == field.id }.adoptedValue,
+        )
+        val professionalReview = initial.reviewCandidates.single().fields.single {
+            it.id == professionalField.id
+        }
+        assertEquals("专业细盘 · 观察时刻", professionalReview.label)
+        assertEquals(
+            "提交后按观察时刻自动复算；不会覆盖本地排盘",
+            professionalReview.calculationValue,
+        )
         assertTrue(!initial.reviewCandidates.single().longTexts.single().adopted)
         assertTrue(
             initial.reviewCandidates.single().blockingIssues.containsAll(
@@ -198,16 +223,19 @@ class ScreenshotImportViewModelTest {
             viewModel.state.first {
                 it.reviewCandidates.singleOrNull()
                     ?.fields
-                    ?.singleOrNull()
+                    ?.singleOrNull { it.id == field.id }
                     ?.adoptedValue == "案例甲" &&
                     it.reviewCandidates.single().longTexts.single().adopted
             }
         }
-        assertEquals("案例甲", adopted.reviewCandidates.single().fields.single().adoptedValue)
+        assertEquals(
+            "案例甲",
+            adopted.reviewCandidates.single().fields.single { it.id == field.id }.adoptedValue,
+        )
         val persisted = requireNotNull(repository.findById("review-session"))
         assertEquals(
             TypedFieldValue.Text("案例甲"),
-            persisted.extractedFields.single().adoptedValue,
+            persisted.extractedFields.single { it.id == field.id }.adoptedValue,
         )
         assertTrue(persisted.extractedLongTexts.single().adopted)
         assertEquals(ImportStatus.NEEDS_REVIEW, persisted.status)
@@ -218,20 +246,45 @@ class ScreenshotImportViewModelTest {
             viewModel.state.first {
                 it.reviewCandidates.singleOrNull()
                     ?.fields
-                    ?.singleOrNull()
+                    ?.singleOrNull { it.id == field.id }
                     ?.normalizedValue == "案例乙"
             }
         }
-        val correctedField = corrected.reviewCandidates.single().fields.single()
+        val correctedField = corrected.reviewCandidates.single().fields.single { it.id == field.id }
         assertEquals(null, correctedField.adoptedValue)
         assertTrue(correctedField.userEdited)
         val correctedSession = requireNotNull(repository.findById("review-session"))
         assertEquals(
             TypedFieldValue.Text("案例乙"),
-            correctedSession.extractedFields.single().normalizedValue,
+            correctedSession.extractedFields.single { it.id == field.id }.normalizedValue,
         )
-        assertEquals(null, correctedSession.extractedFields.single().adoptedValue)
-        assertTrue(correctedSession.extractedFields.single().userEdited)
+        assertEquals(
+            null,
+            correctedSession.extractedFields.single { it.id == field.id }.adoptedValue,
+        )
+        assertTrue(correctedSession.extractedFields.single { it.id == field.id }.userEdited)
+
+        viewModel.updateFieldNormalizedValue(
+            "candidate-1",
+            professionalField.id,
+            "2026-07-31 00:30:00",
+        )
+        val correctedProfessional = withTimeout(5_000) {
+            viewModel.state.first {
+                it.reviewCandidates.singleOrNull()
+                    ?.fields
+                    ?.singleOrNull { review -> review.id == professionalField.id }
+                    ?.normalizedValue == "2026-07-31 00:30:00"
+            }
+        }.reviewCandidates.single().fields.single { it.id == professionalField.id }
+        assertEquals("2026-07-31 00:30:00", correctedProfessional.normalizedValue)
+        assertEquals(
+            TypedFieldValue.DateTimeValue(CivilDateTime(2026, 7, 31, 0, 30, 0)),
+            repository.findById("review-session")
+                ?.extractedFields
+                ?.single { it.id == professionalField.id }
+                ?.normalizedValue,
+        )
     }
 }
 

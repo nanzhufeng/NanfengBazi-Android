@@ -284,6 +284,7 @@ data class CaseFieldEvidence(
     val fieldKey: String,
     val rawText: String,
     val normalizedValue: TypedFieldValue? = null,
+    val calculatedValue: TypedFieldValue? = null,
     val adoptedValue: TypedFieldValue? = null,
     val ocrConfidence: Float? = null,
     val parserConfidence: Float,
