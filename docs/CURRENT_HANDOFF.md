@@ -1,4 +1,4 @@
-# 当前交接：Stage 4A 时间证据第七增量
+# 当前交接：Stage 6 信息架构与可恢复状态
 
 更新日期：2026-07-31
 
@@ -10,8 +10,10 @@
   tzdb 版本、完整真太阳时校正证据、四柱基础排盘及岁运明细，并支持零写入即时排盘。
 - 夏令时回拨重叠时刻必须由用户在两个有效 offset 中明确选择；跳时产生的不存在时刻
   明确失败且零写入。
-- 下一安全增量是建立同一命例下的多个出生时间候选、对应快照与显式采用状态，再进入
-  Stage 4B 的 50+ 黄金样本门禁。
+- Stage 4B 已冻结 60 个双引擎四柱黄金样本；Stage 5A 已接通问真 P0/P1 合成截图链。
+- Stage 6 当前增量已补齐排盘首页最近命例、命盘详情四标签，以及页面/参数/筛选/草稿的
+  `SavedStateHandle` 合同；后台 Activity 销毁和宿主杀进程后的恢复均已通过，下一安全
+  增量是全页面无障碍与目标视口矩阵。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -120,6 +122,22 @@
 - 引擎同时校验精度约束：分钟/大约要求秒为 0，小时/时辰要求分秒为 0。时辰未知明确拒绝
   生成唯一命盘，等待下一增量的多候选时间链，不能用默认中午伪造时柱。
 - `timeSourceType` 带 `UNKNOWN` 兼容默认值，旧 JSON 和 Room 行仍可读取，不反推来源。
+
+### Stage 6 信息架构与可恢复状态
+
+- 排盘首页从 `CaseRepository.search(LAST_VIEWED_DESC)` 读取最多 3 个有真实
+  `lastViewedAt` 的活动命例，快捷卡直接进入同一详情读取链，不保存第二份显示数据。
+- 命盘详情固定为“基本信息、基本排盘、岁运、分析记录”四标签；原始资料、来源证据、
+  四柱基础盘、起运大运、记录事件和版本历史均消费原有 `BaziCase` 聚合及已采用快照。
+- 标签状态由 `StageTwoUiState.detailSection` 所有，进入记录/事件编辑器再返回时保持原
+  标签；标签栏固定在详情滚动内容上方，手机与展开态均保持可操作。
+- `SavedStateHandle` 只保存可安全恢复的页面、参数、搜索筛选、详情标签和新建/编辑/
+  时间候选/分类/记录/事件草稿；密码、文件流、URI 临时句柄、运行中任务和弹窗确认不保存。
+- 命例绑定页面重建后按稳定 ID 从仓储重新加载正式事实；目标不存在时返回列表并给出
+  中文说明，不把保存的页面草稿当数据库真值。
+- Android “后台即销毁 Activity”设备流验证从桌面重新进入后仍恢复原页面和未提交草稿；
+  独立宿主脚本再以纯 UI 操作填写草稿、切到后台、`am kill` 旧 PID，并在新 PID 中恢复
+  原任务，避免 instrumentation 保活或 force-stop 清任务干扰证据。
 
 ## 所有者与边界
 
@@ -254,6 +272,12 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha49 在 Android 13+ 选择至少 8 张图片且未授权通知时，先解释长批次通知用途；
     用户可允许通知，也可明确选择“不允许，继续”。拒绝路径仍完成前台 OCR、通知通道
     建立、可恢复结果与测试清理，8 图设备流程 1/1 通过；
+  - alpha50 排盘首页最近命例创建—查看—快捷返回流程、真太阳时四标签切换和包含编辑、
+    分类、记录、事件、导出与回收站的详情长流程共 3/3 通过；
+  - alpha50 Android 重建契约使用新的 `SavedStateHandle` 恢复新建页查询与未提交表单，
+    并恢复命例绑定的记录编辑草稿、详情标签和返回链，目标流程 1/1 通过；
+  - alpha50 系统后台 Activity 销毁后重进恢复流程 1/1 通过；独立宿主进程恢复脚本杀死
+    后台旧 PID，并以不同的新 PID 恢复“新建命例”和未提交别名，流程 1/1 通过；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -261,17 +285,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha49-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha50-debug.apk`
 
-- 大小：55,729,219 bytes
-- SHA-256：`49647b375b5c21ca60a941aa5c035ce3fdeb8414c6317e69d5331fae9c354cfa`
+- 大小：55,745,603 bytes
+- SHA-256：`7ac3bdcc934855950493152956540289daa479b70e37051241587a0bcc51cb99`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha49-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha50-release-unsigned.apk`
 
 - 大小：52,007,042 bytes
-- SHA-256：`5dcc6dab54417d10f6f7bafa2381b49ec690811347265b19a569fce6ad2aa11c`
+- SHA-256：`4ffc27852389c5cb5e886d0ea63594eb47843ac508f942b1dd4191636d301c52`
 
 ## 当前限制与风险
 
@@ -292,15 +316,17 @@ Debug 验收构建：
 - 840dp 展开态导航轨和命例索引/详情双栏已在 API 35 模拟器验证；2.0 倍字体并启用
   TalkBack 服务时，四主入口与关键触控目标已验证，但 OPPO Find N5 实机展开/折叠和
   TalkBack 全页面逐焦点朗读仍待用户授权验收。
+- 页面、参数、筛选、详情标签和表单草稿已进入 `SavedStateHandle`；Android 新
+  ViewModel 重建、系统后台 Activity 销毁和宿主 `am kill` 后新 PID 任务恢复均已通过。
 - 当前 Debug APK 不是正式签名 Release；OPPO 数据保留安装与发布需要用户明确授权。
 
 ## 下一安全增量
 
-继续 Stage 5A，优先顺序：
+继续 Stage 6C，优先顺序：
 
-1. 继续 TalkBack 全页面逐焦点朗读与真实目标视口 QA；
-2. 在用户授权真实问真样本后，校准基本排盘分块与字段准确率；
-3. 在用户授权目标设备后执行数据保留安装、展开/折叠和通知实机验收。
+1. 继续 TalkBack 全页面逐焦点朗读与手机/展开态/2 倍字体目标视口 QA；
+2. 进入 Stage 7 流年基础、当前大运/流年定位和专业细盘内部实现；
+3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于
 整个产品已经落地。

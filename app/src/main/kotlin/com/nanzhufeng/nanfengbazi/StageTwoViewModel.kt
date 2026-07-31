@@ -1,8 +1,12 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.os.Bundle
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupProtection
@@ -41,9 +45,14 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PushbackInputStream
@@ -78,6 +87,13 @@ sealed interface AppDestination {
         val caseId: String,
         val eventId: String?,
     ) : AppDestination
+}
+
+enum class CaseDetailSection {
+    BASIC_INFO,
+    BASIC_CHART,
+    FORTUNE,
+    RECORDS,
 }
 
 class StageTwoNavigator {
@@ -130,6 +146,53 @@ class StageTwoNavigator {
         return openRoot(AppDestination.CaseList)
     }
 
+    fun restore(destination: AppDestination) {
+        stack.clear()
+        when (destination) {
+            AppDestination.CaseList,
+            AppDestination.RecordHub,
+            AppDestination.Settings,
+            AppDestination.CreateCase,
+            AppDestination.ScreenshotImportReview,
+            -> stack += destination
+
+            is AppDestination.CaseDetail -> {
+                stack += AppDestination.CaseList
+                stack += destination
+            }
+
+            is AppDestination.EditCase -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.AddBirthTimeCandidate -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.EditMetadata -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.EditTextRecord -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.EditEvent -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+        }
+    }
+
     private fun openRoot(destination: AppDestination): AppDestination {
         stack.clear()
         stack += destination
@@ -152,6 +215,7 @@ data class StageTwoUiState(
     val availableGroups: List<CaseGroup> = emptyList(),
     val availableTags: List<CaseTag> = emptyList(),
     val cases: List<CaseSummary> = emptyList(),
+    val recentCases: List<CaseSummary> = emptyList(),
     val listLoading: Boolean = false,
     val listError: String? = null,
     val form: CaseFormState = CaseFormState(),
@@ -161,6 +225,7 @@ data class StageTwoUiState(
     val instantCalculation: CalculationResult? = null,
     val duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     val detail: BaziCase? = null,
+    val detailSection: CaseDetailSection = CaseDetailSection.BASIC_INFO,
     val detailLoading: Boolean = false,
     val detailError: String? = null,
     val editForm: CaseFormState = CaseFormState(),
@@ -229,8 +294,13 @@ class StageTwoViewModel(
     private val backupAttachmentRoot: Path? = null,
     private val backupWorkRoot: Path? = null,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(StageTwoUiState())
+    private val mutableState = MutableStateFlow(
+        savedStateHandle.get<Bundle>(SAVED_UI_STATE_KEY)
+            ?.toStageTwoUiState()
+            ?: StageTwoUiState(),
+    )
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
     private var pendingExportPassword: CharArray? = null
@@ -239,8 +309,43 @@ class StageTwoViewModel(
     private var pendingFullBackupPassword: CharArray? = null
 
     init {
+        navigator.restore(mutableState.value.destination)
+        savedStateHandle.setSavedStateProvider(SAVED_UI_STATE_KEY) {
+            mutableState.value.toSavedStateBundle()
+        }
         recoverInterruptedRestores()
+        restoreCaseBoundDestination()
         refreshCases()
+    }
+
+    private fun restoreCaseBoundDestination() {
+        val caseId = mutableState.value.destination.caseIdOrNull() ?: return
+        viewModelScope.launch {
+            val restoredCase = try {
+                caseRepository.findById(caseId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            mutableState.update {
+                if (restoredCase == null) {
+                    it.copy(
+                        destination = navigator.backToList(),
+                        detail = null,
+                        detailLoading = false,
+                        detailError = null,
+                        message = "上次打开的命例无法恢复，已返回命例列表。",
+                    )
+                } else {
+                    it.copy(
+                        detail = restoredCase,
+                        detailLoading = false,
+                        detailError = null,
+                    )
+                }
+            }
+        }
     }
 
     private fun recoverInterruptedRestores() {
@@ -295,6 +400,13 @@ class StageTwoViewModel(
         searchJob = viewModelScope.launch {
             mutableState.update { it.copy(listLoading = true, listError = null) }
             try {
+                val recentCases = caseRepository.search(
+                    CaseSearchRequest(
+                        sortOrder = CaseSortOrder.LAST_VIEWED_DESC,
+                        visibility = CaseVisibility.ACTIVE,
+                    ),
+                ).filter { it.lastViewedAt != null }
+                    .take(3)
                 val catalogRequest = CaseSearchRequest(visibility = current.visibility)
                 val allCases = caseRepository.search(catalogRequest)
                 val cases = if (request == catalogRequest) {
@@ -305,6 +417,7 @@ class StageTwoViewModel(
                 mutableState.update {
                     it.copy(
                         cases = cases,
+                        recentCases = recentCases,
                         availableGroups = allCases.flatMap { item -> item.groups }
                             .distinctBy { group -> group.id }
                             .sortedBy { group -> group.name },
@@ -1805,6 +1918,7 @@ class StageTwoViewModel(
                 message = null,
             )
         }
+        refreshCases()
     }
 
     fun openRecordHub() {
@@ -1978,6 +2092,7 @@ class StageTwoViewModel(
             it.copy(
                 destination = navigator.openDetail(caseId),
                 detail = null,
+                detailSection = CaseDetailSection.BASIC_INFO,
                 detailLoading = true,
                 detailError = null,
                 message = null,
@@ -2026,6 +2141,12 @@ class StageTwoViewModel(
                     )
                 }
             }
+        }
+    }
+
+    fun selectDetailSection(section: CaseDetailSection) {
+        mutableState.update {
+            it.copy(detailSection = section)
         }
     }
 
@@ -2563,11 +2684,18 @@ class StageTwoViewModel(
         mutableState.update { it.copy(message = null) }
     }
 
+    internal fun saveRestorableStateTo(target: SavedStateHandle) {
+        target[SAVED_UI_STATE_KEY] = mutableState.value.toSavedStateBundle()
+    }
+
     class Factory(
         private val container: AppContainer,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        override fun <T : ViewModel> create(
+            modelClass: Class<T>,
+            extras: CreationExtras,
+        ): T {
             val useCase = CreateCaseUseCase(
                 baziEngine = container.baziEngine,
                 caseRepository = container.caseRepository,
@@ -2591,11 +2719,13 @@ class StageTwoViewModel(
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
                 backupWorkRoot = container.backupWorkRoot,
+                savedStateHandle = extras.createSavedStateHandle(),
             ) as T
         }
     }
 
     private companion object {
+        const val SAVED_UI_STATE_KEY = "stage_two_ui_state"
         const val MIN_EXPORT_PASSWORD_LENGTH = 8
         const val MAX_EXPORT_PASSWORD_LENGTH = 256
         const val SINGLE_CASE_FORMAT_PROBE_BYTES = 64
@@ -2613,6 +2743,251 @@ class StageTwoViewModel(
         else -> null
     }
 }
+
+private fun AppDestination.caseIdOrNull(): String? = when (this) {
+    is AppDestination.CaseDetail -> caseId
+    is AppDestination.EditCase -> caseId
+    is AppDestination.AddBirthTimeCandidate -> caseId
+    is AppDestination.EditMetadata -> caseId
+    is AppDestination.EditTextRecord -> caseId
+    is AppDestination.EditEvent -> caseId
+    AppDestination.CaseList,
+    AppDestination.RecordHub,
+    AppDestination.Settings,
+    AppDestination.CreateCase,
+    AppDestination.ScreenshotImportReview,
+    -> null
+}
+
+private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
+    putBundle("destination", destination.toSavedStateBundle())
+    putString("query", query)
+    putString("selectedGroupId", selectedGroupId)
+    putString("selectedTagId", selectedTagId)
+    putString("sortOrder", sortOrder.name)
+    putString("visibility", visibility.name)
+    putString("detailSection", detailSection.name)
+    putBundle("form", form.toSavedStateBundle())
+    putBundle("editForm", editForm.toSavedStateBundle())
+    putString("candidateLabel", candidateLabel)
+    putBundle("candidateForm", candidateForm.toSavedStateBundle())
+    putBundle("metadataDraft", metadataDraft.toSavedStateBundle())
+    putBundle("recordDraft", recordDraft.toSavedStateBundle())
+    putBundle("eventDraft", eventDraft.toSavedStateBundle())
+}
+
+private fun Bundle.toStageTwoUiState(): StageTwoUiState {
+    val destination = getBundle("destination")?.toAppDestination()
+        ?: AppDestination.CaseList
+    return StageTwoUiState(
+        destination = destination,
+        query = getString("query").orEmpty(),
+        selectedGroupId = getString("selectedGroupId"),
+        selectedTagId = getString("selectedTagId"),
+        sortOrder = enumValueOrDefault(
+            getString("sortOrder"),
+            CaseSortOrder.UPDATED_DESC,
+        ),
+        visibility = enumValueOrDefault(
+            getString("visibility"),
+            CaseVisibility.ACTIVE,
+        ),
+        form = getBundle("form")?.toCaseFormState() ?: CaseFormState(),
+        detailSection = enumValueOrDefault(
+            getString("detailSection"),
+            CaseDetailSection.BASIC_INFO,
+        ),
+        detailLoading = destination.caseIdOrNull() != null,
+        editForm = getBundle("editForm")?.toCaseFormState() ?: CaseFormState(),
+        candidateLabel = getString("candidateLabel").orEmpty(),
+        candidateForm = getBundle("candidateForm")?.toCaseFormState() ?: CaseFormState(),
+        metadataDraft =
+            getBundle("metadataDraft")?.toCaseMetadataDraft() ?: CaseMetadataDraft(),
+        recordDraft = getBundle("recordDraft")?.toTextRecordDraft() ?: TextRecordDraft(),
+        eventDraft = getBundle("eventDraft")?.toEventDraft() ?: EventDraft(),
+    )
+}
+
+private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
+    when (this@toSavedStateBundle) {
+        AppDestination.CaseList -> putString("type", "case_list")
+        AppDestination.RecordHub -> putString("type", "record_hub")
+        AppDestination.Settings -> putString("type", "settings")
+        AppDestination.CreateCase -> putString("type", "create_case")
+        AppDestination.ScreenshotImportReview -> putString("type", "screenshot_review")
+        is AppDestination.CaseDetail -> {
+            putString("type", "case_detail")
+            putString("caseId", caseId)
+        }
+        is AppDestination.EditCase -> {
+            putString("type", "edit_case")
+            putString("caseId", caseId)
+        }
+        is AppDestination.AddBirthTimeCandidate -> {
+            putString("type", "birth_time_candidate")
+            putString("caseId", caseId)
+        }
+        is AppDestination.EditMetadata -> {
+            putString("type", "edit_metadata")
+            putString("caseId", caseId)
+        }
+        is AppDestination.EditTextRecord -> {
+            putString("type", "edit_record")
+            putString("caseId", caseId)
+            putString("recordId", recordId)
+        }
+        is AppDestination.EditEvent -> {
+            putString("type", "edit_event")
+            putString("caseId", caseId)
+            putString("eventId", eventId)
+        }
+    }
+}
+
+private fun Bundle.toAppDestination(): AppDestination {
+    val caseId = getString("caseId")
+    return when (getString("type")) {
+        "record_hub" -> AppDestination.RecordHub
+        "settings" -> AppDestination.Settings
+        "create_case" -> AppDestination.CreateCase
+        "screenshot_review" -> AppDestination.ScreenshotImportReview
+        "case_detail" -> caseId?.let(AppDestination::CaseDetail)
+        "edit_case" -> caseId?.let(AppDestination::EditCase)
+        "birth_time_candidate" -> caseId?.let(AppDestination::AddBirthTimeCandidate)
+        "edit_metadata" -> caseId?.let(AppDestination::EditMetadata)
+        "edit_record" -> caseId?.let {
+            AppDestination.EditTextRecord(it, getString("recordId"))
+        }
+        "edit_event" -> caseId?.let {
+            AppDestination.EditEvent(it, getString("eventId"))
+        }
+        else -> AppDestination.CaseList
+    } ?: AppDestination.CaseList
+}
+
+private fun CaseFormState.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("alias", alias)
+    putString("name", name)
+    putString("sex", sex?.name)
+    putString("year", year)
+    putString("month", month)
+    putString("day", day)
+    putString("hour", hour)
+    putString("minute", minute)
+    putString("second", second)
+    putString("calendarSystem", calendarSystem.name)
+    putBoolean("isLeapMonth", isLeapMonth)
+    putString("locationName", locationName)
+    putString("longitude", longitude)
+    putString("latitude", latitude)
+    putString("timeZoneId", timeZoneId)
+    resolvedUtcOffsetSeconds?.let { putInt("resolvedUtcOffsetSeconds", it) }
+    putIntArray("availableUtcOffsetSeconds", availableUtcOffsetSeconds.toIntArray())
+    putBoolean("useTrueSolarTime", useTrueSolarTime)
+    putString("timePrecision", timePrecision.name)
+    putString("timeSourceType", timeSourceType.name)
+    putString("sourceNote", sourceNote)
+}
+
+private fun Bundle.toCaseFormState(): CaseFormState = CaseFormState(
+    alias = getString("alias").orEmpty(),
+    name = getString("name").orEmpty(),
+    sex = enumValueOrNull<SexForFortuneDirection>(getString("sex")),
+    year = getString("year").orEmpty(),
+    month = getString("month").orEmpty(),
+    day = getString("day").orEmpty(),
+    hour = getString("hour").orEmpty(),
+    minute = getString("minute").orEmpty(),
+    second = getString("second") ?: "0",
+    calendarSystem = enumValueOrDefault(
+        getString("calendarSystem"),
+        CalendarSystem.SOLAR,
+    ),
+    isLeapMonth = getBoolean("isLeapMonth"),
+    locationName = getString("locationName").orEmpty(),
+    longitude = getString("longitude").orEmpty(),
+    latitude = getString("latitude").orEmpty(),
+    timeZoneId = getString("timeZoneId") ?: "Asia/Shanghai",
+    resolvedUtcOffsetSeconds = if (containsKey("resolvedUtcOffsetSeconds")) {
+        getInt("resolvedUtcOffsetSeconds")
+    } else {
+        null
+    },
+    availableUtcOffsetSeconds =
+        getIntArray("availableUtcOffsetSeconds")?.toList().orEmpty(),
+    useTrueSolarTime = getBoolean("useTrueSolarTime"),
+    timePrecision = enumValueOrDefault(
+        getString("timePrecision"),
+        TimePrecision.EXACT_TO_MINUTE,
+    ),
+    timeSourceType = enumValueOrDefault(
+        getString("timeSourceType"),
+        TimeSourceType.UNKNOWN,
+    ),
+    sourceNote = getString("sourceNote").orEmpty(),
+)
+
+private fun CaseMetadataDraft.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("groupNames", groupNames)
+    putString("tagNames", tagNames)
+    putBoolean("isFavorite", isFavorite)
+    putBoolean("isPinned", isPinned)
+}
+
+private fun Bundle.toCaseMetadataDraft(): CaseMetadataDraft = CaseMetadataDraft(
+    groupNames = getString("groupNames").orEmpty(),
+    tagNames = getString("tagNames").orEmpty(),
+    isFavorite = getBoolean("isFavorite"),
+    isPinned = getBoolean("isPinned"),
+)
+
+private fun TextRecordDraft.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("type", type.name)
+    putString("content", content)
+    putString("analysisCategory", analysisCategory.name)
+}
+
+private fun Bundle.toTextRecordDraft(): TextRecordDraft = TextRecordDraft(
+    type = enumValueOrDefault(getString("type"), CaseTextRecordType.NOTE),
+    content = getString("content").orEmpty(),
+    analysisCategory = enumValueOrDefault(
+        getString("analysisCategory"),
+        AnalysisCategory.GENERAL,
+    ),
+)
+
+private fun EventDraft.toSavedStateBundle(): Bundle = Bundle().apply {
+    putString("year", year)
+    putString("month", month)
+    putString("day", day)
+    putString("status", status)
+    putString("rawText", rawText)
+    putString("title", title)
+    putString("category", category.name)
+}
+
+private fun Bundle.toEventDraft(): EventDraft = EventDraft(
+    year = getString("year").orEmpty(),
+    month = getString("month").orEmpty(),
+    day = getString("day").orEmpty(),
+    status = getString("status").orEmpty(),
+    rawText = getString("rawText").orEmpty(),
+    title = getString("title").orEmpty(),
+    category = enumValueOrDefault(
+        getString("category"),
+        CaseEventCategory.GENERAL,
+    ),
+)
+
+private inline fun <reified T : Enum<T>> enumValueOrNull(value: String?): T? =
+    value?.let { candidate ->
+        enumValues<T>().firstOrNull { it.name == candidate }
+    }
+
+private inline fun <reified T : Enum<T>> enumValueOrDefault(
+    value: String?,
+    default: T,
+): T = enumValueOrNull<T>(value) ?: default
 
 private fun BaziCase.toEditableForm(): CaseFormState {
     val calendar = birthInput.calendarInput

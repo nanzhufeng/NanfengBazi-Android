@@ -126,3 +126,11 @@
 | 无附件命例提交 | 跳过零写入；保留两份重建全部聚合 ID，提交前复查冲突 | `StageTwoViewModel` → `SingleCaseExchangeService.commitImport` → `CaseRepository.save` | 过期预览拒绝、事务失败不覆盖、系统文件 E2E 后列表读回第二份 |
 | 范围化合并 | 模块仅追加独有内容；标量差异逐字段采用，默认本地 | `prepareMerge` 固定目标 revision/载荷 → `commitMerge` 复查 → `CaseRepository.save` | 内容去重、子项重建 ID、目标变化拒绝、模拟器记录/事件合并 |
 | 附件二进制 | JSON 仍只保留引用；`.nfbcase` 才携带经 manifest 绑定的附件字节 | `REFERENCES_ONLY` / `BUNDLED_BINARIES` | JSON 引用拒绝提交；明文/加密包系统文件保留两份后字节与引用一致 |
+
+## Stage 6 信息架构与可恢复状态入口矩阵
+
+| 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
+|---|---|---|---|
+| 排盘首页最近命例 | 只读取活动命例中有 `lastViewedAt` 的最近 3 条，不另存显示副本 | `CaseRepository.search(LAST_VIEWED_DESC)` → `StageTwoViewModel.recentCases` | 仓储请求契约与 API 35 创建—查看—快捷返回流程 |
+| 命盘详情四标签 | 基本信息、基本排盘、岁运、分析记录消费同一 `BaziCase` 与已采用快照 | `StageTwoUiState.detailSection` | 四标签真实切换；编辑、记录和岁运长流程回归 |
+| 页面与草稿恢复 | 页面、参数、筛选、四类表单和详情标签写入 `SavedStateHandle`；密码、文件流和一次性句柄不保存 | `StageTwoViewModel` 保存状态合同 | Android 新 ViewModel 重建、后台 Activity 销毁、宿主杀旧 PID 后新进程恢复 |

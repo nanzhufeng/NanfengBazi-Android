@@ -42,10 +42,12 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -279,6 +281,7 @@ fun NanfengBaziApp(
                     AppDestination.CreateCase -> CreateCaseScreen(
                         state = state,
                         onBack = viewModel::backToList,
+                        onOpenCase = viewModel::openDetail,
                         onFormChange = viewModel::updateForm,
                         onPreview = viewModel::previewCase,
                         onSubmit = { viewModel.submitCase() },
@@ -302,6 +305,7 @@ fun NanfengBaziApp(
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
                                 onMoveToTrash = viewModel::requestMoveToTrash,
                                 onRestore = viewModel::restoreCase,
+                                onSelectSection = viewModel::selectDetailSection,
                                 modifier = modifier,
                             )
                         }
@@ -2802,6 +2806,7 @@ private fun CaseSummaryCard(
 private fun CreateCaseScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
+    onOpenCase: (String) -> Unit,
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
     onPreview: () -> Unit,
     onSubmit: () -> Unit,
@@ -2823,8 +2828,75 @@ private fun CreateCaseScreen(
         onSubmit = onSubmit,
         duplicateCandidates = state.duplicateCandidates,
         onConfirmDuplicate = onConfirmDuplicate,
+        topContent = {
+            RecentCasesSection(
+                cases = state.recentCases,
+                onOpenCase = onOpenCase,
+            )
+        },
         modifier = modifier,
     )
+}
+
+@Composable
+private fun RecentCasesSection(
+    cases: List<CaseSummary>,
+    onOpenCase: (String) -> Unit,
+) {
+    SectionHeading(
+        "最近命例",
+        if (cases.isEmpty()) {
+            "打开过的命例会出现在这里，方便继续研究。"
+        } else {
+            "按最近查看时间显示，可直接返回命盘详情。"
+        },
+    )
+    if (cases.isEmpty()) {
+        Text(
+            "暂无最近查看记录",
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+                .testTag("recent_cases_empty"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        cases.forEach { summary ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .clickable { onOpenCase(summary.id) }
+                    .semantics {
+                        contentDescription = "打开最近命例：${summary.alias}"
+                    }
+                    .testTag("recent_case_${summary.id}"),
+                colors = CardDefaults.cardColors(
+                    containerColor =
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                ),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        summary.name.value ?: summary.alias,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "${summary.sexForFortuneDirection.displayName()} · " +
+                            summary.birthInput.displayDateTime(),
+                        modifier = Modifier.padding(top = 3.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "四柱：${summary.fourPillars?.display() ?: "暂无计算结果"}",
+                        modifier = Modifier.padding(top = 3.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -2849,6 +2921,7 @@ internal fun CaseFormScreen(
     sexEditable: Boolean = true,
     duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     onConfirmDuplicate: (() -> Unit)? = null,
+    topContent: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -2869,6 +2942,7 @@ internal fun CaseFormScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
+            topContent?.invoke()
             if (showIdentityFields) {
                 SectionHeading("身份信息", "别名用于本地识别；姓名可以留空。")
                 OutlinedTextField(
@@ -3582,6 +3656,7 @@ private fun CaseDetailScreen(
     onExportSingleCase: () -> Unit,
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
+    onSelectSection: (CaseDetailSection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -3597,30 +3672,78 @@ private fun CaseDetailScreen(
                 }
             },
         )
-        when {
-            state.detailLoading -> LoadingBox("正在读取命例详情…")
-            state.detailError != null -> ErrorBox(
-                message = state.detailError,
-                actionLabel = "返回列表",
-                onAction = onBack,
+        if (state.detail != null && !state.detailLoading && state.detailError == null) {
+            CaseDetailTabs(
+                selectedSection = state.detailSection,
+                onSelectSection = onSelectSection,
             )
-            state.detail != null -> CaseDetailContent(
-                case = state.detail,
-                onEditCase = onEditCase,
-                onAddBirthTimeCandidate = onAddBirthTimeCandidate,
-                onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
-                onEditMetadata = onEditMetadata,
-                onAddRecord = onAddRecord,
-                onEditRecord = onEditRecord,
-                onAddEvent = onAddEvent,
-                onEditEvent = onEditEvent,
-                onDuplicate = onDuplicate,
-                onExportSingleCase = onExportSingleCase,
-                onMoveToTrash = onMoveToTrash,
-                onRestore = onRestore,
-                singleCaseExchangeBusy = state.singleCaseExchangeBusy,
-                mutationSaving = state.mutationSaving,
-                mutationError = state.mutationError,
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                state.detailLoading -> LoadingBox("正在读取命例详情…")
+                state.detailError != null -> ErrorBox(
+                    message = state.detailError,
+                    actionLabel = "返回列表",
+                    onAction = onBack,
+                )
+                state.detail != null -> CaseDetailContent(
+                    case = state.detail,
+                    onEditCase = onEditCase,
+                    onAddBirthTimeCandidate = onAddBirthTimeCandidate,
+                    onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
+                    onEditMetadata = onEditMetadata,
+                    onAddRecord = onAddRecord,
+                    onEditRecord = onEditRecord,
+                    onAddEvent = onAddEvent,
+                    onEditEvent = onEditEvent,
+                    onDuplicate = onDuplicate,
+                    onExportSingleCase = onExportSingleCase,
+                    onMoveToTrash = onMoveToTrash,
+                    onRestore = onRestore,
+                    selectedSection = state.detailSection,
+                    singleCaseExchangeBusy = state.singleCaseExchangeBusy,
+                    mutationSaving = state.mutationSaving,
+                    mutationError = state.mutationError,
+                )
+            }
+        }
+    }
+}
+
+private fun CaseDetailSection.displayName(): String = when (this) {
+    CaseDetailSection.BASIC_INFO -> "基本信息"
+    CaseDetailSection.BASIC_CHART -> "基本排盘"
+    CaseDetailSection.FORTUNE -> "岁运"
+    CaseDetailSection.RECORDS -> "分析记录"
+}
+
+private fun CaseDetailSection.testTag(): String = when (this) {
+    CaseDetailSection.BASIC_INFO -> "detail_tab_basic_info"
+    CaseDetailSection.BASIC_CHART -> "detail_tab_basic_chart"
+    CaseDetailSection.FORTUNE -> "detail_tab_fortune"
+    CaseDetailSection.RECORDS -> "detail_tab_records"
+}
+
+@Composable
+private fun CaseDetailTabs(
+    selectedSection: CaseDetailSection,
+    onSelectSection: (CaseDetailSection) -> Unit,
+) {
+    ScrollableTabRow(
+        selectedTabIndex = CaseDetailSection.entries.indexOf(selectedSection),
+        edgePadding = 0.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("case_detail_tabs"),
+    ) {
+        CaseDetailSection.entries.forEach { section ->
+            Tab(
+                selected = selectedSection == section,
+                onClick = { onSelectSection(section) },
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag(section.testTag()),
+                text = { Text(section.displayName()) },
             )
         }
     }
@@ -3641,6 +3764,7 @@ private fun CaseDetailContent(
     onExportSingleCase: () -> Unit,
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
+    selectedSection: CaseDetailSection,
     singleCaseExchangeBusy: Boolean,
     mutationSaving: Boolean,
     mutationError: String?,
@@ -3720,7 +3844,8 @@ private fun CaseDetailContent(
                 Text("恢复命例")
             }
         }
-        DetailSection("命例管理") {
+        if (selectedSection == CaseDetailSection.BASIC_INFO) {
+            DetailSection("命例管理") {
             DetailRow("收藏", if (case.isFavorite) "是" else "否")
             DetailRow("置顶", if (case.isPinned) "是" else "否")
             DetailRow("状态", if (case.deletedAt == null) "正常" else "回收站")
@@ -3733,7 +3858,7 @@ private fun CaseDetailContent(
                 case.tags.joinToString("、") { it.name }.ifEmpty { "未设置" },
             )
         }
-        DetailSection("出生时间候选") {
+            DetailSection("出生时间候选") {
             if (case.deletedAt == null) {
                 OutlinedButton(
                     onClick = onAddBirthTimeCandidate,
@@ -3851,7 +3976,7 @@ private fun CaseDetailContent(
                 )
             }
         }
-        DetailSection("原始录入信息") {
+            DetailSection("原始录入信息") {
             DetailRow("命例别名", case.alias)
             DetailRow(
                 "姓名",
@@ -3897,95 +4022,113 @@ private fun CaseDetailContent(
                 DetailRow("复制来源", sourceId)
             }
         }
-        DetailSection("计算结果") {
+        }
+        if (
+            selectedSection == CaseDetailSection.BASIC_CHART ||
+            selectedSection == CaseDetailSection.FORTUNE
+        ) {
+            DetailSection(
+                if (selectedSection == CaseDetailSection.BASIC_CHART) {
+                    "基本排盘"
+                } else {
+                    "起运与岁运"
+                },
+            ) {
             if (adopted == null) {
                 Text("当前命例没有已采用的计算快照。")
             } else {
-                DetailRow("四柱", adopted.result.fourPillars.display())
-                adopted.result.basicChartDetails?.let { basic ->
-                    BasicChartDetailsView(
-                        details = basic,
-                        sex = case.sexForFortuneDirection,
+                if (selectedSection == CaseDetailSection.BASIC_CHART) {
+                    DetailRow("四柱", adopted.result.fourPillars.display())
+                    adopted.result.basicChartDetails?.let { basic ->
+                        BasicChartDetailsView(
+                            details = basic,
+                            sex = case.sexForFortuneDirection,
+                        )
+                    }
+                    DetailRow("胎元", adopted.result.fetalOrigin)
+                    DetailRow("胎息", adopted.result.fetalBreath)
+                    DetailRow("命宫", adopted.result.ownSign)
+                    DetailRow("身宫", adopted.result.bodySign)
+                    DetailRow("计算配置", adopted.result.profile.id)
+                    DetailRow("引擎", adopted.result.evidence.engineName)
+                    DetailRow("引擎版本", adopted.result.evidence.engineVersion)
+                    DetailRow("规则版本", adopted.result.evidence.ruleVersion)
+                    adopted.result.calendarConversion?.let { conversion ->
+                        DetailRow("换算公历", conversion.solarDateTime.display())
+                        val lunar = conversion.lunarDateTime
+                        DetailRow(
+                            "换算农历",
+                            "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}" +
+                                "${lunar.month}月${lunar.day}日 " +
+                                "%02d:%02d:%02d".format(
+                                    lunar.hour,
+                                    lunar.minute,
+                                    lunar.second,
+                                ),
+                        )
+                    }
+                    adopted.result.trueSolarTimeEvidence?.let { evidence ->
+                        DetailRow("原始民用时间", evidence.originalCivilDateTime.display())
+                        DetailRow("真太阳时", evidence.trueSolarDateTime.display())
+                        DetailRow(
+                            "经度平太阳时校正",
+                            formatSignedDuration(evidence.meanSolarCorrectionSeconds),
+                        )
+                        DetailRow(
+                            "均时差校正",
+                            formatSignedDuration(evidence.equationOfTimeCorrectionSeconds),
+                        )
+                        DetailRow(
+                            "总校正量",
+                            formatSignedDuration(evidence.totalCorrectionSeconds),
+                        )
+                        DetailRow(
+                            "边界变化",
+                            buildList {
+                                if (evidence.crossesDate) add("跨日")
+                                if (evidence.crossesDoubleHour) add("跨时辰")
+                            }.joinToString("、").ifEmpty { "未跨日、未跨时辰" },
+                        )
+                        DetailRow(
+                            "真太阳时作用规则",
+                            "暂定：年/月按民用时，日/时按真太阳时",
+                        )
+                        DetailRow("真太阳时算法", evidence.algorithmVersion)
+                    }
+                    adopted.result.warnings.forEach { warning ->
+                        DetailRow("计算提醒", warning.message)
+                    }
+                } else {
+                    DetailRow(
+                        "起运方向",
+                        if (adopted.result.fortuneStart.direction.name == "FORWARD") {
+                            "顺排"
+                        } else {
+                            "逆排"
+                        },
                     )
+                    DetailRow(
+                        "起运年龄",
+                        "${adopted.result.fortuneStart.years} 年 " +
+                            "${adopted.result.fortuneStart.months} 月 " +
+                            "${adopted.result.fortuneStart.days} 日 " +
+                            "${adopted.result.fortuneStart.hours} 时 " +
+                            "${adopted.result.fortuneStart.minutes} 分",
+                    )
+                    DetailRow(
+                        "精确交运时间",
+                        adopted.result.fortuneStart.endAt.display(),
+                        tag = "fortune_transfer_time",
+                    )
+                    DecadeFortuneDetailsView(adopted.result.decadeFortunes)
                 }
-                DetailRow("胎元", adopted.result.fetalOrigin)
-                DetailRow("胎息", adopted.result.fetalBreath)
-                DetailRow("命宫", adopted.result.ownSign)
-                DetailRow("身宫", adopted.result.bodySign)
-                DetailRow("计算配置", adopted.result.profile.id)
-                DetailRow("引擎", adopted.result.evidence.engineName)
-                DetailRow("引擎版本", adopted.result.evidence.engineVersion)
-                DetailRow("规则版本", adopted.result.evidence.ruleVersion)
-                adopted.result.calendarConversion?.let { conversion ->
-                    DetailRow("换算公历", conversion.solarDateTime.display())
-                    val lunar = conversion.lunarDateTime
-                    DetailRow(
-                        "换算农历",
-                        "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}" +
-                            "${lunar.month}月${lunar.day}日 " +
-                            "%02d:%02d:%02d".format(
-                                lunar.hour,
-                                lunar.minute,
-                                lunar.second,
-                            ),
-                    )
-                }
-                adopted.result.trueSolarTimeEvidence?.let { evidence ->
-                    DetailRow("原始民用时间", evidence.originalCivilDateTime.display())
-                    DetailRow("真太阳时", evidence.trueSolarDateTime.display())
-                    DetailRow(
-                        "经度平太阳时校正",
-                        formatSignedDuration(evidence.meanSolarCorrectionSeconds),
-                    )
-                    DetailRow(
-                        "均时差校正",
-                        formatSignedDuration(evidence.equationOfTimeCorrectionSeconds),
-                    )
-                    DetailRow(
-                        "总校正量",
-                        formatSignedDuration(evidence.totalCorrectionSeconds),
-                    )
-                    DetailRow(
-                        "边界变化",
-                        buildList {
-                            if (evidence.crossesDate) add("跨日")
-                            if (evidence.crossesDoubleHour) add("跨时辰")
-                        }.joinToString("、").ifEmpty { "未跨日、未跨时辰" },
-                    )
-                    DetailRow(
-                        "真太阳时作用规则",
-                        "暂定：年/月按民用时，日/时按真太阳时",
-                    )
-                    DetailRow("真太阳时算法", evidence.algorithmVersion)
-                }
-                adopted.result.warnings.forEach { warning ->
-                    DetailRow("计算提醒", warning.message)
-                }
-                DetailRow(
-                    "起运方向",
-                    if (adopted.result.fortuneStart.direction.name == "FORWARD") {
-                        "顺排"
-                    } else {
-                        "逆排"
-                    },
-                )
-                DetailRow(
-                    "起运年龄",
-                    "${adopted.result.fortuneStart.years} 年 " +
-                        "${adopted.result.fortuneStart.months} 月 " +
-                        "${adopted.result.fortuneStart.days} 日 " +
-                        "${adopted.result.fortuneStart.hours} 时 " +
-                        "${adopted.result.fortuneStart.minutes} 分",
-                )
-                DetailRow(
-                    "精确交运时间",
-                    adopted.result.fortuneStart.endAt.display(),
-                    tag = "fortune_transfer_time",
-                )
-                DecadeFortuneDetailsView(adopted.result.decadeFortunes)
             }
         }
-        if (case.fieldEvidence.isNotEmpty()) {
+        }
+        if (
+            selectedSection == CaseDetailSection.BASIC_INFO &&
+            case.fieldEvidence.isNotEmpty()
+        ) {
             DetailSection("导入证据对照") {
                 Text(
                     "来源原文不会被人工修正覆盖；规范值、采用值与本机计算结果分别留存。",
@@ -4021,7 +4164,8 @@ private fun CaseDetailContent(
                 }
             }
         }
-        DetailSection("分析与记录") {
+        if (selectedSection == CaseDetailSection.RECORDS) {
+            DetailSection("分析与记录") {
             if (case.deletedAt == null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -4224,6 +4368,7 @@ private fun CaseDetailContent(
                         }
                     }
                 }
+            }
             }
         }
         Spacer(Modifier.height(24.dp))

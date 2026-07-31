@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
@@ -66,6 +67,52 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_cases").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun chartHomeShowsRecentlyViewedCaseShortcut() {
+        val alias = "最近命例-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("case_alias").performTextInput(alias)
+        composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("birth_year").performTextInput("1992")
+        composeRule.onNodeWithTag("birth_month").performTextInput("8")
+        composeRule.onNodeWithTag("birth_day").performTextInput("24")
+        composeRule.onNodeWithTag("birth_hour").performTextInput("12")
+        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
+        composeRule.onNodeWithTag("birth_location")
+            .performScrollTo()
+            .performTextInput("江苏省宿迁市泗阳县")
+        composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        if (
+            composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
+                .fetchSemanticsNodes().isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("case_search").performTextInput(alias)
+        composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
+        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithTag("nav_chart").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText(alias))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(alias).performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -434,6 +481,8 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("别名：$alias").performClick()
 
         composeRule.onNodeWithText("已启用").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
+        composeRule.onNodeWithTag("detail_tab_basic_chart").assertIsSelected()
         composeRule.onNodeWithText("tyme-true-solar-provisional-v1")
             .performScrollTo()
             .assertIsDisplayed()
@@ -455,12 +504,14 @@ class StageTwoFlowTest {
             .assertIsDisplayed()
         composeRule.onNodeWithText("胎元").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("命宫").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("detail_tab_fortune").performScrollTo().performClick()
         composeRule.onNodeWithTag("fortune_transfer_time")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("decade_fortune_details")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
         composeRule.onNodeWithText("1992-08-24 12:56:23")
             .performScrollTo()
             .assertIsDisplayed()
@@ -531,8 +582,10 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("原始录入信息").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("计算结果").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
+        composeRule.onNodeWithTag("basic_chart_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Tyme4j").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("detail_tab_basic_info").performScrollTo().performClick()
 
         val editedAlias = "$alias-已编辑"
         composeRule.onNodeWithTag("edit_case_button").performScrollTo().performClick()
@@ -588,6 +641,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isEmpty()
         }
 
+        composeRule.onNodeWithTag("detail_tab_records").performScrollTo().performClick()
         composeRule.onNodeWithTag("add_record_button").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("record_editor_screen"))

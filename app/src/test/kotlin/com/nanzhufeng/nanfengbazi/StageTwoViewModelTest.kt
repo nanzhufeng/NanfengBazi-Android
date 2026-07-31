@@ -106,6 +106,32 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `排盘首页只读取三个已查看的活动命例`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            repeat(5) { index ->
+                stored["case-$index"] = sampleStoredCase("case-$index").copy(
+                    lastViewedAt = if (index == 4) {
+                        null
+                    } else {
+                        FixedInstant.plusSeconds(index.toLong())
+                    },
+                )
+            }
+        }
+
+        val viewModel = createViewModel(repository)
+
+        assertEquals(3, viewModel.state.value.recentCases.size)
+        assertTrue(viewModel.state.value.recentCases.all { it.lastViewedAt != null })
+        assertTrue(
+            repository.searchRequests.any {
+                it.sortOrder == CaseSortOrder.LAST_VIEWED_DESC &&
+                    it.visibility == CaseVisibility.ACTIVE
+            },
+        )
+    }
+
+    @Test
     fun `表单错误保留在新建页且成功后返回刷新列表`() = runTest {
         val repository = FakeCaseRepository()
         val viewModel = createViewModel(repository)
