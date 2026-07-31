@@ -1001,6 +1001,23 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
 
+        composeRule.onNodeWithTag("open_case_comparison")
+            .performScrollTo()
+            .performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_comparison_report"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("case_comparison_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("case_comparison_summary")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "结果仅描述字段异同，不生成吉凶、合婚或关系结论。",
+        ).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("back_from_case_comparison").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         val exportedFileName = "${editedAlias.take(48)}_南枫八字命例.json"
         val exportedFile = device.wait(

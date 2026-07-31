@@ -150,3 +150,4 @@
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
 | 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v7 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
+| 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |

@@ -78,6 +78,7 @@ import kotlinx.coroutines.withContext
 
 sealed interface AppDestination {
     data object CaseList : AppDestination
+    data object CaseComparison : AppDestination
     data object RecordHub : AppDestination
     data object Settings : AppDestination
     data object CreateCase : AppDestination
@@ -115,6 +116,10 @@ class StageTwoNavigator {
     fun openRecordHub(): AppDestination = openRoot(AppDestination.RecordHub)
 
     fun openSettings(): AppDestination = openRoot(AppDestination.Settings)
+
+    fun openCaseComparison(): AppDestination {
+        return push(AppDestination.CaseComparison)
+    }
 
     fun openScreenshotImportReview(): AppDestination {
         return push(AppDestination.ScreenshotImportReview)
@@ -162,6 +167,11 @@ class StageTwoNavigator {
             AppDestination.CreateCase,
             AppDestination.ScreenshotImportReview,
             -> stack += destination
+
+            AppDestination.CaseComparison -> {
+                stack += AppDestination.CaseList
+                stack += destination
+            }
 
             is AppDestination.CaseDetail -> {
                 stack += AppDestination.CaseList
@@ -223,6 +233,12 @@ data class StageTwoUiState(
     val availableTags: List<CaseTag> = emptyList(),
     val cases: List<CaseSummary> = emptyList(),
     val recentCases: List<CaseSummary> = emptyList(),
+    val comparisonCandidates: List<CaseSummary> = emptyList(),
+    val comparisonLeftCaseId: String? = null,
+    val comparisonRightCaseId: String? = null,
+    val comparisonReport: CaseComparisonReport? = null,
+    val comparisonLoading: Boolean = false,
+    val comparisonError: String? = null,
     val listLoading: Boolean = false,
     val listError: String? = null,
     val form: CaseFormState = CaseFormState(),
@@ -318,6 +334,7 @@ class StageTwoViewModel(
     )
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
+    private var comparisonJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
@@ -343,6 +360,9 @@ class StageTwoViewModel(
         recoverInterruptedRestores()
         restoreCaseBoundDestination()
         refreshCases()
+        if (mutableState.value.destination == AppDestination.CaseComparison) {
+            loadComparisonWorkspace()
+        }
     }
 
     private fun restoreCaseBoundDestination() {
@@ -1961,6 +1981,175 @@ class StageTwoViewModel(
         refreshCases()
     }
 
+    fun openCaseComparison() {
+        mutableState.update {
+            it.copy(
+                destination = navigator.openCaseComparison(),
+                comparisonLoading = true,
+                comparisonError = null,
+                comparisonReport = null,
+                message = null,
+            )
+        }
+        loadComparisonWorkspace()
+    }
+
+    fun selectComparisonLeft(caseId: String) {
+        val candidates = mutableState.value.comparisonCandidates
+        if (candidates.none { it.id == caseId }) return
+        val rightCaseId = mutableState.value.comparisonRightCaseId
+            ?.takeUnless { it == caseId }
+        mutableState.update {
+            it.copy(
+                comparisonLeftCaseId = caseId,
+                comparisonRightCaseId = rightCaseId,
+                comparisonReport = null,
+                comparisonError = null,
+                comparisonLoading = rightCaseId != null,
+            )
+        }
+        if (rightCaseId != null) {
+            loadComparisonReport(caseId, rightCaseId)
+        }
+    }
+
+    fun selectComparisonRight(caseId: String) {
+        val candidates = mutableState.value.comparisonCandidates
+        if (candidates.none { it.id == caseId }) return
+        val leftCaseId = mutableState.value.comparisonLeftCaseId
+            ?.takeUnless { it == caseId }
+        mutableState.update {
+            it.copy(
+                comparisonLeftCaseId = leftCaseId,
+                comparisonRightCaseId = caseId,
+                comparisonReport = null,
+                comparisonError = null,
+                comparisonLoading = leftCaseId != null,
+            )
+        }
+        if (leftCaseId != null) {
+            loadComparisonReport(leftCaseId, caseId)
+        }
+    }
+
+    fun retryCaseComparison() {
+        loadComparisonWorkspace()
+    }
+
+    private fun loadComparisonWorkspace() {
+        comparisonJob?.cancel()
+        comparisonJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    comparisonLoading = true,
+                    comparisonError = null,
+                    comparisonReport = null,
+                )
+            }
+            val candidates = try {
+                withContext(ioDispatcher) {
+                    caseRepository.search(
+                        CaseSearchRequest(
+                            sortOrder = CaseSortOrder.UPDATED_DESC,
+                            visibility = CaseVisibility.ACTIVE,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.update {
+                    it.copy(
+                        comparisonLoading = false,
+                        comparisonError = "无法读取命例对比列表，请重试。",
+                    )
+                }
+                return@launch
+            }
+            if (candidates.size < 2) {
+                mutableState.update {
+                    it.copy(
+                        comparisonCandidates = candidates,
+                        comparisonLeftCaseId = candidates.firstOrNull()?.id,
+                        comparisonRightCaseId = null,
+                        comparisonReport = null,
+                        comparisonLoading = false,
+                        comparisonError = "至少需要两个活动命例才能进行客观字段对比。",
+                    )
+                }
+                return@launch
+            }
+            val current = mutableState.value
+            val leftCaseId = current.comparisonLeftCaseId
+                ?.takeIf { id -> candidates.any { it.id == id } }
+                ?: candidates.first().id
+            val rightCaseId = current.comparisonRightCaseId
+                ?.takeIf { id -> id != leftCaseId && candidates.any { it.id == id } }
+                ?: candidates.first { it.id != leftCaseId }.id
+            mutableState.update {
+                it.copy(
+                    comparisonCandidates = candidates,
+                    comparisonLeftCaseId = leftCaseId,
+                    comparisonRightCaseId = rightCaseId,
+                )
+            }
+            loadComparisonReportInCurrentJob(leftCaseId, rightCaseId)
+        }
+    }
+
+    private fun loadComparisonReport(leftCaseId: String, rightCaseId: String) {
+        comparisonJob?.cancel()
+        comparisonJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    comparisonLoading = true,
+                    comparisonError = null,
+                    comparisonReport = null,
+                )
+            }
+            loadComparisonReportInCurrentJob(leftCaseId, rightCaseId)
+        }
+    }
+
+    private suspend fun loadComparisonReportInCurrentJob(
+        leftCaseId: String,
+        rightCaseId: String,
+    ) {
+        val report = try {
+            val (left, right) = withContext(ioDispatcher) {
+                caseRepository.findById(leftCaseId) to caseRepository.findById(rightCaseId)
+            }
+            if (left == null || right == null || left.deletedAt != null || right.deletedAt != null) {
+                null
+            } else {
+                CaseComparisonEngine.compare(left, right)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        mutableState.update {
+            if (
+                it.comparisonLeftCaseId != leftCaseId ||
+                it.comparisonRightCaseId != rightCaseId
+            ) {
+                it
+            } else if (report == null) {
+                it.copy(
+                    comparisonLoading = false,
+                    comparisonError = "命例已变化或无法读取，请刷新后重新选择。",
+                )
+            } else {
+                it.copy(
+                    comparisonReport = report,
+                    comparisonLoading = false,
+                    comparisonError = null,
+                )
+            }
+        }
+    }
+
     fun openSettings() {
         mutableState.update {
             it.copy(
@@ -2908,6 +3097,7 @@ private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.EditTextRecord -> caseId
     is AppDestination.EditEvent -> caseId
     AppDestination.CaseList,
+    AppDestination.CaseComparison,
     AppDestination.RecordHub,
     AppDestination.Settings,
     AppDestination.CreateCase,
@@ -2920,6 +3110,8 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("query", query)
     putString("selectedGroupId", selectedGroupId)
     putString("selectedTagId", selectedTagId)
+    putString("comparisonLeftCaseId", comparisonLeftCaseId)
+    putString("comparisonRightCaseId", comparisonRightCaseId)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
     putString("detailSection", detailSection.name)
@@ -2942,6 +3134,9 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         query = getString("query").orEmpty(),
         selectedGroupId = getString("selectedGroupId"),
         selectedTagId = getString("selectedTagId"),
+        comparisonLeftCaseId = getString("comparisonLeftCaseId"),
+        comparisonRightCaseId = getString("comparisonRightCaseId"),
+        comparisonLoading = destination == AppDestination.CaseComparison,
         sortOrder = enumValueOrDefault(
             getString("sortOrder"),
             CaseSortOrder.UPDATED_DESC,
@@ -2971,6 +3166,7 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
 private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
     when (this@toSavedStateBundle) {
         AppDestination.CaseList -> putString("type", "case_list")
+        AppDestination.CaseComparison -> putString("type", "case_comparison")
         AppDestination.RecordHub -> putString("type", "record_hub")
         AppDestination.Settings -> putString("type", "settings")
         AppDestination.CreateCase -> putString("type", "create_case")
@@ -3008,6 +3204,7 @@ private fun Bundle.toAppDestination(): AppDestination {
     val caseId = getString("caseId")
     return when (getString("type")) {
         "record_hub" -> AppDestination.RecordHub
+        "case_comparison" -> AppDestination.CaseComparison
         "settings" -> AppDestination.Settings
         "create_case" -> AppDestination.CreateCase
         "screenshot_review" -> AppDestination.ScreenshotImportReview

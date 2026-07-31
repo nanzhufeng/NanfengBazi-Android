@@ -111,6 +111,51 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `命例对比读取全部活动命例并生成客观字段报告`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["left"] = sampleStoredCase("left").copy(alias = "甲盘")
+            stored["right"] = sampleStoredCase("right").copy(
+                alias = "乙盘",
+                calculationSnapshots = sampleStoredCase("right").calculationSnapshots.map {
+                    it.copy(id = "snapshot-right")
+                },
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openCaseComparison()
+
+        val state = viewModel.state.value
+        assertEquals(AppDestination.CaseComparison, state.destination)
+        assertEquals(setOf("left", "right"), state.comparisonCandidates.map { it.id }.toSet())
+        assertNotNull(state.comparisonReport)
+        assertEquals(
+            setOf("left", "right"),
+            setOf(state.comparisonLeftCaseId, state.comparisonRightCaseId),
+        )
+        assertFalse(state.comparisonLoading)
+        assertNull(state.comparisonError)
+        assertTrue(
+            repository.searchRequests.any {
+                it.visibility == CaseVisibility.ACTIVE && it.query.isBlank()
+            },
+        )
+    }
+
+    @Test
+    fun `命例不足两个时对比保持零推断并给出行动提示`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["only"] = sampleStoredCase("only")
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openCaseComparison()
+
+        assertNull(viewModel.state.value.comparisonReport)
+        assertTrue(viewModel.state.value.comparisonError?.contains("至少需要两个") == true)
+    }
+
+    @Test
     fun `排盘首页只读取三个已查看的活动命例`() = runTest {
         val repository = FakeCaseRepository().apply {
             repeat(5) { index ->

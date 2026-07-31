@@ -259,7 +259,16 @@ fun NanfengBaziApp(
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onPreviewFullBackup = onOpenFullBackupDocument,
+                        onOpenCaseComparison = viewModel::openCaseComparison,
                         onOpenCase = viewModel::openDetail,
+                        modifier = Modifier.padding(padding),
+                    )
+                    AppDestination.CaseComparison -> CaseComparisonScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onSelectLeft = viewModel::selectComparisonLeft,
+                        onSelectRight = viewModel::selectComparisonRight,
+                        onRetry = viewModel::retryCaseComparison,
                         modifier = Modifier.padding(padding),
                     )
                     AppDestination.RecordHub -> RecordHubScreen(
@@ -1972,6 +1981,7 @@ private fun CaseListScreen(
     onImportSingleCase: () -> Unit,
     onExportFullBackup: () -> Unit,
     onPreviewFullBackup: () -> Unit,
+    onOpenCaseComparison: () -> Unit,
     onOpenCase: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2049,6 +2059,15 @@ private fun CaseListScreen(
             ) {
                 Text("检查完整备份")
             }
+            OutlinedButton(
+                onClick = onOpenCaseComparison,
+                enabled = !state.listLoading && state.visibility == CaseVisibility.ACTIVE,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("open_case_comparison"),
+            ) {
+                Text("命例对比")
+            }
         }
         ScreenshotImportSummary(
             state = screenshotImportState,
@@ -2115,6 +2134,212 @@ private fun CaseListScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CaseComparisonScreen(
+    state: StageTwoUiState,
+    onBack: () -> Unit,
+    onSelectLeft: (String) -> Unit,
+    onSelectRight: (String) -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("case_comparison_screen"),
+    ) {
+        TopAppBar(
+            title = {
+                Column {
+                    Text("命例对比", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "只比较客观资料与版本化计算结果",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            navigationIcon = {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("back_from_case_comparison"),
+                ) {
+                    Text("返回")
+                }
+            },
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("选择甲盘", fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                state.comparisonCandidates.forEach { candidate ->
+                    SelectionButton(
+                        text = candidate.alias,
+                        selected = candidate.id == state.comparisonLeftCaseId,
+                        onClick = { onSelectLeft(candidate.id) },
+                        tag = "comparison_left_${candidate.id}",
+                    )
+                }
+            }
+            Text("选择乙盘", fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                state.comparisonCandidates.forEach { candidate ->
+                    SelectionButton(
+                        text = candidate.alias,
+                        selected = candidate.id == state.comparisonRightCaseId,
+                        onClick = { onSelectRight(candidate.id) },
+                        tag = "comparison_right_${candidate.id}",
+                    )
+                }
+            }
+        }
+        when {
+            state.comparisonLoading -> LoadingBox("正在重建两个命例的对比档案…")
+            state.comparisonError != null -> ErrorBox(
+                message = state.comparisonError,
+                actionLabel = "重新读取",
+                onAction = onRetry,
+            )
+            state.comparisonReport != null -> CaseComparisonReportContent(
+                report = state.comparisonReport,
+            )
+            else -> ErrorBox(
+                message = "请选择两个不同的活动命例。",
+                actionLabel = "重新读取",
+                onAction = onRetry,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CaseComparisonReportContent(
+    report: CaseComparisonReport,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("case_comparison_report"),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 16.dp,
+            top = 8.dp,
+            end = 16.dp,
+            bottom = 24.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        "${report.leftAlias} ↔ ${report.rightAlias}",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "相同 ${report.sameCount} · 不同 ${report.differentCount} · " +
+                            "待补 ${report.missingCount}",
+                        modifier = Modifier.testTag("case_comparison_summary"),
+                    )
+                    Text(
+                        "结果仅描述字段异同，不生成吉凶、合婚或关系结论。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        items(
+            items = report.sections,
+            key = { it.title },
+        ) { section ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(section.title, fontWeight = FontWeight.SemiBold)
+                    section.rows.forEachIndexed { index, row ->
+                        if (index > 0) HorizontalDivider()
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("comparison_row_${section.title}_${row.label}"),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(row.label, fontWeight = FontWeight.Medium)
+                                Text(
+                                    row.outcome.displayName(),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = when (row.outcome) {
+                                        CaseComparisonOutcome.SAME ->
+                                            MaterialTheme.colorScheme.primary
+                                        CaseComparisonOutcome.DIFFERENT ->
+                                            MaterialTheme.colorScheme.error
+                                        CaseComparisonOutcome.MISSING ->
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        report.leftAlias,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(row.leftValue)
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        report.rightAlias,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(row.rightValue)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun CaseComparisonOutcome.displayName(): String = when (this) {
+    CaseComparisonOutcome.SAME -> "相同"
+    CaseComparisonOutcome.DIFFERENT -> "不同"
+    CaseComparisonOutcome.MISSING -> "待补"
 }
 
 @Composable

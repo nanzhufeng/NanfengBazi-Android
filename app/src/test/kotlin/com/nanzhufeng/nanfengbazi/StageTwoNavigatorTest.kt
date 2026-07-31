@@ -12,6 +12,8 @@ class StageTwoNavigatorTest {
         assertEquals(AppDestination.RecordHub, navigator.openRecordHub())
         assertEquals(AppDestination.Settings, navigator.openSettings())
         assertEquals(AppDestination.CaseList, navigator.backToList())
+        assertEquals(AppDestination.CaseComparison, navigator.openCaseComparison())
+        assertEquals(AppDestination.CaseList, navigator.back())
         assertEquals(AppDestination.CreateCase, navigator.openCreate())
         assertEquals(AppDestination.CaseList, navigator.backToList())
         assertEquals(

@@ -101,6 +101,27 @@ class StageTwoSavedStateTest {
             AppDestination.CaseDetail(caseId),
             restoredEditor.state.value.destination,
         )
+
+        restoredEditor.duplicateCase()
+        waitUntil {
+            val detailId = restoredEditor.state.value.detail?.id
+            detailId != null && detailId != caseId && !restoredEditor.state.value.mutationSaving
+        }
+        restoredEditor.backToList()
+        restoredEditor.openCaseComparison()
+        waitUntil { restoredEditor.state.value.comparisonReport != null }
+        val comparisonHandle = SavedStateHandle()
+        restoredEditor.saveRestorableStateTo(comparisonHandle)
+        val restoredComparison = createViewModel(container, comparisonHandle)
+        waitUntil { restoredComparison.state.value.comparisonReport != null }
+
+        assertEquals(
+            AppDestination.CaseComparison,
+            restoredComparison.state.value.destination,
+        )
+        assertNotNull(restoredComparison.state.value.comparisonLeftCaseId)
+        assertNotNull(restoredComparison.state.value.comparisonRightCaseId)
+        assertNotNull(restoredComparison.state.value.comparisonReport)
     }
 
     private suspend fun waitUntil(condition: () -> Boolean) {

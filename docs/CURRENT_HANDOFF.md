@@ -1,4 +1,4 @@
-# 当前交接：alpha60 内部核心能力闭环
+# 当前交接：alpha61 命例客观对比
 
 更新日期：2026-07-31
 
@@ -28,6 +28,9 @@
   它们保留来源原文、规范值、修正、置信度与原图框，但永不伪造本机计算值或一致性。
 - alpha60 已补齐 IO-06：完整备份预览、提交重读和旧空库恢复都先经过独立临时 Room
   数据库完整往返；恢复工作台显示预演状态，失败时正式库保持零写入。
+- Stage 7G / alpha61 已接通命例客观对比：从两个不同活动命例的最新已采用快照和正式
+  研究资料生成五层相同/不同/缺失报告；页面与两个稳定 ID 可恢复，且明确禁止自动生成
+  吉凶、合婚或关系结论。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -347,6 +350,10 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
     创建—导出—预览—冲突合并—恢复专项 1/1 通过；
   - alpha60 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
     405 项通过，360 次测试执行零失败/零跳过，Lint 0 错误（20 条依赖版本 warning）；
+  - alpha61 命例列表—对比页面—五层报告—免责声明的 API 35 长流程 1/1 通过；
+    `SavedStateHandle` 重建后左右命例与报告恢复专项 1/1 通过；
+  - alpha61 clean `test lint assembleDebug assembleRelease assembleDebugAndroidTest`
+    405 项通过，368 次测试执行零失败/零跳过，Lint 0 错误（19 条依赖版本 warning）；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -354,17 +361,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha60-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha61-debug.apk`
 
-- 大小：55,827,523 bytes
-- SHA-256：`cea5c8130d0ec2666401cb1968c538d37f3858661390b7fc395e08d4448245b2`
+- 大小：55,860,291 bytes
+- SHA-256：`716b00190272e1d7cedb51dc6a1a2f7e762f9f02920a42235608967b2e8eea6d`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha60-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha61-release-unsigned.apk`
 
-- 大小：52,072,578 bytes
-- SHA-256：`907e73e3dd83956d49b69176cb231ba6aefd9c69e892a6938bcb328c47b894ad`
+- 大小：52,088,962 bytes
+- SHA-256：`3788b23fea24f2b36c64d60d1bd25b08da067d6ad71afbc61f5e7805c110963f`
 
 ## 当前限制与风险
 
@@ -396,10 +403,14 @@ Debug 验收构建：
 
 ## 下一安全增量
 
-内部核心能力已无可继续自动闭环的已知缺口，下一步仅按外部门禁推进：
+继续在本任务内按可本地验证、低外部依赖的顺序推进：
 
-1. 在用户授权后完成真实问真样本迁移与字段准确率验收；
-2. 在正式签名就绪并获授权后完成 OPPO 数据保留安装与发布验收。
+1. 四柱反查：先冻结时间范围、时区和子时口径，再复用唯一历法计算入口返回候选时刻；
+2. 图片导出与长图分享：共用版本化、可复现的渲染结果，不把缓存图当正式数据；
+3. 客观命盘摘要及两类可确认的点评/反馈主题候选；
+4. 用户授权后完成真实问真样本迁移与字段准确率验收；
+5. 获得新的联网与字段授权后接外部 AI 导出/回填；
+6. 正式签名就绪并获授权后完成 OPPO 数据保留安装与发布验收。
 
-`docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；内部核心闭环不等于真实问真、
-OPPO、正式签名和发布四项外部门禁已经通过。
+`docs/REQUIREMENT_GAP_AUDIT.md` 是全方案逐项事实清单；v1.0 核心闭环不等于 v1.x、
+真实问真、外部 AI、OPPO、正式签名和发布已经通过。
