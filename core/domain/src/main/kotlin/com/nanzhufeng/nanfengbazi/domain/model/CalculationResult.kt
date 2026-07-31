@@ -36,6 +36,17 @@ data class DecadeFortune(
     val endAge: Int,
     val startYear: Int,
     val endYear: Int,
+    val startAt: CivilDateTime? = null,
+    val endAtExclusive: CivilDateTime? = null,
+)
+
+@Serializable
+data class AnnualFortune(
+    val name: String,
+    val calendarYear: Int,
+    val nominalAge: Int,
+    val decadeIndex: Int? = null,
+    val decadeName: String? = null,
 )
 
 @Serializable
@@ -158,6 +169,7 @@ data class CalculationResult(
     val fetalBreath: String,
     val fortuneStart: FortuneStart,
     val decadeFortunes: List<DecadeFortune>,
+    val annualFortunes: List<AnnualFortune> = emptyList(),
     val evidence: CalculationEvidence,
     val warnings: List<CalculationWarning> = emptyList(),
     val calendarConversion: CalendarConversionResult? = null,

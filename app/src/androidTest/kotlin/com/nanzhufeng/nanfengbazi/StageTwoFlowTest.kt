@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
@@ -509,6 +510,29 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("decade_fortune_details")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_observation_date")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("current_fortune_position")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("current_annual_fortune")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("current_decade_fortune")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("annual_fortune_details")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_observation_date")
+            .performTextReplacement("2026-02-03")
+        composeRule.onNode(
+            hasTestTag("current_annual_fortune")
+                .and(hasAnyDescendant(hasText("乙巳", substring = true))),
+        )
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()

@@ -83,7 +83,10 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
+import com.nanzhufeng.nanfengbazi.domain.FortunePosition
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
@@ -306,6 +309,8 @@ fun NanfengBaziApp(
                                 onMoveToTrash = viewModel::requestMoveToTrash,
                                 onRestore = viewModel::restoreCase,
                                 onSelectSection = viewModel::selectDetailSection,
+                                onFortuneObservationDateChange =
+                                    viewModel::updateFortuneObservationDate,
                                 modifier = modifier,
                             )
                         }
@@ -3705,6 +3710,7 @@ private fun CaseDetailScreen(
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
     onSelectSection: (CaseDetailSection) -> Unit,
+    onFortuneObservationDateChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -3755,6 +3761,10 @@ private fun CaseDetailScreen(
                     singleCaseExchangeBusy = state.singleCaseExchangeBusy,
                     mutationSaving = state.mutationSaving,
                     mutationError = state.mutationError,
+                    fortuneObservationDate = state.fortuneObservationDate,
+                    fortunePosition = state.fortunePosition,
+                    fortunePositionError = state.fortunePositionError,
+                    onFortuneObservationDateChange = onFortuneObservationDateChange,
                 )
             }
         }
@@ -3819,6 +3829,10 @@ private fun CaseDetailContent(
     singleCaseExchangeBusy: Boolean,
     mutationSaving: Boolean,
     mutationError: String?,
+    fortuneObservationDate: String,
+    fortunePosition: FortunePosition?,
+    fortunePositionError: String?,
+    onFortuneObservationDateChange: (String) -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     Column(
@@ -4178,7 +4192,34 @@ private fun CaseDetailContent(
                         adopted.result.fortuneStart.endAt.display(),
                         tag = "fortune_transfer_time",
                     )
+                    OutlinedTextField(
+                        value = fortuneObservationDate,
+                        onValueChange = onFortuneObservationDateChange,
+                        label = { Text("观察日期（YYYY-MM-DD）") },
+                        singleLine = true,
+                        isError = fortunePositionError != null,
+                        supportingText = fortunePositionError?.let { message ->
+                            { Text(message) }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp, bottom = 8.dp)
+                            .testTag("fortune_observation_date"),
+                    )
+                    fortunePosition?.let { position ->
+                        CurrentFortunePositionView(position)
+                    }
+                    Text(
+                        "定位规则：流年以精确立春切换；大运以精确交运时刻切换。",
+                        modifier = Modifier.padding(bottom = 10.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     DecadeFortuneDetailsView(adopted.result.decadeFortunes)
+                    AnnualFortuneDetailsView(
+                        annuals = adopted.result.annualFortunes,
+                        current = fortunePosition,
+                    )
                 }
             }
         }
@@ -4529,6 +4570,113 @@ private fun DecadeFortuneDetailsView(
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.End,
                     style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurrentFortunePositionView(
+    position: FortunePosition,
+) {
+    val decadeText = when (position.status) {
+        FortunePositionStatus.BEFORE_FIRST_DECADE -> "尚未交入第一步大运"
+        FortunePositionStatus.WITHIN_DECADE ->
+            position.decadeFortune?.name ?: "当前大运未定位"
+        FortunePositionStatus.AFTER_TIMELINE -> "已超出前八步大运范围"
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .testTag("current_fortune_position"),
+    ) {
+        DetailRow(
+            "当前流年",
+            "${position.annualFortune.calendarYear} ${position.annualFortune.name} · " +
+                "虚岁 ${position.annualFortune.nominalAge}",
+            tag = "current_annual_fortune",
+        )
+        DetailRow("当前大运", decadeText, tag = "current_decade_fortune")
+    }
+}
+
+@Composable
+private fun AnnualFortuneDetailsView(
+    annuals: List<AnnualFortune>,
+    current: FortunePosition?,
+) {
+    if (annuals.isEmpty()) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 4.dp)
+            .testTag("annual_fortune_details"),
+    ) {
+        Text(
+            "流年表",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "出生年至前八步大运终点；交运年份的当前归属以上方精确时刻定位为准。",
+            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(modifier = Modifier.padding(vertical = 2.dp)) {
+            Text("年份", modifier = Modifier.weight(0.8f), style = MaterialTheme.typography.labelSmall)
+            Text("流年", modifier = Modifier.weight(0.8f), style = MaterialTheme.typography.labelSmall)
+            Text(
+                "虚岁",
+                modifier = Modifier.weight(0.6f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(
+                "大运",
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        annuals.forEach { annual ->
+            val isCurrent = current?.annualFortune?.calendarYear == annual.calendarYear
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .then(
+                        if (isCurrent) {
+                            Modifier.testTag("current_annual_fortune_row")
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
+                val style = if (isCurrent) {
+                    MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                } else {
+                    MaterialTheme.typography.bodySmall
+                }
+                Text(
+                    annual.calendarYear.toString(),
+                    modifier = Modifier.weight(0.8f),
+                    style = style,
+                )
+                Text(annual.name, modifier = Modifier.weight(0.8f), style = style)
+                Text(
+                    annual.nominalAge.toString(),
+                    modifier = Modifier.weight(0.6f),
+                    textAlign = TextAlign.Center,
+                    style = style,
+                )
+                Text(
+                    annual.decadeName ?: "未交运",
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.End,
+                    style = style,
                 )
             }
         }

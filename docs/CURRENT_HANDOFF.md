@@ -1,4 +1,4 @@
-# 当前交接：Stage 6 内部门禁完成
+# 当前交接：Stage 7A 岁运基础与当前定位完成
 
 更新日期：2026-07-31
 
@@ -11,9 +11,11 @@
 - 夏令时回拨重叠时刻必须由用户在两个有效 offset 中明确选择；跳时产生的不存在时刻
   明确失败且零写入。
 - Stage 4B 已冻结 60 个双引擎四柱黄金样本；Stage 5A 已接通问真 P0/P1 合成截图链。
-- Stage 6 当前增量已补齐排盘首页最近命例、命盘详情四标签，以及页面/参数/筛选/草稿的
+- Stage 6 已补齐排盘首页最近命例、命盘详情四标签，以及页面/参数/筛选/草稿的
   `SavedStateHandle` 合同；后台 Activity 销毁和宿主杀进程后的恢复均已通过，下一安全
-  增量已完成全页面无障碍与目标视口矩阵，当前进入 Stage 7 专业岁运。
+  增量已完成全页面无障碍与目标视口矩阵。
+- Stage 7A 已新增出生年至前八步大运终点的流年序列，并在岁运页按可配置观察日期显示
+  当前流年、虚岁和当前大运；流年按精确立春、大运按精确交运半开区间切换。
 - 问真输出仍是截图迁移的首要验收标准；算法真值仍由版本化规则和边界测试负责，二者
   不得混用。
 - 只把用户已提供截图中的非身份化泗阳样例抽成黄金对照，没有把截图文件、真实姓名或
@@ -284,6 +286,11 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   - alpha51 修复顶部、筛选、性别/类别、详情操作、Switch 与 Checkbox 的可访问名称或
     触控区缺口；手机/展开态 × 1.0/2.0 字体四组合真实工作流 4/4 通过，其中两组启用
     TalkBack，测试后视口、字体、服务、触摸探索和辅助服务通知权限均恢复；
+  - alpha52 新增版本化流年序列与精确当前岁运定位；引擎覆盖立春前后及交运前后边界，
+    ViewModel 覆盖默认日期、无效日期与重定位，API 35 创建命例—打开岁运—改观察日期
+    流程 1/1 通过；
+  - alpha52 重新执行手机/展开态 × 1.0/2.0 字体与 TalkBack 组合 4/4 通过；测试显式
+    归一起始主入口并等待 Compose 转场稳定，结束后恢复全部系统无障碍与视口设置；
   - 全部设备测试仅在 `emulator-5554` 执行，未触碰 OPPO。
 - 真实问真迁移仍未执行；自动化证据不能替代最终隐私批准样本验收。
 
@@ -291,24 +298,24 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 Debug 验收构建：
 
-`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha51-debug.apk`
+`app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha52-debug.apk`
 
-- 大小：55,745,603 bytes
-- SHA-256：`a608f9da976c5fc1640c2d3982f05c508ba4d3ad579ddbf13664b7ba34fdb107`
+- 大小：55,761,987 bytes
+- SHA-256：`285247df7231b0659a543f6d9d988bce2cec11db91eea35c62cd1e7627c05769`
 
 未签名 Release：
 
-`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha51-release-unsigned.apk`
+`app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha52-release-unsigned.apk`
 
-- 大小：52,007,042 bytes
-- SHA-256：`8656f2bb2250258eb6a96a8b12ee31a45c6f1663daf54c49d2a16ece034334d1`
+- 大小：52,023,426 bytes
+- SHA-256：`62b8dad82aa626c8aed21c644a9d2fa9ba2b13f28ec52199a8cdfa3e5ba38a2a`
 
 ## 当前限制与风险
 
 - 自动地点搜索、行政区到坐标/时区映射尚未接通；当前地区、坐标和 IANA 时区均为人工
   输入。县域中心坐标与问真实际取点可能造成几十秒差异。
-- 神煞、流年/流月/流日/流时与子时多口径尚未实现；基础排盘确定性字段已经输出，但仍需
-  Stage 4B 扩大边界黄金集和后续问真真实样本对照。
+- 神煞、流月/流日/流时与子时多口径尚未实现；流年与当前大运已实现，但仍需扩大节气、
+  交运边界黄金集和后续问真真实样本对照。
 - 问真截图导入的 Photo Picker/系统分享、私有复制、可恢复会话、bundled 端侧 OCR、
   长图分段、感知哈希、相似提示、逐图片失败隔离、保守多图归组、用户列表 P0 字段解析
   及反馈/点评完整原文、基本资料核心字段、字段人工修正和原图文件/边界框坐标已实现；
@@ -330,8 +337,8 @@ Debug 验收构建：
 
 继续 Stage 7，优先顺序：
 
-1. 实现流年基础和当前大运/流年定位的版本化领域合同；
-2. 补齐节气边界、子时多口径与专业岁运合同，再接专业细盘证据；
+1. 补齐节气边界、子时多口径与专业岁运合同；
+2. 接入专业细盘证据与可复制诊断；
 3. 在用户授权后分别完成真实问真样本与 OPPO 数据保留验收。
 
 `docs/REQUIREMENT_GAP_AUDIT.md` 是 v1.0 的逐项事实清单；Stage 5A 第一增量完成不等于

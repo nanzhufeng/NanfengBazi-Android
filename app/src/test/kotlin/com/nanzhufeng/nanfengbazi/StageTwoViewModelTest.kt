@@ -49,6 +49,10 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.FortunePosition
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
+import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
@@ -826,12 +830,63 @@ class StageTwoViewModelTest {
         assertTrue(viewModel.state.value.message?.contains("完整备份恢复完成") == true)
     }
 
+    @Test
+    fun `岁运页按观察日期定位当前流年并拒绝无效日期`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-fortune"] = sampleStoredCase("case-fortune")
+        }
+        val observations =
+            mutableListOf<com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime>()
+        val resolver = FortunePositionResolver { result, observedAt ->
+            observations += observedAt
+            FortunePosition(
+                observedAt = observedAt,
+                annualFortune = AnnualFortune(
+                    name = "丙午年",
+                    calendarYear = observedAt.year,
+                    nominalAge = observedAt.year - 1999,
+                    decadeIndex = 0,
+                    decadeName = result.decadeFortunes.first().name,
+                ),
+                decadeFortune = result.decadeFortunes.first(),
+                status = FortunePositionStatus.WITHIN_DECADE,
+            )
+        }
+        val viewModel = createViewModel(
+            repository = repository,
+            fortunePositionResolver = resolver,
+        )
+
+        viewModel.openDetail("case-fortune")
+        viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
+
+        assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("丙午年", viewModel.state.value.fortunePosition?.annualFortune?.name)
+        assertEquals(12, observations.last().hour)
+
+        viewModel.updateFortuneObservationDate("2026-02-30")
+
+        assertNull(viewModel.state.value.fortunePosition)
+        assertEquals(
+            "观察日期请按 YYYY-MM-DD 填写。",
+            viewModel.state.value.fortunePositionError,
+        )
+
+        viewModel.updateFortuneObservationDate("2026-02-03")
+
+        assertEquals(2026, viewModel.state.value.fortunePosition?.annualFortune?.calendarYear)
+        assertNull(viewModel.state.value.fortunePositionError)
+        assertEquals(2, observations.last().month)
+        assertEquals(3, observations.last().day)
+    }
+
     private fun createViewModel(
         repository: FakeCaseRepository,
         bundleOperations: SingleCaseBundleOperations? = null,
         backupOperations: CaseBackupOperations? = null,
         backupRoot: Path? = null,
         engine: BaziEngine = RecordingEngine(),
+        fortunePositionResolver: FortunePositionResolver? = null,
     ): StageTwoViewModel {
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
@@ -878,6 +933,8 @@ class StageTwoViewModelTest {
                 idGenerator = IdGenerator { ids.next() },
             ),
             clock = fixedClock,
+            observationClock = fixedClock,
+            fortunePositionResolver = fortunePositionResolver,
             singleCaseExchange = SingleCaseExchangeService(
                 repository = repository,
                 clock = fixedClock,

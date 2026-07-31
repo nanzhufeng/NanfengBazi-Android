@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.engine.tyme
 
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
@@ -18,6 +19,7 @@ import com.tyme.eightchar.provider.impl.China95ChildLimitProvider
 import com.tyme.solar.SolarTerm
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -53,6 +55,59 @@ class TymeBaziEngineTest {
         assertEquals("1.5.1", result.evidence.engineVersion)
         assertEquals(Instant.parse("2026-01-01T00:00:00Z"), result.evidence.calculatedAt)
         assertEquals(CalendarSystem.SOLAR, result.calendarConversion?.inputCalendarSystem)
+    }
+
+    @Test
+    fun `流年基础覆盖出生年到第八步大运结束且保留精确十年区间`() = runTest {
+        val result = engine.calculate(
+            input = solarInput(1992, 8, 24, 12, 0, 0),
+            profile = CalculationProfile.tymeDefault(),
+        )
+
+        assertEquals(1992, result.annualFortunes.first().calendarYear)
+        assertEquals("壬申", result.annualFortunes.first().name)
+        assertEquals(1, result.annualFortunes.first().nominalAge)
+        assertEquals(
+            result.decadeFortunes.last().endYear,
+            result.annualFortunes.last().calendarYear,
+        )
+        assertEquals(
+            result.annualFortunes.first().calendarYear
+                .rangeTo(result.annualFortunes.last().calendarYear)
+                .toList(),
+            result.annualFortunes.map { it.calendarYear },
+        )
+        result.decadeFortunes.zipWithNext().forEach { (current, next) ->
+            assertEquals(current.endAtExclusive, next.startAt)
+        }
+        assertTrue(result.decadeFortunes.all { it.startAt != null })
+        assertTrue(result.decadeFortunes.all { it.endAtExclusive != null })
+    }
+
+    @Test
+    fun `当前岁运按精确交运时刻和立春定位`() = runTest {
+        val result = engine.calculate(
+            input = solarInput(1992, 8, 24, 12, 0, 0),
+            profile = CalculationProfile.tymeDefault(),
+        )
+        val resolver = TymeFortunePositionResolver()
+        val firstStart = requireNotNull(result.decadeFortunes.first().startAt)
+        val beforeStart = firstStart.toLocalDateTime().minusSeconds(1).toCivilDateTime()
+
+        val before = resolver.locate(result, beforeStart)
+        val at = resolver.locate(result, firstStart)
+        assertEquals(FortunePositionStatus.BEFORE_FIRST_DECADE, before.status)
+        assertEquals(null, before.decadeFortune)
+        assertEquals(FortunePositionStatus.WITHIN_DECADE, at.status)
+        assertEquals(result.decadeFortunes.first(), at.decadeFortune)
+
+        val spring = SolarTerm.fromIndex(2026, 3).julianDay.solarTime
+        val beforeSpring = resolver.locate(result, spring.next(-1).toCivilDateTime())
+        val atSpring = resolver.locate(result, spring.toCivilDateTime())
+        assertEquals("乙巳", beforeSpring.annualFortune.name)
+        assertEquals(2025, beforeSpring.annualFortune.calendarYear)
+        assertEquals("丙午", atSpring.annualFortune.name)
+        assertEquals(2026, atSpring.annualFortune.calendarYear)
     }
 
     @Test
@@ -418,3 +473,12 @@ private fun com.tyme.solar.SolarTime.toBirthInput(): BirthInput = BirthInput(
     sexForFortuneDirection = SexForFortuneDirection.MAN,
     timePrecision = TimePrecision.EXACT_TO_SECOND,
 )
+
+private fun com.tyme.solar.SolarTime.toCivilDateTime(): CivilDateTime =
+    CivilDateTime(year, month, day, hour, minute, second)
+
+private fun CivilDateTime.toLocalDateTime(): LocalDateTime =
+    LocalDateTime.of(year, month, day, hour, minute, second)
+
+private fun LocalDateTime.toCivilDateTime(): CivilDateTime =
+    CivilDateTime(year, monthValue, dayOfMonth, hour, minute, second)

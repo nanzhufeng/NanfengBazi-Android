@@ -13,7 +13,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 53
-        versionName = "0.3.0-alpha51"
+        versionName = "0.3.0-alpha52"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -50,7 +50,7 @@ android {
 }
 
 base {
-        archivesName.set("NanfengBazi-Android-v0.3.0-alpha51")
+        archivesName.set("NanfengBazi-Android-v0.3.0-alpha52")
 }
 
 dependencies {

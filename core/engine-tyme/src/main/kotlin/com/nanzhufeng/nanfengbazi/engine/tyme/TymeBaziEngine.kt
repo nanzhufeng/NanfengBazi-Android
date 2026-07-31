@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolver
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.TrueSolarTimeCalculator
 import com.nanzhufeng.nanfengbazi.domain.TrueSolarTimeRequest
+import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
@@ -41,9 +42,11 @@ import com.tyme.eightchar.provider.impl.DefaultChildLimitProvider
 import com.tyme.enums.Gender
 import com.tyme.lunar.LunarHour
 import com.tyme.sixtycycle.SixtyCycle
+import com.tyme.sixtycycle.SixtyCycleYear
 import com.tyme.solar.SolarTime
 import com.nanzhufeng.nanfengbazi.solar.SpaTrueSolarTimeCalculator
 import java.time.Clock
+import java.time.LocalDateTime
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -86,18 +89,25 @@ class TymeBaziEngine(
                 },
             )
             val startDecade = childLimit.startDecadeFortune
+            val firstDecadeStart = childLimit.endTime.toDomain()
             val decades = generateSequence(startDecade) { it.next(1) }
                 .take(8)
-                .map {
+                .mapIndexed { index, fortune ->
                     DecadeFortune(
-                        name = it.name,
-                        startAge = it.startAge,
-                        endAge = it.endAge,
-                        startYear = it.startSixtyCycleYear.year,
-                        endYear = it.endSixtyCycleYear.year,
+                        name = fortune.name,
+                        startAge = fortune.startAge,
+                        endAge = fortune.endAge,
+                        startYear = fortune.startSixtyCycleYear.year,
+                        endYear = fortune.endSixtyCycleYear.year,
+                        startAt = firstDecadeStart.plusYears(index * 10L),
+                        endAtExclusive = firstDecadeStart.plusYears((index + 1) * 10L),
                     )
                 }
                 .toList()
+            val annuals = buildAnnualFortunes(
+                birthYear = solar.year,
+                decades = decades,
+            )
 
             CalculationResult(
                 normalizedInput = normalizedInput,
@@ -127,6 +137,7 @@ class TymeBaziEngine(
                     minutes = childLimit.minuteCount,
                 ),
                 decadeFortunes = decades,
+                annualFortunes = annuals,
                 evidence = CalculationEvidence(
                     engineName = "Tyme4j",
                     engineVersion = CalculationProfile.TYME_ENGINE_VERSION,
@@ -170,6 +181,24 @@ class TymeBaziEngine(
                         )
                     }
                 },
+            )
+        }
+    }
+
+    private fun buildAnnualFortunes(
+        birthYear: Int,
+        decades: List<DecadeFortune>,
+    ): List<AnnualFortune> {
+        val endYear = decades.lastOrNull()?.endYear ?: birthYear
+        return (birthYear..endYear).map { year ->
+            val decadeIndex = decades.indexOfFirst { year in it.startYear..it.endYear }
+                .takeIf { it >= 0 }
+            AnnualFortune(
+                name = SixtyCycleYear.fromYear(year).sixtyCycle.name,
+                calendarYear = year,
+                nominalAge = year - birthYear + 1,
+                decadeIndex = decadeIndex?.plus(1),
+                decadeName = decadeIndex?.let(decades::get)?.name,
             )
         }
     }
@@ -367,6 +396,20 @@ internal object ChildLimitProviderGuard {
 
 private fun CivilDateTime.toTyme(): SolarTime =
     SolarTime.fromYmdHms(year, month, day, hour, minute, second)
+
+private fun CivilDateTime.plusYears(years: Long): CivilDateTime =
+    LocalDateTime.of(year, month, day, hour, minute, second)
+        .plusYears(years)
+        .let {
+            CivilDateTime(
+                year = it.year,
+                month = it.monthValue,
+                day = it.dayOfMonth,
+                hour = it.hour,
+                minute = it.minute,
+                second = it.second,
+            )
+        }
 
 private fun SolarTime.toDomain(): CivilDateTime = CivilDateTime(
     year = year,

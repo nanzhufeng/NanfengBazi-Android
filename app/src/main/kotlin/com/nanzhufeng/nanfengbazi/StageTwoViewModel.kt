@@ -40,6 +40,8 @@ import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.FortunePosition
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -58,6 +60,7 @@ import java.io.OutputStream
 import java.io.PushbackInputStream
 import java.nio.file.Path
 import java.time.Clock
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -226,6 +229,9 @@ data class StageTwoUiState(
     val duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     val detail: BaziCase? = null,
     val detailSection: CaseDetailSection = CaseDetailSection.BASIC_INFO,
+    val fortuneObservationDate: String = "",
+    val fortunePosition: FortunePosition? = null,
+    val fortunePositionError: String? = null,
     val detailLoading: Boolean = false,
     val detailError: String? = null,
     val editForm: CaseFormState = CaseFormState(),
@@ -287,6 +293,8 @@ class StageTwoViewModel(
     private val caseLifecycle: CaseLifecycleUseCase = CaseLifecycleUseCase(caseRepository),
     private val navigator: StageTwoNavigator = StageTwoNavigator(),
     private val clock: Clock = Clock.systemUTC(),
+    private val observationClock: Clock = Clock.systemDefaultZone(),
+    private val fortunePositionResolver: FortunePositionResolver? = null,
     private val singleCaseExchange: SingleCaseExchangeService =
         SingleCaseExchangeService(caseRepository, clock),
     private val singleCaseBundleService: SingleCaseBundleOperations? = null,
@@ -309,6 +317,13 @@ class StageTwoViewModel(
     private var pendingFullBackupPassword: CharArray? = null
 
     init {
+        if (mutableState.value.fortuneObservationDate.isBlank()) {
+            mutableState.update {
+                it.copy(
+                    fortuneObservationDate = LocalDate.now(observationClock).toString(),
+                )
+            }
+        }
         navigator.restore(mutableState.value.destination)
         savedStateHandle.setSavedStateProvider(SAVED_UI_STATE_KEY) {
             mutableState.value.toSavedStateBundle()
@@ -344,6 +359,9 @@ class StageTwoViewModel(
                         detailError = null,
                     )
                 }
+            }
+            if (mutableState.value.detailSection == CaseDetailSection.FORTUNE) {
+                resolveFortunePosition()
             }
         }
     }
@@ -2148,6 +2166,91 @@ class StageTwoViewModel(
         mutableState.update {
             it.copy(detailSection = section)
         }
+        if (section == CaseDetailSection.FORTUNE) {
+            resolveFortunePosition()
+        }
+    }
+
+    fun updateFortuneObservationDate(value: String) {
+        if (value.length > 10 || value.any { !it.isDigit() && it != '-' }) return
+        mutableState.update {
+            it.copy(
+                fortuneObservationDate = value,
+                fortunePosition = null,
+                fortunePositionError = null,
+            )
+        }
+        resolveFortunePosition()
+    }
+
+    private fun resolveFortunePosition() {
+        val current = mutableState.value
+        val result = current.detail
+            ?.calculationSnapshots
+            ?.asReversed()
+            ?.firstOrNull { it.adopted }
+            ?.result
+        if (result == null) {
+            mutableState.update {
+                it.copy(
+                    fortunePosition = null,
+                    fortunePositionError = "当前命例没有已采用的计算快照。",
+                )
+            }
+            return
+        }
+        val resolver = fortunePositionResolver
+        if (resolver == null) {
+            mutableState.update {
+                it.copy(
+                    fortunePosition = null,
+                    fortunePositionError = "当前运行环境未配置岁运定位器。",
+                )
+            }
+            return
+        }
+        val date = runCatching {
+            LocalDate.parse(current.fortuneObservationDate)
+        }.getOrNull()
+        if (date == null) {
+            mutableState.update {
+                it.copy(
+                    fortunePosition = null,
+                    fortunePositionError = "观察日期请按 YYYY-MM-DD 填写。",
+                )
+            }
+            return
+        }
+        val position = runCatching {
+            resolver.locate(
+                result = result,
+                observedAt = com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
+                    year = date.year,
+                    month = date.monthValue,
+                    day = date.dayOfMonth,
+                    hour = 12,
+                    minute = 0,
+                    second = 0,
+                ),
+            )
+        }
+        mutableState.update {
+            position.fold(
+                onSuccess = { resolved ->
+                    it.copy(
+                        fortunePosition = resolved,
+                        fortunePositionError = null,
+                    )
+                },
+                onFailure = { error ->
+                    it.copy(
+                        fortunePosition = null,
+                        fortunePositionError =
+                            error.message ?: "岁运定位失败，请核对观察日期。",
+                    )
+                },
+            )
+        }
     }
 
     fun openEditCase() {
@@ -2715,6 +2818,8 @@ class StageTwoViewModel(
                 textRecords = TextRecordUseCase(container.caseRepository),
                 caseEvents = CaseEventUseCase(container.caseRepository),
                 caseLifecycle = CaseLifecycleUseCase(container.caseRepository),
+                fortunePositionResolver =
+                    com.nanzhufeng.nanfengbazi.engine.tyme.TymeFortunePositionResolver(),
                 singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
@@ -2767,6 +2872,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
     putString("detailSection", detailSection.name)
+    putString("fortuneObservationDate", fortuneObservationDate)
     putBundle("form", form.toSavedStateBundle())
     putBundle("editForm", editForm.toSavedStateBundle())
     putString("candidateLabel", candidateLabel)
@@ -2797,6 +2903,7 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
             getString("detailSection"),
             CaseDetailSection.BASIC_INFO,
         ),
+        fortuneObservationDate = getString("fortuneObservationDate").orEmpty(),
         detailLoading = destination.caseIdOrNull() != null,
         editForm = getBundle("editForm")?.toCaseFormState() ?: CaseFormState(),
         candidateLabel = getString("candidateLabel").orEmpty(),

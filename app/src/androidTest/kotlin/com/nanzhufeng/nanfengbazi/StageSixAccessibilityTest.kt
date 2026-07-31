@@ -26,6 +26,16 @@ class StageSixAccessibilityTest {
 
     @Test
     fun primaryAndCaseWorkflowPagesExposeNamedTouchTargets() {
+        if (
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isEmpty()
+        ) {
+            composeRule.onNodeWithTag("nav_cases").performClick()
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+        }
         auditPage("case_list_screen")
 
         composeRule.onNodeWithTag("nav_records").performClick()
@@ -130,8 +140,8 @@ class StageSixAccessibilityTest {
     }
 
     private fun auditPage(screenTag: String) {
-        composeRule.onNodeWithTag(screenTag).assertIsDisplayed()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag(screenTag).assertIsDisplayed()
         val density = InstrumentationRegistry.getInstrumentation()
             .targetContext.resources.displayMetrics.density
         val actions = composeRule.onAllNodes(

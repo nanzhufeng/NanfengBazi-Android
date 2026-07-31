@@ -49,9 +49,10 @@
 - 完整恢复采用全屏惰性列表工作台，持续显示已决策数量、逐例冲突与底部阶段动作；批量
   跳过是明确用户动作，只设置逐例决策，不会直接提交。
 
-当前 UI 已覆盖最小真实闭环、命例生命周期、Stage 3B 数据交换主链路，以及
-Stage 4A 的公历/农历/闰月输入。地区/DST/真太阳时与问真截图迁移尚未实现；
-OPPO 真机仍需最终授权验收。详细范围见
+当前 UI 已覆盖命例生命周期、Stage 3B 数据交换、历法/地区/DST/真太阳时、问真
+P0/P1 截图迁移、四主入口与详情四标签。Stage 7A 已接入完整流年序列及按精确立春、
+精确交运时刻定位的当前流年和当前大运；真实问真样本与 OPPO 真机仍需用户授权验收。
+详细范围见
 [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md) 与
 [`docs/CURRENT_HANDOFF.md`](docs/CURRENT_HANDOFF.md)。v1.0 逐项差距与后续阶段见
 [`docs/REQUIREMENT_GAP_AUDIT.md`](docs/REQUIREMENT_GAP_AUDIT.md)。
