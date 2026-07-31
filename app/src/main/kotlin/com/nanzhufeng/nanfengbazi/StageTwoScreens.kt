@@ -87,6 +87,7 @@ import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
@@ -2530,6 +2531,23 @@ private fun ScreenshotImportReviewScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("screenshot_import_time_notice"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
+                ) {
+                    Text(
+                        FourPillarsLookupContract.CANDIDATE_NOTICE,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
             items(state.reviewCandidates, key = ScreenshotCandidateReviewUi::id) { candidate ->
                 Card(
                     modifier = Modifier

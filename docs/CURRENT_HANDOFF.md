@@ -1,4 +1,4 @@
-# 当前交接：alpha62 后续外围能力
+# 当前交接：alpha63 问真列表真实样本闭环
 
 更新日期：2026-07-31
 
@@ -7,12 +7,14 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha62 本地代码基线：本文件所在提交；上一基线为
-  `12cfdbe feat: compare case archives objectively`。
-- 版本：`versionCode 63`，`versionName 0.3.0-alpha62`
+- alpha63 本地代码基线：本文件所在提交；上一基线为
+  `b41052b feat: add four pillars reverse lookup`。
+- 版本：`versionCode 64`，`versionName 0.3.0-alpha63`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha62 验收时 ADB 仅 `emulator-5554` 在线，API 35。
-- 本轮未操作真实用户数据、OPPO、网络、外部 AI、远端推送或发布。
+- alpha63 验收时 ADB 仅 `emulator-5554` 在线，API 35。
+- 本轮只临时处理用户明确授权的两张真实问真用户列表长图；原图、OCR 原文、姓名、
+  生日和四柱均未进入 Git，模拟器验收数据已在进程重建验证后清除。
+- 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
 
@@ -107,11 +109,26 @@
 - 反查页面、表单、查询参数和已查询标记进入 `SavedStateHandle`；重建后重新查询，
   不保存可能过期的候选副本。
 
+### alpha63
+
+- 两张授权真实问真用户列表长图均由 bundled ML Kit 在 `emulator-5554` 离线识别，
+  页面分类均为 `USER_LIST`，共保留 49 个独立日期行候选。
+- 修复真实列表中姓名块漏识别后被下一日期重复复用的问题；解析器 v8 改用日期行中点
+  划分区域，姓名/性别漏识别时仍保留可定位、可人工修正的证据，不再让空行拖垮整图。
+- 49 条候选中姓名/性别自动规范化 43 条，四柱自动完整规范化 16 条；16 条完整四柱
+  在两种子时口径下均能由 VX-09 找到同日民用候选并通过唯一正向引擎复算。
+- 问真列表正式提交器已复用 `FourPillarsLookup`，保存所有去重后的同日民用时辰候选，
+  只采用一个确定性代表候选；全部候选均标记 `DOUBLE_HOUR_ONLY`，不推算真太阳时。
+- 核对页固定显示“候选不是出生分钟唯一证明”的说明；生日与四柱在两种口径下都无解时
+  显式阻止写入，并提示核对 OCR、原图或问真口径。
+- 一条真实候选完成私有复制、OCR、字段采用、反查、正向复算、附件复制、Room 写入，
+  并在宿主进程强停后成功读取；验收后模拟器敏感数据已清除。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha62 clean 命令：
+alpha63 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -122,22 +139,22 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 结果：
 
 - 405 个 Gradle 任务成功。
-- 385 次单元测试执行，0 failure、0 error、0 skipped。
+- 387 次单元测试执行，0 failure、0 error、0 skipped。
 - Lint 0 error；app 12 条 warning，两个支撑模块共 8 条 warning。
-- API 35 `emulator-5554` 四柱反查真实输入—查询—候选—免责声明—Activity 重建，
-  以及独立 `SavedStateHandle` 重建组合：2/2 通过。
+- API 35 `emulator-5554` 正式合成分享 UI 在 parser v8、反查提交和免责声明改造后
+  1/1 通过；两张授权真实列表的脱敏识别/复算与一条正式写入/进程重建专项均通过。
 - 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha62-debug.apk`
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha63-debug.apk`
   - 55,909,443 bytes
-  - SHA-256 `5cdbb1ef6a46f0c98cd3fbc9e998d3d456ad280f6b5a1b3e95e49e286792805a`
+  - SHA-256 `833e0d7c8911c6fb6476458805961d3730d6e93ec9e1d00d8b4cd66ed12cd438`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha62-release-unsigned.apk`
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha63-release-unsigned.apk`
   - 52,121,730 bytes
-  - SHA-256 `f41869331c3df37c983ae2ad1a4f1b54423566e08ad6457a4eb815d9b042c27f`
+  - SHA-256 `322a1d458048001bd06e666f22c3d736d0ff3ed6abf694c6172f0dacaa9e1c84`
 
 ## 7. 尚未完成
 

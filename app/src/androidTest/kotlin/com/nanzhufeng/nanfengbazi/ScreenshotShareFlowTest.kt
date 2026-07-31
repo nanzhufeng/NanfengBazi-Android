@@ -237,6 +237,10 @@ class ScreenshotShareFlowTest {
 
         composeRule.onNodeWithTag("review_screenshot_import_button").performClick()
         composeRule.onNodeWithText("核对问真导入").assertIsDisplayed()
+        composeRule.onNodeWithTag("screenshot_import_time_notice").assertIsDisplayed()
+        composeRule
+            .onNodeWithText("不是出生分钟的唯一证明", substring = true)
+            .assertIsDisplayed()
         composeRule.onAllNodesWithText("采用本候选全部内容").onFirst().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             var adoptedCount = 0

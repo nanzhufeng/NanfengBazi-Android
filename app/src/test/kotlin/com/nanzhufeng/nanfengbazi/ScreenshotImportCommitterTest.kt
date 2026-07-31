@@ -34,6 +34,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.canTransitionTo
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
+import com.nanzhufeng.nanfengbazi.engine.tyme.TymeFourPillarsLookup
 import java.io.ByteArrayInputStream
 import java.time.Clock
 import java.time.Instant
@@ -65,6 +66,11 @@ class ScreenshotImportCommitterTest {
         assertEquals(CaseSourceType.WENZHEN_SCREENSHOT, case.sourceType)
         assertEquals("案例甲", case.alias)
         assertEquals(FourPillars("壬申", "戊申", "壬申", "丙午"), case.adoptedPillars())
+        assertEquals(TimePrecision.DOUBLE_HOUR_ONLY, case.birthInput.timePrecision)
+        assertTrue(case.birthTimeCandidates.isNotEmpty())
+        assertTrue(case.birthTimeCandidates.all {
+            it.birthInput.timePrecision == TimePrecision.DOUBLE_HOUR_ONLY
+        })
         assertEquals(1, case.attachments.size)
         assertEquals(4, case.fieldEvidence.size)
         assertEquals("反馈完整原文", case.textRecords.single().content)
@@ -106,7 +112,7 @@ class ScreenshotImportCommitterTest {
         val result = fixture.committer.commitCandidate("session-1", "candidate-1")
 
         assertTrue(result is ScreenshotCandidateCommitResult.Rejected)
-        assertTrue((result as ScreenshotCandidateCommitResult.Rejected).message.contains("复算不一致"))
+        assertTrue((result as ScreenshotCandidateCommitResult.Rejected).message.contains("没有可复算"))
         assertTrue(fixture.caseRepository.cases.isEmpty())
         assertFalse(java.nio.file.Files.exists(fixture.attachmentRoot.resolve("wenzhen")))
     }
@@ -476,6 +482,7 @@ class ScreenshotImportCommitterTest {
                 caseRepository = caseRepository,
                 importSessionRepository = importRepository,
                 baziEngine = TymeBaziEngine(),
+                fourPillarsLookup = TymeFourPillarsLookup(TymeBaziEngine()),
                 importImageStore = imageStore,
                 attachmentRoot = attachmentRoot,
                 clock = Clock.fixed(now, ZoneOffset.UTC),

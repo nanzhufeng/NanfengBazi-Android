@@ -70,6 +70,43 @@ class WenzhenP0ParserTest {
     }
 
     @Test
+    fun `用户列表姓名漏识别时仍按日期保留可修正候选且不复用上一行身份`() {
+        val image = image("user-list-missing-name", WenzhenPageType.USER_LIST)
+        val document = document(
+            imageId = image.id,
+            blocks = listOf(
+                block("name-1", "案例甲 男", 30, 100, 210, 140),
+                block("stems-1", "壬戊壬丙", 560, 105, 760, 125),
+                block("branches-1", "申申申午", 560, 130, 760, 150),
+                block("date-1", "阳历1992年8月24日", 30, 160, 300, 195),
+                block("unparsed-name-2", "疑似姓名", 30, 300, 210, 340),
+                block("stems-2", "庚癸乙甲", 560, 305, 760, 325),
+                block("branches-2", "辰未未申", 560, 330, 760, 350),
+                block("date-2", "阳历2000年8月5日", 30, 360, 300, 395),
+            ),
+        )
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        assertEquals(2, result.candidates.size)
+        assertEquals("案例甲", result.candidates.first().suggestedAlias)
+        assertNull(result.candidates.last().suggestedAlias)
+        val secondFields = result.fields.filter {
+            it.id in result.candidates.last().fieldEvidenceIds
+        }
+        assertEquals(4, secondFields.size)
+        assertNull(secondFields.single { it.fieldKey == "identity.alias" }.normalizedValue)
+        assertNull(secondFields.single { it.fieldKey == "identity.sex" }.normalizedValue)
+        assertTrue(
+            secondFields.single { it.fieldKey == "chart.four_pillars" }.normalizedValue != null,
+        )
+    }
+
+    @Test
     fun `命主反馈和师傅点评完整保留OCR原文并关联同一候选`() {
         val feedback = image("feedback", WenzhenPageType.FEEDBACK)
         val commentary = image("commentary", WenzhenPageType.COMMENTARY)

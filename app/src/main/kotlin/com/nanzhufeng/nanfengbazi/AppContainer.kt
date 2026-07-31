@@ -90,6 +90,7 @@ class DefaultAppContainer(
             caseRepository = caseRepository,
             importSessionRepository = importSessionRepository,
             baziEngine = baziEngine,
+            fourPillarsLookup = fourPillarsLookup,
             importImageStore = importImageStore,
             attachmentRoot = backupAttachmentRoot,
             professionalFortuneResolver =

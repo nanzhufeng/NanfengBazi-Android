@@ -149,7 +149,8 @@
 | 子时口径 | `LunarHour.resolveEightChar()` | 正向计算按调用显式选择实例 provider，不读取或改写全局状态；仅四柱反查按 D-077 在适配器锁内临时切换并恢复 `LunarHour.provider` |
 | 页面消费 | `StageTwoViewModel` → 岁运标签 | 观察日期、时分进入 `SavedStateHandle`；页面显示四层流柱、前后节气、档案/规则版本并支持复制诊断，只消费已采用快照 |
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
+| 问真用户列表正式提交 | `ScreenshotImportCommitter` → `FourPillarsLookup` → `BaziEngine.calculate()` → `CaseRepository` | 只按同一公历日期保留两种子时口径下可复算的民用候选；全部标记 `DOUBLE_HOUR_ONLY`，无解显式拒绝，不按时支硬填整点、不推算真太阳时 |
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
-| 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v7 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
+| 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
 | 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1900–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；页面与表单进入 `SavedStateHandle`，候选不自动保存 |

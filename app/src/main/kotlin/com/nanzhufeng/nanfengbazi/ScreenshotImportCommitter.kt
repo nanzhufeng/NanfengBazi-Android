@@ -5,6 +5,11 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupQuery
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionWriteResult
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
@@ -13,6 +18,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
@@ -32,6 +38,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.ImportedLongTextType
 import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
 import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
+import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -68,6 +75,7 @@ class ScreenshotImportCommitter(
     private val caseRepository: CaseRepository,
     private val importSessionRepository: ImportSessionRepository,
     private val baziEngine: BaziEngine,
+    private val fourPillarsLookup: FourPillarsLookup,
     private val importImageStore: PrivateImportImageStore,
     private val attachmentRoot: Path,
     private val clock: Clock = Clock.systemUTC(),
@@ -214,10 +222,6 @@ class ScreenshotImportCommitter(
         ) {
             return PreparedCaseResult.Invalid("公历日期与公历时间不是同一天，请返回核对。")
         }
-        val representativeHour = sourcePillars.hour
-            .lastOrNull()
-            ?.let(HOUR_BY_BRANCH::get)
-            ?: return PreparedCaseResult.Invalid("无法从时柱确定对应时辰，请人工补充出生时间。")
         val latitude = (adopted(FIELD_LATITUDE) as? TypedFieldValue.DecimalNumber)
             ?.canonicalValue
             ?.toDoubleOrNull()
@@ -229,59 +233,56 @@ class ScreenshotImportCommitter(
             ?.value
             ?.trim()
             ?.takeIf(String::isNotEmpty)
-        val birthDateTime = exactSolarDateTime ?: CivilDateTime(
-            year = solarDate.year,
-            month = solarDate.monthValue,
-            day = solarDate.dayOfMonth,
-            hour = representativeHour,
-            minute = 0,
-            second = 0,
-        )
-        val birthInput = BirthInput(
-            calendarInput = BirthCalendarInput.Solar(
-                birthDateTime,
-            ),
-            sexForFortuneDirection = sex,
-            timePrecision = if (exactSolarDateTime == null) {
-                TimePrecision.DOUBLE_HOUR_ONLY
-            } else {
-                TimePrecision.EXACT_TO_SECOND
-            },
-            timeZoneId = "Asia/Shanghai",
-            resolvedUtcOffsetSeconds = 8 * 60 * 60,
-            timeZoneDataVersion = TIME_ZONE_EVIDENCE_VERSION,
-            locationName = locationName,
-            longitude = longitude.takeIf { hasCoordinates },
-            latitude = latitude.takeIf { hasCoordinates },
-            coordinateSource = CoordinateSource.USER_ENTERED.takeIf { hasCoordinates },
-            useTrueSolarTime = false,
-            timeSourceType = TimeSourceType.WENZHEN_SCREENSHOT,
-            sourceNote = if (exactSolarDateTime == null) {
-                "由问真截图时柱推定对应时辰代表时刻，并与来源四柱复核。"
-            } else {
-                "采用问真基本资料页公历时间，并与来源四柱复核；真太阳时仅保留为证据，" +
-                    "不重复校正。"
-            },
-        )
-        val calculation = try {
-            baziEngine.calculate(birthInput, CalculationProfile.tymeDefault())
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            return PreparedCaseResult.Invalid("采用的出生资料无法完成排盘，请返回核对。")
-        }
-        if (calculation.fourPillars != sourcePillars) {
-            return PreparedCaseResult.Invalid(
-                "来源四柱与本机复算不一致，已阻止写入；请人工补充时间或修正 OCR。",
+        val preparedCalculations = if (exactSolarDateTime == null) {
+            when (
+                val lookup = prepareLookupCalculations(
+                    solarDate = solarDate,
+                    sourcePillars = sourcePillars,
+                    sex = sex,
+                    locationName = locationName,
+                    longitude = longitude.takeIf { hasCoordinates },
+                    latitude = latitude.takeIf { hasCoordinates },
+                )
+            ) {
+                is LookupCalculationResult.Valid -> lookup.values
+                is LookupCalculationResult.Invalid ->
+                    return PreparedCaseResult.Invalid(lookup.message)
+            }
+        } else {
+            val exactInput = buildBirthInput(
+                dateTime = exactSolarDateTime,
+                sex = sex,
+                timePrecision = TimePrecision.EXACT_TO_SECOND,
+                resolvedUtcOffsetSeconds = 8 * 60 * 60,
+                timeZoneDataVersion = TIME_ZONE_EVIDENCE_VERSION,
+                locationName = locationName,
+                longitude = longitude.takeIf { hasCoordinates },
+                latitude = latitude.takeIf { hasCoordinates },
+                sourceNote = "采用问真基本资料页公历时间，并与来源四柱复核；" +
+                    "真太阳时仅保留为证据，不重复校正。",
+            )
+            val calculation = calculateOrNull(exactInput, RatHourRule.TYME_DEFAULT)
+                ?: return PreparedCaseResult.Invalid(
+                    "采用的出生资料无法完成排盘，请返回核对。",
+                )
+            if (calculation.fourPillars != sourcePillars) {
+                return PreparedCaseResult.Invalid(
+                    "来源四柱与本机复算不一致，已阻止写入；请人工补充时间或修正 OCR。",
+                )
+            }
+            listOf(
+                PreparedCalculation(
+                    input = calculation.normalizedInput,
+                    calculation = calculation,
+                    label = "问真截图精确时间",
+                ),
             )
         }
+        val adoptedCalculation = preparedCalculations.first()
         val comparedFields = fields
-            .withBasicChartComparisons(calculation)
-            .withProfessionalComparisons(calculation)
-        val normalizedBirthInput = calculation.normalizedInput
+            .withBasicChartComparisons(adoptedCalculation.calculation)
+            .withProfessionalComparisons(adoptedCalculation.calculation)
         val now = clock.instant()
-        val snapshotId = "$caseId-snapshot"
-        val birthCandidateId = "$caseId-birth"
         val candidateImageIds = candidate.imageIds.toSet()
         val attachments = session.images
             .filter { it.id in candidateImageIds }
@@ -313,28 +314,29 @@ class ScreenshotImportCommitter(
                 ?: ExplicitText.absent(),
             sexForFortuneDirection = sex,
             sourceType = CaseSourceType.WENZHEN_SCREENSHOT,
-            birthInput = normalizedBirthInput,
-            birthTimeCandidates = listOf(
+            birthInput = adoptedCalculation.input,
+            birthTimeCandidates = preparedCalculations.mapIndexed { index, prepared ->
+                val birthCandidateId = "$caseId-birth-${index + 1}"
                 BirthTimeCandidate(
                     id = birthCandidateId,
-                    label = "问真截图时辰",
-                    birthInput = normalizedBirthInput,
-                    calculationSnapshotId = snapshotId,
-                    adopted = true,
+                    label = prepared.label,
+                    birthInput = prepared.input,
+                    calculationSnapshotId = "$caseId-snapshot-${index + 1}",
+                    adopted = index == 0,
                     createdAt = now,
-                ),
-            ),
+                )
+            },
             textRecords = adoptedLongTexts.map { it.toCaseTextRecord(caseId, now) },
             events = adoptedEvents,
-            calculationSnapshots = listOf(
+            calculationSnapshots = preparedCalculations.mapIndexed { index, prepared ->
                 CaseCalculationSnapshot(
-                    id = snapshotId,
-                    result = calculation,
-                    adopted = true,
-                    birthTimeCandidateId = birthCandidateId,
+                    id = "$caseId-snapshot-${index + 1}",
+                    result = prepared.calculation,
+                    adopted = index == 0,
+                    birthTimeCandidateId = "$caseId-birth-${index + 1}",
                     createdAt = now,
-                ),
-            ),
+                )
+            },
             attachments = attachments,
             fieldEvidence = comparedFields,
             createdAt = now,
@@ -344,6 +346,142 @@ class ScreenshotImportCommitter(
             case = case,
             imagesById = session.images.associateBy { it.id },
         )
+    }
+
+    private suspend fun prepareLookupCalculations(
+        solarDate: LocalDate,
+        sourcePillars: FourPillars,
+        sex: SexForFortuneDirection,
+        locationName: String?,
+        longitude: Double?,
+        latitude: Double?,
+    ): LookupCalculationResult {
+        val lookupCandidates = mutableListOf<FourPillarsLookupCandidate>()
+        var completedSearchCount = 0
+        listOf(
+            RatHourRule.TYME_DEFAULT,
+            RatHourRule.LATE_RAT_SAME_DAY,
+        ).forEach { rule ->
+            when (
+                val result = fourPillarsLookup.search(
+                    FourPillarsLookupQuery(
+                        fourPillars = sourcePillars,
+                        startYear = solarDate.year,
+                        endYear = solarDate.year,
+                        timeZoneId = IMPORT_TIME_ZONE_ID,
+                        ratHourRule = rule,
+                    ),
+                )
+            ) {
+                is FourPillarsLookupResult.Completed -> {
+                    completedSearchCount += 1
+                    lookupCandidates += result.candidates.filter { candidate ->
+                        with(candidate.civilDateTime) {
+                            year == solarDate.year &&
+                                month == solarDate.monthValue &&
+                                day == solarDate.dayOfMonth
+                        }
+                    }
+                }
+                is FourPillarsLookupResult.Failed -> Unit
+            }
+        }
+        if (completedSearchCount == 0) {
+            return LookupCalculationResult.Invalid(
+                "四柱反查暂时不可用，本次没有写入正式命例。",
+            )
+        }
+        val distinctCandidates = lookupCandidates
+            .distinctBy { candidate ->
+                candidate.civilDateTime to candidate.resolvedUtcOffsetSeconds
+            }
+            .sortedBy(FourPillarsLookupCandidate::instant)
+        if (distinctCandidates.isEmpty()) {
+            return LookupCalculationResult.Invalid(
+                "来源生日与四柱在两种子时口径下都没有可复算的民用时候选；" +
+                    "请核对原图或确认问真排盘口径。",
+            )
+        }
+        val prepared = distinctCandidates.mapIndexedNotNull { index, candidate ->
+            val input = buildBirthInput(
+                dateTime = candidate.civilDateTime,
+                sex = sex,
+                timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+                resolvedUtcOffsetSeconds = candidate.resolvedUtcOffsetSeconds,
+                timeZoneDataVersion = candidate.timeZoneDataVersion,
+                locationName = locationName,
+                longitude = longitude,
+                latitude = latitude,
+                sourceNote = "由问真列表四柱经本机反查得到民用时辰候选。" +
+                    FourPillarsLookupContract.CANDIDATE_NOTICE,
+            )
+            calculateOrNull(input, candidate.ratHourRule)
+                ?.takeIf { it.fourPillars == sourcePillars }
+                ?.let { calculation ->
+                    PreparedCalculation(
+                        input = calculation.normalizedInput,
+                        calculation = calculation,
+                        label = "问真截图反查候选 ${index + 1}（${
+                            candidate.ratHourRule.displayLabel()
+                        }）",
+                    )
+                }
+        }
+        return if (prepared.isEmpty()) {
+            LookupCalculationResult.Invalid(
+                "反查候选未通过本机正向复算，已阻止写入；请核对原图或确认问真排盘口径。",
+            )
+        } else {
+            LookupCalculationResult.Valid(prepared)
+        }
+    }
+
+    private fun buildBirthInput(
+        dateTime: CivilDateTime,
+        sex: SexForFortuneDirection,
+        timePrecision: TimePrecision,
+        resolvedUtcOffsetSeconds: Int,
+        timeZoneDataVersion: String,
+        locationName: String?,
+        longitude: Double?,
+        latitude: Double?,
+        sourceNote: String,
+    ): BirthInput {
+        val hasCoordinates = longitude != null && latitude != null
+        return BirthInput(
+            calendarInput = BirthCalendarInput.Solar(dateTime),
+            sexForFortuneDirection = sex,
+            timePrecision = timePrecision,
+            timeZoneId = IMPORT_TIME_ZONE_ID,
+            resolvedUtcOffsetSeconds = resolvedUtcOffsetSeconds,
+            timeZoneDataVersion = timeZoneDataVersion,
+            locationName = locationName,
+            longitude = longitude.takeIf { hasCoordinates },
+            latitude = latitude.takeIf { hasCoordinates },
+            coordinateSource = CoordinateSource.USER_ENTERED.takeIf { hasCoordinates },
+            useTrueSolarTime = false,
+            timeSourceType = TimeSourceType.WENZHEN_SCREENSHOT,
+            sourceNote = sourceNote,
+        )
+    }
+
+    private suspend fun calculateOrNull(
+        input: BirthInput,
+        ratHourRule: RatHourRule,
+    ): CalculationResult? = try {
+        baziEngine.calculate(
+            input = input,
+            profile = CalculationProfile.tymeDefault(ratHourRule = ratHourRule),
+        )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun RatHourRule.displayLabel(): String = when (this) {
+        RatHourRule.TYME_DEFAULT -> "默认子时口径"
+        RatHourRule.LATE_RAT_SAME_DAY -> "晚子时同日口径"
     }
 
     private fun List<CaseFieldEvidence>.withProfessionalComparisons(
@@ -720,6 +858,17 @@ class ScreenshotImportCommitter(
         data class Invalid(val message: String) : PreparedCaseResult
     }
 
+    private sealed interface LookupCalculationResult {
+        data class Valid(val values: List<PreparedCalculation>) : LookupCalculationResult
+        data class Invalid(val message: String) : LookupCalculationResult
+    }
+
+    private data class PreparedCalculation(
+        val input: BirthInput,
+        val calculation: CalculationResult,
+        val label: String,
+    )
+
     private companion object {
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
@@ -749,21 +898,8 @@ class ScreenshotImportCommitter(
         const val FIELD_PROFESSIONAL_NATAL_DAY = "professional.natal_day"
         const val FIELD_PROFESSIONAL_NATAL_HOUR = "professional.natal_hour"
         const val FIELD_EVENT_PREFIX = "event.candidate."
+        const val IMPORT_TIME_ZONE_ID = "Asia/Shanghai"
         const val TIME_ZONE_EVIDENCE_VERSION = "Asia-Shanghai-fixed-UTC+08-import-v1"
-        val HOUR_BY_BRANCH = mapOf(
-            '子' to 0,
-            '丑' to 2,
-            '寅' to 4,
-            '卯' to 6,
-            '辰' to 8,
-            '巳' to 10,
-            '午' to 12,
-            '未' to 14,
-            '申' to 16,
-            '酉' to 18,
-            '戌' to 20,
-            '亥' to 22,
-        )
         val EVENT_FIELD_PATTERN = Regex(
             "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",
         )

@@ -97,40 +97,58 @@ class WenzhenP0Parser(
             compareBy<OcrTextBlock> { it.boundingBox?.top ?: Int.MAX_VALUE }
                 .thenBy { it.boundingBox?.left ?: Int.MAX_VALUE },
         )
-        val anchors = orderedBlocks.mapIndexedNotNull { dateIndex, dateBlock ->
-            val solarDate = parseSolarDate(dateBlock.text) ?: return@mapIndexedNotNull null
-            val dateTop = dateBlock.boundingBox?.top ?: return@mapIndexedNotNull null
-            val nameBlock = orderedBlocks
-                .take(dateIndex)
-                .asReversed()
-                .firstOrNull { block ->
-                    val bottom = block.boundingBox?.bottom ?: return@firstOrNull false
-                    bottom <= dateTop + ROW_VERTICAL_TOLERANCE_PX &&
-                        dateTop - bottom <= MAX_NAME_DATE_DISTANCE_PX &&
-                        parseNameAndSex(block.text) != null
-                } ?: return@mapIndexedNotNull null
-            UserRowAnchor(
-                nameBlock = nameBlock,
-                nameAndSex = requireNotNull(parseNameAndSex(nameBlock.text)),
+        val anchors = orderedBlocks.mapNotNull { dateBlock ->
+            val solarDate = parseSolarDate(dateBlock.text) ?: return@mapNotNull null
+            dateBlock.boundingBox ?: return@mapNotNull null
+            UserRowDateAnchor(
                 dateBlock = dateBlock,
                 solarDate = solarDate,
             )
         }
         return anchors.mapIndexed { index, anchor ->
-            val rowTop = (anchor.nameBlock.boundingBox?.top ?: 0) - ROW_VERTICAL_TOLERANCE_PX
-            val rowBottom = anchors.getOrNull(index + 1)
-                ?.nameBlock
+            val currentCenter = requireNotNull(anchor.dateBlock.boundingBox).verticalCenter()
+            val previousCenter = anchors.getOrNull(index - 1)
+                ?.dateBlock
                 ?.boundingBox
-                ?.top
-                ?.minus(ROW_VERTICAL_TOLERANCE_PX)
-                ?: ((anchor.dateBlock.boundingBox?.bottom ?: rowTop) + LAST_ROW_TAIL_PX)
+                ?.verticalCenter()
+            val nextCenter = anchors.getOrNull(index + 1)
+                ?.dateBlock
+                ?.boundingBox
+                ?.verticalCenter()
+            val rowTop = previousCenter
+                ?.let { previous -> (previous + currentCenter) / 2 }
+                ?: (currentCenter - (
+                    nextCenter?.minus(currentCenter)?.div(2) ?: FIRST_ROW_HEAD_PX
+                    )).coerceAtLeast(0)
+            val rowBottom = nextCenter
+                ?.let { next -> (currentCenter + next) / 2 }
+                ?: currentCenter + (
+                    previousCenter?.let(currentCenter::minus)?.div(2) ?: LAST_ROW_TAIL_PX
+                    )
             val rowBlocks = orderedBlocks.filter { block ->
                 val box = block.boundingBox ?: return@filter false
-                val center = (box.top + box.bottom) / 2
+                val center = box.verticalCenter()
                 center in rowTop..rowBottom
             }
             val rowText = rowBlocks.joinToString("\n", transform = OcrTextBlock::text)
             val identity = identityExtractor.extract(document.copy(rawText = rowText))
+            val nameMatch = rowBlocks
+                .mapNotNull { block ->
+                    parseNameAndSex(block.text)?.let { parsed -> block to parsed }
+                }
+                .minByOrNull { (block, _) ->
+                    kotlin.math.abs(
+                        requireNotNull(block.boundingBox).verticalCenter() - currentCenter,
+                    )
+                }
+            val identityRawText = rowBlocks
+                .filter { block ->
+                    val box = block.boundingBox ?: return@filter false
+                    box.left <= requireNotNull(anchor.dateBlock.boundingBox).right + 32
+                }
+                .joinToString(" / ", transform = OcrTextBlock::text)
+                .takeIf(String::isNotBlank)
+                ?: anchor.dateBlock.text
             val rowFourPillars = identity.fourPillars ?: extractCompactFourPillars(rowBlocks)
             val evidence = buildList {
                 add(
@@ -139,11 +157,12 @@ class WenzhenP0Parser(
                         document = document,
                         rowKey = "row-$index",
                         fieldKey = FIELD_ALIAS,
-                        rawText = anchor.nameAndSex.first,
-                        value = TypedFieldValue.Text(anchor.nameAndSex.first),
-                        confidence = anchor.nameBlock.confidence,
-                        boundingBox = anchor.nameBlock.boundingBox,
-                        parserConfidence = 0.94f,
+                        rawText = nameMatch?.second?.first ?: identityRawText,
+                        value = nameMatch?.second?.first?.let(TypedFieldValue::Text),
+                        confidence = nameMatch?.first?.confidence,
+                        boundingBox = nameMatch?.first?.boundingBox
+                            ?: rowBlocks.unionBoundingBox(),
+                        parserConfidence = if (nameMatch == null) 0.2f else 0.94f,
                     ),
                 )
                 add(
@@ -152,11 +171,12 @@ class WenzhenP0Parser(
                         document = document,
                         rowKey = "row-$index",
                         fieldKey = FIELD_SEX,
-                        rawText = anchor.nameAndSex.second,
-                        value = TypedFieldValue.Text(anchor.nameAndSex.second),
-                        confidence = anchor.nameBlock.confidence,
-                        boundingBox = anchor.nameBlock.boundingBox,
-                        parserConfidence = 0.92f,
+                        rawText = nameMatch?.second?.second ?: identityRawText,
+                        value = nameMatch?.second?.second?.let(TypedFieldValue::Text),
+                        confidence = nameMatch?.first?.confidence,
+                        boundingBox = nameMatch?.first?.boundingBox
+                            ?: rowBlocks.unionBoundingBox(),
+                        parserConfidence = if (nameMatch == null) 0.2f else 0.92f,
                     ),
                 )
                 add(
@@ -193,7 +213,7 @@ class WenzhenP0Parser(
                         document = document,
                         rowKey = "row-$index",
                         fieldKey = FIELD_FOUR_PILLARS,
-                        rawText = probablePillarRawText(anchor, rowBlocks),
+                        rawText = probablePillarRawText(anchor.dateBlock, rowBlocks),
                         value = null,
                         confidence = rowBlocks.mapNotNull(OcrTextBlock::confidence)
                             .averageOrNull(),
@@ -209,8 +229,12 @@ class WenzhenP0Parser(
                     id = stableId("candidate", image.id, "row-$index", anchor.solarDate),
                     imageIds = listOf(image.id),
                     fieldEvidenceIds = evidenceIds,
-                    suggestedAlias = anchor.nameAndSex.first,
-                    groupingConfidence = if (rowFourPillars == null) 0.82f else 0.94f,
+                    suggestedAlias = nameMatch?.second?.first,
+                    groupingConfidence = when {
+                        nameMatch == null -> 0.62f
+                        rowFourPillars == null -> 0.82f
+                        else -> 0.94f
+                    },
                     requiresReview = true,
                 ),
             )
@@ -1158,6 +1182,8 @@ class WenzhenP0Parser(
         )
     }
 
+    private fun EvidenceBoundingBox.verticalCenter(): Int = (top + bottom) / 2
+
     private fun stableId(prefix: String, vararg parts: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(parts.joinToString("\u0000").encodeToByteArray())
@@ -1166,13 +1192,10 @@ class WenzhenP0Parser(
     }
 
     private fun probablePillarRawText(
-        anchor: UserRowAnchor,
+        dateBlock: OcrTextBlock,
         rowBlocks: List<OcrTextBlock>,
     ): String {
-        val identityRight = maxOf(
-            anchor.nameBlock.boundingBox?.right ?: 0,
-            anchor.dateBlock.boundingBox?.right ?: 0,
-        )
+        val identityRight = dateBlock.boundingBox?.right ?: 0
         return rowBlocks
             .filter { block -> (block.boundingBox?.left ?: 0) > identityRight + 32 }
             .joinToString(" / ", transform = OcrTextBlock::text)
@@ -1180,9 +1203,7 @@ class WenzhenP0Parser(
             ?: rowBlocks.joinToString(" / ", transform = OcrTextBlock::text)
     }
 
-    private data class UserRowAnchor(
-        val nameBlock: OcrTextBlock,
-        val nameAndSex: Pair<String, String>,
+    private data class UserRowDateAnchor(
         val dateBlock: OcrTextBlock,
         val solarDate: String,
     )
@@ -1279,7 +1300,7 @@ class WenzhenP0Parser(
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
         private const val PROFESSIONAL_HEADER_ROW_TOLERANCE_PX = 48
         private const val PROFESSIONAL_PILLAR_SCAN_HEADER_HEIGHT_MULTIPLIER = 8
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v7"
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v8"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -1375,8 +1396,7 @@ class WenzhenP0Parser(
             "亥" to 21,
         )
         const val PROFESSIONAL_PILLAR_SCAN_HEIGHT_PX = 220
-        const val MAX_NAME_DATE_DISTANCE_PX = 240
-        const val ROW_VERTICAL_TOLERANCE_PX = 24
+        const val FIRST_ROW_HEAD_PX = 120
         const val LAST_ROW_TAIL_PX = 140
         val NAME_SEX_PATTERN = Regex(
             "([\\p{L}\\p{N}·_—-]{1,24})\\s*(男|女)",
