@@ -1,15 +1,20 @@
 package com.nanzhufeng.nanfengbazi
 
 import android.os.Bundle
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -18,14 +23,22 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsField
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
@@ -99,6 +112,61 @@ private fun YearRangeBoundary.displayName(): String = when (this) {
     YearRangeBoundary.END -> "结束年份"
 }
 
+@Composable
+private fun FourPillarsSelectionCard(pillars: List<String>, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clickable(onClick = onClick)
+            .testTag("open_four_pillars_wheel_picker"),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                listOf("年柱", "月柱", "日柱", "时柱").forEach { label ->
+                    Text(label, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                pillars.forEachIndexed { index, pillar ->
+                    Surface(
+                        modifier = Modifier.size(66.dp),
+                        shape = CircleShape,
+                        color = listOf(
+                            Color(0xFFF6F0E5),
+                            Color(0xFFFCECED),
+                            Color(0xFFEDF5EF),
+                            Color(0xFFEEF2FA),
+                        )[index],
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                pillar.ifBlank { "选择" },
+                                style = MaterialTheme.typography.titleLarge,
+                                color = NanfengInk,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+            Text(
+                "点击滑动选择四柱",
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall,
+                color = NanfengGold,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 internal fun FourPillarsLookupFormState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("yearPillar", yearPillar)
     putString("monthPillar", monthPillar)
@@ -136,6 +204,47 @@ internal fun FourPillarsLookupScreen(
     modifier: Modifier = Modifier,
 ) {
     val form = state.fourPillarsLookupForm
+    var showPillarPicker by rememberSaveable { mutableStateOf(false) }
+    var showYearRangePicker by rememberSaveable { mutableStateOf(false) }
+    var showTimeZonePicker by rememberSaveable { mutableStateOf(false) }
+    if (showPillarPicker) {
+        FourPillarsWheelPickerSheet(
+            current = listOf(form.yearPillar, form.monthPillar, form.dayPillar, form.hourPillar),
+            onDismiss = { showPillarPicker = false },
+            onConfirm = { pillars ->
+                onFormChange {
+                    it.copy(
+                        yearPillar = pillars[0],
+                        monthPillar = pillars[1],
+                        dayPillar = pillars[2],
+                        hourPillar = pillars[3],
+                    )
+                }
+                showPillarPicker = false
+            },
+        )
+    }
+    if (showYearRangePicker) {
+        YearRangeWheelPickerSheet(
+            startYear = form.startYear.toIntOrNull() ?: FourPillarsLookupContract.MIN_YEAR,
+            endYear = form.endYear.toIntOrNull() ?: FourPillarsLookupContract.MAX_YEAR,
+            onDismiss = { showYearRangePicker = false },
+            onConfirm = { start, end ->
+                onFormChange { it.copy(startYear = start.toString(), endYear = end.toString()) }
+                showYearRangePicker = false
+            },
+        )
+    }
+    if (showTimeZonePicker) {
+        IanaTimeZoneWheelPickerSheet(
+            current = form.timeZoneId,
+            onDismiss = { showTimeZonePicker = false },
+            onConfirm = { zone ->
+                onFormChange { it.copy(timeZoneId = zone) }
+                showTimeZonePicker = false
+            },
+        )
+    }
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -165,78 +274,44 @@ internal fun FourPillarsLookupScreen(
             )
         }
         item {
-            PillarInputRow(
-                firstLabel = "年柱",
-                firstValue = form.yearPillar,
-                firstTag = "lookup_year_pillar",
-                onFirstChange = { value ->
-                    onFormChange { it.copy(yearPillar = value) }
-                },
-                secondLabel = "月柱",
-                secondValue = form.monthPillar,
-                secondTag = "lookup_month_pillar",
-                onSecondChange = { value ->
-                    onFormChange { it.copy(monthPillar = value) }
-                },
+            FourPillarsSelectionCard(
+                pillars = listOf(form.yearPillar, form.monthPillar, form.dayPillar, form.hourPillar),
+                onClick = { showPillarPicker = true },
             )
         }
         item {
-            PillarInputRow(
-                firstLabel = "日柱",
-                firstValue = form.dayPillar,
-                firstTag = "lookup_day_pillar",
-                onFirstChange = { value ->
-                    onFormChange { it.copy(dayPillar = value) }
-                },
-                secondLabel = "时柱",
-                secondValue = form.hourPillar,
-                secondTag = "lookup_hour_pillar",
-                onSecondChange = { value ->
-                    onFormChange { it.copy(hourPillar = value) }
-                },
-            )
-        }
-        item {
-            Row(
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
             ) {
-                YearInput(
-                    label = "起始年份",
-                    value = form.startYear,
-                    tag = "lookup_start_year",
-                    onValueChange = { value ->
-                        onFormChange { it.copy(startYear = value) }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                YearInput(
-                    label = "结束年份",
-                    value = form.endYear,
-                    tag = "lookup_end_year",
-                    onValueChange = { value ->
-                        onFormChange { it.copy(endYear = value) }
-                    },
-                    modifier = Modifier.weight(1f),
+                HomePickerRow(
+                    title = "查找年份范围",
+                    value = "${form.startYear}–${form.endYear}",
+                    supporting = "点击用双列滚轮选择",
+                    onClick = { showYearRangePicker = true },
+                    tag = "open_lookup_year_range_picker",
                 )
             }
         }
         item {
-            OutlinedTextField(
-                value = form.timeZoneId,
-                onValueChange = { value ->
-                    onFormChange { it.copy(timeZoneId = value) }
-                },
-                label = { Text("IANA 时区") },
-                supportingText = { Text("例如 Asia/Shanghai") },
-                singleLine = true,
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .testTag("lookup_time_zone"),
-            )
+                    .padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                HomePickerRow(
+                    title = "IANA 时区",
+                    value = form.timeZoneId,
+                    supporting = "点击滑动选择常用时区",
+                    onClick = { showTimeZonePicker = true },
+                    tag = "open_lookup_time_zone_picker",
+                )
+            }
         }
         item {
             Column(

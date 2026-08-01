@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,15 +22,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -69,6 +79,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
@@ -1807,7 +1818,7 @@ private val EXPANDED_NAVIGATION_MIN_WIDTH = 840.dp
 
 private data class RootNavigationAction(
     val label: String,
-    val glyph: String,
+    val icon: ImageVector,
     val selected: Boolean,
     val tag: String,
     val onClick: () -> Unit,
@@ -1821,14 +1832,14 @@ private fun rootNavigationActions(
 ): List<RootNavigationAction> = listOf(
     RootNavigationAction(
         "排盘",
-        "盘",
+        Icons.Filled.Home,
         destination == AppDestination.CreateCase,
         "nav_chart",
         onOpenChart,
     ),
     RootNavigationAction(
         "记录",
-        "录",
+        Icons.Filled.List,
         destination == AppDestination.CaseList ||
             destination == AppDestination.RecordHub ||
             destination is AppDestination.CaseDetail,
@@ -1837,7 +1848,7 @@ private fun rootNavigationActions(
     ),
     RootNavigationAction(
         "设置",
-        "设",
+        Icons.Filled.Settings,
         destination == AppDestination.Settings,
         "nav_settings",
         onOpenSettings,
@@ -1872,7 +1883,7 @@ private fun RootNavigationBar(
                 NavigationBarItem(
                     selected = item.selected,
                     onClick = item.onClick,
-                    icon = { Text(item.glyph, fontWeight = FontWeight.SemiBold) },
+                    icon = { Icon(item.icon, contentDescription = null) },
                     label = { Text(item.label) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = NanfengGreen,
@@ -1919,7 +1930,7 @@ private fun RootNavigationRail(
             NavigationRailItem(
                 selected = item.selected,
                 onClick = item.onClick,
-                icon = { Text(item.glyph, fontWeight = FontWeight.SemiBold) },
+                icon = { Icon(item.icon, contentDescription = null) },
                 label = { Text(item.label) },
                 colors = NavigationRailItemDefaults.colors(
                     selectedIconColor = NanfengGreen,
@@ -2029,25 +2040,27 @@ private fun RecordHubScreen(
             .fillMaxSize()
             .testTag("record_hub_screen"),
     ) {
-        TopAppBar(
-            title = {
-                Column {
-                    Text("记录", fontWeight = FontWeight.SemiBold)
+        Surface(color = MaterialTheme.colorScheme.surface) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 76.dp)
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("记录", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "按命例进入反馈、点评、事件与版本历史",
-                        style = MaterialTheme.typography.labelMedium,
+                        "${cases.size} 个本地保存案例",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            },
-            actions = {
-                TextButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) {
+                TextButton(onClick = onRefresh, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("刷新")
                 }
-            },
-        )
+            }
+        }
         when {
             loading -> LoadingBox("正在读取记录索引…")
             error != null -> ErrorBox(error, "重试", onRefresh)
@@ -2059,30 +2072,77 @@ private fun RecordHubScreen(
             }
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    start = 16.dp,
+                    top = 10.dp,
+                    end = 16.dp,
+                    bottom = 24.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(cases, key = CaseSummary::id) { summary ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenCase(summary.id) }
-                            .testTag("record_case_${summary.id}"),
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(summary.alias, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                summary.fourPillars?.display() ?: "暂无已采用排盘",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                "打开命例查看完整记录与事件",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
+                    RecordCaseRow(summary = summary, onClick = { onOpenCase(summary.id) })
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("record_case_${summary.id}"),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                color = NanfengWarmTint,
+                shape = CircleShape,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        summary.alias.firstOrNull()?.toString() ?: "命",
+                        color = NanfengGold,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(summary.alias, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    summary.birthInput.displayDateOnly(),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    summary.fourPillars?.display() ?: "待排盘",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (summary.fourPillars == null) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        NanfengGreen
+                    },
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    "查看案例",
+                    modifier = Modifier.padding(top = 3.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NanfengGold,
+                )
             }
         }
     }
@@ -2239,17 +2299,12 @@ private fun SettingsActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Surface(
+        Box(
             modifier = Modifier
-                .width(30.dp)
-                .height(30.dp),
-            shape = RoundedCornerShape(15.dp),
-            color = accent.copy(alpha = 0.14f),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("•", color = accent, style = MaterialTheme.typography.titleLarge)
-            }
-        }
+                .width(4.dp)
+                .height(38.dp)
+                .background(accent, RoundedCornerShape(2.dp)),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Medium)
             Text(
@@ -2258,7 +2313,11 @@ private fun SettingsActionRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -3704,29 +3763,96 @@ private fun WenzhenCreateCaseScreen(
 ) {
     var saveCase by rememberSaveable { mutableStateOf(true) }
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+    var showBirthPicker by rememberSaveable { mutableStateOf(false) }
+    var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
     val form = state.form
+    LaunchedEffect(Unit) {
+        if (form.sex == null && form.year.isBlank() && form.locationName.isBlank()) {
+            onFormChange {
+                it.copy(
+                    alias = "1990-01-01 命例",
+                    sex = SexForFortuneDirection.MAN,
+                    year = "1990",
+                    month = "1",
+                    day = "1",
+                    hour = "0",
+                    minute = "0",
+                    second = "0",
+                ).clearTimeZoneResolution()
+            }
+        }
+    }
+    if (showBirthPicker) {
+        BirthDateTimePickerSheet(
+            form = form,
+            onDismiss = { showBirthPicker = false },
+            onConfirm = { selection ->
+                onFormChange {
+                    it.copy(
+                        alias = if (it.alias.matches(Regex("\\d{4}-\\d{2}-\\d{2} 命例"))) {
+                            "%04d-%02d-%02d 命例".format(
+                                selection.year,
+                                selection.month,
+                                selection.day,
+                            )
+                        } else {
+                            it.alias
+                        },
+                        calendarSystem = if (selection.mode == BirthPickerMode.LUNAR) {
+                            CalendarSystem.LUNAR
+                        } else {
+                            CalendarSystem.SOLAR
+                        },
+                        year = selection.year.toString(),
+                        month = selection.month.toString(),
+                        day = selection.day.toString(),
+                        hour = selection.hour.toString(),
+                        minute = selection.minute.toString(),
+                        second = "0",
+                        isLeapMonth = selection.isLeapMonth,
+                    ).clearTimeZoneResolution()
+                }
+                showBirthPicker = false
+            },
+            onOpenFourPillars = onOpenFourPillarsLookup,
+        )
+    }
+    if (showBirthplacePicker) {
+        BirthplacePickerSheet(
+            form = form,
+            onDismiss = { showBirthplacePicker = false },
+            onConfirm = { place ->
+                onFormChange {
+                    it.copy(
+                        locationName = place.displayName,
+                        timeZoneId = place.timeZoneId,
+                        latitude = place.latitude.toString(),
+                        longitude = place.longitude.toString(),
+                    ).clearTimeZoneResolution()
+                }
+                showBirthplacePicker = false
+            },
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
             .testTag("create_case_screen"),
     ) {
         Surface(color = MaterialTheme.colorScheme.surface) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 64.dp)
+                    .height(64.dp)
                     .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                contentAlignment = Alignment.Center,
             ) {
-                Text("☰", color = NanfengGold, style = MaterialTheme.typography.titleLarge)
                 Text(
                     "首页排盘",
-                    modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                 )
-                Text("柱", color = NanfengGreen, style = MaterialTheme.typography.titleLarge)
             }
         }
         Column(
@@ -3750,8 +3876,8 @@ private fun WenzhenCreateCaseScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("case_alias"),
-                        label = { Text("姓名或命例别名 *") },
-                        placeholder = { Text("请输入姓名") },
+                        label = { Text("姓名 / 命例别名") },
+                        placeholder = { Text("未填写时可按出生日期生成") },
                         singleLine = true,
                         enabled = !state.saving,
                         shape = RoundedCornerShape(14.dp),
@@ -3810,66 +3936,27 @@ private fun WenzhenCreateCaseScreen(
                             ),
                         )
                     }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    Text(
-                        "出生时间（必填）",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    NumericFieldRow(
-                        values = listOf(
-                            NumericField("年", form.year, "birth_year") {
-                                onFormChange { current ->
-                                    current.copy(year = it).clearTimeZoneResolution()
-                                }
-                            },
-                            NumericField("月", form.month, "birth_month") {
-                                onFormChange { current ->
-                                    current.copy(month = it).clearTimeZoneResolution()
-                                }
-                            },
-                            NumericField("日", form.day, "birth_day") {
-                                onFormChange { current ->
-                                    current.copy(day = it).clearTimeZoneResolution()
-                                }
-                            },
-                        ),
-                        enabled = !state.saving,
-                    )
-                    NumericFieldRow(
-                        values = listOf(
-                            NumericField("时", form.hour, "birth_hour") {
-                                onFormChange { current ->
-                                    current.copy(hour = it).clearTimeZoneResolution()
-                                }
-                            },
-                            NumericField("分", form.minute, "birth_minute") {
-                                onFormChange { current ->
-                                    current.copy(minute = it).clearTimeZoneResolution()
-                                }
-                            },
-                            NumericField("秒", form.second, "birth_second") {
-                                onFormChange { current ->
-                                    current.copy(second = it).clearTimeZoneResolution()
-                                }
-                            },
-                        ),
-                        enabled = !state.saving,
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                    OutlinedTextField(
-                        value = form.locationName,
-                        onValueChange = { value ->
-                            onFormChange { it.copy(locationName = value) }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                    HomePickerRow(
+                        title = "出生时间",
+                        value = form.birthDateTimeDisplay(),
+                        supporting = if (form.calendarSystem == CalendarSystem.LUNAR) {
+                            "农历 · 点击滑动选择"
+                        } else {
+                            "公历 · 点击滑动选择"
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("birth_location"),
-                        label = { Text("出生地区 *") },
-                        placeholder = { Text("请输入出生地区") },
-                        singleLine = true,
-                        enabled = !state.saving,
-                        shape = RoundedCornerShape(14.dp),
+                        onClick = { showBirthPicker = true },
+                        tag = "open_birth_datetime_picker",
                     )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HomePickerRow(
+                        title = "出生地区",
+                        value = form.locationName.ifBlank { "请选择地区" },
+                        supporting = "${form.timeZoneId} · 点击三级联动选择",
+                        onClick = { showBirthplacePicker = true },
+                        tag = "open_birthplace_picker",
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(top = 2.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3934,14 +4021,14 @@ private fun WenzhenCreateCaseScreen(
                 HomeFeatureTile(
                     title = "四柱反查",
                     subtitle = "候选可复算",
-                    glyph = "柱",
+                    icon = Icons.Filled.Search,
                     onClick = onOpenFourPillarsLookup,
                     modifier = Modifier.weight(1f),
                 )
                 HomeFeatureTile(
                     title = "详细设置",
                     subtitle = "时区与口径",
-                    glyph = "设",
+                    icon = Icons.Filled.Settings,
                     onClick = { advancedExpanded = !advancedExpanded },
                     modifier = Modifier.weight(1f),
                 )
@@ -4030,6 +4117,66 @@ private fun HomeChoiceGroup(
 }
 
 @Composable
+internal fun HomePickerRow(
+    title: String,
+    value: String,
+    supporting: String,
+    onClick: () -> Unit,
+    tag: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 76.dp)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "$title，$value" }
+            .padding(vertical = 10.dp)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = NanfengInk)
+            Text(
+                value,
+                modifier = Modifier.padding(top = 3.dp),
+                style = MaterialTheme.typography.titleMedium,
+                color = NanfengInk,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                supporting,
+                modifier = Modifier.padding(top = 2.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Surface(
+            color = NanfengWarmTint,
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Text(
+                "选择",
+                modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = NanfengGold,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+private fun CaseFormState.birthDateTimeDisplay(): String {
+    val date = listOf(year, month.padStart(2, '0'), day.padStart(2, '0')).joinToString("-")
+    val time = "${hour.padStart(2, '0')}:${minute.padStart(2, '0')}"
+    return if (year.isBlank() || month.isBlank() || day.isBlank()) {
+        "请选择出生时间"
+    } else {
+        "$date  $time"
+    }
+}
+
+@Composable
 private fun InstantChartEntryCard(
     calculation: CalculationResult?,
     onPreview: () -> Unit,
@@ -4068,7 +4215,7 @@ private fun InstantChartEntryCard(
 private fun HomeFeatureTile(
     title: String,
     subtitle: String,
-    glyph: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -4083,7 +4230,12 @@ private fun HomeFeatureTile(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(glyph, color = NanfengGreen, style = MaterialTheme.typography.headlineSmall)
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = NanfengGreen,
+                modifier = Modifier.size(28.dp),
+            )
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
                 subtitle,
@@ -4218,6 +4370,52 @@ internal fun CaseFormScreen(
     topContent: (@Composable () -> Unit)? = null,
     showBack: Boolean = true,
 ) {
+    var showBirthPicker by rememberSaveable { mutableStateOf(false) }
+    var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    if (showBirthPicker) {
+        BirthDateTimePickerSheet(
+            form = form,
+            onDismiss = { showBirthPicker = false },
+            onConfirm = { selection ->
+                onFormChange {
+                    it.copy(
+                        calendarSystem = if (selection.mode == BirthPickerMode.LUNAR) {
+                            CalendarSystem.LUNAR
+                        } else {
+                            CalendarSystem.SOLAR
+                        },
+                        year = selection.year.toString(),
+                        month = selection.month.toString(),
+                        day = selection.day.toString(),
+                        hour = selection.hour.toString(),
+                        minute = selection.minute.toString(),
+                        second = "0",
+                        isLeapMonth = selection.isLeapMonth,
+                    ).clearTimeZoneResolution()
+                }
+                showBirthPicker = false
+            },
+            onOpenFourPillars = {},
+            showFourPillarsOption = false,
+        )
+    }
+    if (showBirthplacePicker) {
+        BirthplacePickerSheet(
+            form = form,
+            onDismiss = { showBirthplacePicker = false },
+            onConfirm = { place ->
+                onFormChange {
+                    it.copy(
+                        locationName = place.displayName,
+                        timeZoneId = place.timeZoneId,
+                        latitude = place.latitude.toString(),
+                        longitude = place.longitude.toString(),
+                    ).clearTimeZoneResolution()
+                }
+                showBirthplacePicker = false
+            },
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -4311,95 +4509,21 @@ internal fun CaseFormScreen(
 
             SectionHeading(
                 "出生时间",
-                "支持公历与农历（含闰月），按所选 IANA 时区解析原始民用时。",
+                "点击后用滚轮选择公历或农历时间，自动保留原值。",
             )
-            Text(
-                "历法 *",
-                modifier = Modifier.padding(bottom = 8.dp),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SexButton(
-                    text = "公历",
-                    selected = form.calendarSystem == CalendarSystem.SOLAR,
-                    enabled = !saving,
-                    tag = "birth_calendar_solar",
-                    onClick = {
-                        onFormChange {
-                            it.copy(
-                                calendarSystem = CalendarSystem.SOLAR,
-                                isLeapMonth = false,
-                            ).clearTimeZoneResolution()
-                        }
-                    },
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                HomePickerRow(
+                    title = if (form.calendarSystem == CalendarSystem.LUNAR) "农历出生时间" else "公历出生时间",
+                    value = form.birthDateTimeDisplay(),
+                    supporting = "点击打开五列联动滚轮",
+                    onClick = { if (!saving) showBirthPicker = true },
+                    tag = "open_birth_datetime_picker",
                 )
-                SexButton(
-                    text = "农历",
-                    selected = form.calendarSystem == CalendarSystem.LUNAR,
-                    enabled = !saving,
-                    tag = "birth_calendar_lunar",
-                    onClick = {
-                        onFormChange {
-                            it.copy(calendarSystem = CalendarSystem.LUNAR)
-                                .clearTimeZoneResolution()
-                        }
-                    },
-                )
-                if (form.calendarSystem == CalendarSystem.LUNAR) {
-                    SexButton(
-                        text = "闰月",
-                        selected = form.isLeapMonth,
-                        enabled = !saving,
-                        tag = "birth_lunar_leap_month",
-                        onClick = {
-                            onFormChange {
-                                it.copy(isLeapMonth = !it.isLeapMonth)
-                                    .clearTimeZoneResolution()
-                            }
-                        },
-                    )
-                }
             }
-            NumericFieldRow(
-                values = listOf(
-                    NumericField("年", form.year, "birth_year") {
-                        onFormChange { form ->
-                            form.copy(year = it).clearTimeZoneResolution()
-                        }
-                    },
-                    NumericField("月", form.month, "birth_month") {
-                        onFormChange { form ->
-                            form.copy(month = it).clearTimeZoneResolution()
-                        }
-                    },
-                    NumericField("日", form.day, "birth_day") {
-                        onFormChange { form ->
-                            form.copy(day = it).clearTimeZoneResolution()
-                        }
-                    },
-                ),
-                enabled = !saving,
-            )
-            NumericFieldRow(
-                values = listOf(
-                    NumericField("时", form.hour, "birth_hour") {
-                        onFormChange { form ->
-                            form.copy(hour = it).clearTimeZoneResolution()
-                        }
-                    },
-                    NumericField("分", form.minute, "birth_minute") {
-                        onFormChange { form ->
-                            form.copy(minute = it).clearTimeZoneResolution()
-                        }
-                    },
-                    NumericField("秒", form.second, "birth_second") {
-                        onFormChange { form ->
-                            form.copy(second = it).clearTimeZoneResolution()
-                        }
-                    },
-                ),
-                enabled = !saving,
-            )
             Text(
                 "时间精度 *",
                 modifier = Modifier.padding(top = 10.dp, bottom = 8.dp),
@@ -4500,36 +4624,21 @@ internal fun CaseFormScreen(
             )
             SectionHeading(
                 "出生地区与时区",
-                "地区必填；经纬度可稍后补录。时区使用 IANA 标识，例如 Asia/Shanghai。",
+                "点击后按地区、城市、区县三级滑动；时区与参考坐标自动带入。",
             )
-            OutlinedTextField(
-                value = form.locationName,
-                onValueChange = { value ->
-                    onFormChange { it.copy(locationName = value) }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("birth_location"),
-                label = { Text("出生地区 *") },
-                singleLine = true,
-                enabled = !saving,
-            )
-            OutlinedTextField(
-                value = form.timeZoneId,
-                onValueChange = { value ->
-                    onFormChange {
-                        it.copy(timeZoneId = value).clearTimeZoneResolution()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .testTag("birth_time_zone"),
-                label = { Text("IANA 时区 *") },
-                supportingText = { Text("中国大陆通常为 Asia/Shanghai") },
-                singleLine = true,
-                enabled = !saving,
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                HomePickerRow(
+                    title = "出生地区",
+                    value = form.locationName.ifBlank { "请选择地区" },
+                    supporting = "${form.timeZoneId} · 离线三级联动",
+                    onClick = { if (!saving) showBirthplacePicker = true },
+                    tag = "open_birthplace_picker",
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

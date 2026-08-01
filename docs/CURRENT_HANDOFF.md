@@ -1,27 +1,39 @@
-# 当前交接：alpha72 问真式三主界面与来源治理
+# 当前交接：alpha73 低输入滚轮、问真式视觉与保真图标
 
-更新日期：2026-08-01
+更新日期：2026-08-02
 
 ## A. 现场快照
 
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 分支：`main`；本地准确提交以现场 `git log -1` 为准，禁止 push/发布。
-- 版本：`versionCode 73`，`versionName 0.3.0-alpha72`。
+- 版本：`versionCode 74`，`versionName 0.3.0-alpha73`。
 - 本轮只向 `emulator-5554` 下发 ADB 命令，现场确认 API 35；未操作 OPPO。
 - 本轮未联网、未调用外部 AI、未写入真实个人资料，模拟器案例均为合成测试数据。
 - 现场代码和最新测试证据优先于本文；若不一致，先修正本文。
 
-## B. alpha72 已完成
+## B. alpha73 已完成
 
-### 三主界面
+### 低输入选择与三主界面
 
-- 排盘首页按用户提供的问真参考重组：顶部“首页排盘”、白色圆角表单卡、
-  性别与公历/农历/四柱分段、时间与地区、保存开关、黑金“开始排盘”、即时排盘卡和能力入口。
+- 排盘首页继续按用户提供的问真参考：顶部“首页排盘”、白色圆角表单卡、
+  性别与公历/农历/四柱分段、时间与地区、保存开关、黑金“开始排盘”、即时排盘卡和能力入口；
+  Material 图标替换文字假图标，比例、间距和信息密度已在 API 35 重新校准。
+- 新建、编辑和候选表单的公历/农历日期时间统一为五列联动滚轮；默认预填
+  `1990-01-01 00:00` 并自动生成可编辑别名。未知地点保持未选，不静默猜北京。
+- 出生地点统一为国内/海外与省/市/区县联动滚轮；确认后写入 IANA 时区和明确标注的
+  城市中心参考坐标。四柱反查的四柱、年份范围和 IANA 时区也改为滚轮选择。
 - 记录页直接展示全部保存案例：用户列表/回收站、搜索与筛选、密集案例行、元素着色四柱、
   黑金生肖圆标与 A–Z 索引。新排盘、截图建档、单例导入、对比、备份/恢复保留在更多菜单。
 - 设置页改为白底分组列表，继续接通本地导入、完整备份、恢复和诊断版本能力。
-- 底部导航收口为白色三入口“排盘/记录/设置”，不再以黑色悬浮胶囊占据内容区。
+- 底部导航收口为带真实 Material 图标的白色三入口“排盘/记录/设置”，不复制未接通的学堂、
+  聊天、VIP 或 AI 入口。
+
+### App 图标
+
+- 用户提供的原图已保存为 `design/assets/app-icon-master.png`，并生成 legacy 和 adaptive
+  各密度启动资源；主体未裁切、未拉伸、未近似重绘。
+- 原图仅因 1448×1444 的近方形尺寸补齐 4px 原背景色边缘，API 35 启动器遮罩内主体完整。
 
 ### 案例详情
 
@@ -40,24 +52,21 @@
 
 ## C. 最新验证
 
-- `./gradlew test --no-daemon --max-workers=1`：全仓 JVM 通过，168 个 Gradle 任务。
-- `:app:compileDebugAndroidTestKotlin :app:assembleDebug :app:assembleDebugAndroidTest`：通过，alpha72 Debug 与 AndroidTest APK 均已生成。
-- 最终组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：`BUILD SUCCESSFUL in 1m 59s`，399 个 Gradle 任务。
-- `emulator-5554` API 35：三主入口、VX-09 查询与 Activity 重建、保存案例进记录详情共 3/3 通过。
-- 可访问性审计首轮真实发现性别分段只有约 44.5dp；修正为最小 48dp 后复跑 1/1 通过。
-- 人工视觉复验已覆盖首页、记录、设置、详情基本信息与基本排盘；详情身份头在标签切换后保持固定。
+- 最终组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest --offline`：
+  `BUILD SUCCESSFUL in 2m 26s`，399 个 Gradle 任务。
+- `emulator-5554` API 35：`AutomatedPickerFlowTest` 串行 `OK (2 tests)`，覆盖日期/地点预填滚轮
+  与四柱/年份范围/IANA 时区滚轮；全仓 JVM 已继续覆盖 VX-09 无解、非法干支、范围边界、
+  60 年周期、两种子时口径和全局 `LunarHour.provider` 状态恢复。
+- 人工视觉复验已覆盖最终首页、日期时间弹层、地点弹层和启动器图标；参考/实现并排证据见
+  `design/qa/alpha73/reference-comparison.jpg`，完整说明见 `design-qa.md`。
 
-alpha72 产物：
+alpha73 产物：
 
-- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha72-debug.apk`
-- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha72-debug-androidTest.apk`
+- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha73-debug.apk`
+- `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha73-release-unsigned.apk`
+- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha73-debug-androidTest.apk`
 
 ## D. 明确待办与禁止项
-
-### 可在后续本地闭环
-
-- App 图标：用户提供的临时附件已被系统清理，仓库未写入近似重绘。用户只需重新附件同一张原图，
-  下次直接生成 adaptive/legacy 密度资源、保真对照、构建和 emulator-5554 安装检查，不要让用户重述背景。
 
 ### 仍需外部条件
 
@@ -69,8 +78,9 @@ alpha72 产物：
 ## E. 下一轮直接启动
 
 1. 先只读确认 Git 根、分支和工作区计数，然后读 `AGENTS.md` 与本文。
-2. 若用户重新附件图标，使用保真图标流程直接闭环；否则不伪造原图。
-3. 没有新外部资料或授权时，只继续可在本地证明的功能，不要要求用户再发“继续”交接语。
+2. 没有新外部资料或授权时，只继续可在本地证明的功能，不要要求用户再发“继续”交接语。
+3. 真机授权到位后按顺序验收 OPPO 安装、折叠/展开、数据保留、朗读和真实问真整例；
+   在此之前不得把模拟器、合成样本或视觉相似度冒充真机/真实资料证据。
 
 ---
 

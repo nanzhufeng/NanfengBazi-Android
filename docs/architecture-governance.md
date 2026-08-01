@@ -173,3 +173,13 @@
 | 详情四标签 | `CaseDetailScreen` + `StageTwoUiState.detailSection` | 基本信息/基本排盘/专业细盘/断事笔记共用固定身份头和同一快照；低频管理动作默认折叠，不改变用例所有权 |
 | 记录来源类型 | `CaseTextRecord.sourceType` + `TextRecordSourceType` | Room v8 持久化 USER/RULE_TEMPLATE/EXTERNAL_AI/IMPORTED_IMAGE/历史未指定；历史缺省只按是否有来源附件归一，不根据文本猜测来源 |
 | App 图标主图 | 用户提供的原始附件 | 必须从原图生成 adaptive/legacy 资源并做像素对照；当前临时附件已被系统清理，禁止以近似重绘冒充完成 |
+
+## alpha73 低输入选择器与图标资源边界
+
+| 概念 | 唯一所有者/入口 | 边界 |
+|---|---|---|
+| 日期时间滚轮 | `BirthDateTimePickerSheet` → `CaseFormState` | 只选择公历/农历民用输入并自动定位现值；合法日期、闰月、时区与排盘仍由领域/引擎验证 |
+| 地点三级联动 | `BirthplaceCatalog` → `BirthplacePickerSheet` → `CaseFormState` | 离线目录只提供名称、IANA 时区和城市中心参考坐标；未知地点不得静默预填，真太阳时默认关闭 |
+| 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 表示层只枚举有效六十甲子和公开查询边界；查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
+| 离散触觉反馈 | Compose `ValueWheel` → Android `performHapticFeedback(CLOCK_TICK)` | 只在中心刻度变化时反馈并尊重系统触觉开关；不申请振动权限，不用触觉表示计算正确 |
+| 启动图标 | `design/assets/app-icon-master.png` → `mipmap-*` / adaptive icon | 原图是唯一母版；不得重绘、改色、裁切主体或添加额外托盘，平台蒙版差异用真实启动器截图核对 |
