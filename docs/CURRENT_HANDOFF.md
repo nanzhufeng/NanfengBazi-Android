@@ -7,8 +7,9 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha69 本地代码基线：本文件所在提交；上一基线为
-  `ed60d5b feat: refine Wenzhen user list OCR`。
+- alpha69 生产代码基线：`4a050fd fix: harden Wenzhen list recognition`；上一基线为
+  `ed60d5b feat: refine Wenzhen user list OCR`。其后的治理复核只修正固定契约中的年份
+  口径，不改变生产代码、版本或验收指标。
 - 版本：`versionCode 70`，`versionName 0.3.0-alpha69`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
 - alpha69 验收只向 `emulator-5554`（API 35）下发命令；OPPO 虽可见但未操作。
@@ -212,6 +213,9 @@
 - 两张真实列表稳定拆出 21+29 共 50 条完整日期候选，身份 50/50；39 条取得合法完整
   四柱且 39/39 同日复算一致，冲突 0。11 条保持未完整，其中 1 条来源本身以星号隐藏
   时柱；其余 10 条需要按原图人工补录，不能用历法推算来源值。
+- 续轮完成需求逐项复核，发现项目 `AGENTS.md` 仍残留 VX-09 的历史 `1900–2100`
+  口径；已与领域合同、适配器和 alpha69 证据统一为 `1800–2100`。历史黄金集和
+  alpha62 阶段记录仍可保留 `1900–2100`，不冒充当前公开查询边界。
 
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
