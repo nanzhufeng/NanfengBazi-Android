@@ -38,7 +38,7 @@
 | 图片导入会话 | `ImportSessionRepository` | 图片入口、后台识别协调器、唯一 WorkManager 任务 | OCR、页面或 Worker 绕过仓储直接写 Room |
 | 私有导入图片 | `PrivateImportImageStore` | Photo Picker、系统分享入口 | 后台任务长期持有外部 URI 或传递 Bitmap |
 | OCR、长图与重复提示 | `core:image-parser` | `ImportRecognitionCoordinator` | 在线引擎进入主链、整张展开超大图、按相似哈希自动合并、单关键词猜测页面或直接写正式命例 |
-| 用户列表精识别与日期一致性 | `OcrDocumentRefiner` → `WenzhenUserListOcrRefiner` → parser v9 → `WenzhenParseResultRefiner` → `FourPillarsLookup` | 识别协调器注入；复核 UI 只展示结果 | UI/Tyme4j 直连、来源星号补值、仅按空间投票正式采用、日期冲突静默通过 |
+| 用户列表精识别与日期一致性 | `OcrDocumentRefiner` → `WenzhenUserListOcrRefiner` → parser v9 → `WenzhenParseResultRefiner` → `FourPillarsLookup` | 识别协调器注入；复核 UI 只展示结果 | UI/Tyme4j 直连、来源星号补值、跨 OCR 块拼柱、跨列借字、日期冲突静默通过 |
 | 通用脱敏诊断包 | `app/AppDiagnostics` | 设置页剪贴板入口 | 复制原始异常、命例身份、出生资料、OCR 内容、文件路径、URI、密码或附件事实 |
 
 ## 模块边界
@@ -155,7 +155,7 @@
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
 | 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
-| 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1900–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；页面与表单进入 `SavedStateHandle`，候选不自动保存 |
+| 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1800–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；原始反查为空时仅在适配器内按 60 日周期扫描民用代表时刻且仍由唯一正向引擎复算；页面与表单进入 `SavedStateHandle`，候选不自动保存 |
 | 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |
 | 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` → 摘要页/剪贴板/图片合同 | 只投影唯一已采用快照和正式资料计数；固定字段来源与缺失状态，页面和图片不得重算或生成主观解释 |
 | 师傅点评观点候选 | `MasterCommentaryCandidateExtractor` → `DeterministicMasterCommentaryCandidateExtractor` → `TextRecordUseCase.adoptCommentaryCandidate()` | 完整点评原文和历史仍是唯一来源；解析层只产出稳定区间、分类建议与规则证据，UI 不含规则；编辑/拒绝为审核状态，采用只新增正式分析并校验来源 revision、区间与聚合 revision |

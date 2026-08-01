@@ -14,6 +14,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -24,6 +25,7 @@ import com.tyme.eightchar.provider.impl.DefaultEightCharProvider
 import com.tyme.eightchar.provider.impl.LunarSect2EightCharProvider
 import com.tyme.lunar.LunarHour
 import com.tyme.solar.SolarTime
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.concurrent.CancellationException
@@ -63,9 +65,22 @@ class TymeFourPillarsLookup(
         val profile = CalculationProfile.tymeDefault(
             ratHourRule = normalized.ratHourRule,
         )
+        val fallbackUsed = rawCandidates.isEmpty()
+        val civilCandidates = if (fallbackUsed) {
+            try {
+                findVerifiedCivilFallback(normalized, profile)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return FourPillarsLookupResult.Failed(
+                    FourPillarsLookupError.EngineUnavailable,
+                )
+            }
+        } else {
+            rawCandidates.map(SolarTime::toDomain)
+        }
         val candidates = mutableListOf<FourPillarsLookupCandidate>()
-        for (rawCandidate in rawCandidates) {
-            val civilDateTime = rawCandidate.toDomain()
+        for (civilDateTime in civilCandidates) {
             val timeZoneVariants = civilDateTime.resolveTimeZoneVariants(
                 normalized.timeZoneId,
             )
@@ -115,9 +130,93 @@ class TymeFourPillarsLookup(
                 engineName = "Tyme4j",
                 engineVersion = CalculationProfile.TYME_ENGINE_VERSION,
                 ruleVersion = profile.ruleVersion,
-                lookupMethod = "EightChar#getSolarTimes+BaziEngine.calculate",
+                lookupMethod = if (fallbackUsed) {
+                    "EightChar#getSolarTimes(empty)+60-day civil scan+BaziEngine.calculate"
+                } else {
+                    "EightChar#getSolarTimes+BaziEngine.calculate"
+                },
             ),
         )
+    }
+
+    private suspend fun findVerifiedCivilFallback(
+        query: FourPillarsLookupQuery,
+        profile: CalculationProfile,
+    ): List<CivilDateTime> {
+        val startDate = LocalDate.of(query.startYear, 1, 1)
+        val endDate = LocalDate.of(query.endYear, 12, 31)
+        val referencePillars = calculateAtFirstValidOffset(
+            civilDateTime = startDate.atCivilTime(REFERENCE_HOUR),
+            query = query,
+            profile = profile,
+        ) ?: return emptyList()
+        val referenceDayIndex = SIXTY_CYCLE.indexOf(referencePillars.day)
+        val targetDayIndex = SIXTY_CYCLE.indexOf(query.fourPillars.day)
+        if (referenceDayIndex < 0 || targetDayIndex < 0) return emptyList()
+
+        var date = startDate.plusDays(
+            Math.floorMod(targetDayIndex - referenceDayIndex, SIXTY_CYCLE.size).toLong(),
+        )
+        val candidates = mutableListOf<CivilDateTime>()
+        while (!date.isAfter(endDate)) {
+            val noonPillars = calculateAtFirstValidOffset(
+                civilDateTime = date.atCivilTime(REFERENCE_HOUR),
+                query = query,
+                profile = profile,
+            )
+            if (
+                noonPillars?.year == query.fourPillars.year &&
+                noonPillars.month == query.fourPillars.month &&
+                noonPillars.day == query.fourPillars.day
+            ) {
+                for (hour in CIVIL_REPRESENTATIVE_HOURS) {
+                    val civilDateTime = date.atCivilTime(hour)
+                    val pillars = calculateAtFirstValidOffset(
+                        civilDateTime = civilDateTime,
+                        query = query,
+                        profile = profile,
+                    )
+                    if (pillars == query.fourPillars) candidates += civilDateTime
+                }
+            }
+            date = date.plusDays(SIXTY_CYCLE.size.toLong())
+        }
+        return candidates.distinct()
+    }
+
+    private suspend fun calculateAtFirstValidOffset(
+        civilDateTime: CivilDateTime,
+        query: FourPillarsLookupQuery,
+        profile: CalculationProfile,
+    ): FourPillars? {
+        val variant = civilDateTime.resolveTimeZoneVariants(query.timeZoneId).firstOrNull()
+            ?: return null
+        return baziEngine.calculate(
+            input = BirthInput(
+                calendarInput = BirthCalendarInput.Solar(civilDateTime),
+                sexForFortuneDirection = SexForFortuneDirection.MAN,
+                timePrecision = TimePrecision.EXACT_TO_SECOND,
+                timeZoneId = query.timeZoneId,
+                resolvedUtcOffsetSeconds = variant.utcOffsetSeconds,
+                timeZoneDataVersion = variant.timeZoneDataVersion,
+                locationName = "四柱反查民用时兜底扫描",
+                useTrueSolarTime = false,
+                timeSourceType = TimeSourceType.UNKNOWN,
+            ),
+            profile = profile,
+        ).fourPillars
+    }
+
+    private companion object {
+        const val REFERENCE_HOUR = 12
+        val CIVIL_REPRESENTATIVE_HOURS = listOf(0) + (1..23 step 2)
+        val SIXTY_CYCLE = buildList {
+            val stems = "甲乙丙丁戊己庚辛壬癸"
+            val branches = "子丑寅卯辰巳午未申酉戌亥"
+            repeat(60) { index ->
+                add("${stems[index % stems.length]}${branches[index % branches.length]}")
+            }
+        }
     }
 }
 
@@ -185,6 +284,15 @@ private fun SolarTime.toDomain(): CivilDateTime = CivilDateTime(
     hour = hour,
     minute = minute,
     second = second,
+)
+
+private fun LocalDate.atCivilTime(hour: Int): CivilDateTime = CivilDateTime(
+    year = year,
+    month = monthValue,
+    day = dayOfMonth,
+    hour = hour,
+    minute = 0,
+    second = 0,
 )
 
 private fun CivilDateTime.toInstant(utcOffsetSeconds: Int) =

@@ -1,4 +1,4 @@
-# 当前交接：alpha68 用户列表精识别与日期一致性门禁
+# 当前交接：alpha69 用户列表漏锚恢复与可信四柱证据
 
 更新日期：2026-08-01
 
@@ -7,13 +7,14 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha68 本地代码基线：本文件所在提交；上一基线为
-  `bf5cd94 feat: add feedback theme review`。
-- 版本：`versionCode 69`，`versionName 0.3.0-alpha68`
+- alpha69 本地代码基线：本文件所在提交；上一基线为
+  `ed60d5b feat: refine Wenzhen user list OCR`。
+- 版本：`versionCode 70`，`versionName 0.3.0-alpha69`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha68 验收只向 `emulator-5554`（API 35）下发命令；OPPO 虽可见但未操作。
-- 本轮使用两张用户授权真实问真列表做脱敏指标验收；原图、OCR 原文、姓名、生日和四柱
-  均未进入 Git、剪贴板夹具或诊断输出。
+- alpha69 验收只向 `emulator-5554`（API 35）下发命令；OPPO 虽可见但未操作。
+- 本轮使用两张用户授权真实问真列表做脱敏指标验收；原图、OCR 原文和姓名未进入 Git
+  或正式测试输出。生日与四柱只在不含姓名的一次性模拟器诊断中用于逐行核对；诊断源码、
+  文本和模拟器副本均已删除，未进入 Git 或正式产物。
 - 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
@@ -192,13 +193,31 @@
   候选；匹配记一致性，冲突保留来源值并在复核页警告，正式提交仍由既有反查门禁阻断。
 - 两张真实列表稳定拆出 20+29 行，姓名/性别 49/49；43 条合法完整 OCR 四柱中同日一致
   30、冲突 13，另有 6 条未完整，其中 1 条来源本身以星号隐去时柱。该分层指标取代
-  alpha63 的 43 条身份/16 条四柱旧证据，不把“格式完整”冒充“日期正确”。
+  alpha63 的 43 条身份/16 条四柱旧证据。该初始指标随后被 alpha69 的逐行原图复核
+  纠正，不再作为当前基线。
+
+### alpha69
+
+- 新增用户列表灰色日期列二次扫描，只补首次 OCR 附近没有日期锚点的新块；第一张由
+  20 条恢复为 21 条完整日期候选。已有日期不参与二次置信度竞争，避免 11 月被覆盖成
+  1 月；截图底边另有 1 条缺完整生日的截断记录，保持非候选。
+- 姓名字符合同补充 ASCII 句点，真实两图身份达到 50/50。日期列补锚、身份区和四柱
+  复识别都只追加带原图坐标的证据，UI 无 OCR 规则。
+- parser v9 禁止把多阈值产生的四个成对块跨块拼为四柱；优先单块四柱或完整天干/地支
+  行，空间证据以天干列为基准要求地支同列一一配对。缺字即保持未知，不跨列借字。
+- VX-09 年份合同扩为 1800–2100。真实样本暴露 Tyme4j 原始 `getSolarTimes` 对一条可由
+  正向引擎在当天 05:00/06:00 复算的四柱返回空；适配器在原始为空时按日柱 60 日周期
+  扫描民用代表时刻，每个候选仍经唯一 `BaziEngine.calculate()`、IANA 时区、DST 和
+  子时口径复核。全范围无解诊断约 843ms，页面既有 `ioDispatcher` 隔离主线程。
+- 两张真实列表稳定拆出 21+29 共 50 条完整日期候选，身份 50/50；39 条取得合法完整
+  四柱且 39/39 同日复算一致，冲突 0。11 条保持未完整，其中 1 条来源本身以星号隐藏
+  时柱；其余 10 条需要按原图人工补录，不能用历法推算来源值。
 
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha68 clean 命令：
+alpha69 最终 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -208,33 +227,32 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 结果：
 
-- 405 个 Gradle task 成功（388 executed，17 up-to-date）；全量后追加失败语义回归，
-  当前累计 459 次 JVM 测试执行
-  零失败、零错误、零跳过。
+- 405 个 Gradle task 成功（388 executed，17 up-to-date），耗时 3 分 55 秒；当前累计
+  462 次 JVM 测试执行，零失败、零错误、零跳过。
 - Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
   均为已知非阻断项。
-- API 35 `emulator-5554` 合成问真列表分享导入 1/1、bundled ML Kit 长图和四类页面
-  5/5 通过；首轮因按钮不在 LazyColumn 可见视口失败，改为按稳定 candidate tag 滚动
-  定位后复验通过，不把重试冒充首次成功。
-- 两张授权真实列表的临时脱敏诊断在同一模拟器通过：分类 2/2、日期行 20+29、身份
-  49/49；43 条合法完整 OCR 四柱中同日一致 30、冲突 13、未完整 6。诊断测试、原图和
-  私有副本均不进入 Git。
-- Debug/Release 合并清单均为 `versionCode 69`、`0.3.0-alpha68`，且没有
+- 最终 clean 产物覆盖安装到 API 35 `emulator-5554` 后串行复验：bundled ML Kit 长图、
+  日期漏锚和四类页面 6/6，合成问真列表分享导入 1/1，VX-09 查询与 Activity 重建 1/1。
+  分享用例同时覆盖库内已有重复样本时的显式确认，不依赖清数据或测试顺序。
+- 两张授权真实列表的一次性脱敏诊断在同一模拟器通过：分类 2/2、日期行 21+29、身份
+  50/50；39 条合法完整 OCR 四柱同日一致 39/39、冲突 0、未完整 11。诊断源码、文本和
+  模拟器副本均已删除，未进入 Git 或正式产物。
+- Debug/Release 合并清单均为 `versionCode 70`、`0.3.0-alpha69`，且没有
   `INTERNET` 或 `ACCESS_NETWORK_STATE`。
 - 设备写操作仅指向 `emulator-5554`；OPPO 虽可见但未触碰。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha68-debug.apk`
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha69-debug.apk`
   - 56,123,051 字节
   - SHA-256
-    `b0c808e9fd65e7908b64a3fb30c86e955e33d2aa23dc9e3c98f9a107c797fd69`
+    `67f149eddd6b82e2e5826ff5ccd6a728797faad22e3cf4fc78c292c354762a38`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha68-release-unsigned.apk`
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha69-release-unsigned.apk`
   - 52,269,816 字节
   - SHA-256
-    `b9b147332aae521076694c8f50e20484af06a98b5677fee5ee3ec14ac0797df8`
+    `1d0a3849591622b5c41bfc4f7cda063cb9e13cbc4731c1ae6105927d06ffae6f`
 
 ## 7. 尚未完成
 
@@ -252,17 +270,19 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：逐条确认真实列表冲突与缺失
+## 8. 下一唯一任务：逐条确认真实列表未完整四柱
 
 ### 目标
 
-保持 alpha68 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；对 13 条
-日期冲突、5 条 OCR 缺失和 1 条来源星号隐去只做带原图定位的人工确认，不允许用历法
-猜值。确认后再验收 49 条身份与可提供四柱的正式写入、进程重建和逐例一致性。
+保持 alpha69 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；对 10 条
+OCR 缺失和 1 条来源星号隐去只做带原图定位的人工确认，不允许用历法猜值。确认后再
+验收 50 条身份、49 条来源可提供完整四柱的正式写入、进程重建和逐例一致性；星号行
+必须保持来源未知，不能冒充完整命例。
 
 ### 可能解除门禁的输入
 
-- 用户对当前列表冲突/缺失行的逐条确认，可推进 49 条真实列表正式迁移闭环。
+- 用户对当前 10 条 OCR 缺失行的逐条确认，可推进 49 条完整四柱真实列表正式迁移闭环；
+  来源星号行只能保留未完整证据。
 - 用户批准的基本资料、命主反馈或师傅点评真实问真样本，可推进 IM-13/QA-07 分页面验收。
 - 用户明确批准联网、字段范围、脱敏预览和外部服务后，才可设计 VX-11。
 - 用户明确授权 OPPO 与同签名安装后，才可执行 QA-08。

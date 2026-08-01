@@ -17,7 +17,25 @@ class WenzhenUserListOcrRefiner(
     ): OcrDocument {
         if (pageType != WenzhenPageType.USER_LIST) return initialDocument
         val dimensions = readDimensions(input.bytes)
-        val anchors = initialDocument.blocks
+        val recoveredDateBlocks = engine.recognizeRegions(
+            bytes = input.bytes,
+            regions = dateScanRegions(dimensions),
+            scale = DATE_RECOGNITION_SCALE,
+            documentWhiteThreshold = DATE_WHITE_THRESHOLD,
+        ).filter { block -> SOLAR_DATE_PATTERN.containsMatchIn(block.text) }
+        val initialAnchors = initialDocument.blocks
+            .mapNotNull { block ->
+                block.boundingBox
+                    ?.takeIf { SOLAR_DATE_PATTERN.containsMatchIn(block.text) }
+            }
+        val recoveredOnlyDateBlocks = recoveredDateBlocks.filter { block ->
+            block.boundingBox?.let { recovered ->
+                initialAnchors.none { initial -> initial.isSamePhysicalAnchorAs(recovered) }
+            } == true
+        }
+        val recoveredOnlyAnchors = recoveredOnlyDateBlocks
+            .mapNotNull(OcrTextBlock::boundingBox)
+        val anchors = (initialDocument.blocks + recoveredOnlyDateBlocks)
             .mapNotNull { block ->
                 block.boundingBox
                     ?.takeIf { SOLAR_DATE_PATTERN.containsMatchIn(block.text) }
@@ -33,7 +51,16 @@ class WenzhenUserListOcrRefiner(
                 ?: (center - (nextCenter?.minus(center)?.div(2) ?: FIRST_ROW_HEAD_PX))
             val bottom = nextCenter?.let { (center + it) / 2 }
                 ?: center + (previousCenter?.let(center::minus)?.div(2) ?: LAST_ROW_TAIL_PX)
-            top.coerceAtLeast(0) to bottom.coerceAtMost(dimensions.second)
+            val recoveredAnchorCompensation = anchors.getOrNull(index - 1)
+                ?.takeIf { previous ->
+                    recoveredOnlyAnchors.any { recovered ->
+                        previous.isSamePhysicalAnchorAs(recovered)
+                    }
+                }
+                ?.let { RECOVERED_ANCHOR_NEXT_ROW_TOP_PADDING_PX }
+                ?: 0
+            (top - recoveredAnchorCompensation).coerceAtLeast(0) to
+                bottom.coerceAtMost(dimensions.second)
         }
         val identityBlocks = engine.recognizeRegions(
             bytes = input.bytes,
@@ -83,9 +110,10 @@ class WenzhenUserListOcrRefiner(
                 documentWhiteThreshold = threshold,
             )
         }
-        val refinedBlocks = (identityBlocks + pillarBlocks + pillarColumnBlocks).filterNot { block ->
-            SOLAR_DATE_PATTERN.containsMatchIn(block.text)
-        }
+        val refinedBlocks = recoveredOnlyDateBlocks +
+            (identityBlocks + pillarBlocks + pillarColumnBlocks).filterNot { block ->
+                SOLAR_DATE_PATTERN.containsMatchIn(block.text)
+            }
         if (refinedBlocks.isEmpty()) return initialDocument
         val mergedBlocks = (initialDocument.blocks + refinedBlocks)
             .sortedWith(
@@ -106,6 +134,25 @@ class WenzhenUserListOcrRefiner(
         return bounds.outWidth to bounds.outHeight
     }
 
+    private fun dateScanRegions(dimensions: Pair<Int, Int>): List<Rect> {
+        val imageWidth = dimensions.first
+        val imageHeight = dimensions.second
+        return buildList {
+            var top = 0
+            while (top < imageHeight) {
+                add(
+                    Rect(
+                        0,
+                        top,
+                        (imageWidth * DATE_COLUMN_RIGHT_RATIO).toInt(),
+                        (top + DATE_SCAN_REGION_HEIGHT_PX).coerceAtMost(imageHeight),
+                    ),
+                )
+                top += DATE_SCAN_REGION_HEIGHT_PX - DATE_SCAN_OVERLAP_PX
+            }
+        }
+    }
+
     private fun List<EvidenceBoundingBox>.deduplicateNearbyAnchors(): List<EvidenceBoundingBox> =
         buildList {
             this@deduplicateNearbyAnchors.forEach { candidate ->
@@ -120,10 +167,15 @@ class WenzhenUserListOcrRefiner(
 
     private fun EvidenceBoundingBox.verticalCenter(): Int = (top + bottom) / 2
 
+    private fun EvidenceBoundingBox.isSamePhysicalAnchorAs(other: EvidenceBoundingBox): Boolean =
+        kotlin.math.abs(verticalCenter() - other.verticalCenter()) <= ANCHOR_DEDUPLICATION_PX
+
     private companion object {
         const val CONTENT_RIGHT_RATIO = 0.84f
+        const val DATE_COLUMN_RIGHT_RATIO = 0.55f
         const val PILLAR_LEFT_RATIO = 0.60f
         const val PILLAR_RIGHT_RATIO = 0.84f
+        const val DATE_RECOGNITION_SCALE = 2f
         const val IDENTITY_RECOGNITION_SCALE = 3f
         const val PILLAR_RECOGNITION_SCALE = 4f
         const val PILLAR_COLUMN_RECOGNITION_SCALE = 6f
@@ -133,6 +185,10 @@ class WenzhenUserListOcrRefiner(
         const val ANCHOR_DEDUPLICATION_PX = 48
         const val FIRST_ROW_HEAD_PX = 120
         const val LAST_ROW_TAIL_PX = 140
+        const val RECOVERED_ANCHOR_NEXT_ROW_TOP_PADDING_PX = 28
+        const val DATE_SCAN_REGION_HEIGHT_PX = 900
+        const val DATE_SCAN_OVERLAP_PX = 120
+        const val DATE_WHITE_THRESHOLD = 248
         val PILLAR_WHITE_THRESHOLDS = listOf(220, 238, 248)
         val PILLAR_COLUMN_WHITE_THRESHOLDS = listOf(220, 238, 248)
         val SOLAR_DATE_PATTERN = Regex(

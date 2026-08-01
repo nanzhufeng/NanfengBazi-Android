@@ -68,6 +68,32 @@ class TymeFourPillarsLookupTest {
     }
 
     @Test
+    fun `Tyme原始反查漏候选时以六十日扫描并由唯一引擎复算`() = runTest {
+        val source = engine.calculate(
+            solarInput(1946, 1, 5, 5, 0),
+            CalculationProfile.tymeDefault(),
+        )
+
+        val completed = lookup.search(
+            query(
+                pillars = source.fourPillars,
+                startYear = 1946,
+                endYear = 1946,
+            ),
+        ) as FourPillarsLookupResult.Completed
+
+        assertTrue(
+            completed.candidates.any {
+                with(it.civilDateTime) {
+                    year == 1946 && month == 1 && day == 5 && hour == 5
+                }
+            },
+        )
+        assertTrue(completed.candidates.all { it.fourPillars == source.fourPillars })
+        assertTrue(completed.evidence.lookupMethod.contains("60-day civil scan"))
+    }
+
+    @Test
     fun `年份上下边界均可反查`() = runTest {
         listOf(
             FourPillarsLookupContract.MIN_YEAR,

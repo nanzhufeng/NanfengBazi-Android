@@ -112,8 +112,14 @@ class WenzhenP0ParserTest {
         val document = document(
             imageId = image.id,
             blocks = listOf(
-                block("name", "案例甲（丁丑时）", 30, 100, 230, 135),
+                block("name", "A.case（丁丑时）", 30, 100, 230, 135),
                 block("sex", "男", 240, 101, 270, 135),
+                block("duplicate-pair-1", "癸酉", 560, 90, 590, 110),
+                block("duplicate-pair-2", "庚辰", 610, 90, 640, 110),
+                block("duplicate-pair-3", "庚辰", 660, 90, 690, 110),
+                block("duplicate-pair-4", "丙戌", 710, 90, 740, 110),
+                block("stem-sequence", "壬戊壬丙", 560, 105, 740, 130),
+                block("branch-sequence", "申申申午", 560, 135, 740, 160),
                 block("stem-1", "壬", 560, 105, 590, 130),
                 block("stem-2", "戊", 610, 105, 640, 130),
                 block("stem-3", "壬", 660, 105, 690, 130),
@@ -134,7 +140,7 @@ class WenzhenP0ParserTest {
         )
 
         assertEquals(1, result.candidates.size)
-        assertEquals("案例甲（丁丑时）", result.candidates.single().suggestedAlias)
+        assertEquals("A.case（丁丑时）", result.candidates.single().suggestedAlias)
         val fields = result.fields.associateBy { it.fieldKey }
         assertEquals("男", (fields.getValue("identity.sex").normalizedValue as TypedFieldValue.Text).value)
         assertEquals(
@@ -157,6 +163,35 @@ class WenzhenP0ParserTest {
                 block("source-branches", "申申申*", 560, 135, 760, 160),
                 block("noise-hour-stem", "丙", 710, 105, 740, 130),
                 block("noise-hour-branch", "午", 710, 135, 740, 160),
+                block("date", "阳历1992年8月24日", 30, 165, 300, 195),
+            ),
+        )
+
+        val result = parser.parse(
+            images = listOf(image),
+            documents = listOf(document),
+            groupedCandidates = listOf(candidate(image.id)),
+        )
+
+        assertNull(
+            result.fields.single { it.fieldKey == "chart.four_pillars" }.normalizedValue,
+        )
+    }
+
+    @Test
+    fun `用户列表空间列缺少时支时不得跨列复用日支`() {
+        val image = image("user-list-missing-hour-branch", WenzhenPageType.USER_LIST)
+        val document = document(
+            imageId = image.id,
+            blocks = listOf(
+                block("name", "案例甲 男", 30, 100, 210, 135),
+                block("stem-1", "壬", 560, 105, 590, 130),
+                block("stem-2", "戊", 610, 105, 640, 130),
+                block("stem-3", "壬", 660, 105, 690, 130),
+                block("stem-4", "丙", 710, 105, 740, 130),
+                block("branch-1", "申", 560, 135, 590, 160),
+                block("branch-2", "申", 610, 135, 640, 160),
+                block("branch-3", "申", 660, 135, 690, 160),
                 block("date", "阳历1992年8月24日", 30, 165, 300, 195),
             ),
         )

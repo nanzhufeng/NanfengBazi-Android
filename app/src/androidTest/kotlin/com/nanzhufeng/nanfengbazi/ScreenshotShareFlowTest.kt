@@ -156,6 +156,13 @@ class ScreenshotShareFlowTest {
 
     @Test
     fun 系统分享合成问真列表图后私有复制并完成离线识别() {
+        var formalCaseCountBefore = -1
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val container = (activity.application as NanfengBaziApplication).container
+            runBlocking {
+                formalCaseCountBefore = container.caseRepository.search().size
+            }
+        }
         val uri = createSyntheticWenzhenListImage()
         syntheticImageUris += uri
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -183,6 +190,7 @@ class ScreenshotShareFlowTest {
         var syntheticOcrText = ""
         var syntheticOcrBlocks = ""
         var formalCaseCount = -1
+        var formalCaseCountAfterCommit = -1
         var fingerprint: String? = null
         var dimensions: Pair<Int?, Int?>? = null
         var privateImagePath: Path? = null
@@ -235,7 +243,11 @@ class ScreenshotShareFlowTest {
             extractedFieldCount,
         )
         assertTrue("OCR 字段未经确认不得产生采用值", allFieldsUnadopted)
-        assertTrue("截图识别不得直接写入正式命例", formalCaseCount == 0)
+        assertEquals(
+            "截图识别不得直接写入正式命例",
+            formalCaseCountBefore,
+            formalCaseCount,
+        )
         val storedImagePath = requireNotNull(privateImagePath)
         assertTrue("识别完成后私有原图必须存在", java.nio.file.Files.exists(storedImagePath))
 
@@ -268,6 +280,34 @@ class ScreenshotShareFlowTest {
             .assertIsDisplayed()
             .performClick()
         composeRule.waitUntil(timeoutMillis = 20_000) {
+            val duplicatePromptShown = composeRule
+                .onAllNodesWithTag("duplicate_candidates")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+            var candidateCommitted = false
+            composeRule.activityRule.scenario.onActivity { activity ->
+                val container = (activity.application as NanfengBaziApplication).container
+                runBlocking {
+                    candidateCommitted = container.importSessionRepository
+                        .list()
+                        .first()
+                        .caseCandidates
+                        .single { it.id == completeCandidateId }
+                        .targetCaseId != null
+                }
+            }
+            duplicatePromptShown || candidateCommitted
+        }
+        if (
+            composeRule.onAllNodesWithTag("duplicate_candidates")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        ) {
+            composeRule.onNodeWithTag("confirm_duplicate_save")
+                .performScrollTo()
+                .performClick()
+        }
+        composeRule.waitUntil(timeoutMillis = 20_000) {
             var committedCount = 0
             var committedCandidateCount = 0
             var sessionStillNeedsReview = false
@@ -275,13 +315,14 @@ class ScreenshotShareFlowTest {
                 val container = (activity.application as NanfengBaziApplication).container
                 runBlocking {
                     committedCount = container.caseRepository.search().size
+                    formalCaseCountAfterCommit = committedCount
                     val session = container.importSessionRepository.list().first()
                     committedCandidateCount =
                         session.caseCandidates.count { it.targetCaseId != null }
                     sessionStillNeedsReview = session.status == ImportStatus.NEEDS_REVIEW
                 }
             }
-            committedCount == 1 &&
+            committedCount == formalCaseCountBefore + 1 &&
                 committedCandidateCount == 1 &&
                 sessionStillNeedsReview
         }
@@ -392,7 +433,11 @@ class ScreenshotShareFlowTest {
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
                 assertTrue("确认删除后导入会话应移除", container.importSessionRepository.list().isEmpty())
-                assertEquals("删除导入会话不得删除已提交命例", 1, container.caseRepository.search().size)
+                assertEquals(
+                    "删除导入会话不得删除已提交命例",
+                    formalCaseCountAfterCommit,
+                    container.caseRepository.search().size,
+                )
             }
         }
         assertTrue("确认删除后私有原图应移除", !java.nio.file.Files.exists(storedImagePath))

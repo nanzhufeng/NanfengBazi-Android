@@ -6,22 +6,77 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.nanzhufeng.nanfengbazi.domain.model.EvidenceBoundingBox
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
+import com.nanzhufeng.nanfengbazi.domain.model.OcrDocument
+import com.nanzhufeng.nanfengbazi.domain.model.OcrTextBlock
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.imageparser.AnchorBasedWenzhenPageClassifier
 import com.nanzhufeng.nanfengbazi.imageparser.MlKitChineseOcrEngine
 import com.nanzhufeng.nanfengbazi.imageparser.OcrImageInput
 import com.nanzhufeng.nanfengbazi.imageparser.WenzhenImageGrouper
 import com.nanzhufeng.nanfengbazi.imageparser.WenzhenP0Parser
+import com.nanzhufeng.nanfengbazi.imageparser.WenzhenUserListOcrRefiner
 import java.io.ByteArrayOutputStream
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MlKitLongScreenshotTest {
+    @Test
+    fun 用户列表日期列二次扫描补回首次OCR遗漏的真实日期锚点() = runBlocking {
+        val bytes = createUserListDateRecoveryImage()
+        val image = ImportImageRef(
+            id = "user-list-date-recovery",
+            originalFileName = "synthetic-user-list-date-recovery.png",
+            mimeType = "image/png",
+            relativePath = "session-1/user-list-date-recovery.png",
+            sha256 = "e".repeat(64),
+            byteSize = bytes.size.toLong(),
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+        )
+        val initialDocument = OcrDocument(
+            imageId = image.id,
+            rawText = "用户列表\n阳历1992年8月24日",
+            blocks = listOf(
+                OcrTextBlock(
+                    id = "initial-date",
+                    text = "阳历1992年8月24日",
+                    confidence = 1f,
+                    boundingBox = EvidenceBoundingBox(50, 270, 500, 340),
+                ),
+            ),
+            engineId = "fixture",
+            engineVersion = "fixture",
+            recognizedAt = Instant.parse("2026-01-01T00:00:00Z"),
+        )
+        val engine = MlKitChineseOcrEngine()
+        try {
+            val refined = WenzhenUserListOcrRefiner(engine).refine(
+                input = OcrImageInput(image, bytes),
+                pageType = WenzhenPageType.USER_LIST,
+                initialDocument = initialDocument,
+            )
+            val classifiedImage = image.copy(pageType = WenzhenPageType.USER_LIST)
+            val parsed = WenzhenP0Parser().parse(
+                images = listOf(classifiedImage),
+                documents = listOf(refined),
+                groupedCandidates = WenzhenImageGrouper().group(
+                    listOf(classifiedImage),
+                    listOf(refined),
+                ),
+            )
+
+            assertEquals(2, parsed.candidates.size)
+        } finally {
+            engine.close()
+        }
+    }
+
     @Test
     fun 基本排盘合成图经真实离线OCR后拆出四柱表格证据() = runBlocking {
         val bytes = createBasicChartSyntheticImage()
@@ -261,6 +316,38 @@ class MlKitLongScreenshotTest {
         }
         canvas.drawText("问真八字 用户列表", 50f, 220f, paint)
         canvas.drawText("阳历 1992年8月24日", 50f, 2_220f, paint)
+        return try {
+            ByteArrayOutputStream().use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+                output.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun createUserListDateRecoveryImage(): ByteArray {
+        val bitmap = Bitmap.createBitmap(1080, 900, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+        val primary = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 56f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        }
+        val secondary = Paint(primary).apply {
+            color = Color.rgb(150, 150, 150)
+            textSize = 48f
+        }
+        canvas.drawText("用户列表", 50f, 100f, primary)
+        canvas.drawText("案例甲 男", 50f, 220f, primary)
+        canvas.drawText("壬 戊 壬 丙", 650f, 210f, primary)
+        canvas.drawText("申 申 申 午", 650f, 265f, primary)
+        canvas.drawText("阳历1992年8月24日", 50f, 330f, secondary)
+        canvas.drawText("案例乙 女", 50f, 520f, primary)
+        canvas.drawText("乙 己 戊 癸", 650f, 510f, primary)
+        canvas.drawText("亥 卯 申 丑", 650f, 565f, primary)
+        canvas.drawText("阳历1995年3月18日", 50f, 630f, secondary)
         return try {
             ByteArrayOutputStream().use { output ->
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))

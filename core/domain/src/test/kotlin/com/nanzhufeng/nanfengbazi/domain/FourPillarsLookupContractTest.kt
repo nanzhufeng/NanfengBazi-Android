@@ -44,7 +44,7 @@ class FourPillarsLookupContractTest {
     fun `年份越界和倒序返回结构化错误`() {
         assertTrue(
             FourPillarsLookupContract.validate(
-                query(startYear = 1899),
+                query(startYear = 1799),
             ) is FourPillarsLookupError.YearOutOfBounds,
         )
         assertEquals(

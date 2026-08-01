@@ -145,15 +145,16 @@ class WenzhenP0Parser(
                 .takeIf(String::isNotBlank)
                 ?: anchor.dateBlock.text
             val compactFourPillars = extractCompactFourPillars(rowBlocks)
+            val pairedFourPillars = extractPairedFourPillars(rowBlocks)
             val spatialFourPillars = extractSpatialFourPillars(rowBlocks)
             val rowFourPillars = if (rowBlocks.hasExplicitUnknownPillarMarker(anchor.dateBlock)) {
                 null
             } else {
-                identity.fourPillars ?: compactFourPillars ?: spatialFourPillars
+                compactFourPillars ?: pairedFourPillars ?: spatialFourPillars
             }
             val pillarParserConfidence = when (rowFourPillars) {
                 null -> 0.25f
-                identity.fourPillars, compactFourPillars -> 0.9f
+                compactFourPillars, pairedFourPillars -> 0.9f
                 else -> 0.72f
             }
             val evidence = buildList {
@@ -1223,6 +1224,13 @@ class WenzhenP0Parser(
         return stems.zip(branches).toValidatedFourPillarsText()
     }
 
+    private fun extractPairedFourPillars(blocks: List<OcrTextBlock>): String? =
+        blocks.firstNotNullOfOrNull { block ->
+            PAIRED_PILLAR_SEQUENCE.find(block.text)?.groupValues?.drop(1)
+                ?.takeIf { pillars -> pillars.all(SEXAGENARY_CYCLE::contains) }
+                ?.joinToString(" ")
+        }
+
     private fun List<OcrTextBlock>.hasExplicitUnknownPillarMarker(
         dateBlock: OcrTextBlock,
     ): Boolean {
@@ -1234,11 +1242,23 @@ class WenzhenP0Parser(
     }
 
     private fun extractSpatialFourPillars(blocks: List<OcrTextBlock>): String? {
-        val stemColumns = blocks.spatialColumnVotes(STEMS) ?: return null
-        val branchColumns = blocks.spatialColumnVotes(BRANCHES) ?: return null
+        val stemColumns = blocks.spatialColumns(STEMS) ?: return null
+        val remainingBranchColumns = blocks.spatialColumns(BRANCHES)?.toMutableList()
+            ?: return null
+        val branchColumns = stemColumns.map { stemColumn ->
+            val branchColumn = remainingBranchColumns.minByOrNull { candidate ->
+                kotlin.math.abs(candidate.centerX - stemColumn.centerX)
+            }?.takeIf { candidate ->
+                kotlin.math.abs(candidate.centerX - stemColumn.centerX) <=
+                    USER_LIST_PILLAR_COLUMN_TOLERANCE_PX
+            } ?: return null
+            remainingBranchColumns.remove(branchColumn)
+            branchColumn
+        }
         return stemColumns.zip(branchColumns).map { (stemVotes, branchVotes) ->
             val ranked = SEXAGENARY_CYCLE.map { pillar ->
-                pillar to (stemVotes[pillar[0]] ?: 0) + (branchVotes[pillar[1]] ?: 0)
+                pillar to (stemVotes.votes[pillar[0]] ?: 0) +
+                    (branchVotes.votes[pillar[1]] ?: 0)
             }.sortedByDescending(Pair<String, Int>::second)
             val winner = ranked.firstOrNull() ?: return null
             if (winner.second < USER_LIST_PILLAR_MIN_PAIR_VOTES) return null
@@ -1253,9 +1273,9 @@ class WenzhenP0Parser(
             ?.joinToString(" ")
     }
 
-    private fun List<OcrTextBlock>.spatialColumnVotes(
+    private fun List<OcrTextBlock>.spatialColumns(
         alphabet: String,
-    ): List<Map<Char, Int>>? {
+    ): List<SpatialColumnVotes>? {
         val occurrences = flatMap { block ->
             val box = block.boundingBox ?: return@flatMap emptyList()
             val compact = block.text.filterNot(Char::isWhitespace)
@@ -1293,7 +1313,10 @@ class WenzhenP0Parser(
             .take(4)
             .sortedBy { cluster -> cluster.map(SpatialCharacter::centerX).average() }
             .map { cluster ->
-                cluster.groupingBy(SpatialCharacter::char).eachCount()
+                SpatialColumnVotes(
+                    centerX = cluster.map(SpatialCharacter::centerX).average(),
+                    votes = cluster.groupingBy(SpatialCharacter::char).eachCount(),
+                )
             }
     }
 
@@ -1562,9 +1585,9 @@ class WenzhenP0Parser(
         const val USER_LIST_PILLAR_MIN_COLUMN_VOTES = 1
         const val USER_LIST_PILLAR_MIN_PAIR_VOTES = 2
         val NAME_SEX_PATTERN = Regex(
-            "([\\p{L}\\p{N}·_—()（）-]{1,32})\\s*(男|女)",
+            "([\\p{L}\\p{N}·._—()（）-]{1,32})\\s*(男|女)",
         )
-        val USER_LIST_NAME_PATTERN = Regex("[\\p{L}\\p{N}·_—()（）-]{1,32}")
+        val USER_LIST_NAME_PATTERN = Regex("[\\p{L}\\p{N}·._—()（）-]{1,32}")
         val SOLAR_DATE_PATTERN = Regex(
             "(?:阳历|公历)\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-](\\d{1,2})日?",
         )
@@ -1668,6 +1691,12 @@ class WenzhenP0Parser(
         val BRANCH_SEQUENCE = Regex(
             "([$BRANCHES])\\s*([$BRANCHES])\\s*([$BRANCHES])\\s*([$BRANCHES])",
         )
+        val PAIRED_PILLAR_SEQUENCE = Regex(
+            "([$STEMS][$BRANCHES])\\s+" +
+                "([$STEMS][$BRANCHES])\\s+" +
+                "([$STEMS][$BRANCHES])\\s+" +
+                "([$STEMS][$BRANCHES])",
+        )
         val SEXAGENARY_CYCLE = buildSet {
             repeat(60) { index ->
                 add("${STEMS[index % STEMS.length]}${BRANCHES[index % BRANCHES.length]}")
@@ -1678,6 +1707,11 @@ class WenzhenP0Parser(
     private data class SpatialCharacter(
         val char: Char,
         val centerX: Int,
+    )
+
+    private data class SpatialColumnVotes(
+        val centerX: Double,
+        val votes: Map<Char, Int>,
     )
 }
 
