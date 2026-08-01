@@ -162,3 +162,14 @@
 | 外部分析手动桥接 | `CaseObjectiveSummaryGenerator` → `ExternalAnalysisBridge.prepareExport/prepareImport()` → 剪贴板/`TextRecordUseCase` | 只消费同一客观摘要投影；按字段组预览，默认隐藏身份、精确出生时间、地点和时区，复制与回填分别主动确认；草稿可恢复但确认不跨重建，旧命例 revision/快照拒绝回填；结果仅保存为带来源的 `ANALYSIS`，无网络客户端 |
 | 师傅点评观点候选 | `MasterCommentaryCandidateExtractor` → `DeterministicMasterCommentaryCandidateExtractor` → `TextRecordUseCase.adoptCommentaryCandidate()` | 完整点评原文和历史仍是唯一来源；解析层只产出稳定区间、分类建议与规则证据，UI 不含规则；编辑/拒绝为审核状态，采用只新增正式分析并校验来源 revision、区间与聚合 revision |
 | 命主反馈主题候选 | `FeedbackThemeCandidateExtractor` → `DeterministicFeedbackThemeCandidateExtractor` → `CaseMetadataUseCase.adoptFeedbackThemeCandidate()` | 完整反馈、历史和既有事件仍是来源事实；解析层按稳定区间聚合规范主题，UI 不含规则；编辑/拒绝为审核状态，采用只追加正式标签并校验来源 revision、证据与聚合 revision |
+
+## alpha72 问真式界面与来源治理
+
+| 概念 | 唯一所有者/入口 | 边界 |
+|---|---|---|
+| 三主界面导航 | `StageTwoNavigator` + `StageTwoViewModel` | 根级只保留排盘、记录、设置；导入、对比、备份等能力仍复用原有用例，只改变入口层级，不复制业务逻辑 |
+| 问真式视觉壳 | `NanfengBaziTheme` + Compose screen components | 参考信息层级、密度和交互位置，使用南枫本地绿/黑金皮肤；不复制第三方素材或形成页面算法 |
+| 记录密集摘要 | `CaseRepository.search()` → `CaseSummaryRow` | 只消费命例聚合和已采用快照；四柱着色、生肖和 A–Z 索引只是展示，不重算、不改写事实 |
+| 详情四标签 | `CaseDetailScreen` + `StageTwoUiState.detailSection` | 基本信息/基本排盘/专业细盘/断事笔记共用固定身份头和同一快照；低频管理动作默认折叠，不改变用例所有权 |
+| 记录来源类型 | `CaseTextRecord.sourceType` + `TextRecordSourceType` | Room v8 持久化 USER/RULE_TEMPLATE/EXTERNAL_AI/IMPORTED_IMAGE/历史未指定；历史缺省只按是否有来源附件归一，不根据文本猜测来源 |
+| App 图标主图 | 用户提供的原始附件 | 必须从原图生成 adaptive/legacy 资源并做像素对照；当前临时附件已被系统清理，禁止以近似重绘冒充完成 |

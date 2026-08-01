@@ -34,6 +34,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import java.time.Clock
 import java.time.DateTimeException
 import java.time.LocalDate
@@ -739,6 +740,7 @@ data class TextRecordDraft(
     val type: CaseTextRecordType = CaseTextRecordType.NOTE,
     val content: String = "",
     val analysisCategory: AnalysisCategory = AnalysisCategory.GENERAL,
+    val sourceType: TextRecordSourceType = TextRecordSourceType.USER,
 )
 
 class TextRecordUseCase(
@@ -777,6 +779,7 @@ class TextRecordUseCase(
                 analysisCategory = draft.analysisCategory.takeIf {
                     draft.type == CaseTextRecordType.ANALYSIS
                 },
+                sourceType = draft.sourceType,
                 createdAt = now,
                 updatedAt = now,
             )
@@ -787,6 +790,7 @@ class TextRecordUseCase(
                 analysisCategory = draft.analysisCategory.takeIf {
                     draft.type == CaseTextRecordType.ANALYSIS
                 },
+                sourceType = currentRecord.sourceType,
                 updatedAt = now,
             )
         }
@@ -922,6 +926,7 @@ class TextRecordUseCase(
             type = CaseTextRecordType.ANALYSIS,
             content = content,
             analysisCategory = candidate.proposedCategory,
+            sourceType = TextRecordSourceType.IMPORTED_IMAGE,
             sourceAttachmentId = source.sourceAttachmentId,
             createdAt = now,
             updatedAt = now,

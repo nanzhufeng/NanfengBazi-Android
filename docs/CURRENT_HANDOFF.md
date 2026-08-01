@@ -1,4 +1,80 @@
-# 当前交接：alpha70 VX-11 无网络外部分析手动桥接
+# 当前交接：alpha72 问真式三主界面与来源治理
+
+更新日期：2026-08-01
+
+## A. 现场快照
+
+- 项目：南枫八字，本地优先 Android App。
+- 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
+- 分支：`main`；本地准确提交以现场 `git log -1` 为准，禁止 push/发布。
+- 版本：`versionCode 73`，`versionName 0.3.0-alpha72`。
+- 本轮只向 `emulator-5554` 下发 ADB 命令，现场确认 API 35；未操作 OPPO。
+- 本轮未联网、未调用外部 AI、未写入真实个人资料，模拟器案例均为合成测试数据。
+- 现场代码和最新测试证据优先于本文；若不一致，先修正本文。
+
+## B. alpha72 已完成
+
+### 三主界面
+
+- 排盘首页按用户提供的问真参考重组：顶部“首页排盘”、白色圆角表单卡、
+  性别与公历/农历/四柱分段、时间与地区、保存开关、黑金“开始排盘”、即时排盘卡和能力入口。
+- 记录页直接展示全部保存案例：用户列表/回收站、搜索与筛选、密集案例行、元素着色四柱、
+  黑金生肖圆标与 A–Z 索引。新排盘、截图建档、单例导入、对比、备份/恢复保留在更多菜单。
+- 设置页改为白底分组列表，继续接通本地导入、完整备份、恢复和诊断版本能力。
+- 底部导航收口为白色三入口“排盘/记录/设置”，不再以黑色悬浮胶囊占据内容区。
+
+### 案例详情
+
+- 顶部为“南枫八字”与四标签：基本信息、基本排盘、专业细盘、断事笔记。
+- 黑金身份头在四标签切换后固定保留；基本排盘继续显示四柱、主星、藏干、副星、星运等已有表格。
+- 低频命例管理动作默认折叠，编辑资料和管理分类保留在首屏；自动测试已按显式展开语义更新。
+
+### 数据和证据
+
+- Room 升级至 v8，`CaseTextRecord` 新增持久化 `TextRecordSourceType`；历史有来源附件者
+  归一为 `IMPORTED_IMAGE`，其余归一为 `USER`。备份、单例交换、历史和外部分析回填保留来源。
+- 分析分类增加“关键年份”和“待核对问题”。
+- `four-pillars-golden-v2.psv` 升级为 schema v2：60 条样本显式保存性别与证据元数据，
+  并明确它们是合成/冻结回归证据，不是真实问真案例。
+- 线上算法入口未改：UI 不调 Tyme4j，四柱反查仍经 `FourPillarsLookup` 与唯一正向引擎复核。
+
+## C. 最新验证
+
+- `./gradlew test --no-daemon --max-workers=1`：全仓 JVM 通过，168 个 Gradle 任务。
+- `:app:compileDebugAndroidTestKotlin :app:assembleDebug :app:assembleDebugAndroidTest`：通过，alpha72 Debug 与 AndroidTest APK 均已生成。
+- 最终组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：`BUILD SUCCESSFUL in 1m 59s`，399 个 Gradle 任务。
+- `emulator-5554` API 35：三主入口、VX-09 查询与 Activity 重建、保存案例进记录详情共 3/3 通过。
+- 可访问性审计首轮真实发现性别分段只有约 44.5dp；修正为最小 48dp 后复跑 1/1 通过。
+- 人工视觉复验已覆盖首页、记录、设置、详情基本信息与基本排盘；详情身份头在标签切换后保持固定。
+
+alpha72 产物：
+
+- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha72-debug.apk`
+- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha72-debug-androidTest.apk`
+
+## D. 明确待办与禁止项
+
+### 可在后续本地闭环
+
+- App 图标：用户提供的临时附件已被系统清理，仓库未写入近似重绘。用户只需重新附件同一张原图，
+  下次直接生成 adaptive/legacy 密度资源、保真对照、构建和 emulator-5554 安装检查，不要让用户重述背景。
+
+### 仍需外部条件
+
+- 真实问真基本资料/专业细盘/点评页迁移准确率：需继续授权样本和逐字段确认。
+- OPPO Find N5 安装、折叠/展开、数据保留与朗读：需用户明确授权，本轮未触碰。
+- 正式签名、发布、GitHub Release 和回滚：需签名材料与发布授权。
+- 禁止：不联网、不接外部 AI、不接触 OPPO、不 push、不发布、不用模拟器或合成数据冒充真机/真实资料证据。
+
+## E. 下一轮直接启动
+
+1. 先只读确认 Git 根、分支和工作区计数，然后读 `AGENTS.md` 与本文。
+2. 若用户重新附件图标，使用保真图标流程直接闭环；否则不伪造原图。
+3. 没有新外部资料或授权时，只继续可在本地证明的功能，不要要求用户再发“继续”交接语。
+
+---
+
+# 历史交接：alpha70 VX-11 无网络外部分析手动桥接
 
 更新日期：2026-08-01
 

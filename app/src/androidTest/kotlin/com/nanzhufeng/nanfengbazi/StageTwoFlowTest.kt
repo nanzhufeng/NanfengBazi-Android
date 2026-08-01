@@ -41,8 +41,8 @@ class StageTwoFlowTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun fourPrimaryEntriesAreReachableAndActionable() {
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+    fun threePrimaryEntriesAreReachableAndActionable() {
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         val screenWidthDp = InstrumentationRegistry.getInstrumentation()
             .targetContext.resources.configuration.screenWidthDp
         if (screenWidthDp >= 840) {
@@ -50,14 +50,14 @@ class StageTwoFlowTest {
         } else {
             composeRule.onNodeWithTag("root_navigation").assertIsDisplayed()
         }
-        listOf("nav_chart", "nav_cases", "nav_records", "nav_settings").forEach { tag ->
+        listOf("nav_chart", "nav_records", "nav_settings").forEach { tag ->
             composeRule.onNodeWithTag(tag)
                 .assertHasClickAction()
                 .assertHeightIsAtLeast(48.dp)
                 .assertWidthIsAtLeast(48.dp)
         }
         composeRule.onNodeWithTag("nav_records").performClick()
-        composeRule.onNodeWithTag("record_hub_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("nav_settings").performClick()
         composeRule.onNodeWithTag("settings_home_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("settings_import_screenshots")
@@ -84,18 +84,17 @@ class StageTwoFlowTest {
             .orEmpty()
         assertTrue(diagnosticText.contains("南枫八字诊断包"))
         assertTrue(diagnosticText.contains("privacy=REDACTED"))
-        assertTrue(diagnosticText.contains("database.schema=7"))
+        assertTrue(diagnosticText.contains("database.schema=8"))
         assertFalse(diagnosticText.contains("/data/"))
         composeRule.onNodeWithTag("nav_chart").performClick()
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("nav_cases").performClick()
+        composeRule.onNodeWithTag("nav_records").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
     }
 
     @Test
     fun fourPillarsLookupCompletesAndSurvivesActivityRecreation() {
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("nav_chart").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("open_four_pillars_lookup")
             .performScrollTo()
             .performClick()
@@ -138,10 +137,9 @@ class StageTwoFlowTest {
     }
 
     @Test
-    fun chartHomeShowsRecentlyViewedCaseShortcut() {
+    fun savedCaseAppearsInRecordListAndOpensDetail() {
         val alias = "最近命例-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_year").performTextInput("1992")
@@ -168,23 +166,19 @@ class StageTwoFlowTest {
                 .performClick()
         }
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasText("别名：$alias"))
+            composeRule.onAllNodes(hasText(alias))
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("case_search").performTextReplacement(alias)
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasText("别名：$alias"))
-                .fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithText("别名：$alias").performClick()
-        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
-        composeRule.onNodeWithText("返回").performClick()
-        composeRule.onNodeWithTag("nav_chart").performClick()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText(alias))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(alias).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("case_search").performTextReplacement("")
+        composeRule.onNodeWithText(alias).performClick()
+        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
+        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
     }
 
     @Test
@@ -197,9 +191,8 @@ class StageTwoFlowTest {
         }
 
         val alias = "Stage2宽屏样例-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("root_navigation_rail").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_year").performTextInput("1992")
@@ -245,8 +238,7 @@ class StageTwoFlowTest {
     @Test
     fun instantChartShowsResultWithoutSavingCase() {
         val alias = "Stage4即时排盘-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_year").performTextInput("1992")
@@ -287,7 +279,7 @@ class StageTwoFlowTest {
         ) {
             "即时排盘应保留时间来源说明"
         }
-        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithTag("nav_records").performClick()
         composeRule.onNodeWithTag("case_search").performTextInput(alias)
         check(
             composeRule.onAllNodes(hasText("别名：$alias"))
@@ -300,8 +292,7 @@ class StageTwoFlowTest {
     @Test
     fun lateRatHourRuleReachesVersionedInstantChart() {
         val alias = "晚子时-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias")
             .performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
@@ -390,8 +381,7 @@ class StageTwoFlowTest {
 
     @Test
     fun lunarInputShowsLeapMonthChoice() {
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
 
         composeRule.onNodeWithTag("birth_calendar_lunar")
             .performScrollTo()
@@ -411,8 +401,7 @@ class StageTwoFlowTest {
     @Test
     fun createLunarCaseAndShowConversionEvidence() {
         val alias = "Stage4农历样例-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_calendar_lunar")
@@ -474,8 +463,7 @@ class StageTwoFlowTest {
     fun addAndAdoptBirthTimeCandidateWithoutDuplicatingCase() {
         val alias = "Stage4时间候选-${System.currentTimeMillis()}"
         val candidateLabel = "家人回忆 12 点"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_year").performTextInput("2000")
@@ -558,8 +546,7 @@ class StageTwoFlowTest {
     @Test
     fun dstOverlapRequiresOffsetChoiceAndPersistsEvidence() {
         val alias = "Stage4时区样例-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_year").performTextInput("2024")
@@ -629,8 +616,7 @@ class StageTwoFlowTest {
     @Test
     fun trueSolarTimeCrossesDoubleHourAndShowsAuditEvidence() {
         val alias = "Stage4真太阳时-${System.currentTimeMillis()}"
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("birth_year").performTextInput("1992")
@@ -785,9 +771,7 @@ class StageTwoFlowTest {
     fun createSaveSearchAndOpenDetail() {
         val alias = "Stage2合成样例-${System.currentTimeMillis()}"
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("import_single_case_button").assertIsDisplayed()
-        composeRule.onNodeWithTag("new_case_button").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
 
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("case_name").performTextInput("自动化甲")
@@ -987,6 +971,8 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
 
+        composeRule.onNodeWithTag("detail_tab_basic_info").performClick()
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("export_single_case_button").performScrollTo().performClick()
         composeRule.onNodeWithText("选择单命例导出内容").assertIsDisplayed()
         composeRule.onNodeWithTag("confirm_single_case_export").performClick()
@@ -1046,8 +1032,8 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("open_case_comparison")
-            .performScrollTo()
             .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_comparison_report"))
@@ -1063,6 +1049,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("back_from_case_comparison").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         val exportedFileName = "${editedAlias.take(48)}_南枫八字命例.json"
         val exportedFile = device.wait(
@@ -1099,6 +1086,7 @@ class StageTwoFlowTest {
         }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         val exportedFileAgain = device.wait(
             Until.findObject(By.text(exportedFileName)),
@@ -1131,9 +1119,11 @@ class StageTwoFlowTest {
         composeRule.onNodeWithText("别名：$encryptedExportAlias")
             .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasTestTag("export_single_case_button"))
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithTag("detail_tab_basic_info").performClick()
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("export_single_case_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("choose_password_single_case_export").performClick()
         val encryptedPassword = "Stage3B-Pass123"
@@ -1159,6 +1149,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         val encryptedFileName = "${encryptedExportAlias.take(48)}_南枫八字命例_加密.json"
         val encryptedFile = device.wait(
@@ -1184,6 +1175,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("skip_single_case_import").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("export_full_backup_button").performClick()
         composeRule.onNodeWithTag("confirm_full_backup_export").performClick()
         val backupSaveButton = device.wait(
@@ -1197,6 +1189,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("preview_full_backup_button").performClick()
         val backupFile = device.wait(
             Until.findObject(By.text(Pattern.compile("南枫八字备份_.*\\.zip"))),
@@ -1268,6 +1261,7 @@ class StageTwoFlowTest {
         }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("export_full_backup_button").performClick()
         composeRule.onNodeWithTag("choose_password_full_backup_export").performClick()
         val fullBackupPassword = "FullBackup-Pass123"
@@ -1287,6 +1281,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("preview_full_backup_button").performClick()
         val encryptedBackupFile = device.wait(
             Until.findObject(By.text(Pattern.compile("南枫八字备份_.*_加密\\.nfbak"))),

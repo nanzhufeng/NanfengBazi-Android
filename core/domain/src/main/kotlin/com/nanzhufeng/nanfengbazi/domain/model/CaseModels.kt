@@ -71,7 +71,18 @@ enum class AnalysisCategory {
     HEALTH,
     EDUCATION,
     FAMILY,
+    KEY_YEARS,
+    OPEN_QUESTIONS,
     OTHER,
+}
+
+@Serializable
+enum class TextRecordSourceType {
+    USER,
+    RULE_TEMPLATE,
+    EXTERNAL_AI,
+    IMPORTED_IMAGE,
+    LEGACY_UNSPECIFIED,
 }
 
 @Serializable
@@ -80,6 +91,7 @@ data class CaseTextRecord(
     val type: CaseTextRecordType,
     val content: String,
     val analysisCategory: AnalysisCategory? = null,
+    val sourceType: TextRecordSourceType = TextRecordSourceType.LEGACY_UNSPECIFIED,
     val sourceAttachmentId: String? = null,
     @Serializable(with = InstantIsoSerializer::class)
     val createdAt: Instant,
@@ -92,8 +104,27 @@ data class CaseTextRecord(
         require(type == CaseTextRecordType.ANALYSIS || analysisCategory == null) {
             "非分析记录不能设置分析分类"
         }
+        require(
+            sourceType != TextRecordSourceType.EXTERNAL_AI ||
+                type == CaseTextRecordType.ANALYSIS,
+        ) {
+            "外部 AI 来源只能用于分析记录"
+        }
     }
 }
+
+fun CaseTextRecord.resolveLegacySourceType(): CaseTextRecord =
+    if (sourceType != TextRecordSourceType.LEGACY_UNSPECIFIED) {
+        this
+    } else {
+        copy(
+            sourceType = if (sourceAttachmentId == null) {
+                TextRecordSourceType.USER
+            } else {
+                TextRecordSourceType.IMPORTED_IMAGE
+            },
+        )
+    }
 
 @Serializable
 enum class RecordChangeType {

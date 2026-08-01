@@ -59,6 +59,7 @@ class CaseImageSystemFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("export_case_image_button")
             .performScrollTo()
             .performClick()

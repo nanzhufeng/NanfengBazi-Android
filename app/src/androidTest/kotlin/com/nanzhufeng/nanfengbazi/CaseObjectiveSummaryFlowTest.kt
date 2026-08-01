@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi
 import android.content.ClipboardManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -56,6 +57,11 @@ class CaseObjectiveSummaryFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithTag("case_search").performTextReplacement(alias)
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("别名：$alias")
             .performScrollTo()
             .performClick()
@@ -64,6 +70,7 @@ class CaseObjectiveSummaryFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("open_objective_summary_button")
             .performScrollTo()
             .performClick()

@@ -1448,12 +1448,14 @@ private data class TextRecordMergeKey(
     val type: String,
     val content: String,
     val analysisCategory: String?,
+    val sourceType: String,
 )
 
 private fun CaseTextRecord.mergeKey() = TextRecordMergeKey(
     type = type.name,
     content = content,
     analysisCategory = analysisCategory?.name,
+    sourceType = sourceType.name,
 )
 
 private data class EventMergeKey(

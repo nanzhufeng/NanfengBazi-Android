@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.domain.model
 
 import java.time.Instant
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -95,6 +96,45 @@ class CaseModelsTest {
             analysisCategory = AnalysisCategory.HEALTH,
             createdAt = Instant.EPOCH,
             updatedAt = Instant.EPOCH,
+        )
+    }
+
+    @Test
+    fun `外部分析来源只能写入分析记录且旧截图来源可确定性恢复`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            CaseTextRecord(
+                id = "external-note",
+                type = CaseTextRecordType.NOTE,
+                content = "脱敏记录",
+                sourceType = TextRecordSourceType.EXTERNAL_AI,
+                createdAt = Instant.EPOCH,
+                updatedAt = Instant.EPOCH,
+            )
+        }
+        val externalAnalysis = CaseTextRecord(
+            id = "external-analysis",
+            type = CaseTextRecordType.ANALYSIS,
+            content = "脱敏分析",
+            sourceType = TextRecordSourceType.EXTERNAL_AI,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        assertEquals(TextRecordSourceType.EXTERNAL_AI, externalAnalysis.sourceType)
+        assertEquals(
+            TextRecordSourceType.IMPORTED_IMAGE,
+            externalAnalysis.copy(
+                id = "legacy-image",
+                sourceType = TextRecordSourceType.LEGACY_UNSPECIFIED,
+                sourceAttachmentId = "attachment",
+            ).resolveLegacySourceType().sourceType,
+        )
+        assertEquals(
+            TextRecordSourceType.USER,
+            externalAnalysis.copy(
+                id = "legacy-user",
+                sourceType = TextRecordSourceType.LEGACY_UNSPECIFIED,
+                sourceAttachmentId = null,
+            ).resolveLegacySourceType().sourceType,
         )
     }
 

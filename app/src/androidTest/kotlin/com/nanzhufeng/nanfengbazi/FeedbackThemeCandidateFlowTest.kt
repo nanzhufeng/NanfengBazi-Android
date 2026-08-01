@@ -56,6 +56,11 @@ class FeedbackThemeCandidateFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithTag("case_search").performTextReplacement(alias)
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasText("别名：$alias"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("别名：$alias").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))

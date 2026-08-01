@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
-    fun `v1 命例迁移到 v7 时补充管理历史时间候选和导入会话且保留原值`() {
+    fun `v1 命例迁移到 v8 时补充管理历史来源时间候选和导入会话且保留原值`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -36,6 +36,28 @@ class DatabaseMigrationTest {
                             ) VALUES (
                                 'legacy-case', '旧版脱敏案例', 'PRESENT', '测试乙',
                                 'MAN', '{}', '{}', 1, 2, 3
+                            )
+                            """.trimIndent(),
+                        )
+                        db.execSQL(
+                            """
+                            INSERT INTO text_records (
+                                id, caseId, type, content, sourceAttachmentId,
+                                createdAtEpochMillis, updatedAtEpochMillis
+                            ) VALUES (
+                                'legacy-user-record', 'legacy-case', 'ANALYSIS',
+                                '旧版手工记录', NULL, 1, 2
+                            )
+                            """.trimIndent(),
+                        )
+                        db.execSQL(
+                            """
+                            INSERT INTO text_records (
+                                id, caseId, type, content, sourceAttachmentId,
+                                createdAtEpochMillis, updatedAtEpochMillis
+                            ) VALUES (
+                                'legacy-image-record', 'legacy-case', 'MASTER_COMMENTARY',
+                                '旧版截图记录', 'legacy-attachment', 1, 2
                             )
                             """.trimIndent(),
                         )
@@ -64,6 +86,7 @@ class DatabaseMigrationTest {
             DatabaseMigrations.MIGRATION_4_5,
             DatabaseMigrations.MIGRATION_5_6,
             DatabaseMigrations.MIGRATION_6_7,
+            DatabaseMigrations.MIGRATION_7_8,
         )
             .allowMainThreadQueries()
             .build()
@@ -94,6 +117,17 @@ class DatabaseMigrationTest {
                     while (cursor.moveToNext()) add(cursor.getString(1))
                 }
                 assertTrue(names.contains("analysisCategory"))
+                assertTrue(names.contains("sourceType"))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "SELECT id, sourceType FROM text_records ORDER BY id",
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("legacy-image-record", cursor.getString(0))
+                assertEquals("IMPORTED_IMAGE", cursor.getString(1))
+                cursor.moveToNext()
+                assertEquals("legacy-user-record", cursor.getString(0))
+                assertEquals("USER", cursor.getString(1))
             }
             migrated.openHelper.readableDatabase.query(
                 "SELECT COUNT(*) FROM text_record_revisions",

@@ -118,6 +118,7 @@ class SingleCaseBundleFlowTest {
 
         openSourceDetail()
 
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("export_single_case_button")
             .performScrollTo()
             .performClick()
@@ -146,6 +147,7 @@ class SingleCaseBundleFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         val exportedFile = device.wait(
             Until.findObject(By.textContains(alias.take(32))),
@@ -182,6 +184,7 @@ class SingleCaseBundleFlowTest {
         val password = "Bundle-System-Pass123"
 
         openSourceDetail()
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("export_single_case_button")
             .performScrollTo()
             .performClick()
@@ -215,6 +218,7 @@ class SingleCaseBundleFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithTag("record_more").performClick()
         composeRule.onNodeWithTag("import_single_case_button").performClick()
         check(clickSystemDocument(device, alias.take(32))) {
             "Android 系统打开文档页面未找到刚导出的密码加密命例附件包"
@@ -249,6 +253,12 @@ class SingleCaseBundleFlowTest {
     }
 
     private fun openSourceDetail() {
+        if (
+            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+                .fetchSemanticsNodes().isEmpty()
+        ) {
+            composeRule.onNodeWithTag("nav_records").performClick()
+        }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_search").performTextInput(alias)
         composeRule.waitUntil(timeoutMillis = 10_000) {

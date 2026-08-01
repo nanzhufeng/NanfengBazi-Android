@@ -34,6 +34,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import java.security.MessageDigest
 import java.time.Instant
@@ -159,6 +160,7 @@ internal fun sampleCase(
                 id = "record-feedback-1",
                 type = CaseTextRecordType.OWNER_FEEDBACK,
                 content = "1999 年：脱敏事件原文。",
+                sourceType = TextRecordSourceType.IMPORTED_IMAGE,
                 sourceAttachmentId = attachment.id,
                 createdAt = FixtureInstant,
                 updatedAt = FixtureInstant,
@@ -167,6 +169,7 @@ internal fun sampleCase(
                 id = "record-commentary-1",
                 type = CaseTextRecordType.MASTER_COMMENTARY,
                 content = "脱敏师傅点评完整原文。",
+                sourceType = TextRecordSourceType.IMPORTED_IMAGE,
                 sourceAttachmentId = attachment.id,
                 createdAt = FixtureInstant,
                 updatedAt = FixtureInstant,

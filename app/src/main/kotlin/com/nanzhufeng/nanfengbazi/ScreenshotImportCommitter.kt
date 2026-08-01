@@ -42,6 +42,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import java.nio.file.AtomicMoveNotSupportedException
@@ -743,6 +744,7 @@ class ScreenshotImportCommitter(
             ImportedLongTextType.UNKNOWN -> CaseTextRecordType.NOTE
         },
         content = rawText,
+        sourceType = TextRecordSourceType.IMPORTED_IMAGE,
         sourceAttachmentId = imageId,
         createdAt = now,
         updatedAt = now,

@@ -26,20 +26,9 @@ class StageSixAccessibilityTest {
 
     @Test
     fun primaryAndCaseWorkflowPagesExposeNamedTouchTargets() {
-        if (
-            composeRule.onAllNodes(hasTestTag("case_list_screen"))
-                .fetchSemanticsNodes().isEmpty()
-        ) {
-            composeRule.onNodeWithTag("nav_cases").performClick()
-            composeRule.waitUntil(timeoutMillis = 10_000) {
-                composeRule.onAllNodes(hasTestTag("case_list_screen"))
-                    .fetchSemanticsNodes().isNotEmpty()
-            }
-        }
-        auditPage("case_list_screen")
-
+        auditPage("create_case_screen")
         composeRule.onNodeWithTag("nav_records").performClick()
-        auditPage("record_hub_screen")
+        auditPage("case_list_screen")
         composeRule.onNodeWithTag("nav_settings").performClick()
         auditPage("settings_home_screen")
         composeRule.onNodeWithTag("settings_restore_backup").performScrollTo()

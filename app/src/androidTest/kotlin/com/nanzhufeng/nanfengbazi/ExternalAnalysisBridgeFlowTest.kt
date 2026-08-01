@@ -45,6 +45,7 @@ class ExternalAnalysisBridgeFlowTest {
             composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("open_external_analysis_button")
             .performScrollTo()
             .performClick()

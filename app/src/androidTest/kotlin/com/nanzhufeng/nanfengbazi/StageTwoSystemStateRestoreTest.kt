@@ -46,7 +46,7 @@ class StageTwoSystemStateRestoreTest {
             check(device.wait(Until.hasObject(By.text(alias)), 10_000)) {
                 "系统销毁后台 Activity 后应恢复新建页未提交别名"
             }
-            check(device.hasObject(By.text("新建命例"))) {
+            check(device.hasObject(By.text("排盘"))) {
                 "系统销毁后台 Activity 后应恢复原页面"
             }
         } finally {

@@ -111,6 +111,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.imageparser.DeterministicMasterCommentaryCandidateExtractor
 import com.nanzhufeng.nanfengbazi.imageparser.DeterministicFeedbackThemeCandidateExtractor
@@ -183,15 +184,15 @@ data class ExternalAnalysisDraftState(
 )
 
 class StageTwoNavigator {
-    private val stack = mutableListOf<AppDestination>(AppDestination.CaseList)
+    private val stack = mutableListOf<AppDestination>(AppDestination.CreateCase)
     val current: AppDestination
         get() = stack.last()
 
     fun openCreate(): AppDestination {
-        return push(AppDestination.CreateCase)
+        return openRoot(AppDestination.CreateCase)
     }
 
-    fun openRecordHub(): AppDestination = openRoot(AppDestination.RecordHub)
+    fun openRecordHub(): AppDestination = openRoot(AppDestination.CaseList)
 
     fun openSettings(): AppDestination = openRoot(AppDestination.Settings)
 
@@ -264,11 +265,12 @@ class StageTwoNavigator {
         stack.clear()
         when (destination) {
             AppDestination.CaseList,
-            AppDestination.RecordHub,
             AppDestination.Settings,
             AppDestination.CreateCase,
             AppDestination.ScreenshotImportReview,
             -> stack += destination
+
+            AppDestination.RecordHub -> stack += AppDestination.CaseList
 
             AppDestination.CaseComparison -> {
                 stack += AppDestination.CaseList
@@ -354,7 +356,7 @@ class StageTwoNavigator {
 }
 
 data class StageTwoUiState(
-    val destination: AppDestination = AppDestination.CaseList,
+    val destination: AppDestination = AppDestination.CreateCase,
     val query: String = "",
     val selectedGroupId: String? = null,
     val selectedTagId: String? = null,
@@ -3783,6 +3785,7 @@ class StageTwoViewModel(
                     type = CaseTextRecordType.ANALYSIS,
                     content = backfill.content,
                     analysisCategory = backfill.analysisCategory,
+                    sourceType = TextRecordSourceType.EXTERNAL_AI,
                 ),
             )
             when (result) {
@@ -4180,6 +4183,7 @@ class StageTwoViewModel(
                         content = record.content,
                         analysisCategory = record.analysisCategory
                             ?: AnalysisCategory.GENERAL,
+                        sourceType = record.sourceType,
                     )
                 },
                 mutationError = null,
@@ -4734,7 +4738,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
 
 private fun Bundle.toStageTwoUiState(): StageTwoUiState {
     val destination = getBundle("destination")?.toAppDestination()
-        ?: AppDestination.CaseList
+        ?: AppDestination.CreateCase
     return StageTwoUiState(
         destination = destination,
         query = getString("query").orEmpty(),
@@ -4879,7 +4883,7 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
 private fun Bundle.toAppDestination(): AppDestination {
     val caseId = getString("caseId")
     return when (getString("type")) {
-        "record_hub" -> AppDestination.RecordHub
+        "case_list", "record_hub" -> AppDestination.CaseList
         "case_comparison" -> AppDestination.CaseComparison
         "four_pillars_lookup" -> AppDestination.FourPillarsLookup
         "settings" -> AppDestination.Settings
@@ -4907,8 +4911,8 @@ private fun Bundle.toAppDestination(): AppDestination {
         "edit_event" -> caseId?.let {
             AppDestination.EditEvent(it, getString("eventId"))
         }
-        else -> AppDestination.CaseList
-    } ?: AppDestination.CaseList
+        else -> AppDestination.CreateCase
+    } ?: AppDestination.CreateCase
 }
 
 private fun MasterCommentaryCandidateSet.toSavedStateBundle(): Bundle = Bundle().apply {
@@ -5230,6 +5234,7 @@ private fun TextRecordDraft.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("type", type.name)
     putString("content", content)
     putString("analysisCategory", analysisCategory.name)
+    putString("sourceType", sourceType.name)
 }
 
 private fun Bundle.toTextRecordDraft(): TextRecordDraft = TextRecordDraft(
@@ -5238,6 +5243,10 @@ private fun Bundle.toTextRecordDraft(): TextRecordDraft = TextRecordDraft(
     analysisCategory = enumValueOrDefault(
         getString("analysisCategory"),
         AnalysisCategory.GENERAL,
+    ),
+    sourceType = enumValueOrDefault(
+        getString("sourceType"),
+        TextRecordSourceType.USER,
     ),
 )
 

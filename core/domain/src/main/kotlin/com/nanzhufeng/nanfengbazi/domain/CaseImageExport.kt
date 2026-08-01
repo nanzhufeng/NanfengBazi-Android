@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 
 const val CASE_IMAGE_DOCUMENT_VERSION: Int = 1
 
@@ -258,7 +259,7 @@ private fun CaseTextRecord.displayText(): String {
         CaseTextRecordType.ANALYSIS -> "分析"
     }
     val categoryText = analysisCategory?.displayName()?.let { " · $it" }.orEmpty()
-    return "【$typeText$categoryText】$content"
+    return "【$typeText$categoryText · ${sourceType.displayName()}】$content"
 }
 
 private fun AnalysisCategory.displayName(): String = when (this) {
@@ -270,7 +271,17 @@ private fun AnalysisCategory.displayName(): String = when (this) {
     AnalysisCategory.HEALTH -> "健康"
     AnalysisCategory.EDUCATION -> "学业"
     AnalysisCategory.FAMILY -> "家庭"
+    AnalysisCategory.KEY_YEARS -> "关键年份"
+    AnalysisCategory.OPEN_QUESTIONS -> "待验证问题"
     AnalysisCategory.OTHER -> "其他"
+}
+
+private fun TextRecordSourceType.displayName(): String = when (this) {
+    TextRecordSourceType.USER -> "用户记录"
+    TextRecordSourceType.RULE_TEMPLATE -> "规则模板"
+    TextRecordSourceType.EXTERNAL_AI -> "外部 AI（手动回填）"
+    TextRecordSourceType.IMPORTED_IMAGE -> "图片导入"
+    TextRecordSourceType.LEGACY_UNSPECIFIED -> "历史未标记"
 }
 
 private fun CaseEvent.displayText(): String {

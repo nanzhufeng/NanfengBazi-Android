@@ -45,6 +45,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.resolveLegacySourceType
 import java.time.Instant
 import kotlinx.serialization.json.Json
 
@@ -302,6 +304,7 @@ private fun CaseTextRecord.toEntity(caseId: String, sortOrder: Int) = TextRecord
     type = type.name,
     content = content,
     analysisCategory = analysisCategory?.name,
+    sourceType = sourceType.name,
     sourceAttachmentId = sourceAttachmentId,
     createdAtEpochMillis = createdAt.toEpochMilli(),
     updatedAtEpochMillis = updatedAt.toEpochMilli(),
@@ -397,13 +400,19 @@ internal fun CaseEntity.toDomain(
             type = CaseTextRecordType.valueOf(it.type),
             content = it.content,
             analysisCategory = it.analysisCategory?.let(AnalysisCategory::valueOf),
+            sourceType = runCatching {
+                TextRecordSourceType.valueOf(it.sourceType)
+            }.getOrDefault(TextRecordSourceType.LEGACY_UNSPECIFIED),
             sourceAttachmentId = it.sourceAttachmentId,
             createdAt = Instant.ofEpochMilli(it.createdAtEpochMillis),
             updatedAt = Instant.ofEpochMilli(it.updatedAtEpochMillis),
-        )
+        ).resolveLegacySourceType()
     },
     textRecordRevisions = textRecordRevisions.map {
         DomainJson.decodeFromString(CaseTextRecordRevision.serializer(), it.revisionJson)
+            .let { revision ->
+                revision.copy(snapshot = revision.snapshot.resolveLegacySourceType())
+            }
     },
     events = events.map {
         DomainJson.decodeFromString(CaseEvent.serializer(), it.eventJson)

@@ -268,6 +268,17 @@ internal fun TextRecordEditorScreen(
                         onDraftChange { it.copy(analysisCategory = category) }
                     },
                 )
+                AnalysisCategoryRow(
+                    categories = listOf(
+                        AnalysisCategory.KEY_YEARS,
+                        AnalysisCategory.OPEN_QUESTIONS,
+                    ),
+                    selected = state.recordDraft.analysisCategory,
+                    enabled = !state.mutationSaving,
+                    onSelected = { category ->
+                        onDraftChange { it.copy(analysisCategory = category) }
+                    },
+                )
             }
             OutlinedTextField(
                 value = state.recordDraft.content,

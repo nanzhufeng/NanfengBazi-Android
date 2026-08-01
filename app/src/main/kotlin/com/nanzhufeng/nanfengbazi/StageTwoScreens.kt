@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,13 +35,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -105,6 +110,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
@@ -204,12 +210,16 @@ fun NanfengBaziApp(
             AppDestination.CaseList,
             AppDestination.RecordHub,
             AppDestination.Settings,
+            AppDestination.CreateCase,
         ),
     ) {
         viewModel.navigateBack()
     }
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
+    NanfengBaziTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
             BoxWithConstraints {
                 val useNavigationRail = maxWidth >= EXPANDED_NAVIGATION_MIN_WIDTH
                 val showRootNavigation = state.destination in setOf(
@@ -224,14 +234,14 @@ fun NanfengBaziApp(
                     }
                 }
                 Scaffold(
+                    containerColor = MaterialTheme.colorScheme.background,
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     bottomBar = {
                         if (showRootNavigation && !useNavigationRail) {
                             RootNavigationBar(
                                 destination = state.destination,
                                 onOpenChart = openChart,
-                                onOpenCases = viewModel::backToList,
-                                onOpenRecords = viewModel::openRecordHub,
+                                onOpenRecords = viewModel::backToList,
                                 onOpenSettings = viewModel::openSettings,
                             )
                         }
@@ -242,8 +252,7 @@ fun NanfengBaziApp(
                             RootNavigationRail(
                                 destination = state.destination,
                                 onOpenChart = openChart,
-                                onOpenCases = viewModel::backToList,
-                                onOpenRecords = viewModel::openRecordHub,
+                                onOpenRecords = viewModel::backToList,
                                 onOpenSettings = viewModel::openSettings,
                                 modifier = Modifier.padding(padding),
                             )
@@ -1807,7 +1816,6 @@ private data class RootNavigationAction(
 private fun rootNavigationActions(
     destination: AppDestination,
     onOpenChart: () -> Unit,
-    onOpenCases: () -> Unit,
     onOpenRecords: () -> Unit,
     onOpenSettings: () -> Unit,
 ): List<RootNavigationAction> = listOf(
@@ -1819,17 +1827,11 @@ private fun rootNavigationActions(
         onOpenChart,
     ),
     RootNavigationAction(
-        "命例",
-        "例",
-        destination == AppDestination.CaseList ||
-            destination is AppDestination.CaseDetail,
-        "nav_cases",
-        onOpenCases,
-    ),
-    RootNavigationAction(
         "记录",
-        "记",
-        destination == AppDestination.RecordHub,
+        "录",
+        destination == AppDestination.CaseList ||
+            destination == AppDestination.RecordHub ||
+            destination is AppDestination.CaseDetail,
         "nav_records",
         onOpenRecords,
     ),
@@ -1846,30 +1848,46 @@ private fun rootNavigationActions(
 private fun RootNavigationBar(
     destination: AppDestination,
     onOpenChart: () -> Unit,
-    onOpenCases: () -> Unit,
     onOpenRecords: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val items = rootNavigationActions(
         destination = destination,
         onOpenChart = onOpenChart,
-        onOpenCases = onOpenCases,
         onOpenRecords = onOpenRecords,
         onOpenSettings = onOpenSettings,
     )
-    NavigationBar(modifier = Modifier.testTag("root_navigation")) {
-        items.forEach { item ->
-            NavigationBarItem(
-                selected = item.selected,
-                onClick = item.onClick,
-                icon = { Text(item.glyph) },
-                label = { Text(item.label) },
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .widthIn(min = 48.dp)
-                    .semantics { contentDescription = item.label }
-                    .testTag(item.tag),
-            )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("root_navigation"),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 4.dp,
+    ) {
+        NavigationBar(
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+        ) {
+            items.forEach { item ->
+                NavigationBarItem(
+                    selected = item.selected,
+                    onClick = item.onClick,
+                    icon = { Text(item.glyph, fontWeight = FontWeight.SemiBold) },
+                    label = { Text(item.label) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = NanfengGreen,
+                        selectedTextColor = NanfengGreen,
+                        indicatorColor = Color.Transparent,
+                        unselectedIconColor = NanfengNavigationMuted,
+                        unselectedTextColor = NanfengNavigationMuted,
+                    ),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .widthIn(min = 48.dp)
+                        .semantics { contentDescription = item.label }
+                        .testTag(item.tag),
+                )
+            }
         }
     }
 }
@@ -1878,7 +1896,6 @@ private fun RootNavigationBar(
 private fun RootNavigationRail(
     destination: AppDestination,
     onOpenChart: () -> Unit,
-    onOpenCases: () -> Unit,
     onOpenRecords: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1886,14 +1903,15 @@ private fun RootNavigationRail(
     val items = rootNavigationActions(
         destination = destination,
         onOpenChart = onOpenChart,
-        onOpenCases = onOpenCases,
         onOpenRecords = onOpenRecords,
         onOpenSettings = onOpenSettings,
     )
     NavigationRail(
+        containerColor = MaterialTheme.colorScheme.surface,
         modifier = modifier
             .fillMaxHeight()
-            .width(88.dp)
+            .width(92.dp)
+            .padding(vertical = 12.dp)
             .testTag("root_navigation_rail"),
     ) {
         Spacer(modifier = Modifier.height(12.dp))
@@ -1901,8 +1919,15 @@ private fun RootNavigationRail(
             NavigationRailItem(
                 selected = item.selected,
                 onClick = item.onClick,
-                icon = { Text(item.glyph) },
+                icon = { Text(item.glyph, fontWeight = FontWeight.SemiBold) },
                 label = { Text(item.label) },
+                colors = NavigationRailItemDefaults.colors(
+                    selectedIconColor = NanfengGreen,
+                    selectedTextColor = NanfengGreen,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    unselectedIconColor = NanfengNavigationMuted,
+                    unselectedTextColor = NanfengNavigationMuted,
+                ),
                 modifier = Modifier
                     .heightIn(min = 48.dp)
                     .widthIn(min = 48.dp)
@@ -2079,79 +2104,176 @@ private fun SettingsHomeScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
             .testTag("settings_home_screen"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Text("数据只保存在本机；问真截图识别不需要联网。")
-        Button(
-            onClick = onImportScreenshots,
-            enabled = !screenshotImportState.busy,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("settings_import_screenshots"),
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            Text("导入问真截图")
+            Text(
+                "设置",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Medium,
+            )
         }
-        OutlinedButton(
-            onClick = onImportSingleCase,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("settings_import_case"),
+        Card(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(20.dp),
         ) {
-            Text("导入单命例文件")
-        }
-        OutlinedButton(
-            onClick = onExportFullBackup,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("settings_export_backup"),
-        ) {
-            Text("导出完整备份")
-        }
-        OutlinedButton(
-            onClick = onRestoreFullBackup,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("settings_restore_backup"),
-        ) {
-            Text("预览并恢复完整备份")
-        }
-        OutlinedButton(
-            onClick = {
-                val diagnostics = buildAppDiagnosticText(
-                    state = state,
-                    screenshot = screenshotImportState,
-                    appVersion = BuildConfig.VERSION_NAME,
-                    versionCode = BuildConfig.VERSION_CODE,
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("本地优先", color = NanfengGreen, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "命例、截图识别与排盘只在本机处理，不连接外部 AI。",
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                context.getSystemService(ClipboardManager::class.java)
-                    ?.setPrimaryClip(ClipData.newPlainText("南枫八字诊断包", diagnostics))
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .testTag("settings_copy_diagnostics"),
-        ) {
-            Text("复制脱敏诊断包")
+            }
+        }
+        SettingsGroupTitle("导入与建档")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "导入问真截图",
+                description = "本机识别后逐项确认",
+                onClick = onImportScreenshots,
+                enabled = !screenshotImportState.busy,
+                tag = "settings_import_screenshots",
+                accent = NanfengOrange,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "导入单案例文件",
+                description = "先查冲突，不覆盖现有案例",
+                onClick = onImportSingleCase,
+                tag = "settings_import_case",
+            )
+        }
+        SettingsGroupTitle("备份与恢复")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "导出完整备份",
+                description = "命例、记录、快照与附件",
+                onClick = onExportFullBackup,
+                tag = "settings_export_backup",
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "预览并恢复完整备份",
+                description = "先核验清单再决定写入",
+                onClick = onRestoreFullBackup,
+                tag = "settings_restore_backup",
+                accent = NanfengOrange,
+            )
+        }
+        SettingsGroupTitle("诊断与版本")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "复制脱敏诊断包",
+                description = "不包含个人资料与附件内容",
+                onClick = {
+                    val diagnostics = buildAppDiagnosticText(
+                        state = state,
+                        screenshot = screenshotImportState,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        versionCode = BuildConfig.VERSION_CODE,
+                    )
+                    context.getSystemService(ClipboardManager::class.java)
+                        ?.setPrimaryClip(ClipData.newPlainText("南枫八字诊断包", diagnostics))
+                },
+                tag = "settings_copy_diagnostics",
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsStaticRow("当前版本", BuildConfig.VERSION_NAME)
         }
         Text(
-            "诊断包不包含姓名、出生资料、截图文字、文件路径、密码或附件内容。",
+            "正式发布仍需签名、真实问真样本与真机数据保留验收。",
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        HorizontalDivider()
-        Text("版本：${BuildConfig.VERSION_NAME}")
-        Text(
-            "发布前仍需正式签名、真实问真样本验收和用户授权的真机数据保留安装。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    }
+}
+
+@Composable
+private fun SettingsGroupTitle(title: String) {
+    Text(
+        title,
+        modifier = Modifier.padding(start = 20.dp, top = 14.dp, end = 20.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun SettingsActionGroup(content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(content = { content() })
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+    tag: String,
+    enabled: Boolean = true,
+    accent: Color = NanfengGreen,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 76.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = title }
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(30.dp)
+                .height(30.dp),
+            shape = RoundedCornerShape(15.dp),
+            color = accent.copy(alpha = 0.14f),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text("•", color = accent, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Medium)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SettingsStaticRow(title: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 62.dp)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.width(42.dp))
+        Text(title, modifier = Modifier.weight(1f))
+        Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -2178,90 +2300,134 @@ private fun CaseListScreen(
     onOpenCase: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var moreExpanded by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
             .testTag("case_list_screen"),
     ) {
-        TopAppBar(
-            title = {
-                Column {
-                    Text("南枫八字", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "本地命例",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            actions = {
-                if (state.visibility == CaseVisibility.ACTIVE) {
-                    Button(
-                        onClick = onCreate,
-                        enabled = !state.singleCaseExchangeBusy,
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .padding(end = 12.dp)
-                            .testTag("new_case_button"),
-                    ) {
-                        Text("新建命例")
-                    }
-                }
-            },
-        )
-        Row(
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            color = MaterialTheme.colorScheme.surface,
         ) {
-            OutlinedButton(
-                onClick = onImportScreenshots,
-                enabled = !screenshotImportState.busy,
+            Row(
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("import_screenshots_button"),
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(if (screenshotImportState.busy) "识别中…" else "截图建档")
-            }
-            OutlinedButton(
-                onClick = onImportSingleCase,
-                enabled = !state.singleCaseExchangeBusy && !state.fullBackupBusy,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("import_single_case_button"),
-            ) {
-                Text(if (state.singleCaseExchangeBusy) "读取中…" else "导入单命例")
-            }
-            OutlinedButton(
-                onClick = onExportFullBackup,
-                enabled = !state.fullBackupBusy && !state.singleCaseExchangeBusy,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("export_full_backup_button"),
-            ) {
-                Text(if (state.fullBackupBusy) "处理中…" else "导出完整备份")
-            }
-            OutlinedButton(
-                onClick = onPreviewFullBackup,
-                enabled = !state.fullBackupBusy && !state.singleCaseExchangeBusy,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("preview_full_backup_button"),
-            ) {
-                Text("检查完整备份")
-            }
-            OutlinedButton(
-                onClick = onOpenCaseComparison,
-                enabled = !state.listLoading && state.visibility == CaseVisibility.ACTIVE,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("open_case_comparison"),
-            ) {
-                Text("命例对比")
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(28.dp),
+                    color = NanfengPageBackground,
+                ) {
+                    Row {
+                        RecordTopTab(
+                            text = "用户列表",
+                            selected = state.visibility != CaseVisibility.TRASHED,
+                            onClick = { onSelectVisibility(CaseVisibility.ACTIVE) },
+                            modifier = Modifier.weight(1f),
+                            tag = "visibility_active",
+                        )
+                        RecordTopTab(
+                            text = "回收站",
+                            selected = state.visibility == CaseVisibility.TRASHED,
+                            onClick = { onSelectVisibility(CaseVisibility.TRASHED) },
+                            modifier = Modifier.weight(1f),
+                            tag = "visibility_trashed",
+                        )
+                    }
+                }
+                Box {
+                    TextButton(
+                        onClick = { moreExpanded = true },
+                        modifier = Modifier
+                            .width(52.dp)
+                            .heightIn(min = 48.dp)
+                            .testTag("record_more"),
+                    ) {
+                        Text("•••", style = MaterialTheme.typography.titleMedium)
+                    }
+                    DropdownMenu(
+                        expanded = moreExpanded,
+                        onDismissRequest = { moreExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("新排盘") },
+                            onClick = {
+                                moreExpanded = false
+                                onCreate()
+                            },
+                            modifier = Modifier.testTag("new_case_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("导入问真截图") },
+                            onClick = {
+                                moreExpanded = false
+                                onImportScreenshots()
+                            },
+                            enabled = !screenshotImportState.busy,
+                            modifier = Modifier.testTag("import_screenshots_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("导入单案例") },
+                            onClick = {
+                                moreExpanded = false
+                                onImportSingleCase()
+                            },
+                            modifier = Modifier.testTag("import_single_case_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("命例对比") },
+                            onClick = {
+                                moreExpanded = false
+                                onOpenCaseComparison()
+                            },
+                            enabled = state.visibility == CaseVisibility.ACTIVE,
+                            modifier = Modifier.testTag("open_case_comparison"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("导出完整备份") },
+                            onClick = {
+                                moreExpanded = false
+                                onExportFullBackup()
+                            },
+                            modifier = Modifier.testTag("export_full_backup_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("恢复完整备份") },
+                            onClick = {
+                                moreExpanded = false
+                                onPreviewFullBackup()
+                            },
+                            modifier = Modifier.testTag("preview_full_backup_button"),
+                        )
+                    }
+                }
             }
         }
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .testTag("case_search"),
+            placeholder = { Text("请输入姓名、别名或四柱") },
+            trailingIcon = {
+                Text(
+                    "筛选",
+                    modifier = Modifier
+                        .padding(end = 4.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+        )
         ScreenshotImportSummary(
             state = screenshotImportState,
             onRetry = onRetryScreenshotImport,
@@ -2271,38 +2437,42 @@ private fun CaseListScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            SelectionButton(
-                text = "命例",
-                selected = state.visibility == CaseVisibility.ACTIVE,
-                onClick = { onSelectVisibility(CaseVisibility.ACTIVE) },
-                tag = "visibility_active",
+            RecordCategoryTab(
+                text = "全部",
+                selected = state.selectedGroupId == null && state.selectedTagId == null,
+                onClick = { onSelectGroup(null); onSelectTag(null) },
             )
-            SelectionButton(
-                text = "回收站",
-                selected = state.visibility == CaseVisibility.TRASHED,
-                onClick = { onSelectVisibility(CaseVisibility.TRASHED) },
-                tag = "visibility_trashed",
-            )
+            state.availableGroups.take(5).forEach { group ->
+                RecordCategoryTab(
+                    text = group.name,
+                    selected = state.selectedGroupId == group.id,
+                    onClick = { onSelectGroup(group.id) },
+                )
+            }
+            state.availableTags.take(3).forEach { tag ->
+                RecordCategoryTab(
+                    text = tag.name,
+                    selected = state.selectedTagId == tag.id,
+                    onClick = { onSelectTag(tag.id) },
+                )
+            }
+            TextButton(
+                onClick = {
+                    val next = CaseSortOrder.entries[
+                        (CaseSortOrder.entries.indexOf(state.sortOrder) + 1) %
+                            CaseSortOrder.entries.size
+                    ]
+                    onSelectSort(next)
+                },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("排序") }
         }
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .testTag("case_search"),
-            label = { Text("搜索姓名、别名或四柱") },
-            singleLine = true,
-        )
-        CaseListControls(
-            state = state,
-            onSelectGroup = onSelectGroup,
-            onSelectTag = onSelectTag,
-            onSelectSort = onSelectSort,
-        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         when {
             state.listLoading -> LoadingBox("正在读取命例…")
             state.listError != null -> ErrorBox(
@@ -2311,22 +2481,194 @@ private fun CaseListScreen(
                 onAction = onRefresh,
             )
             state.cases.isEmpty() -> EmptyCaseList(state.visibility, onCreate)
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    start = 16.dp,
-                    top = 8.dp,
-                    end = 16.dp,
-                    bottom = 24.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(state.cases, key = { it.id }) { summary ->
-                    CaseSummaryCard(summary, onClick = { onOpenCase(summary.id) })
+            else -> Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        end = 28.dp,
+                        bottom = 16.dp,
+                    ),
+                ) {
+                    itemsIndexed(state.cases, key = { _, item -> item.id }) { index, summary ->
+                        val section = summary.recordSection()
+                        val previousSection = state.cases.getOrNull(index - 1)?.recordSection()
+                        if (section != previousSection) {
+                            Text(
+                                section,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        CaseSummaryRow(summary, onClick = { onOpenCase(summary.id) })
+                    }
                 }
+                RecordAlphabetIndex(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 4.dp),
+                )
             }
         }
     }
+}
+
+@Composable
+private fun RecordTopTab(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    tag: String,
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick)
+            .testTag(tag),
+        shape = RoundedCornerShape(26.dp),
+        color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+        shadowElevation = if (selected) 1.dp else 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecordCategoryTab(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 48.dp),
+    ) {
+        Text(
+            text,
+            color = if (selected) NanfengGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        )
+    }
+}
+
+@Composable
+private fun RecordAlphabetIndex(modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".forEach { initial ->
+            Text(
+                initial.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun CaseSummary.recordSection(): String {
+    if (isPinned) return "星标置顶"
+    val first = (name.value ?: alias).trim().firstOrNull() ?: return "#"
+    return if (first.isLetter() && first.code < 128) first.uppercase() else "#"
+}
+
+@Composable
+private fun CaseSummaryRow(
+    summary: CaseSummary,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "打开命例：${summary.alias}" }
+            .padding(start = 16.dp, top = 10.dp, end = 8.dp, bottom = 10.dp)
+            .testTag("case_${summary.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    summary.name.value ?: summary.alias,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    "  ${summary.sexForFortuneDirection.displayName()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                summary.birthInput.displayDateOnly(),
+                modifier = Modifier.padding(top = 3.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "别名：${summary.alias}",
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(1.dp),
+                color = Color.Transparent,
+            )
+        }
+        summary.fourPillars?.let { pillars ->
+            Row(
+                modifier = Modifier.width(104.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                listOf(pillars.year, pillars.month, pillars.day, pillars.hour).forEach { pillar ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        pillar.forEach { char ->
+                            Text(
+                                char.toString(),
+                                color = baziElementColor(char),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .padding(start = 6.dp)
+                .width(38.dp)
+                .height(38.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = NanfengNavigation,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    summary.zodiac?.take(1) ?: "命",
+                    color = NanfengGold,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+private fun baziElementColor(char: Char): Color = when (char) {
+    '甲', '乙', '寅', '卯' -> Color(0xFF2F9B55)
+    '丙', '丁', '巳', '午' -> Color(0xFFD94B43)
+    '戊', '己', '辰', '戌', '丑', '未' -> Color(0xFFA47B14)
+    '庚', '辛', '申', '酉' -> Color(0xFFD98B17)
+    '壬', '癸', '亥', '子' -> Color(0xFF2E83C8)
+    else -> Color(0xFF202420)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3339,102 +3681,513 @@ private fun CreateCaseScreen(
     onOpenFourPillarsLookup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    CaseFormScreen(
-        title = "新建命例",
-        screenTag = "create_case_screen",
-        form = state.form,
-        error = state.formError,
-        saving = state.saving,
-        previewing = state.previewing,
-        instantCalculation = state.instantCalculation,
-        submitLabel = "排盘并保存",
-        onBack = onBack,
+    WenzhenCreateCaseScreen(
+        state = state,
         onFormChange = onFormChange,
         onPreview = onPreview,
         onSubmit = onSubmit,
-        duplicateCandidates = state.duplicateCandidates,
         onConfirmDuplicate = onConfirmDuplicate,
-        topContent = {
-            OutlinedButton(
-                onClick = onOpenFourPillarsLookup,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .testTag("open_four_pillars_lookup"),
-            ) {
-                Text("四柱反查")
-            }
-            Text(
-                "按四柱、年份范围、IANA 时区和子时口径查找可复算的民用时候选。",
-                modifier = Modifier.padding(bottom = 12.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            RecentCasesSection(
-                cases = state.recentCases,
-                onOpenCase = onOpenCase,
-            )
-        },
+        onOpenFourPillarsLookup = onOpenFourPillarsLookup,
         modifier = modifier,
     )
 }
 
 @Composable
-private fun RecentCasesSection(
-    cases: List<CaseSummary>,
-    onOpenCase: (String) -> Unit,
+private fun WenzhenCreateCaseScreen(
+    state: StageTwoUiState,
+    onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onPreview: () -> Unit,
+    onSubmit: () -> Unit,
+    onConfirmDuplicate: () -> Unit,
+    onOpenFourPillarsLookup: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    SectionHeading(
-        "最近命例",
-        if (cases.isEmpty()) {
-            "打开过的命例会出现在这里，方便继续研究。"
-        } else {
-            "按最近查看时间显示，可直接返回命盘详情。"
-        },
-    )
-    if (cases.isEmpty()) {
-        Text(
-            "暂无最近查看记录",
+    var saveCase by rememberSaveable { mutableStateOf(true) }
+    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+    val form = state.form
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("create_case_screen"),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.surface) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("☰", color = NanfengGold, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "首页排盘",
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text("柱", color = NanfengGreen, style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-                .testTag("recent_cases_empty"),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    } else {
-        cases.forEach { summary ->
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .clickable { onOpenCase(summary.id) }
-                    .semantics {
-                        contentDescription = "打开最近命例：${summary.alias}"
-                    }
-                    .testTag("recent_case_${summary.id}"),
-                colors = CardDefaults.cardColors(
-                    containerColor =
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                ),
+                    .testTag("home_input_card"),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp),
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        summary.name.value ?: summary.alias,
-                        fontWeight = FontWeight.SemiBold,
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    OutlinedTextField(
+                        value = form.alias,
+                        onValueChange = { value -> onFormChange { it.copy(alias = value) } },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("case_alias"),
+                        label = { Text("姓名或命例别名 *") },
+                        placeholder = { Text("请输入姓名") },
+                        singleLine = true,
+                        enabled = !state.saving,
+                        shape = RoundedCornerShape(14.dp),
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        HomeChoiceGroup(
+                            options = listOf(
+                                "男" to (form.sex == SexForFortuneDirection.MAN),
+                                "女" to (form.sex == SexForFortuneDirection.WOMAN),
+                            ),
+                            onSelect = { label ->
+                                onFormChange {
+                                    it.copy(
+                                        sex = if (label == "男") {
+                                            SexForFortuneDirection.MAN
+                                        } else {
+                                            SexForFortuneDirection.WOMAN
+                                        },
+                                    )
+                                }
+                            },
+                            tags = listOf("sex_man", "sex_woman"),
+                        )
+                        HomeChoiceGroup(
+                            options = listOf(
+                                "公历" to (form.calendarSystem == CalendarSystem.SOLAR),
+                                "农历" to (form.calendarSystem == CalendarSystem.LUNAR),
+                                "四柱" to false,
+                            ),
+                            onSelect = { label ->
+                                if (label == "四柱") {
+                                    onOpenFourPillarsLookup()
+                                } else {
+                                    onFormChange {
+                                        it.copy(
+                                            calendarSystem = if (label == "公历") {
+                                                CalendarSystem.SOLAR
+                                            } else {
+                                                CalendarSystem.LUNAR
+                                            },
+                                            isLeapMonth = false,
+                                        ).clearTimeZoneResolution()
+                                    }
+                                }
+                            },
+                            tags = listOf(
+                                "birth_calendar_solar",
+                                "birth_calendar_lunar",
+                                "open_four_pillars_lookup",
+                            ),
+                        )
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                     Text(
-                        "${summary.sexForFortuneDirection.displayName()} · " +
-                            summary.birthInput.displayDateTime(),
-                        modifier = Modifier.padding(top = 3.dp),
+                        "出生时间（必填）",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    NumericFieldRow(
+                        values = listOf(
+                            NumericField("年", form.year, "birth_year") {
+                                onFormChange { current ->
+                                    current.copy(year = it).clearTimeZoneResolution()
+                                }
+                            },
+                            NumericField("月", form.month, "birth_month") {
+                                onFormChange { current ->
+                                    current.copy(month = it).clearTimeZoneResolution()
+                                }
+                            },
+                            NumericField("日", form.day, "birth_day") {
+                                onFormChange { current ->
+                                    current.copy(day = it).clearTimeZoneResolution()
+                                }
+                            },
+                        ),
+                        enabled = !state.saving,
+                    )
+                    NumericFieldRow(
+                        values = listOf(
+                            NumericField("时", form.hour, "birth_hour") {
+                                onFormChange { current ->
+                                    current.copy(hour = it).clearTimeZoneResolution()
+                                }
+                            },
+                            NumericField("分", form.minute, "birth_minute") {
+                                onFormChange { current ->
+                                    current.copy(minute = it).clearTimeZoneResolution()
+                                }
+                            },
+                            NumericField("秒", form.second, "birth_second") {
+                                onFormChange { current ->
+                                    current.copy(second = it).clearTimeZoneResolution()
+                                }
+                            },
+                        ),
+                        enabled = !state.saving,
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                    OutlinedTextField(
+                        value = form.locationName,
+                        onValueChange = { value ->
+                            onFormChange { it.copy(locationName = value) }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("birth_location"),
+                        label = { Text("出生地区 *") },
+                        placeholder = { Text("请输入出生地区") },
+                        singleLine = true,
+                        enabled = !state.saving,
+                        shape = RoundedCornerShape(14.dp),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (form.useTrueSolarTime) "真太阳时：开启" else "真太阳时：关闭",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "时区：${form.timeZoneId}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text("保存", style = MaterialTheme.typography.titleMedium)
+                        Switch(
+                            checked = saveCase,
+                            onCheckedChange = { saveCase = it },
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .semantics { contentDescription = "保存命例" },
+                        )
+                    }
+                    Button(
+                        onClick = if (saveCase) onSubmit else onPreview,
+                        enabled = !state.saving && !state.previewing,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .height(56.dp)
+                            .testTag(if (saveCase) "save_case" else "preview_case"),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = NanfengNavigation,
+                            contentColor = Color(0xFFF2D8A5),
+                        ),
+                        shape = RoundedCornerShape(28.dp),
+                    ) {
+                        Text(
+                            when {
+                                state.saving -> "正在排盘并保存…"
+                                state.previewing -> "正在即时排盘…"
+                                else -> "开始排盘"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+            }
+            InstantChartEntryCard(
+                calculation = state.instantCalculation,
+                onPreview = onPreview,
+                enabled = !state.saving && !state.previewing,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                HomeFeatureTile(
+                    title = "四柱反查",
+                    subtitle = "候选可复算",
+                    glyph = "柱",
+                    onClick = onOpenFourPillarsLookup,
+                    modifier = Modifier.weight(1f),
+                )
+                HomeFeatureTile(
+                    title = "详细设置",
+                    subtitle = "时区与口径",
+                    glyph = "设",
+                    onClick = { advancedExpanded = !advancedExpanded },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (advancedExpanded) {
+                HomeAdvancedSettings(
+                    form = form,
+                    saving = state.saving,
+                    onFormChange = onFormChange,
+                )
+            }
+            state.formError?.let { error ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("form_error"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Text(
+                        error,
+                        modifier = Modifier.padding(14.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+            if (state.instantCalculation != null) {
+                InstantCalculationPreviewCard(
+                    calculation = state.instantCalculation,
+                    sex = form.sex ?: state.instantCalculation.normalizedInput.sexForFortuneDirection,
+                )
+            }
+            if (state.duplicateCandidates.isNotEmpty()) {
+                DuplicateCandidatesCard(
+                    candidates = state.duplicateCandidates,
+                    saving = state.saving || state.previewing,
+                    onConfirm = onConfirmDuplicate,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun HomeChoiceGroup(
+    options: List<Pair<String, Boolean>>,
+    onSelect: (String) -> Unit,
+    tags: List<String>,
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = NanfengPageBackground,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Row {
+            options.forEachIndexed { index, (label, selected) ->
+                Surface(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .widthIn(min = 48.dp)
+                        .clickable { onSelect(label) }
+                        .testTag(tags[index]),
+                    shape = RoundedCornerShape(22.dp),
+                    color = if (selected) NanfengGreen else Color.Transparent,
+                ) {
+                    Box(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            label,
+                            color = if (selected) Color.White else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstantChartEntryCard(
+    calculation: CalculationResult?,
+    onPreview: () -> Unit,
+    enabled: Boolean,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                calculation?.fourPillars?.let {
+                    listOf(it.year, it.month, it.day, it.hour).joinToString("  ")
+                } ?: "年柱  月柱  日柱  时柱",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            OutlinedButton(
+                onClick = onPreview,
+                enabled = enabled,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("preview_case"),
+            ) {
+                Text("即时排盘")
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeFeatureTile(
+    title: String,
+    subtitle: String,
+    glyph: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .heightIn(min = 112.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(glyph, color = NanfengGreen, style = MaterialTheme.typography.headlineSmall)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeAdvancedSettings(
+    form: CaseFormState,
+    saving: Boolean,
+    onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("home_advanced_settings"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("详细设置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(
+                value = form.timeZoneId,
+                onValueChange = { value ->
+                    onFormChange { it.copy(timeZoneId = value).clearTimeZoneResolution() }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp)
+                    .testTag("birth_timezone"),
+                label = { Text("IANA 时区") },
+                singleLine = true,
+                enabled = !saving,
+            )
+            Text(
+                "子时换日规则",
+                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RatHourRule.entries.forEach { rule ->
+                    SexButton(
+                        text = rule.displayName(),
+                        selected = form.ratHourRule == rule,
+                        enabled = !saving,
+                        tag = "birth_rat_hour_rule_${rule.name}",
+                        onClick = { onFormChange { it.copy(ratHourRule = rule) } },
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("启用真太阳时", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "仅在明确经纬度时校正；不会静默推算。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        "四柱：${summary.fourPillars?.display() ?: "暂无计算结果"}",
-                        modifier = Modifier.padding(top = 3.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
+                Switch(
+                    checked = form.useTrueSolarTime,
+                    onCheckedChange = { checked ->
+                        onFormChange { it.copy(useTrueSolarTime = checked) }
+                    },
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = "启用真太阳时" }
+                        .testTag("birth_true_solar_time"),
+                    enabled = !saving,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = form.longitude,
+                    onValueChange = { value -> onFormChange { it.copy(longitude = value) } },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("birth_longitude"),
+                    label = { Text("经度") },
+                    singleLine = true,
+                    enabled = !saving,
+                )
+                OutlinedTextField(
+                    value = form.latitude,
+                    onValueChange = { value -> onFormChange { it.copy(latitude = value) } },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("birth_latitude"),
+                    label = { Text("纬度") },
+                    singleLine = true,
+                    enabled = !saving,
+                )
             }
         }
     }
@@ -3463,6 +4216,7 @@ internal fun CaseFormScreen(
     duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     onConfirmDuplicate: (() -> Unit)? = null,
     topContent: (@Composable () -> Unit)? = null,
+    showBack: Boolean = true,
 ) {
     Column(
         modifier = modifier
@@ -3472,11 +4226,13 @@ internal fun CaseFormScreen(
         TopAppBar(
             title = { Text(title) },
             navigationIcon = {
-                TextButton(
-                    onClick = onBack,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) {
-                    Text("返回")
+                if (showBack) {
+                    TextButton(
+                        onClick = onBack,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Text("返回")
+                    }
                 }
             },
         )
@@ -5003,7 +5759,13 @@ private fun CaseDetailScreen(
             .testTag("case_detail_screen"),
     ) {
         TopAppBar(
-            title = { Text(state.detail?.name?.value ?: state.detail?.alias ?: "命例详情") },
+            title = {
+                Text(
+                    "南枫八字",
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            },
             navigationIcon = {
                 TextButton(
                     onClick = onBack,
@@ -5012,11 +5774,21 @@ private fun CaseDetailScreen(
                     Text("返回")
                 }
             },
+            actions = {
+                TextButton(onClick = onEditMetadata, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("•••")
+                }
+            },
         )
         if (state.detail != null && !state.detailLoading && state.detailError == null) {
             CaseDetailTabs(
                 selectedSection = state.detailSection,
                 onSelectSection = onSelectSection,
+            )
+            WenzhenCaseIdentityHeader(
+                case = state.detail,
+                adopted = state.detail.calculationSnapshots.asReversed()
+                    .firstOrNull { it.adopted },
             )
         }
         Box(modifier = Modifier.weight(1f)) {
@@ -5068,8 +5840,8 @@ private fun CaseDetailScreen(
 private fun CaseDetailSection.displayName(): String = when (this) {
     CaseDetailSection.BASIC_INFO -> "基本信息"
     CaseDetailSection.BASIC_CHART -> "基本排盘"
-    CaseDetailSection.FORTUNE -> "岁运"
-    CaseDetailSection.RECORDS -> "分析记录"
+    CaseDetailSection.FORTUNE -> "专业细盘"
+    CaseDetailSection.RECORDS -> "断事笔记"
 }
 
 private fun CaseDetailSection.testTag(): String = when (this) {
@@ -5090,6 +5862,9 @@ private fun CaseDetailTabs(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("case_detail_tabs"),
+        containerColor = NanfengNavigation,
+        contentColor = Color.White,
+        divider = {},
     ) {
         CaseDetailSection.entries.forEach { section ->
             Tab(
@@ -5098,7 +5873,75 @@ private fun CaseDetailTabs(
                 modifier = Modifier
                     .heightIn(min = 48.dp)
                     .testTag(section.testTag()),
-                text = { Text(section.displayName()) },
+                text = {
+                    Text(
+                        section.displayName(),
+                        color = if (selectedSection == section) NanfengGold else Color.White,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun WenzhenCaseIdentityHeader(
+    case: BaziCase,
+    adopted: CaseCalculationSnapshot?,
+) {
+    val result = adopted?.result
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("case_identity_header"),
+        color = NanfengNavigation,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .width(58.dp)
+                    .height(58.dp),
+                shape = RoundedCornerShape(30.dp),
+                color = Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(2.dp, NanfengGold),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        result?.basicChartDetails?.zodiac?.take(1) ?: "命",
+                        color = NanfengGold,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    case.name.value ?: case.alias,
+                    color = NanfengGold,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    case.birthInput.displayDateTime(),
+                    modifier = Modifier.padding(top = 3.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    result?.fourPillars?.display() ?: "暂无已采用排盘",
+                    modifier = Modifier.padding(top = 4.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Text(
+                case.sexForFortuneDirection.displayName(),
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
             )
         }
     }
@@ -5139,13 +5982,15 @@ private fun CaseDetailContent(
     onFortuneObservationTimeChange: (String) -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
+    var managementExpanded by rememberSaveable(case.id) { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        if (case.deletedAt == null) {
+        if (selectedSection == CaseDetailSection.BASIC_INFO) {
+            if (case.deletedAt == null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -5171,6 +6016,16 @@ private fun CaseDetailContent(
                     Text("管理分类")
                 }
             }
+            TextButton(
+                onClick = { managementExpanded = !managementExpanded },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("toggle_case_management"),
+            ) {
+                Text(if (managementExpanded) "收起管理操作" else "更多管理操作")
+            }
+            if (managementExpanded) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -5256,16 +6111,18 @@ private fun CaseDetailContent(
             ) {
                 Text(if (singleCaseExchangeBusy) "正在导出…" else "导出单命例")
             }
-        } else {
-            Button(
-                onClick = onRestore,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 14.dp)
-                    .heightIn(min = 48.dp)
-                    .testTag("restore_case_button"),
-            ) {
-                Text("恢复命例")
+            }
+            } else {
+                Button(
+                    onClick = onRestore,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                        .heightIn(min = 48.dp)
+                        .testTag("restore_case_button"),
+                ) {
+                    Text("恢复命例")
+                }
             }
         }
         if (selectedSection == CaseDetailSection.BASIC_INFO) {
@@ -5733,6 +6590,12 @@ private fun CaseDetailContent(
                                 modifier = Modifier.padding(top = 4.dp),
                                 maxLines = 4,
                             )
+                            Text(
+                                "来源：${record.sourceType.displayName()}",
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             if (
                                 record.type == CaseTextRecordType.MASTER_COMMENTARY &&
                                 case.deletedAt == null
@@ -5858,6 +6721,10 @@ private fun CaseDetailContent(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
+                            Text(
+                                "来源：${revision.snapshot.sourceType.displayName()}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                             Text(
                                 revision.snapshot.content,
                                 modifier = Modifier.padding(top = 3.dp),
@@ -6083,7 +6950,9 @@ private fun ProfessionalFortunePositionView(
                 )
                 copied = true
             },
-            modifier = Modifier.testTag("copy_fortune_diagnostics"),
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .testTag("copy_fortune_diagnostics"),
         ) {
             Text(if (copied) "诊断已复制" else "复制流运诊断")
         }
@@ -6517,7 +7386,17 @@ internal fun AnalysisCategory.displayName(): String = when (this) {
     AnalysisCategory.HEALTH -> "健康"
     AnalysisCategory.EDUCATION -> "学业"
     AnalysisCategory.FAMILY -> "家庭"
+    AnalysisCategory.KEY_YEARS -> "关键年份"
+    AnalysisCategory.OPEN_QUESTIONS -> "待验证问题"
     AnalysisCategory.OTHER -> "其他"
+}
+
+internal fun TextRecordSourceType.displayName(): String = when (this) {
+    TextRecordSourceType.USER -> "用户记录"
+    TextRecordSourceType.RULE_TEMPLATE -> "规则模板"
+    TextRecordSourceType.EXTERNAL_AI -> "外部 AI（手动回填）"
+    TextRecordSourceType.IMPORTED_IMAGE -> "图片导入"
+    TextRecordSourceType.LEGACY_UNSPECIFIED -> "历史未标记"
 }
 
 internal fun CaseEventCategory.displayName(): String = when (this) {
@@ -6552,6 +7431,21 @@ private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateTime()
             "农历 ${date.year}年${if (date.isLeapMonth) "闰" else ""}" +
                 "${date.month}月${date.day}日 " +
                 "%02d:%02d:%02d".format(date.hour, date.minute, date.second)
+        }
+    }
+
+private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateOnly(): String =
+    when (val calendar = calendarInput) {
+        is BirthCalendarInput.Solar -> with(calendar.dateTime) {
+            "阳历%04d年%d月%d日".format(year, month, day)
+        }
+        is BirthCalendarInput.Lunar -> with(calendar.dateTime) {
+            "农历%04d年%s%d月%d日".format(
+                year,
+                if (isLeapMonth) "闰" else "",
+                month,
+                day,
+            )
         }
     }
 

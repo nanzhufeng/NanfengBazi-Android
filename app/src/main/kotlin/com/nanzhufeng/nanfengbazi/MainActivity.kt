@@ -334,6 +334,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun importScreenshotUris(uris: List<Uri>) {
+        if (uris.isNotEmpty()) {
+            viewModel.openRecordHub()
+        }
         if (shouldRequestLargeBatchNotificationPermission(
                 imageCount = uris.size,
                 sdkInt = Build.VERSION.SDK_INT,

@@ -83,6 +83,7 @@ data class TextRecordEntity(
     val type: String,
     val content: String,
     val analysisCategory: String? = null,
+    val sourceType: String = "LEGACY_UNSPECIFIED",
     val sourceAttachmentId: String?,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,

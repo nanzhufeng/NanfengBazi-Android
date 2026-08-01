@@ -5,11 +5,11 @@ import org.junit.Test
 
 class StageTwoNavigatorTest {
     @Test
-    fun `新建与详情均可返回单列列表`() {
+    fun `排盘为首页且详情可返回记录列表`() {
         val navigator = StageTwoNavigator()
 
-        assertEquals(AppDestination.CaseList, navigator.current)
-        assertEquals(AppDestination.RecordHub, navigator.openRecordHub())
+        assertEquals(AppDestination.CreateCase, navigator.current)
+        assertEquals(AppDestination.CaseList, navigator.openRecordHub())
         assertEquals(AppDestination.Settings, navigator.openSettings())
         assertEquals(AppDestination.CaseList, navigator.backToList())
         assertEquals(AppDestination.CaseComparison, navigator.openCaseComparison())
