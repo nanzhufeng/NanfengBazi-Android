@@ -348,6 +348,7 @@ fun NanfengBaziApp(
                                 onDuplicate = viewModel::duplicateCase,
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
                                 onOpenObjectiveSummary = viewModel::openObjectiveSummary,
+                                onOpenExternalAnalysis = viewModel::openExternalAnalysisBridge,
                                 onExportCaseImage = {
                                     viewModel.requestCaseImageDelivery(
                                         CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
@@ -414,6 +415,35 @@ fun NanfengBaziApp(
                                 }
                             }
                         },
+                        modifier = Modifier.padding(padding),
+                    )
+                    is AppDestination.ExternalAnalysisBridge -> ExternalAnalysisBridgeScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onSetGroupSelected = viewModel::setExternalAnalysisGroupSelected,
+                        onSetRedaction = viewModel::setExternalAnalysisRedaction,
+                        onSetExportConfirmed =
+                            viewModel::setExternalAnalysisExportConfirmed,
+                        onCopy = {
+                            viewModel.copyExternalAnalysisPayload { text ->
+                                val clipboard = context
+                                    .getSystemService(ClipboardManager::class.java)
+                                    ?: return@copyExternalAnalysisPayload false
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText("南枫八字外部分析材料", text),
+                                )
+                                clipboard.primaryClip
+                                    ?.getItemAt(0)
+                                    ?.coerceToText(context)
+                                    ?.toString() == text
+                            }
+                        },
+                        onProviderChange = viewModel::updateExternalAnalysisProvider,
+                        onModelChange = viewModel::updateExternalAnalysisModel,
+                        onResultChange = viewModel::updateExternalAnalysisResult,
+                        onSetImportConfirmed =
+                            viewModel::setExternalAnalysisImportConfirmed,
+                        onSave = viewModel::saveExternalAnalysisResult,
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.MasterCommentaryCandidates ->
@@ -4957,6 +4987,7 @@ private fun CaseDetailScreen(
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
     onOpenObjectiveSummary: () -> Unit,
+    onOpenExternalAnalysis: () -> Unit,
     onExportCaseImage: () -> Unit,
     onShareCaseImage: () -> Unit,
     onMoveToTrash: () -> Unit,
@@ -5011,6 +5042,7 @@ private fun CaseDetailScreen(
                     onDuplicate = onDuplicate,
                     onExportSingleCase = onExportSingleCase,
                     onOpenObjectiveSummary = onOpenObjectiveSummary,
+                    onOpenExternalAnalysis = onOpenExternalAnalysis,
                     onExportCaseImage = onExportCaseImage,
                     onShareCaseImage = onShareCaseImage,
                     onMoveToTrash = onMoveToTrash,
@@ -5088,6 +5120,7 @@ private fun CaseDetailContent(
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
     onOpenObjectiveSummary: () -> Unit,
+    onOpenExternalAnalysis: () -> Unit,
     onExportCaseImage: () -> Unit,
     onShareCaseImage: () -> Unit,
     onMoveToTrash: () -> Unit,
@@ -5200,6 +5233,17 @@ private fun CaseDetailContent(
                     .testTag("open_objective_summary_button"),
             ) {
                 Text("客观命盘摘要")
+            }
+            OutlinedButton(
+                onClick = onOpenExternalAnalysis,
+                enabled = !singleCaseExchangeBusy && !mutationSaving && !caseImageBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .heightIn(min = 48.dp)
+                    .testTag("open_external_analysis_button"),
+            ) {
+                Text("外部分析桥接")
             }
             OutlinedButton(
                 onClick = onExportSingleCase,

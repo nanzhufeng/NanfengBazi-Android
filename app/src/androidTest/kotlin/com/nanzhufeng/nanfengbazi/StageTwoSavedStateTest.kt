@@ -15,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -167,16 +168,58 @@ class StageTwoSavedStateTest {
             restoredSummary.state.value.destination,
         )
 
-        restoredSummary.duplicateCase()
+        restoredSummary.openExternalAnalysisBridge()
+        restoredSummary.setExternalAnalysisGroupSelected(
+            com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisFieldGroup.BIRTH_FACTS,
+            false,
+        )
+        restoredSummary.updateExternalAnalysisProvider("待恢复来源")
+        restoredSummary.updateExternalAnalysisModel("待恢复模型")
+        restoredSummary.updateExternalAnalysisResult("待恢复的外部结果草稿")
+        restoredSummary.setExternalAnalysisExportConfirmed(true)
+        restoredSummary.setExternalAnalysisImportConfirmed(true)
+        val externalHandle = SavedStateHandle()
+        restoredSummary.saveRestorableStateTo(externalHandle)
+        val restoredExternal = createViewModel(container, externalHandle)
+        waitUntil { restoredExternal.state.value.externalAnalysisPayload != null }
+        assertEquals(
+            AppDestination.ExternalAnalysisBridge(caseId),
+            restoredExternal.state.value.destination,
+        )
+        assertEquals(
+            "待恢复来源",
+            restoredExternal.state.value.externalAnalysisDraft.providerName,
+        )
+        assertEquals(
+            "待恢复模型",
+            restoredExternal.state.value.externalAnalysisDraft.modelName,
+        )
+        assertEquals(
+            "待恢复的外部结果草稿",
+            restoredExternal.state.value.externalAnalysisDraft.resultText,
+        )
+        assertFalse(
+            com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisFieldGroup.BIRTH_FACTS in
+                restoredExternal.state.value.externalAnalysisDraft.selectedGroups,
+        )
+        assertFalse(restoredExternal.state.value.externalAnalysisDraft.exportConfirmed)
+        assertFalse(restoredExternal.state.value.externalAnalysisDraft.importConfirmed)
+        restoredExternal.navigateBack()
+        assertEquals(
+            AppDestination.CaseDetail(caseId),
+            restoredExternal.state.value.destination,
+        )
+
+        restoredExternal.duplicateCase()
         waitUntil {
-            val detailId = restoredSummary.state.value.detail?.id
-            detailId != null && detailId != caseId && !restoredSummary.state.value.mutationSaving
+            val detailId = restoredExternal.state.value.detail?.id
+            detailId != null && detailId != caseId && !restoredExternal.state.value.mutationSaving
         }
-        restoredSummary.backToList()
-        restoredSummary.openCaseComparison()
-        waitUntil { restoredSummary.state.value.comparisonReport != null }
+        restoredExternal.backToList()
+        restoredExternal.openCaseComparison()
+        waitUntil { restoredExternal.state.value.comparisonReport != null }
         val comparisonHandle = SavedStateHandle()
-        restoredSummary.saveRestorableStateTo(comparisonHandle)
+        restoredExternal.saveRestorableStateTo(comparisonHandle)
         val restoredComparison = createViewModel(container, comparisonHandle)
         waitUntil { restoredComparison.state.value.comparisonReport != null }
 

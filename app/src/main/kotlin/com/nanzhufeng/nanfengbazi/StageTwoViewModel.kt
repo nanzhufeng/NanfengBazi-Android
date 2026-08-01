@@ -54,6 +54,17 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
 import com.nanzhufeng.nanfengbazi.domain.CommentaryTextRange
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridge
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridgeContract
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridgeErrorCode
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridgeFailure
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisExportRequest
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisExportResult
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisFieldGroup
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisImportRequest
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisImportResult
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisPayload
+import com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisRedactionPolicy
 import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionErrorCode
 import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionFailure
 import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeAdoptionResult
@@ -131,6 +142,7 @@ sealed interface AppDestination {
     data object ScreenshotImportReview : AppDestination
     data class CaseDetail(val caseId: String) : AppDestination
     data class CaseObjectiveSummary(val caseId: String) : AppDestination
+    data class ExternalAnalysisBridge(val caseId: String) : AppDestination
     data class MasterCommentaryCandidates(
         val caseId: String,
         val recordId: String,
@@ -158,6 +170,17 @@ enum class CaseDetailSection {
     FORTUNE,
     RECORDS,
 }
+
+data class ExternalAnalysisDraftState(
+    val selectedGroups: Set<ExternalAnalysisFieldGroup> =
+        ExternalAnalysisFieldGroup.entries.toSet(),
+    val redactionEnabled: Boolean = true,
+    val providerName: String = "",
+    val modelName: String = "",
+    val resultText: String = "",
+    val exportConfirmed: Boolean = false,
+    val importConfirmed: Boolean = false,
+)
 
 class StageTwoNavigator {
     private val stack = mutableListOf<AppDestination>(AppDestination.CaseList)
@@ -190,6 +213,10 @@ class StageTwoNavigator {
 
     fun openObjectiveSummary(caseId: String): AppDestination {
         return push(AppDestination.CaseObjectiveSummary(caseId))
+    }
+
+    fun openExternalAnalysisBridge(caseId: String): AppDestination {
+        return push(AppDestination.ExternalAnalysisBridge(caseId))
     }
 
     fun openMasterCommentaryCandidates(
@@ -259,6 +286,12 @@ class StageTwoNavigator {
             }
 
             is AppDestination.CaseObjectiveSummary -> {
+                stack += AppDestination.CaseList
+                stack += AppDestination.CaseDetail(destination.caseId)
+                stack += destination
+            }
+
+            is AppDestination.ExternalAnalysisBridge -> {
                 stack += AppDestination.CaseList
                 stack += AppDestination.CaseDetail(destination.caseId)
                 stack += destination
@@ -378,6 +411,12 @@ data class StageTwoUiState(
     val objectiveSummaryLoading: Boolean = false,
     val objectiveSummaryFailure: CaseObjectiveSummaryFailure? = null,
     val objectiveSummaryCopied: Boolean = false,
+    val externalAnalysisDraft: ExternalAnalysisDraftState =
+        ExternalAnalysisDraftState(),
+    val externalAnalysisPayload: ExternalAnalysisPayload? = null,
+    val externalAnalysisFailure: ExternalAnalysisBridgeFailure? = null,
+    val externalAnalysisCopied: Boolean = false,
+    val externalAnalysisSaving: Boolean = false,
     val commentaryCandidateSet: MasterCommentaryCandidateSet? = null,
     val commentaryCandidateFailure: MasterCommentaryCandidateFailure? = null,
     val commentaryCandidateAdoptionFailure:
@@ -444,6 +483,8 @@ class StageTwoViewModel(
     private val caseImageRenderer: CaseImageRenderer? = null,
     private val objectiveSummaryGenerator: CaseObjectiveSummaryGenerator =
         CaseObjectiveSummaryContract,
+    private val externalAnalysisBridge: ExternalAnalysisBridge =
+        ExternalAnalysisBridgeContract,
     private val commentaryCandidateExtractor: MasterCommentaryCandidateExtractor =
         DeterministicMasterCommentaryCandidateExtractor(),
     private val feedbackThemeCandidateExtractor: FeedbackThemeCandidateExtractor =
@@ -523,6 +564,29 @@ class StageTwoViewModel(
             } else {
                 null
             }
+            val externalSummaryResult = if (
+                restoredCase != null &&
+                mutableState.value.destination is AppDestination.ExternalAnalysisBridge
+            ) {
+                objectiveSummaryGenerator.generate(CaseObjectiveSummaryInput(restoredCase))
+            } else {
+                null
+            }
+            val externalExportResult = if (
+                externalSummaryResult is CaseObjectiveSummaryResult.Success
+            ) {
+                externalAnalysisBridge.prepareExport(
+                    ExternalAnalysisExportRequest(
+                        summary = externalSummaryResult.summary,
+                        selectedGroups = mutableState.value.externalAnalysisDraft.selectedGroups,
+                        redactionPolicy = ExternalAnalysisRedactionPolicy(
+                            mutableState.value.externalAnalysisDraft.redactionEnabled,
+                        ),
+                    ),
+                )
+            } else {
+                null
+            }
             val candidateDestination =
                 mutableState.value.destination as? AppDestination.MasterCommentaryCandidates
             val commentaryRecord = if (restoredCase != null && candidateDestination != null) {
@@ -574,6 +638,9 @@ class StageTwoViewModel(
                         objectiveSummary = null,
                         objectiveSummaryLoading = false,
                         objectiveSummaryFailure = null,
+                        externalAnalysisPayload = null,
+                        externalAnalysisFailure = null,
+                        externalAnalysisSaving = false,
                         commentaryCandidateSet = null,
                         commentaryCandidateFailure = null,
                         commentaryCandidateAdoptionFailure = null,
@@ -586,6 +653,45 @@ class StageTwoViewModel(
                     )
                 } else {
                     when {
+                        externalSummaryResult is CaseObjectiveSummaryResult.Rejected -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            objectiveSummary = null,
+                            externalAnalysisPayload = null,
+                            externalAnalysisFailure = ExternalAnalysisBridgeFailure(
+                                ExternalAnalysisBridgeErrorCode.SUMMARY_UNAVAILABLE,
+                                externalSummaryResult.failure.message,
+                            ),
+                            externalAnalysisSaving = false,
+                        )
+                        externalExportResult is ExternalAnalysisExportResult.Success -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            objectiveSummary =
+                                (externalSummaryResult as CaseObjectiveSummaryResult.Success)
+                                    .summary,
+                            externalAnalysisPayload = externalExportResult.payload,
+                            externalAnalysisFailure = null,
+                            externalAnalysisCopied = false,
+                            externalAnalysisSaving = false,
+                            externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                                exportConfirmed = false,
+                                importConfirmed = false,
+                            ),
+                        )
+                        externalExportResult is ExternalAnalysisExportResult.Rejected -> it.copy(
+                            detail = restoredCase,
+                            detailLoading = false,
+                            detailError = null,
+                            objectiveSummary =
+                                (externalSummaryResult as CaseObjectiveSummaryResult.Success)
+                                    .summary,
+                            externalAnalysisPayload = null,
+                            externalAnalysisFailure = externalExportResult.failure,
+                            externalAnalysisSaving = false,
+                        )
                         summaryResult is CaseObjectiveSummaryResult.Success -> it.copy(
                             detail = restoredCase,
                             detailLoading = false,
@@ -2985,6 +3091,65 @@ class StageTwoViewModel(
         loadObjectiveSummary(detail.id)
     }
 
+    fun openExternalAnalysisBridge() {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
+        val summaryResult = objectiveSummaryGenerator.generate(
+            CaseObjectiveSummaryInput(detail),
+        )
+        val draft = ExternalAnalysisDraftState()
+        val exportResult = if (summaryResult is CaseObjectiveSummaryResult.Success) {
+            externalAnalysisBridge.prepareExport(
+                ExternalAnalysisExportRequest(
+                    summary = summaryResult.summary,
+                    selectedGroups = draft.selectedGroups,
+                    redactionPolicy = ExternalAnalysisRedactionPolicy(draft.redactionEnabled),
+                ),
+            )
+        } else {
+            null
+        }
+        val summary = (summaryResult as? CaseObjectiveSummaryResult.Success)?.summary
+        mutableState.update {
+            when {
+                summaryResult is CaseObjectiveSummaryResult.Rejected -> it.copy(
+                    destination = navigator.openExternalAnalysisBridge(detail.id),
+                    objectiveSummary = null,
+                    externalAnalysisDraft = draft,
+                    externalAnalysisPayload = null,
+                    externalAnalysisFailure = ExternalAnalysisBridgeFailure(
+                        ExternalAnalysisBridgeErrorCode.SUMMARY_UNAVAILABLE,
+                        summaryResult.failure.message,
+                    ),
+                    externalAnalysisCopied = false,
+                    externalAnalysisSaving = false,
+                    message = null,
+                )
+                exportResult is ExternalAnalysisExportResult.Success -> it.copy(
+                    destination = navigator.openExternalAnalysisBridge(detail.id),
+                    objectiveSummary = summary,
+                    externalAnalysisDraft = draft,
+                    externalAnalysisPayload = exportResult.payload,
+                    externalAnalysisFailure = null,
+                    externalAnalysisCopied = false,
+                    externalAnalysisSaving = false,
+                    message = null,
+                )
+                exportResult is ExternalAnalysisExportResult.Rejected -> it.copy(
+                    destination = navigator.openExternalAnalysisBridge(detail.id),
+                    objectiveSummary = summary,
+                    externalAnalysisDraft = draft,
+                    externalAnalysisPayload = null,
+                    externalAnalysisFailure = exportResult.failure,
+                    externalAnalysisCopied = false,
+                    externalAnalysisSaving = false,
+                    message = null,
+                )
+                else -> it
+            }
+        }
+    }
+
     fun openMasterCommentaryCandidates(recordId: String) {
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
@@ -3415,6 +3580,306 @@ class StageTwoViewModel(
                     objectiveSummaryFailure = failure,
                 )
             }
+        }
+    }
+
+    fun setExternalAnalysisGroupSelected(
+        group: ExternalAnalysisFieldGroup,
+        selected: Boolean,
+    ) {
+        mutableState.update {
+            val groups = if (selected) {
+                it.externalAnalysisDraft.selectedGroups + group
+            } else {
+                it.externalAnalysisDraft.selectedGroups - group
+            }
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    selectedGroups = groups,
+                    exportConfirmed = false,
+                    importConfirmed = false,
+                ),
+                externalAnalysisCopied = false,
+                externalAnalysisFailure = null,
+            )
+        }
+        regenerateExternalAnalysisPayload()
+    }
+
+    fun setExternalAnalysisRedaction(enabled: Boolean) {
+        mutableState.update {
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    redactionEnabled = enabled,
+                    exportConfirmed = false,
+                    importConfirmed = false,
+                ),
+                externalAnalysisCopied = false,
+                externalAnalysisFailure = null,
+            )
+        }
+        regenerateExternalAnalysisPayload()
+    }
+
+    fun setExternalAnalysisExportConfirmed(confirmed: Boolean) {
+        mutableState.update {
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    exportConfirmed = confirmed,
+                ),
+                externalAnalysisFailure = null,
+            )
+        }
+    }
+
+    fun updateExternalAnalysisProvider(value: String) {
+        if (value == mutableState.value.externalAnalysisDraft.providerName) return
+        mutableState.update {
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    providerName = value,
+                    importConfirmed = false,
+                ),
+                externalAnalysisFailure = null,
+            )
+        }
+    }
+
+    fun updateExternalAnalysisModel(value: String) {
+        if (value == mutableState.value.externalAnalysisDraft.modelName) return
+        mutableState.update {
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    modelName = value,
+                    importConfirmed = false,
+                ),
+                externalAnalysisFailure = null,
+            )
+        }
+    }
+
+    fun updateExternalAnalysisResult(value: String) {
+        if (value == mutableState.value.externalAnalysisDraft.resultText) return
+        mutableState.update {
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    resultText = value,
+                    importConfirmed = false,
+                ),
+                externalAnalysisFailure = null,
+            )
+        }
+    }
+
+    fun setExternalAnalysisImportConfirmed(confirmed: Boolean) {
+        mutableState.update {
+            it.copy(
+                externalAnalysisDraft = it.externalAnalysisDraft.copy(
+                    importConfirmed = confirmed,
+                ),
+                externalAnalysisFailure = null,
+            )
+        }
+    }
+
+    fun copyExternalAnalysisPayload(writeToClipboard: (String) -> Boolean) {
+        val current = mutableState.value
+        val payload = current.externalAnalysisPayload
+        if (!current.externalAnalysisDraft.exportConfirmed) {
+            setExternalAnalysisFailure(
+                ExternalAnalysisBridgeErrorCode.CONFIRMATION_REQUIRED,
+                "请先确认预览中的字段和脱敏状态。",
+            )
+            return
+        }
+        if (payload == null) {
+            setExternalAnalysisFailure(
+                ExternalAnalysisBridgeErrorCode.SUMMARY_UNAVAILABLE,
+                "外部分析材料尚未生成，请检查字段选择。",
+            )
+            return
+        }
+        val failure = try {
+            if (writeToClipboard(payload.copyText)) {
+                null
+            } else {
+                ExternalAnalysisBridgeFailure(
+                    ExternalAnalysisBridgeErrorCode.CLIPBOARD_UNAVAILABLE,
+                    "系统剪贴板不可用，材料仍保留在当前页面。",
+                )
+            }
+        } catch (_: Exception) {
+            ExternalAnalysisBridgeFailure(
+                ExternalAnalysisBridgeErrorCode.COPY_FAILED,
+                "复制外部分析材料失败，材料仍保留在当前页面。",
+            )
+        }
+        mutableState.update {
+            if (failure == null) {
+                it.copy(
+                    externalAnalysisCopied = true,
+                    externalAnalysisFailure = null,
+                    message = "材料已复制；App 没有发送数据，请自行选择可信外部工具。",
+                )
+            } else {
+                it.copy(
+                    externalAnalysisCopied = false,
+                    externalAnalysisFailure = failure,
+                )
+            }
+        }
+    }
+
+    fun saveExternalAnalysisResult() {
+        val current = mutableState.value
+        val detail = current.detail ?: run {
+            setExternalAnalysisFailure(
+                ExternalAnalysisBridgeErrorCode.SUMMARY_UNAVAILABLE,
+                "命例详情仍在恢复，请稍候再保存。",
+            )
+            return
+        }
+        val summary = current.objectiveSummary
+        val payload = current.externalAnalysisPayload
+        if (summary == null || payload == null || current.externalAnalysisSaving) {
+            if (payload == null) {
+                setExternalAnalysisFailure(
+                    ExternalAnalysisBridgeErrorCode.SUMMARY_UNAVAILABLE,
+                    "请先生成当前命例的外部分析材料。",
+                )
+            }
+            return
+        }
+        val prepared = externalAnalysisBridge.prepareImport(
+            ExternalAnalysisImportRequest(
+                currentSummary = summary,
+                payload = payload,
+                providerName = current.externalAnalysisDraft.providerName,
+                modelName = current.externalAnalysisDraft.modelName,
+                resultText = current.externalAnalysisDraft.resultText,
+                userConfirmedExternalSource =
+                    current.externalAnalysisDraft.importConfirmed,
+            ),
+        )
+        if (prepared is ExternalAnalysisImportResult.Rejected) {
+            mutableState.update {
+                it.copy(
+                    externalAnalysisFailure = prepared.failure,
+                    externalAnalysisSaving = false,
+                )
+            }
+            return
+        }
+        val backfill = (prepared as ExternalAnalysisImportResult.Ready).draft
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(externalAnalysisSaving = true, externalAnalysisFailure = null)
+            }
+            val result = textRecords.save(
+                caseId = detail.id,
+                expectedRevision = detail.revision,
+                recordId = null,
+                draft = TextRecordDraft(
+                    type = CaseTextRecordType.ANALYSIS,
+                    content = backfill.content,
+                    analysisCategory = backfill.analysisCategory,
+                ),
+            )
+            when (result) {
+                is CaseMutationResult.Saved -> {
+                    val refreshed = try {
+                        caseRepository.findById(detail.id)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    mutableState.update {
+                        if (refreshed == null) {
+                            it.copy(
+                                externalAnalysisSaving = false,
+                                externalAnalysisFailure = ExternalAnalysisBridgeFailure(
+                                    ExternalAnalysisBridgeErrorCode.STORAGE_FAILED,
+                                    "外部分析已保存，但详情刷新失败。请返回后重新打开命例。",
+                                ),
+                            )
+                        } else {
+                            it.copy(
+                                destination = navigator.back(),
+                                detail = refreshed,
+                                detailSection = CaseDetailSection.RECORDS,
+                                externalAnalysisDraft = ExternalAnalysisDraftState(),
+                                externalAnalysisPayload = null,
+                                externalAnalysisFailure = null,
+                                externalAnalysisCopied = false,
+                                externalAnalysisSaving = false,
+                                message = "已保存为带来源标记的外部分析记录；本机算法结果未改变。",
+                            )
+                        }
+                    }
+                    refreshCases()
+                }
+                is CaseMutationResult.RevisionConflict -> setExternalAnalysisFailure(
+                    ExternalAnalysisBridgeErrorCode.STALE_PAYLOAD,
+                    "命例已有较新修订（${result.actualRevision}），请重新生成材料后再回填。",
+                )
+                is CaseMutationResult.ValidationFailed -> setExternalAnalysisFailure(
+                    ExternalAnalysisBridgeErrorCode.RESULT_EMPTY,
+                    result.message,
+                )
+                CaseMutationResult.NotFound -> setExternalAnalysisFailure(
+                    ExternalAnalysisBridgeErrorCode.SUMMARY_UNAVAILABLE,
+                    "命例已不存在，未保存外部分析。",
+                )
+                is CaseMutationResult.StorageFailed -> setExternalAnalysisFailure(
+                    ExternalAnalysisBridgeErrorCode.STORAGE_FAILED,
+                    result.message,
+                )
+                is CaseMutationResult.DuplicateCandidates,
+                is CaseMutationResult.TimeZoneChoiceRequired,
+                is CaseMutationResult.CalculationFailed,
+                -> setExternalAnalysisFailure(
+                    ExternalAnalysisBridgeErrorCode.STORAGE_FAILED,
+                    "保存外部分析时出现不适用的内部状态，命例未被修改。",
+                )
+            }
+        }
+    }
+
+    private fun regenerateExternalAnalysisPayload() {
+        val summary = mutableState.value.objectiveSummary ?: return
+        val draft = mutableState.value.externalAnalysisDraft
+        val result = externalAnalysisBridge.prepareExport(
+            ExternalAnalysisExportRequest(
+                summary = summary,
+                selectedGroups = draft.selectedGroups,
+                redactionPolicy = ExternalAnalysisRedactionPolicy(draft.redactionEnabled),
+            ),
+        )
+        mutableState.update {
+            when (result) {
+                is ExternalAnalysisExportResult.Success -> it.copy(
+                    externalAnalysisPayload = result.payload,
+                    externalAnalysisFailure = null,
+                )
+                is ExternalAnalysisExportResult.Rejected -> it.copy(
+                    externalAnalysisPayload = null,
+                    externalAnalysisFailure = result.failure,
+                )
+            }
+        }
+    }
+
+    private fun setExternalAnalysisFailure(
+        code: ExternalAnalysisBridgeErrorCode,
+        message: String,
+    ) {
+        mutableState.update {
+            it.copy(
+                externalAnalysisSaving = false,
+                externalAnalysisCopied = false,
+                externalAnalysisFailure = ExternalAnalysisBridgeFailure(code, message),
+            )
         }
     }
 
@@ -4200,6 +4665,7 @@ class StageTwoViewModel(
 private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.CaseDetail -> caseId
     is AppDestination.CaseObjectiveSummary -> caseId
+    is AppDestination.ExternalAnalysisBridge -> caseId
     is AppDestination.MasterCommentaryCandidates -> caseId
     is AppDestination.FeedbackThemeCandidates -> caseId
     is AppDestination.EditCase -> caseId
@@ -4263,6 +4729,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putBundle("metadataDraft", metadataDraft.toSavedStateBundle())
     putBundle("recordDraft", recordDraft.toSavedStateBundle())
     putBundle("eventDraft", eventDraft.toSavedStateBundle())
+    putBundle("externalAnalysisDraft", externalAnalysisDraft.toSavedStateBundle())
 }
 
 private fun Bundle.toStageTwoUiState(): StageTwoUiState {
@@ -4300,6 +4767,9 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         fortuneObservationTime = getString("fortuneObservationTime") ?: "12:00",
         detailLoading = destination.caseIdOrNull() != null,
         objectiveSummaryLoading = destination is AppDestination.CaseObjectiveSummary,
+        externalAnalysisDraft = getBundle("externalAnalysisDraft")
+            ?.toExternalAnalysisDraftState()
+            ?: ExternalAnalysisDraftState(),
         commentaryCandidateSet =
             getBundle("commentaryCandidateSet")?.toMasterCommentaryCandidateSet(),
         commentaryCandidateFailure =
@@ -4367,6 +4837,10 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
             putString("type", "case_objective_summary")
             putString("caseId", caseId)
         }
+        is AppDestination.ExternalAnalysisBridge -> {
+            putString("type", "external_analysis_bridge")
+            putString("caseId", caseId)
+        }
         is AppDestination.MasterCommentaryCandidates -> {
             putString("type", "master_commentary_candidates")
             putString("caseId", caseId)
@@ -4413,6 +4887,7 @@ private fun Bundle.toAppDestination(): AppDestination {
         "screenshot_review" -> AppDestination.ScreenshotImportReview
         "case_detail" -> caseId?.let(AppDestination::CaseDetail)
         "case_objective_summary" -> caseId?.let(AppDestination::CaseObjectiveSummary)
+        "external_analysis_bridge" -> caseId?.let(AppDestination::ExternalAnalysisBridge)
         "master_commentary_candidates" -> caseId?.let {
             getString("recordId")?.let { recordId ->
                 AppDestination.MasterCommentaryCandidates(it, recordId)
@@ -4788,6 +5263,34 @@ private fun Bundle.toEventDraft(): EventDraft = EventDraft(
         CaseEventCategory.GENERAL,
     ),
 )
+
+private fun ExternalAnalysisDraftState.toSavedStateBundle(): Bundle = Bundle().apply {
+    putStringArrayList(
+        "selectedGroups",
+        ArrayList(selectedGroups.map { it.name }),
+    )
+    putBoolean("redactionEnabled", redactionEnabled)
+    putString("providerName", providerName)
+    putString("modelName", modelName)
+    putString("resultText", resultText)
+    // 主动确认属于一次性授权，生命周期重建后必须重新确认。
+}
+
+private fun Bundle.toExternalAnalysisDraftState(): ExternalAnalysisDraftState {
+    val groups = getStringArrayList("selectedGroups")
+        ?.mapNotNull { enumValueOrNull<ExternalAnalysisFieldGroup>(it) }
+        ?.toSet()
+        ?: ExternalAnalysisFieldGroup.entries.toSet()
+    return ExternalAnalysisDraftState(
+        selectedGroups = groups,
+        redactionEnabled = getBoolean("redactionEnabled", true),
+        providerName = getString("providerName").orEmpty(),
+        modelName = getString("modelName").orEmpty(),
+        resultText = getString("resultText").orEmpty(),
+        exportConfirmed = false,
+        importConfirmed = false,
+    )
+}
 
 private inline fun <reified T : Enum<T>> enumValueOrNull(value: String?): T? =
     value?.let { candidate ->

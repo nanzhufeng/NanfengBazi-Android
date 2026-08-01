@@ -1,4 +1,4 @@
-# 当前交接：alpha69 用户列表漏锚恢复与可信四柱证据
+# 当前交接：alpha70 VX-11 无网络外部分析手动桥接
 
 更新日期：2026-08-01
 
@@ -7,16 +7,15 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha69 生产代码基线：`4a050fd fix: harden Wenzhen list recognition`；上一基线为
-  `ed60d5b feat: refine Wenzhen user list OCR`。其后的治理复核只修正固定契约中的年份
-  口径，不改变生产代码、版本或验收指标。
-- 版本：`versionCode 70`，`versionName 0.3.0-alpha69`
+- alpha70 接手基线：`a4e76b0 docs: align VX-09 year contract`；本轮在其上实现 VX-11
+  纯本地手动桥接，最终本地 checkpoint 以现场 `git log -1` 为准。
+- 版本：`versionCode 71`，`versionName 0.3.0-alpha70`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha69 验收只向 `emulator-5554`（API 35）下发命令；OPPO 虽可见但未操作。
+- alpha70 验收只向 `emulator-5554`（API 35）下发命令；未操作 OPPO。
 - 本轮使用两张用户授权真实问真列表做脱敏指标验收；原图、OCR 原文和姓名未进入 Git
   或正式测试输出。生日与四柱只在不含姓名的一次性模拟器诊断中用于逐行核对；诊断源码、
   文本和模拟器副本均已删除，未进入 Git 或正式产物。
-- 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
+- 本轮未操作 OPPO、网络、外部 AI、远端推送或发布；VX-11 只使用系统剪贴板和本地 Room。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
 
@@ -217,11 +216,28 @@
   口径；已与领域合同、适配器和 alpha69 证据统一为 `1800–2100`。历史黄金集和
   alpha62 阶段记录仍可保留 `1900–2100`，不冒充当前公开查询边界。
 
+### alpha70
+
+- 修正交接判断：没有联网授权只限制自动服务适配器，不等于 VX-11 的字段导出和结果回填
+  整体不可实现。首版采用无网络手动桥接，未增加网络权限、外部 SDK 或服务端依赖。
+- `core:domain` 增加 `ExternalAnalysisBridge` v1：只消费
+  `CaseObjectiveSummaryGenerator` 的同一五组客观字段投影，定义字段选择、默认脱敏、
+  精确预览、确定性材料 ID、结构化导出/回填失败和过期命例/采用快照拒绝。
+- 详情页增加“外部分析桥接”：默认选择全部字段组，隐藏身份、性别口径、精确出生时间、
+  地点、经纬度和时区，并明确四柱/岁运仍属敏感资料；用户核对精确文本并主动确认后，
+  App 才写入系统剪贴板并读回验证。App 不选择外部服务、不调用 AI、不自动发送。
+- 用户手动粘贴结果时必须填写来源，可选填写模型并再次确认“只作为外部研究记录”；成功
+  只通过既有 `TextRecordUseCase` 新增带来源、模型、材料编号、命例 revision 和边界说明的
+  正式 `ANALYSIS`，计算快照、来源记录和算法真值均不改变。
+- 字段选择、脱敏状态、来源/模型/结果草稿进入 `SavedStateHandle`；复制和回填确认属于
+  一次性授权，Activity/进程重建后故意重置。保存期间的命例 revision 或采用快照变化会
+  结构化拒绝旧材料。API 35 验收还修复了底部系统区域遮挡确认/保存触控的真实布局问题。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha69 最终 clean 命令：
+alpha70 最终 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
@@ -231,54 +247,55 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 结果：
 
-- 405 个 Gradle task 成功（388 executed，17 up-to-date），耗时 3 分 55 秒；当前累计
-  462 次 JVM 测试执行，零失败、零错误、零跳过。
+- 405 个 Gradle task 成功（388 executed，17 up-to-date），耗时 4 分 4 秒；当前累计
+  471 次 JVM 测试执行，零失败、零错误、零跳过。
 - Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
   均为已知非阻断项。
-- 最终 clean 产物覆盖安装到 API 35 `emulator-5554` 后串行复验：bundled ML Kit 长图、
-  日期漏锚和四类页面 6/6，合成问真列表分享导入 1/1，VX-09 查询与 Activity 重建 1/1。
-  分享用例同时覆盖库内已有重复样本时的显式确认，不依赖清数据或测试顺序。
+- 最终 clean alpha70 产物覆盖安装到 API 35 `emulator-5554` 后复验：VX-11 从合成命例
+  进入、默认脱敏预览、剪贴板读回、Activity 重建、来源/模型/结果草稿恢复、一次性确认
+  重置、Room 正式分析写入与详情读回 1/1；既有页面状态、VX-09 和候选采用恢复 4/4。
 - 两张授权真实列表的一次性脱敏诊断在同一模拟器通过：分类 2/2、日期行 21+29、身份
   50/50；39 条合法完整 OCR 四柱同日一致 39/39、冲突 0、未完整 11。诊断源码、文本和
   模拟器副本均已删除，未进入 Git 或正式产物。
-- Debug/Release 合并清单均为 `versionCode 70`、`0.3.0-alpha69`，且没有
+- Debug/Release 合并清单均为 `versionCode 71`、`0.3.0-alpha70`，且没有
   `INTERNET` 或 `ACCESS_NETWORK_STATE`。
-- 设备写操作仅指向 `emulator-5554`；OPPO 虽可见但未触碰。
+- 设备写操作仅指向 `emulator-5554`；未触碰 OPPO。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha69-debug.apk`
-  - 56,123,051 字节
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha70-debug.apk`
+  - 56,172,203 字节
   - SHA-256
-    `67f149eddd6b82e2e5826ff5ccd6a728797faad22e3cf4fc78c292c354762a38`
+    `4e57b81d050d2d75a9cdeef9c23a5ffa32fa4222e64e174a684b1eaeb0097b6a`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha69-release-unsigned.apk`
-  - 52,269,816 字节
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha70-release-unsigned.apk`
+  - 52,302,584 字节
   - SHA-256
-    `1d0a3849591622b5c41bfc4f7cda063cb9e13cbc4731c1ae6105927d06ffae6f`
+    `dce8f0e73de2d65560bd8ca89d06d03b828a570866f4961eee22001f85456c0b`
 
 ## 7. 尚未完成
 
 ### 可在本地继续实现
 
-当前需求审计中没有仍可在既定边界内继续实现的本地能力。VX-01～VX-10 和核心阶段均已
+当前需求审计中没有仍可在既定边界内继续实现的本地能力。VX-01～VX-11 和核心阶段均已
 完成当前自动化及 API 35 模拟器证据；不得为了保持开发进行而擅自创造新需求。
 
 ### 外部门禁
 
 - `IM-13/QA-07`：真实问真截图迁移准确率，需要用户批准的脱敏或真实样本。
-- `VX-11`：外部 AI 导出/回填，需要新的联网、字段范围和脱敏授权。
+- `VX-11 自动服务适配器`：自动联网、选择具体服务或发送资料需要新的明确授权；手动
+  导出/回填已完成，不再列为未实现能力。
 - `QA-08`：OPPO Find N5 安装、展开/折叠、数据保留，需要用户明确授权。
 - `QA-10`：正式签名、发布、GitHub Release 和回滚，需要签名材料与发布授权。
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：逐条确认真实列表未完整四柱
+## 8. 下一任务：等待真实样本或外部授权
 
 ### 目标
 
-保持 alpha69 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；对 10 条
+保持 alpha70 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；对 10 条
 OCR 缺失和 1 条来源星号隐去只做带原图定位的人工确认，不允许用历法猜值。确认后再
 验收 50 条身份、49 条来源可提供完整四柱的正式写入、进程重建和逐例一致性；星号行
 必须保持来源未知，不能冒充完整命例。
@@ -288,7 +305,8 @@ OCR 缺失和 1 条来源星号隐去只做带原图定位的人工确认，不�
 - 用户对当前 10 条 OCR 缺失行的逐条确认，可推进 49 条完整四柱真实列表正式迁移闭环；
   来源星号行只能保留未完整证据。
 - 用户批准的基本资料、命主反馈或师傅点评真实问真样本，可推进 IM-13/QA-07 分页面验收。
-- 用户明确批准联网、字段范围、脱敏预览和外部服务后，才可设计 VX-11。
+- 用户明确批准自动联网、具体外部服务和发送字段后，才可在既有 VX-11 合同后增加服务
+  适配器；不得绕过当前预览、默认脱敏、主动确认和来源标记。
 - 用户明确授权 OPPO 与同签名安装后，才可执行 QA-08。
 - 正式签名材料与发布授权齐备后，才可执行 QA-10。
 

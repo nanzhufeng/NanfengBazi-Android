@@ -26,6 +26,11 @@ class StageTwoNavigatorTest {
         )
         assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
         assertEquals(
+            AppDestination.ExternalAnalysisBridge("case-1"),
+            navigator.openExternalAnalysisBridge("case-1"),
+        )
+        assertEquals(AppDestination.CaseDetail("case-1"), navigator.back())
+        assertEquals(
             AppDestination.MasterCommentaryCandidates("case-1", "record-1"),
             navigator.openMasterCommentaryCandidates("case-1", "record-1"),
         )

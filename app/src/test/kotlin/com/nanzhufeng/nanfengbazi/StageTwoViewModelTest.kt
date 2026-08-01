@@ -1277,6 +1277,95 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `外部分析桥接默认脱敏并经两次主动确认保存带来源分析`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-external-analysis")
+        repository.stored[stored.id] = stored
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+
+        viewModel.openExternalAnalysisBridge()
+
+        val payload = requireNotNull(viewModel.state.value.externalAnalysisPayload)
+        assertEquals(
+            AppDestination.ExternalAnalysisBridge(stored.id),
+            viewModel.state.value.destination,
+        )
+        assertTrue(viewModel.state.value.externalAnalysisDraft.redactionEnabled)
+        assertFalse(payload.copyText.contains(stored.alias))
+        assertTrue(payload.copyText.contains("App 不联网、不自动发送"))
+
+        var copied: String? = null
+        viewModel.copyExternalAnalysisPayload {
+            copied = it
+            true
+        }
+        assertNull(copied)
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridgeErrorCode
+                .CONFIRMATION_REQUIRED,
+            viewModel.state.value.externalAnalysisFailure?.code,
+        )
+
+        viewModel.setExternalAnalysisExportConfirmed(true)
+        viewModel.copyExternalAnalysisPayload {
+            copied = it
+            true
+        }
+        assertEquals(payload.copyText, copied)
+        assertTrue(viewModel.state.value.externalAnalysisCopied)
+
+        viewModel.updateExternalAnalysisProvider("合成外部服务")
+        viewModel.updateExternalAnalysisModel("离线验收模型")
+        viewModel.updateExternalAnalysisResult("这是一段仅用于测试的外部分析结果。")
+        viewModel.saveExternalAnalysisResult()
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridgeErrorCode
+                .CONFIRMATION_REQUIRED,
+            viewModel.state.value.externalAnalysisFailure?.code,
+        )
+
+        viewModel.setExternalAnalysisImportConfirmed(true)
+        viewModel.saveExternalAnalysisResult()
+
+        assertEquals(AppDestination.CaseDetail(stored.id), viewModel.state.value.destination)
+        assertEquals(CaseDetailSection.RECORDS, viewModel.state.value.detailSection)
+        val saved = repository.stored.getValue(stored.id).textRecords.single()
+        assertEquals(CaseTextRecordType.ANALYSIS, saved.type)
+        assertTrue(saved.content.contains("来源：合成外部服务"))
+        assertTrue(saved.content.contains("不是南枫八字本机算法真值"))
+        assertTrue(saved.content.endsWith("这是一段仅用于测试的外部分析结果。"))
+    }
+
+    @Test
+    fun `外部分析字段和脱敏变化重建材料并撤销旧确认`() = runTest {
+        val repository = FakeCaseRepository()
+        val stored = sampleStoredCase("case-external-selection")
+        repository.stored[stored.id] = stored
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+        viewModel.openExternalAnalysisBridge()
+        viewModel.setExternalAnalysisExportConfirmed(true)
+        viewModel.setExternalAnalysisGroupSelected(
+            com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisFieldGroup.FORTUNE_FACTS,
+            false,
+        )
+
+        assertFalse(viewModel.state.value.externalAnalysisDraft.exportConfirmed)
+        assertFalse(
+            requireNotNull(viewModel.state.value.externalAnalysisPayload)
+                .copyText.contains("【起运与大运】"),
+        )
+
+        viewModel.setExternalAnalysisRedaction(false)
+        assertFalse(viewModel.state.value.externalAnalysisDraft.redactionEnabled)
+        assertTrue(
+            requireNotNull(viewModel.state.value.externalAnalysisPayload)
+                .copyText.contains(stored.alias),
+        )
+    }
+
+    @Test
     fun `图片导出与分享复用同一渲染字节并保持详情`() = runTest {
         val repository = FakeCaseRepository()
         val stored = sampleStoredCase("case-image")
@@ -1407,6 +1496,7 @@ class StageTwoViewModelTest {
         fortunePositionResolver: FortunePositionResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
         caseImageRenderer: com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer? = null,
+        savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
     ): StageTwoViewModel {
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
@@ -1468,6 +1558,7 @@ class StageTwoViewModelTest {
             backupAttachmentRoot = backupRoot?.resolve("attachments"),
             backupWorkRoot = backupRoot?.resolve("work"),
             ioDispatcher = dispatcher,
+            savedStateHandle = savedStateHandle,
         )
     }
 

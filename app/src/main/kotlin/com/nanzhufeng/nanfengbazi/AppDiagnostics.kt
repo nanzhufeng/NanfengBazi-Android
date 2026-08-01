@@ -70,6 +70,7 @@ private fun AppDestination.diagnosticName(): String = when (this) {
     AppDestination.ScreenshotImportReview -> "SCREENSHOT_IMPORT_REVIEW"
     is AppDestination.CaseDetail -> "CASE_DETAIL"
     is AppDestination.CaseObjectiveSummary -> "CASE_OBJECTIVE_SUMMARY"
+    is AppDestination.ExternalAnalysisBridge -> "EXTERNAL_ANALYSIS_BRIDGE"
     is AppDestination.MasterCommentaryCandidates -> "MASTER_COMMENTARY_CANDIDATES"
     is AppDestination.FeedbackThemeCandidates -> "FEEDBACK_THEME_CANDIDATES"
     is AppDestination.EditCase -> "EDIT_CASE"

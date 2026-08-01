@@ -25,6 +25,7 @@
 | `BaziEngine` | `core:domain` | 后续用例层 | 多套平行计算入口 |
 | 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` | `StageTwoViewModel` | UI 直接调用 Tyme4j、把候选当出生分钟唯一证明或保存为正式命例 |
 | 命盘图片导出 | `CaseImageExportContract` → `CaseImageRenderer` | 系统文件保存、长图分享 | 截取 Compose 可见视口、两套导出拼接、重新排盘或采用问真来源值 |
+| 外部分析手动桥接 | `ExternalAnalysisBridge` → `ExternalAnalysisBridgeContract` | `StageTwoViewModel`、系统剪贴板、`TextRecordUseCase` | 页面重新投影字段、自动联网发送、无确认复制、无来源回填或把外部内容当算法真值 |
 | 真太阳时校正 | `TrueSolarTimeCalculator` + `core:solar-time` | `TymeBaziEngine` | 页面自行加分钟、覆盖原始民用时或把 Tyme 类型名当算法 |
 | Tyme4j 状态隔离 | `core:engine-tyme` | `TymeBaziEngine` | 其他模块访问全局 provider |
 | `BaziCase` 与字段空值语义 | `core:domain` | 仓储、备份 | 页面或 OCR 用空串改写真值 |
@@ -158,5 +159,6 @@
 | 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1800–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；原始反查为空时仅在适配器内按 60 日周期扫描民用代表时刻且仍由唯一正向引擎复算；页面与表单进入 `SavedStateHandle`，候选不自动保存 |
 | 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |
 | 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` → 摘要页/剪贴板/图片合同 | 只投影唯一已采用快照和正式资料计数；固定字段来源与缺失状态，页面和图片不得重算或生成主观解释 |
+| 外部分析手动桥接 | `CaseObjectiveSummaryGenerator` → `ExternalAnalysisBridge.prepareExport/prepareImport()` → 剪贴板/`TextRecordUseCase` | 只消费同一客观摘要投影；按字段组预览，默认隐藏身份、精确出生时间、地点和时区，复制与回填分别主动确认；草稿可恢复但确认不跨重建，旧命例 revision/快照拒绝回填；结果仅保存为带来源的 `ANALYSIS`，无网络客户端 |
 | 师傅点评观点候选 | `MasterCommentaryCandidateExtractor` → `DeterministicMasterCommentaryCandidateExtractor` → `TextRecordUseCase.adoptCommentaryCandidate()` | 完整点评原文和历史仍是唯一来源；解析层只产出稳定区间、分类建议与规则证据，UI 不含规则；编辑/拒绝为审核状态，采用只新增正式分析并校验来源 revision、区间与聚合 revision |
 | 命主反馈主题候选 | `FeedbackThemeCandidateExtractor` → `DeterministicFeedbackThemeCandidateExtractor` → `CaseMetadataUseCase.adoptFeedbackThemeCandidate()` | 完整反馈、历史和既有事件仍是来源事实；解析层按稳定区间聚合规范主题，UI 不含规则；编辑/拒绝为审核状态，采用只追加正式标签并校验来源 revision、证据与聚合 revision |
