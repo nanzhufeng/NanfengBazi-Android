@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi.imageparser
 
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
 import com.nanzhufeng.nanfengbazi.domain.model.OcrDocument
+import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 
 enum class OcrExecutionMode {
     OFFLINE,
@@ -24,6 +25,22 @@ interface OcrEngine {
     val executionMode: OcrExecutionMode
 
     suspend fun recognize(input: OcrImageInput): OcrDocument
+}
+
+fun interface OcrDocumentRefiner {
+    suspend fun refine(
+        input: OcrImageInput,
+        pageType: WenzhenPageType,
+        initialDocument: OcrDocument,
+    ): OcrDocument
+}
+
+object NoOpOcrDocumentRefiner : OcrDocumentRefiner {
+    override suspend fun refine(
+        input: OcrImageInput,
+        pageType: WenzhenPageType,
+        initialDocument: OcrDocument,
+    ): OcrDocument = initialDocument
 }
 
 fun interface ImportImageContentReader {

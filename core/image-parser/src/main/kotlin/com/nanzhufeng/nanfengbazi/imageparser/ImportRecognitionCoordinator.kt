@@ -26,9 +26,11 @@ class ImportRecognitionCoordinator(
     private val contentReader: ImportImageContentReader,
     private val ocrEngine: OcrEngine,
     private val pageClassifier: WenzhenPageClassifier,
+    private val documentRefiner: OcrDocumentRefiner = NoOpOcrDocumentRefiner,
     private val fingerprintEngine: ImageFingerprintEngine? = null,
     private val imageGrouper: WenzhenImageGrouper = WenzhenImageGrouper(),
     private val p0Parser: WenzhenP0Parser = WenzhenP0Parser(),
+    private val parseResultRefiner: WenzhenParseResultRefiner = NoOpWenzhenParseResultRefiner,
     private val clock: Clock = Clock.systemUTC(),
     private val diagnosticIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -100,13 +102,24 @@ class ImportRecognitionCoordinator(
                             heightPx = fingerprint.heightPx,
                         )
                     }
-                    val document = ocrEngine.recognize(OcrImageInput(image, bytes))
-                    require(document.imageId == image.id) { "OCR 文档与输入图片身份不一致" }
-                    require(document.engineId == ocrEngine.engineId) { "OCR 引擎身份不一致" }
-                    require(document.engineVersion == ocrEngine.engineVersion) {
+                    val input = OcrImageInput(image, bytes)
+                    val initialDocument = ocrEngine.recognize(input)
+                    require(initialDocument.imageId == image.id) { "OCR 文档与输入图片身份不一致" }
+                    require(initialDocument.engineId == ocrEngine.engineId) { "OCR 引擎身份不一致" }
+                    require(initialDocument.engineVersion == ocrEngine.engineVersion) {
                         "OCR 引擎版本不一致"
                     }
-                    val classification = pageClassifier.classify(document)
+                    val classification = pageClassifier.classify(initialDocument)
+                    val document = documentRefiner.refine(
+                        input = input,
+                        pageType = classification.pageType,
+                        initialDocument = initialDocument,
+                    )
+                    require(document.imageId == image.id) { "精识别文档与输入图片身份不一致" }
+                    require(document.engineId == ocrEngine.engineId) { "精识别引擎身份不一致" }
+                    require(document.engineVersion == ocrEngine.engineVersion) {
+                        "精识别引擎版本不一致"
+                    }
                     processedImages[image.id] = image.copy(
                         pageType = classification.pageType,
                         pageConfidence = classification.confidence,
@@ -151,10 +164,12 @@ class ImportRecognitionCoordinator(
                 return RecognitionRunResult.Failed(persisted)
             }
             val groupedCandidates = imageGrouper.group(mergedImages, mergedDocuments)
-            val parsed = p0Parser.parse(
-                images = mergedImages,
-                documents = mergedDocuments,
-                groupedCandidates = groupedCandidates,
+            val parsed = parseResultRefiner.refine(
+                p0Parser.parse(
+                    images = mergedImages,
+                    documents = mergedDocuments,
+                    groupedCandidates = groupedCandidates,
+                ),
             )
             val grouped = session.copy(
                 status = ImportStatus.GROUPING_CASES,

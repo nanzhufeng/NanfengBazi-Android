@@ -782,6 +782,21 @@ class ScreenshotImportViewModel(
             }
         }.distinct()
         val reviewWarnings = buildList {
+            val pillarDateMismatchCount = candidateFields.count { field ->
+                field.fieldKey == "chart.four_pillars" && field.consistencyConfidence == 0f
+            }
+            if (pillarDateMismatchCount > 0) {
+                add(
+                    "$pillarDateMismatchCount 项图片四柱与公历日期在两种子时口径下均无同日候选，" +
+                        "请优先按原图核对；也可确认问真排盘是否采用了其他口径",
+                )
+            }
+            val missingPillarCount = candidateFields.count { field ->
+                field.fieldKey == "chart.four_pillars" && field.normalizedValue == null
+            }
+            if (missingPillarCount > 0) {
+                add("$missingPillarCount 项图片四柱未完整识别，请按原图补全后再采用")
+            }
             val lowConfidenceCount = candidateFields.count { field ->
                 listOfNotNull(
                     field.ocrConfidence,

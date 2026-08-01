@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi.imageparser
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
+import android.graphics.Matrix
 import android.graphics.Rect
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
@@ -31,7 +32,7 @@ class MlKitChineseOcrEngine(
     }
 
     override val engineId: String = "mlkit-chinese-bundled"
-    override val engineVersion: String = "16.0.1+long-segment-v1"
+    override val engineVersion: String = "16.0.1+long-segment-v2"
     override val executionMode: OcrExecutionMode = OcrExecutionMode.OFFLINE
 
     private val recognizer = TextRecognition.getClient(
@@ -70,6 +71,103 @@ class MlKitChineseOcrEngine(
 
     override fun close() {
         recognizer.close()
+    }
+
+    internal suspend fun recognizeRegions(
+        bytes: ByteArray,
+        regions: List<Rect>,
+        scale: Float,
+        documentWhiteThreshold: Int? = null,
+    ): List<OcrTextBlock> {
+        require(scale >= 1f) { "OCR 区域放大倍数不能小于 1" }
+        if (regions.isEmpty()) return emptyList()
+        val source = requireNotNull(
+            BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size,
+                BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                },
+            ),
+        ) { "无法解码精识别图片" }
+        return try {
+            buildList {
+                regions.forEachIndexed { regionIndex, requestedRegion ->
+                    val region = Rect(
+                        requestedRegion.left.coerceIn(0, source.width - 1),
+                        requestedRegion.top.coerceIn(0, source.height - 1),
+                        requestedRegion.right.coerceIn(1, source.width),
+                        requestedRegion.bottom.coerceIn(1, source.height),
+                    )
+                    if (region.width() <= 0 || region.height() <= 0) return@forEachIndexed
+                    val cropped = Bitmap.createBitmap(source, region.left, region.top, region.width(), region.height())
+                    val scaled = if (scale == 1f) {
+                        cropped
+                    } else {
+                        Bitmap.createBitmap(
+                            cropped,
+                            0,
+                            0,
+                            cropped.width,
+                            cropped.height,
+                            Matrix().apply { setScale(scale, scale) },
+                            true,
+                        )
+                    }
+                    documentWhiteThreshold?.let { threshold ->
+                        scaled.applyDocumentContrast(threshold)
+                    }
+                    try {
+                        val result = recognizer.process(InputImage.fromBitmap(scaled, 0)).await()
+                        result.toRecognizedLines(verticalOffset = 0).forEachIndexed { lineIndex, line ->
+                            add(
+                                OcrTextBlock(
+                                    id = "refined-${regionIndex + 1}-${lineIndex + 1}",
+                                    text = line.text,
+                                    confidence = line.confidence,
+                                    boundingBox = line.boundingBox?.mapFromScaledRegion(region, scale),
+                                ),
+                            )
+                        }
+                    } finally {
+                        if (scaled !== cropped) scaled.recycle()
+                        cropped.recycle()
+                    }
+                }
+            }
+        } finally {
+            source.recycle()
+        }
+    }
+
+    private fun EvidenceBoundingBox.mapFromScaledRegion(
+        region: Rect,
+        scale: Float,
+    ): EvidenceBoundingBox = EvidenceBoundingBox(
+        left = region.left + (left / scale).toInt(),
+        top = region.top + (top / scale).toInt(),
+        right = region.left + kotlin.math.ceil(right / scale.toDouble()).toInt(),
+        bottom = region.top + kotlin.math.ceil(bottom / scale.toDouble()).toInt(),
+    )
+
+    private fun Bitmap.applyDocumentContrast(whiteThreshold: Int) {
+        require(whiteThreshold in 1..255) { "文档二值化阈值必须在 1..255" }
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        pixels.indices.forEach { index ->
+            val pixel = pixels[index]
+            val red = pixel shr 16 and 0xff
+            val green = pixel shr 8 and 0xff
+            val blue = pixel and 0xff
+            val luminance = (red * 299 + green * 587 + blue * 114) / 1_000
+            pixels[index] = if (luminance < whiteThreshold) {
+                0xff000000.toInt()
+            } else {
+                0xffffffff.toInt()
+            }
+        }
+        setPixels(pixels, 0, width, 0, 0, width, height)
     }
 
     private fun readDimensions(bytes: ByteArray): Pair<Int, Int> {

@@ -1,19 +1,19 @@
-# 当前交接：alpha67 命主反馈主题候选
+# 当前交接：alpha68 用户列表精识别与日期一致性门禁
 
-更新日期：2026-07-31
+更新日期：2026-08-01
 
 ## 1. 接手快照
 
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha67 本地代码基线：本文件所在提交；上一基线为
-  `881944a feat: add commentary candidate review`。
-- 版本：`versionCode 68`，`versionName 0.3.0-alpha67`
+- alpha68 本地代码基线：本文件所在提交；上一基线为
+  `bf5cd94 feat: add feedback theme review`。
+- 版本：`versionCode 69`，`versionName 0.3.0-alpha68`
 - 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha67 验收时 ADB 仅 `emulator-5554` 在线，API 35。
-- 本轮反馈主题候选设备验收只使用合成命例；用户真实问真原图、OCR 原文、姓名、生日和
-  四柱均未进入 Git、剪贴板夹具或截图证据。
+- alpha68 验收只向 `emulator-5554`（API 35）下发命令；OPPO 虽可见但未操作。
+- 本轮使用两张用户授权真实问真列表做脱敏指标验收；原图、OCR 原文、姓名、生日和四柱
+  均未进入 Git、剪贴板夹具或诊断输出。
 - 本轮未操作 OPPO、网络、外部 AI、远端推送或发布。
 
 现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
@@ -182,45 +182,59 @@
 - 已有同名标签、标签上限、来源或证据过期、聚合冲突与存储失败均结构化拒绝且零写入；
   完整命主反馈、记录历史和既有事件保持不变。
 
+### alpha68
+
+- `OcrDocumentRefiner` 把页面特定精识别留在 `core:image-parser`；用户列表按日期行分别
+  放大身份区、四柱区和四个字位，多阈值 bundled ML Kit 结果回映原图，UI 无 OCR 规则。
+- parser v9 去重同一物理日期锚点，支持带括号时柱注记姓名、姓名/性别分块和逐列四柱；
+  四柱必须属于六十甲子，来源 `*`/`＊` 明确保持未知，不从邻近像素或历法补值。
+- `WenzhenPillarDateConsistencyRefiner` 通过 VX-09 公开接口分别检查两种子时口径的同日
+  候选；匹配记一致性，冲突保留来源值并在复核页警告，正式提交仍由既有反查门禁阻断。
+- 两张真实列表稳定拆出 20+29 行，姓名/性别 49/49；43 条合法完整 OCR 四柱中同日一致
+  30、冲突 13，另有 6 条未完整，其中 1 条来源本身以星号隐去时柱。该分层指标取代
+  alpha63 的 43 条身份/16 条四柱旧证据，不把“格式完整”冒充“日期正确”。
+
 详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
 
 ## 6. 最新验证证据
 
-alpha67 clean 命令：
+alpha68 clean 命令：
 
 ```bash
 JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
   ./gradlew clean test lint assembleDebug assembleRelease assembleDebugAndroidTest \
-  --max-workers=1
+  --no-daemon --max-workers=1
 ```
 
 结果：
 
-- 405 个 Gradle task 成功（388 executed，17 up-to-date）；451 次 JVM 测试执行
+- 405 个 Gradle task 成功（388 executed，17 up-to-date）；全量后追加失败语义回归，
+  当前累计 459 次 JVM 测试执行
   零失败、零错误、零跳过。
 - Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
   均为已知非阻断项。
-- API 35 `emulator-5554` 反馈主题主流程与四个 SavedState 场景合并复验 5/5
-  通过：正式反馈进入候选页，拒绝一条、编辑并采用一条，Activity 重建保留审核状态，
-  返回详情可见原反馈未变、正式标签新增且事件未变。
-- Compose 语义与真实交互流程已经验收；测试框架没有留下可用的前台候选页截图，因此
-  本轮不把截图或人工视觉检查列为已完成证据。
-- Debug/Release 合并清单均为 `versionCode 68`、`0.3.0-alpha67`，且没有
+- API 35 `emulator-5554` 合成问真列表分享导入 1/1、bundled ML Kit 长图和四类页面
+  5/5 通过；首轮因按钮不在 LazyColumn 可见视口失败，改为按稳定 candidate tag 滚动
+  定位后复验通过，不把重试冒充首次成功。
+- 两张授权真实列表的临时脱敏诊断在同一模拟器通过：分类 2/2、日期行 20+29、身份
+  49/49；43 条合法完整 OCR 四柱中同日一致 30、冲突 13、未完整 6。诊断测试、原图和
+  私有副本均不进入 Git。
+- Debug/Release 合并清单均为 `versionCode 69`、`0.3.0-alpha68`，且没有
   `INTERNET` 或 `ACCESS_NETWORK_STATE`。
-- 设备证据仅来自 `emulator-5554`，不等于 OPPO 真机或真实问真样本验收。
+- 设备写操作仅指向 `emulator-5554`；OPPO 虽可见但未触碰。
 
 构建产物是可再生的忽略文件，不进入 Git：
 
 - Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha67-debug.apk`
-  - 56,090,283 字节
+  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha68-debug.apk`
+  - 56,123,051 字节
   - SHA-256
-    `b2dab846c93d442aa48fe9ad30d7ae9da529c33e00ccdb05985fd4b497b99044`
+    `b0c808e9fd65e7908b64a3fb30c86e955e33d2aa23dc9e3c98f9a107c797fd69`
 - 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha67-release-unsigned.apk`
-  - 52,253,432 字节
+  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha68-release-unsigned.apk`
+  - 52,269,816 字节
   - SHA-256
-    `d9072dc4eb030ff1b614aead6826e73649186bf68a6ae30e7c798f5363f8c3f2`
+    `b9b147332aae521076694c8f50e20484af06a98b5677fee5ee3ec14ac0797df8`
 
 ## 7. 尚未完成
 
@@ -238,15 +252,17 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
 
 这些门禁不能用合成数据、模拟器或未签名 APK 代替。
 
-## 8. 下一唯一任务：等待外部门禁变化并做现场复核
+## 8. 下一唯一任务：逐条确认真实列表冲突与缺失
 
 ### 目标
 
-保持 alpha67 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；若没有
-新增授权样本或权限，不修改产品代码，只报告仍受门禁约束的项目。
+保持 alpha68 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；对 13 条
+日期冲突、5 条 OCR 缺失和 1 条来源星号隐去只做带原图定位的人工确认，不允许用历法
+猜值。确认后再验收 49 条身份与可提供四柱的正式写入、进程重建和逐例一致性。
 
 ### 可能解除门禁的输入
 
+- 用户对当前列表冲突/缺失行的逐条确认，可推进 49 条真实列表正式迁移闭环。
 - 用户批准的基本资料、命主反馈或师傅点评真实问真样本，可推进 IM-13/QA-07 分页面验收。
 - 用户明确批准联网、字段范围、脱敏预览和外部服务后，才可设计 VX-11。
 - 用户明确授权 OPPO 与同签名安装后，才可执行 QA-08。

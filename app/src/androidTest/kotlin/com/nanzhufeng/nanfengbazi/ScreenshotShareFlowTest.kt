@@ -191,6 +191,7 @@ class ScreenshotShareFlowTest {
         var allFieldsUnadopted = false
         var missingFourPillarsFieldId = ""
         var incompleteCandidateId = ""
+        var completeCandidateId = ""
         composeRule.activityRule.scenario.onActivity { activity ->
             val container = (activity.application as NanfengBaziApplication).container
             runBlocking {
@@ -210,6 +211,9 @@ class ScreenshotShareFlowTest {
                 missingFourPillarsFieldId = missingFourPillars.id
                 incompleteCandidateId = session.caseCandidates.single {
                     missingFourPillars.id in it.fieldEvidenceIds
+                }.id
+                completeCandidateId = session.caseCandidates.single {
+                    missingFourPillars.id !in it.fieldEvidenceIds
                 }.id
                 privateImagePath = activity.filesDir.toPath()
                     .resolve("import-images")
@@ -256,7 +260,13 @@ class ScreenshotShareFlowTest {
             }
             adoptedCount == 4
         }
-        composeRule.onAllNodesWithText("复算一致后写入正式命例").onFirst().performClick()
+        composeRule
+            .onNodeWithTag("screenshot_review_list")
+            .performScrollToNode(hasTestTag("commit_screenshot_candidate_$completeCandidateId"))
+        composeRule
+            .onNodeWithTag("commit_screenshot_candidate_$completeCandidateId")
+            .assertIsDisplayed()
+            .performClick()
         composeRule.waitUntil(timeoutMillis = 20_000) {
             var committedCount = 0
             var committedCandidateCount = 0
@@ -490,7 +500,7 @@ class ScreenshotShareFlowTest {
         }
         assertTrue(professionalFields.values.all { it.adoptedValue == null })
         assertTrue(
-            professionalFields.values.all { it.parserRuleId == "wenzhen-p0-parser-v7" },
+            professionalFields.values.all { it.parserRuleId == "wenzhen-p0-parser-v9" },
         )
     }
 

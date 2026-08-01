@@ -74,13 +74,23 @@ class DefaultAppContainer(
     override val importImageStore: PrivateImportImageStore =
         PrivateImportImageStore(application.filesDir.toPath().resolve("import-images"))
     override val importRecognitionCoordinator: ImportRecognitionCoordinator =
-        ImportRecognitionCoordinator(
-            repository = importSessionRepository,
-            contentReader = ImportImageContentReader(importImageStore::readBytes),
-            ocrEngine = MlKitChineseOcrEngine(),
-            pageClassifier = AnchorBasedWenzhenPageClassifier(),
-            fingerprintEngine = DHashImageFingerprintEngine(),
-        )
+        MlKitChineseOcrEngine().let { ocrEngine ->
+            ImportRecognitionCoordinator(
+                repository = importSessionRepository,
+                contentReader = ImportImageContentReader(importImageStore::readBytes),
+                ocrEngine = ocrEngine,
+                pageClassifier = AnchorBasedWenzhenPageClassifier(),
+                documentRefiner =
+                    com.nanzhufeng.nanfengbazi.imageparser.WenzhenUserListOcrRefiner(
+                        ocrEngine,
+                    ),
+                parseResultRefiner =
+                    com.nanzhufeng.nanfengbazi.imageparser.WenzhenPillarDateConsistencyRefiner(
+                        fourPillarsLookup,
+                    ),
+                fingerprintEngine = DHashImageFingerprintEngine(),
+            )
+        }
     override val screenshotRecognitionScheduler: ScreenshotRecognitionScheduler =
         WorkManagerScreenshotRecognitionScheduler(
             context = application,

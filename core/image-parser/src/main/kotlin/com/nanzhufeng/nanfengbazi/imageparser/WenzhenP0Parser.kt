@@ -104,7 +104,7 @@ class WenzhenP0Parser(
                 dateBlock = dateBlock,
                 solarDate = solarDate,
             )
-        }
+        }.deduplicateNearbyDateAnchors()
         return anchors.mapIndexed { index, anchor ->
             val currentCenter = requireNotNull(anchor.dateBlock.boundingBox).verticalCenter()
             val previousCenter = anchors.getOrNull(index - 1)
@@ -132,15 +132,10 @@ class WenzhenP0Parser(
             }
             val rowText = rowBlocks.joinToString("\n", transform = OcrTextBlock::text)
             val identity = identityExtractor.extract(document.copy(rawText = rowText))
-            val nameMatch = rowBlocks
-                .mapNotNull { block ->
-                    parseNameAndSex(block.text)?.let { parsed -> block to parsed }
-                }
-                .minByOrNull { (block, _) ->
-                    kotlin.math.abs(
-                        requireNotNull(block.boundingBox).verticalCenter() - currentCenter,
-                    )
-                }
+            val nameMatch = resolveUserListIdentity(
+                rowBlocks = rowBlocks,
+                dateBlock = anchor.dateBlock,
+            )
             val identityRawText = rowBlocks
                 .filter { block ->
                     val box = block.boundingBox ?: return@filter false
@@ -149,7 +144,18 @@ class WenzhenP0Parser(
                 .joinToString(" / ", transform = OcrTextBlock::text)
                 .takeIf(String::isNotBlank)
                 ?: anchor.dateBlock.text
-            val rowFourPillars = identity.fourPillars ?: extractCompactFourPillars(rowBlocks)
+            val compactFourPillars = extractCompactFourPillars(rowBlocks)
+            val spatialFourPillars = extractSpatialFourPillars(rowBlocks)
+            val rowFourPillars = if (rowBlocks.hasExplicitUnknownPillarMarker(anchor.dateBlock)) {
+                null
+            } else {
+                identity.fourPillars ?: compactFourPillars ?: spatialFourPillars
+            }
+            val pillarParserConfidence = when (rowFourPillars) {
+                null -> 0.25f
+                identity.fourPillars, compactFourPillars -> 0.9f
+                else -> 0.72f
+            }
             val evidence = buildList {
                 add(
                     field(
@@ -204,7 +210,7 @@ class WenzhenP0Parser(
                             confidence = rowBlocks.mapNotNull(OcrTextBlock::confidence)
                                 .averageOrNull(),
                             boundingBox = rowBlocks.unionBoundingBox(),
-                            parserConfidence = 0.9f,
+                            parserConfidence = pillarParserConfidence,
                         ),
                     )
                 } ?: add(
@@ -996,6 +1002,83 @@ class WenzhenP0Parser(
         return match.groupValues[1].trim() to match.groupValues[2]
     }
 
+    private fun resolveUserListIdentity(
+        rowBlocks: List<OcrTextBlock>,
+        dateBlock: OcrTextBlock,
+    ): Pair<OcrTextBlock, Pair<String, String>>? {
+        val dateBox = dateBlock.boundingBox ?: return null
+        rowBlocks.mapNotNull { block ->
+            parseNameAndSex(block.text)?.let { parsed -> block to parsed }
+        }.minByOrNull { (block, _) ->
+            kotlin.math.abs(requireNotNull(block.boundingBox).verticalCenter() - dateBox.verticalCenter())
+        }?.let { return it }
+
+        val sexBlocks = rowBlocks.filter { block ->
+            block.text.trim() in setOf("男", "女") && block.boundingBox != null
+        }
+        return sexBlocks.mapNotNull { sexBlock ->
+            val sexBox = requireNotNull(sexBlock.boundingBox)
+            val nameBlock = rowBlocks
+                .asSequence()
+                .filter { candidate ->
+                    val box = candidate.boundingBox ?: return@filter false
+                    box.right <= sexBox.left + USER_LIST_IDENTITY_HORIZONTAL_TOLERANCE_PX &&
+                        box.left <= dateBox.right + USER_LIST_IDENTITY_HORIZONTAL_TOLERANCE_PX &&
+                        kotlin.math.abs(box.verticalCenter() - sexBox.verticalCenter()) <=
+                        USER_LIST_IDENTITY_BASELINE_TOLERANCE_PX
+                }
+                .mapNotNull { candidate ->
+                    normalizeStandaloneUserListName(candidate.text)?.let { candidate to it }
+                }
+                .minByOrNull { (candidate, _) ->
+                    val box = requireNotNull(candidate.boundingBox)
+                    kotlin.math.abs(box.verticalCenter() - sexBox.verticalCenter()) * 10 +
+                        kotlin.math.abs(box.right - sexBox.left)
+                } ?: return@mapNotNull null
+            val combinedBox = listOf(nameBlock.first, sexBlock).unionBoundingBox()
+            val combinedBlock = nameBlock.first.copy(
+                id = "${nameBlock.first.id}+${sexBlock.id}",
+                text = "${nameBlock.second}${sexBlock.text.trim()}",
+                confidence = listOfNotNull(nameBlock.first.confidence, sexBlock.confidence)
+                    .averageOrNull(),
+                boundingBox = combinedBox,
+            )
+            combinedBlock to (nameBlock.second to sexBlock.text.trim())
+        }.minByOrNull { (block, _) ->
+            kotlin.math.abs(requireNotNull(block.boundingBox).verticalCenter() - dateBox.verticalCenter())
+        }
+    }
+
+    private fun normalizeStandaloneUserListName(text: String): String? {
+        val normalized = text.trim().replace(Regex("\\s+"), "")
+        if (!USER_LIST_NAME_PATTERN.matches(normalized)) return null
+        if (SOLAR_DATE_PATTERN.containsMatchIn(normalized)) return null
+        return normalized
+    }
+
+    private fun List<UserRowDateAnchor>.deduplicateNearbyDateAnchors(): List<UserRowDateAnchor> =
+        buildList {
+            this@deduplicateNearbyDateAnchors.forEach { candidate ->
+                val previous = lastOrNull()
+                val isDuplicate = previous?.let {
+                    kotlin.math.abs(
+                        requireNotNull(it.dateBlock.boundingBox).verticalCenter() -
+                            requireNotNull(candidate.dateBlock.boundingBox).verticalCenter(),
+                    ) <= USER_LIST_DATE_ANCHOR_DEDUPLICATION_PX
+                } == true
+                if (!isDuplicate) {
+                    add(candidate)
+                } else if (candidate.dateBlock.identityEvidenceScore() >
+                    requireNotNull(previous).dateBlock.identityEvidenceScore()
+                ) {
+                    this[lastIndex] = candidate
+                }
+            }
+        }
+
+    private fun OcrTextBlock.identityEvidenceScore(): Int =
+        ((confidence ?: 0f) * 1_000).toInt() + text.length
+
     private fun parseSolarDate(text: String): String? {
         val match = SOLAR_DATE_PATTERN.find(text) ?: return null
         val year = match.groupValues[1].toInt()
@@ -1137,7 +1220,81 @@ class WenzhenP0Parser(
         val branches = blocks.firstNotNullOfOrNull { block ->
             BRANCH_SEQUENCE.find(block.text)?.groupValues?.drop(1)
         } ?: return null
-        return stems.zip(branches).joinToString(" ") { (stem, branch) -> stem + branch }
+        return stems.zip(branches).toValidatedFourPillarsText()
+    }
+
+    private fun List<OcrTextBlock>.hasExplicitUnknownPillarMarker(
+        dateBlock: OcrTextBlock,
+    ): Boolean {
+        val identityRight = dateBlock.boundingBox?.right ?: return false
+        return any { block ->
+            (block.boundingBox?.left ?: 0) > identityRight + 32 &&
+                block.text.any { it == '*' || it == '＊' }
+        }
+    }
+
+    private fun extractSpatialFourPillars(blocks: List<OcrTextBlock>): String? {
+        val stemColumns = blocks.spatialColumnVotes(STEMS) ?: return null
+        val branchColumns = blocks.spatialColumnVotes(BRANCHES) ?: return null
+        return stemColumns.zip(branchColumns).map { (stemVotes, branchVotes) ->
+            val ranked = SEXAGENARY_CYCLE.map { pillar ->
+                pillar to (stemVotes[pillar[0]] ?: 0) + (branchVotes[pillar[1]] ?: 0)
+            }.sortedByDescending(Pair<String, Int>::second)
+            val winner = ranked.firstOrNull() ?: return null
+            if (winner.second < USER_LIST_PILLAR_MIN_PAIR_VOTES) return null
+            if (ranked.getOrNull(1)?.second == winner.second) return null
+            winner.first
+        }.joinToString(" ")
+    }
+
+    private fun <A, B> List<Pair<A, B>>.toValidatedFourPillarsText(): String? {
+        val pillars = map { (stem, branch) -> "$stem$branch" }
+        return pillars.takeIf { values -> values.all(SEXAGENARY_CYCLE::contains) }
+            ?.joinToString(" ")
+    }
+
+    private fun List<OcrTextBlock>.spatialColumnVotes(
+        alphabet: String,
+    ): List<Map<Char, Int>>? {
+        val occurrences = flatMap { block ->
+            val box = block.boundingBox ?: return@flatMap emptyList()
+            val compact = block.text.filterNot(Char::isWhitespace)
+            if (compact.isEmpty()) return@flatMap emptyList()
+            val matching = compact.withIndex().filter { (_, char) -> char in alphabet }
+            if (matching.isEmpty() || compact.length > 6 || matching.size * 2 < compact.length) {
+                return@flatMap emptyList()
+            }
+            matching.map { (index, char) ->
+                val charCenterX = box.left +
+                    ((index + 0.5) * (box.right - box.left) / compact.length).toInt()
+                SpatialCharacter(char = char, centerX = charCenterX)
+            }
+        }.sortedBy(SpatialCharacter::centerX)
+        if (occurrences.isEmpty()) return null
+        val clusters = mutableListOf<MutableList<SpatialCharacter>>()
+        occurrences.forEach { occurrence ->
+            val nearest = clusters.minByOrNull { cluster ->
+                kotlin.math.abs(cluster.map(SpatialCharacter::centerX).average() - occurrence.centerX)
+            }
+            if (nearest != null && kotlin.math.abs(
+                    nearest.map(SpatialCharacter::centerX).average() - occurrence.centerX,
+                ) <= USER_LIST_PILLAR_COLUMN_TOLERANCE_PX
+            ) {
+                nearest += occurrence
+            } else {
+                clusters += mutableListOf(occurrence)
+            }
+        }
+        val relevant = clusters
+            .filter { it.size >= USER_LIST_PILLAR_MIN_COLUMN_VOTES }
+        if (relevant.size < 4) return null
+        return relevant
+            .sortedByDescending(List<SpatialCharacter>::size)
+            .take(4)
+            .sortedBy { cluster -> cluster.map(SpatialCharacter::centerX).average() }
+            .map { cluster ->
+                cluster.groupingBy(SpatialCharacter::char).eachCount()
+            }
     }
 
     private fun String.toFourPillars(): FourPillars {
@@ -1300,7 +1457,7 @@ class WenzhenP0Parser(
         private const val BRANCHES = "子丑寅卯辰巳午未申酉戌亥"
         private const val PROFESSIONAL_HEADER_ROW_TOLERANCE_PX = 48
         private const val PROFESSIONAL_PILLAR_SCAN_HEADER_HEIGHT_MULTIPLIER = 8
-        const val PARSER_RULE_ID = "wenzhen-p0-parser-v8"
+        const val PARSER_RULE_ID = "wenzhen-p0-parser-v9"
         const val FIELD_ALIAS = "identity.alias"
         const val FIELD_NAME = "identity.name"
         const val FIELD_SEX = "identity.sex"
@@ -1398,9 +1555,16 @@ class WenzhenP0Parser(
         const val PROFESSIONAL_PILLAR_SCAN_HEIGHT_PX = 220
         const val FIRST_ROW_HEAD_PX = 120
         const val LAST_ROW_TAIL_PX = 140
+        const val USER_LIST_DATE_ANCHOR_DEDUPLICATION_PX = 48
+        const val USER_LIST_IDENTITY_BASELINE_TOLERANCE_PX = 28
+        const val USER_LIST_IDENTITY_HORIZONTAL_TOLERANCE_PX = 36
+        const val USER_LIST_PILLAR_COLUMN_TOLERANCE_PX = 22
+        const val USER_LIST_PILLAR_MIN_COLUMN_VOTES = 1
+        const val USER_LIST_PILLAR_MIN_PAIR_VOTES = 2
         val NAME_SEX_PATTERN = Regex(
-            "([\\p{L}\\p{N}·_—-]{1,24})\\s*(男|女)",
+            "([\\p{L}\\p{N}·_—()（）-]{1,32})\\s*(男|女)",
         )
+        val USER_LIST_NAME_PATTERN = Regex("[\\p{L}\\p{N}·_—()（）-]{1,32}")
         val SOLAR_DATE_PATTERN = Regex(
             "(?:阳历|公历)\\s*[:：]?\\s*(\\d{4})[年./-](\\d{1,2})[月./-](\\d{1,2})日?",
         )
@@ -1504,7 +1668,17 @@ class WenzhenP0Parser(
         val BRANCH_SEQUENCE = Regex(
             "([$BRANCHES])\\s*([$BRANCHES])\\s*([$BRANCHES])\\s*([$BRANCHES])",
         )
+        val SEXAGENARY_CYCLE = buildSet {
+            repeat(60) { index ->
+                add("${STEMS[index % STEMS.length]}${BRANCHES[index % BRANCHES.length]}")
+            }
+        }
     }
+
+    private data class SpatialCharacter(
+        val char: Char,
+        val centerX: Int,
+    )
 }
 
 private fun CivilDateTime.toLocalDateTime(): LocalDateTime = LocalDateTime.of(
