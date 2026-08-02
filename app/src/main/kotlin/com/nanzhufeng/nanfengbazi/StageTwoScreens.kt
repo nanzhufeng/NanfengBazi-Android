@@ -32,13 +32,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
@@ -82,9 +86,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -94,6 +100,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
@@ -321,6 +328,7 @@ fun NanfengBaziApp(
                     AppDestination.Settings -> SettingsHomeScreen(
                         state = state,
                         screenshotImportState = screenshotImportState,
+                        onRatHourRuleChange = viewModel::updateDefaultRatHourRule,
                         onImportScreenshots = onImportScreenshots,
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onExportFullBackup = viewModel::requestFullBackupExport,
@@ -2104,21 +2112,14 @@ private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Surface(
-                modifier = Modifier.size(42.dp),
-                color = NanfengWarmTint,
-                shape = CircleShape,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        summary.alias.firstOrNull()?.toString() ?: "命",
-                        color = NanfengGold,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
+            ConstellationBadge(summary.westernZodiac)
             Column(modifier = Modifier.weight(1f)) {
-                Text(summary.alias, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    summary.name.value ?: summary.alias,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     summary.birthInput.displayDateOnly(),
                     modifier = Modifier.padding(top = 2.dp),
@@ -2153,6 +2154,7 @@ private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
 private fun SettingsHomeScreen(
     state: StageTwoUiState,
     screenshotImportState: ScreenshotImportUiState,
+    onRatHourRuleChange: (RatHourRule) -> Unit,
     onImportScreenshots: () -> Unit,
     onImportSingleCase: () -> Unit,
     onExportFullBackup: () -> Unit,
@@ -2192,11 +2194,40 @@ private fun SettingsHomeScreen(
                 )
             }
         }
+        SettingsGroupTitle("排盘偏好")
+        SettingsActionGroup {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text("子时口径", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "作为新排盘与四柱反查的默认规则；既有命例仍按快照规则复算。",
+                    modifier = Modifier.padding(top = 3.dp, bottom = 10.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RatHourRuleButton(
+                        label = "23:00 换日",
+                        selected = state.defaultRatHourRule == RatHourRule.TYME_DEFAULT,
+                        tag = "settings_rat_default",
+                        onClick = { onRatHourRuleChange(RatHourRule.TYME_DEFAULT) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    RatHourRuleButton(
+                        label = "晚子时算当天",
+                        selected = state.defaultRatHourRule == RatHourRule.LATE_RAT_SAME_DAY,
+                        tag = "settings_rat_late",
+                        onClick = { onRatHourRuleChange(RatHourRule.LATE_RAT_SAME_DAY) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
         SettingsGroupTitle("导入与建档")
         SettingsActionGroup {
             SettingsActionRow(
                 title = "导入问真截图",
                 description = "本机识别后逐项确认",
+                icon = Icons.Filled.Search,
                 onClick = onImportScreenshots,
                 enabled = !screenshotImportState.busy,
                 tag = "settings_import_screenshots",
@@ -2206,6 +2237,7 @@ private fun SettingsHomeScreen(
             SettingsActionRow(
                 title = "导入单案例文件",
                 description = "先查冲突，不覆盖现有案例",
+                icon = Icons.Filled.List,
                 onClick = onImportSingleCase,
                 tag = "settings_import_case",
             )
@@ -2215,6 +2247,7 @@ private fun SettingsHomeScreen(
             SettingsActionRow(
                 title = "导出完整备份",
                 description = "命例、记录、快照与附件",
+                icon = Icons.Filled.Home,
                 onClick = onExportFullBackup,
                 tag = "settings_export_backup",
             )
@@ -2222,6 +2255,7 @@ private fun SettingsHomeScreen(
             SettingsActionRow(
                 title = "预览并恢复完整备份",
                 description = "先核验清单再决定写入",
+                icon = Icons.Filled.KeyboardArrowRight,
                 onClick = onRestoreFullBackup,
                 tag = "settings_restore_backup",
                 accent = NanfengOrange,
@@ -2232,6 +2266,7 @@ private fun SettingsHomeScreen(
             SettingsActionRow(
                 title = "复制脱敏诊断包",
                 description = "不包含个人资料与附件内容",
+                icon = Icons.Filled.Settings,
                 onClick = {
                     val diagnostics = buildAppDiagnosticText(
                         state = state,
@@ -2283,6 +2318,7 @@ private fun SettingsActionGroup(content: @Composable () -> Unit) {
 private fun SettingsActionRow(
     title: String,
     description: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     tag: String,
     enabled: Boolean = true,
@@ -2291,7 +2327,7 @@ private fun SettingsActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
+            .heightIn(min = 68.dp)
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = title }
             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -2299,12 +2335,21 @@ private fun SettingsActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
+        Surface(
             modifier = Modifier
-                .width(4.dp)
-                .height(38.dp)
-                .background(accent, RoundedCornerShape(2.dp)),
-        )
+                .size(36.dp),
+            color = accent.copy(alpha = 0.10f),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(19.dp),
+                    tint = accent,
+                )
+            }
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Medium)
             Text(
@@ -2642,6 +2687,68 @@ private fun CaseSummary.recordSection(): String {
     return if (first.isLetter() && first.code < 128) first.uppercase() else "#"
 }
 
+private fun String?.constellationIconRes(): Int? = when (this?.removeSuffix("座")) {
+    "白羊" -> R.drawable.zodiac_aries
+    "金牛" -> R.drawable.zodiac_taurus
+    "双子" -> R.drawable.zodiac_gemini
+    "巨蟹" -> R.drawable.zodiac_cancer
+    "狮子" -> R.drawable.zodiac_leo
+    "处女" -> R.drawable.zodiac_virgo
+    "天秤" -> R.drawable.zodiac_libra
+    "天蝎" -> R.drawable.zodiac_scorpio
+    "射手" -> R.drawable.zodiac_sagittarius
+    "摩羯" -> R.drawable.zodiac_capricorn
+    "水瓶" -> R.drawable.zodiac_aquarius
+    "双鱼" -> R.drawable.zodiac_pisces
+    else -> null
+}
+
+@Composable
+private fun ConstellationBadge(
+    westernZodiac: String?,
+    modifier: Modifier = Modifier,
+) {
+    val display = westernZodiac?.removeSuffix("座")?.let { "${it}座" } ?: "待计算"
+    Surface(
+        modifier = modifier
+            .size(46.dp)
+            .semantics { contentDescription = "星座：$display" },
+        shape = CircleShape,
+        color = NanfengNavigation,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            val iconRes = westernZodiac.constellationIconRes()
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                    tint = NanfengGold,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = NanfengGold,
+                )
+            }
+            Text(
+                display,
+                modifier = Modifier.padding(top = 1.dp),
+                color = NanfengGold,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 @Composable
 private fun CaseSummaryRow(
     summary: CaseSummary,
@@ -2662,6 +2769,8 @@ private fun CaseSummaryRow(
                     summary.name.value ?: summary.alias,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     "  ${summary.sexForFortuneDirection.displayName()}",
@@ -2702,22 +2811,10 @@ private fun CaseSummaryRow(
                 }
             }
         }
-        Surface(
-            modifier = Modifier
-                .padding(start = 6.dp)
-                .width(38.dp)
-                .height(38.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = NanfengNavigation,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    summary.zodiac?.take(1) ?: "命",
-                    color = NanfengGold,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
+        ConstellationBadge(
+            westernZodiac = summary.westernZodiac,
+            modifier = Modifier.padding(start = 4.dp),
+        )
     }
 }
 
@@ -3697,7 +3794,10 @@ private fun CaseSummaryCard(
             Text(
                 "${summary.sexForFortuneDirection.displayName()} · " +
                     summary.birthInput.displayDateTime() +
-                    summary.zodiac?.let { " · 生肖$it" }.orEmpty(),
+                    summary.westernZodiac
+                        ?.removeSuffix("座")
+                        ?.let { " · 星座${it}座" }
+                        .orEmpty(),
                 modifier = Modifier.padding(top = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
@@ -3737,7 +3837,7 @@ private fun CreateCaseScreen(
     onPreview: () -> Unit,
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
-    onOpenFourPillarsLookup: () -> Unit,
+    onOpenFourPillarsLookup: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     WenzhenCreateCaseScreen(
@@ -3758,19 +3858,18 @@ private fun WenzhenCreateCaseScreen(
     onPreview: () -> Unit,
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
-    onOpenFourPillarsLookup: () -> Unit,
+    onOpenFourPillarsLookup: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var saveCase by rememberSaveable { mutableStateOf(true) }
-    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var showBirthPicker by rememberSaveable { mutableStateOf(false) }
     var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    var showFourPillarsPicker by rememberSaveable { mutableStateOf(false) }
     val form = state.form
     LaunchedEffect(Unit) {
         if (form.sex == null && form.year.isBlank() && form.locationName.isBlank()) {
             onFormChange {
                 it.copy(
-                    alias = "1990-01-01 命例",
                     sex = SexForFortuneDirection.MAN,
                     year = "1990",
                     month = "1",
@@ -3789,15 +3888,6 @@ private fun WenzhenCreateCaseScreen(
             onConfirm = { selection ->
                 onFormChange {
                     it.copy(
-                        alias = if (it.alias.matches(Regex("\\d{4}-\\d{2}-\\d{2} 命例"))) {
-                            "%04d-%02d-%02d 命例".format(
-                                selection.year,
-                                selection.month,
-                                selection.day,
-                            )
-                        } else {
-                            it.alias
-                        },
                         calendarSystem = if (selection.mode == BirthPickerMode.LUNAR) {
                             CalendarSystem.LUNAR
                         } else {
@@ -3814,7 +3904,25 @@ private fun WenzhenCreateCaseScreen(
                 }
                 showBirthPicker = false
             },
-            onOpenFourPillars = onOpenFourPillarsLookup,
+            onOpenFourPillars = {
+                showBirthPicker = false
+                showFourPillarsPicker = true
+            },
+        )
+    }
+    if (showFourPillarsPicker) {
+        FourPillarsWheelPickerSheet(
+            current = listOf(
+                state.fourPillarsLookupForm.yearPillar,
+                state.fourPillarsLookupForm.monthPillar,
+                state.fourPillarsLookupForm.dayPillar,
+                state.fourPillarsLookupForm.hourPillar,
+            ),
+            onDismiss = { showFourPillarsPicker = false },
+            onConfirm = { pillars ->
+                showFourPillarsPicker = false
+                onOpenFourPillarsLookup(pillars)
+            },
         )
     }
     if (showBirthplacePicker) {
@@ -3843,7 +3951,7 @@ private fun WenzhenCreateCaseScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(58.dp)
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -3859,7 +3967,7 @@ private fun WenzhenCreateCaseScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Card(
@@ -3867,25 +3975,55 @@ private fun WenzhenCreateCaseScreen(
                     .fillMaxWidth()
                     .testTag("home_input_card"),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(22.dp),
             ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                    OutlinedTextField(
-                        value = form.alias,
-                        onValueChange = { value -> onFormChange { it.copy(alias = value) } },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("case_alias"),
-                        label = { Text("姓名 / 命例别名") },
-                        placeholder = { Text("未填写时可按出生日期生成") },
-                        singleLine = true,
-                        enabled = !state.saving,
-                        shape = RoundedCornerShape(14.dp),
-                    )
+                Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 12.dp),
+                            .height(52.dp)
+                            .padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "姓名",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = NanfengInk,
+                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 20.dp),
+                            contentAlignment = Alignment.CenterEnd,
+                        ) {
+                            if (form.alias.isBlank()) {
+                                Text(
+                                    "请输入姓名或命例名",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                )
+                            }
+                            BasicTextField(
+                                value = form.alias,
+                                onValueChange = { value -> onFormChange { it.copy(alias = value) } },
+                                enabled = !state.saving,
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = NanfengInk,
+                                    textAlign = TextAlign.End,
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("case_alias"),
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp, bottom = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -3915,7 +4053,7 @@ private fun WenzhenCreateCaseScreen(
                             ),
                             onSelect = { label ->
                                 if (label == "四柱") {
-                                    onOpenFourPillarsLookup()
+                                    showFourPillarsPicker = true
                                 } else {
                                     onFormChange {
                                         it.copy(
@@ -3936,15 +4074,11 @@ private fun WenzhenCreateCaseScreen(
                             ),
                         )
                     }
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+                    HorizontalDivider(modifier = Modifier.padding(top = 10.dp))
                     HomePickerRow(
                         title = "出生时间",
                         value = form.birthDateTimeDisplay(),
-                        supporting = if (form.calendarSystem == CalendarSystem.LUNAR) {
-                            "农历 · 点击滑动选择"
-                        } else {
-                            "公历 · 点击滑动选择"
-                        },
+                        supporting = "",
                         onClick = { showBirthPicker = true },
                         tag = "open_birth_datetime_picker",
                     )
@@ -3952,35 +4086,32 @@ private fun WenzhenCreateCaseScreen(
                     HomePickerRow(
                         title = "出生地区",
                         value = form.locationName.ifBlank { "请选择地区" },
-                        supporting = "${form.timeZoneId} · 点击三级联动选择",
+                        supporting = "",
                         onClick = { showBirthplacePicker = true },
                         tag = "open_birthplace_picker",
                     )
-                    HorizontalDivider(modifier = Modifier.padding(top = 2.dp))
+                    HorizontalDivider()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp),
+                            .height(50.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                if (form.useTrueSolarTime) "真太阳时：开启" else "真太阳时：关闭",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                "时区：${form.timeZoneId}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text("保存", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            "保存命例",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = NanfengInk,
+                        )
                         Switch(
                             checked = saveCase,
                             onCheckedChange = { saveCase = it },
                             modifier = Modifier
-                                .heightIn(min = 48.dp)
+                                .graphicsLayer {
+                                    scaleX = 0.78f
+                                    scaleY = 0.78f
+                                }
                                 .semantics { contentDescription = "保存命例" },
                         )
                     }
@@ -3989,14 +4120,14 @@ private fun WenzhenCreateCaseScreen(
                         enabled = !state.saving && !state.previewing,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .height(56.dp)
+                            .padding(top = 4.dp)
+                            .height(50.dp)
                             .testTag(if (saveCase) "save_case" else "preview_case"),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                             containerColor = NanfengNavigation,
                             contentColor = Color(0xFFF2D8A5),
                         ),
-                        shape = RoundedCornerShape(28.dp),
+                        shape = RoundedCornerShape(25.dp),
                     ) {
                         Text(
                             when {
@@ -4008,37 +4139,6 @@ private fun WenzhenCreateCaseScreen(
                         )
                     }
                 }
-            }
-            InstantChartEntryCard(
-                calculation = state.instantCalculation,
-                onPreview = onPreview,
-                enabled = !state.saving && !state.previewing,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                HomeFeatureTile(
-                    title = "四柱反查",
-                    subtitle = "候选可复算",
-                    icon = Icons.Filled.Search,
-                    onClick = onOpenFourPillarsLookup,
-                    modifier = Modifier.weight(1f),
-                )
-                HomeFeatureTile(
-                    title = "详细设置",
-                    subtitle = "时区与口径",
-                    icon = Icons.Filled.Settings,
-                    onClick = { advancedExpanded = !advancedExpanded },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            if (advancedExpanded) {
-                HomeAdvancedSettings(
-                    form = form,
-                    saving = state.saving,
-                    onFormChange = onFormChange,
-                )
             }
             state.formError?.let { error ->
                 Card(
@@ -4081,7 +4181,7 @@ private fun HomeChoiceGroup(
     tags: List<String>,
 ) {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         color = NanfengPageBackground,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -4092,19 +4192,21 @@ private fun HomeChoiceGroup(
             options.forEachIndexed { index, (label, selected) ->
                 Surface(
                     modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .widthIn(min = 48.dp)
+                        .height(38.dp)
+                        .widthIn(min = 44.dp)
                         .clickable { onSelect(label) }
                         .testTag(tags[index]),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(19.dp),
                     color = if (selected) NanfengGreen else Color.Transparent,
                 ) {
                     Box(
-                        modifier = Modifier.padding(horizontal = 14.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (selected) Color.White else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
@@ -4127,42 +4229,50 @@ internal fun HomePickerRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
+            .height(68.dp)
             .clickable(onClick = onClick)
             .semantics { contentDescription = "$title，$value" }
-            .padding(vertical = 10.dp)
+            .padding(horizontal = 2.dp)
             .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = NanfengInk)
-            Text(
-                value,
-                modifier = Modifier.padding(top = 3.dp),
-                style = MaterialTheme.typography.titleMedium,
-                color = NanfengInk,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                supporting,
-                modifier = Modifier.padding(top = 2.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Surface(
-            color = NanfengWarmTint,
-            shape = RoundedCornerShape(18.dp),
+        Text(
+            title,
+            modifier = Modifier.width(68.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = NanfengInk,
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.End,
         ) {
             Text(
-                "选择",
-                modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.labelLarge,
-                color = NanfengGold,
-                fontWeight = FontWeight.SemiBold,
+                value,
+                style = MaterialTheme.typography.bodyLarge,
+                color = NanfengInk,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            if (supporting.isNotBlank()) {
+                Text(
+                    supporting,
+                    modifier = Modifier.padding(top = 1.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -4173,175 +4283,6 @@ private fun CaseFormState.birthDateTimeDisplay(): String {
         "请选择出生时间"
     } else {
         "$date  $time"
-    }
-}
-
-@Composable
-private fun InstantChartEntryCard(
-    calculation: CalculationResult?,
-    onPreview: () -> Unit,
-    enabled: Boolean,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                calculation?.fourPillars?.let {
-                    listOf(it.year, it.month, it.day, it.hour).joinToString("  ")
-                } ?: "年柱  月柱  日柱  时柱",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            OutlinedButton(
-                onClick = onPreview,
-                enabled = enabled,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("preview_case"),
-            ) {
-                Text("即时排盘")
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeFeatureTile(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier
-            .heightIn(min = 112.dp)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = NanfengGreen,
-                modifier = Modifier.size(28.dp),
-            )
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun HomeAdvancedSettings(
-    form: CaseFormState,
-    saving: Boolean,
-    onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("home_advanced_settings"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("详细设置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
-                value = form.timeZoneId,
-                onValueChange = { value ->
-                    onFormChange { it.copy(timeZoneId = value).clearTimeZoneResolution() }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .testTag("birth_timezone"),
-                label = { Text("IANA 时区") },
-                singleLine = true,
-                enabled = !saving,
-            )
-            Text(
-                "子时换日规则",
-                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                RatHourRule.entries.forEach { rule ->
-                    SexButton(
-                        text = rule.displayName(),
-                        selected = form.ratHourRule == rule,
-                        enabled = !saving,
-                        tag = "birth_rat_hour_rule_${rule.name}",
-                        onClick = { onFormChange { it.copy(ratHourRule = rule) } },
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("启用真太阳时", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        "仅在明确经纬度时校正；不会静默推算。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = form.useTrueSolarTime,
-                    onCheckedChange = { checked ->
-                        onFormChange { it.copy(useTrueSolarTime = checked) }
-                    },
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .semantics { contentDescription = "启用真太阳时" }
-                        .testTag("birth_true_solar_time"),
-                    enabled = !saving,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = form.longitude,
-                    onValueChange = { value -> onFormChange { it.copy(longitude = value) } },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("birth_longitude"),
-                    label = { Text("经度") },
-                    singleLine = true,
-                    enabled = !saving,
-                )
-                OutlinedTextField(
-                    value = form.latitude,
-                    onValueChange = { value -> onFormChange { it.copy(latitude = value) } },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("birth_latitude"),
-                    label = { Text("纬度") },
-                    singleLine = true,
-                    enabled = !saving,
-                )
-            }
-        }
     }
 }
 
@@ -4509,7 +4450,7 @@ internal fun CaseFormScreen(
 
             SectionHeading(
                 "出生时间",
-                "点击后用滚轮选择公历或农历时间，自动保留原值。",
+                "",
             )
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -4519,7 +4460,7 @@ internal fun CaseFormScreen(
                 HomePickerRow(
                     title = if (form.calendarSystem == CalendarSystem.LUNAR) "农历出生时间" else "公历出生时间",
                     value = form.birthDateTimeDisplay(),
-                    supporting = "点击打开五列联动滚轮",
+                    supporting = "",
                     onClick = { if (!saving) showBirthPicker = true },
                     tag = "open_birth_datetime_picker",
                 )
@@ -4624,7 +4565,7 @@ internal fun CaseFormScreen(
             )
             SectionHeading(
                 "出生地区与时区",
-                "点击后按地区、城市、区县三级滑动；时区与参考坐标自动带入。",
+                "",
             )
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -4634,7 +4575,7 @@ internal fun CaseFormScreen(
                 HomePickerRow(
                     title = "出生地区",
                     value = form.locationName.ifBlank { "请选择地区" },
-                    supporting = "${form.timeZoneId} · 离线三级联动",
+                    supporting = "",
                     onClick = { if (!saving) showBirthplacePicker = true },
                     tag = "open_birthplace_picker",
                 )
@@ -5876,16 +5817,15 @@ private fun CaseDetailScreen(
                 )
             },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
-                    modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                 }
             },
             actions = {
-                TextButton(onClick = onEditMetadata, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("•••")
+                androidx.compose.material3.IconButton(onClick = onEditMetadata) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "管理命例")
                 }
             },
         )
@@ -5971,9 +5911,11 @@ private fun CaseDetailTabs(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("case_detail_tabs"),
-        containerColor = NanfengNavigation,
-        contentColor = Color.White,
-        divider = {},
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = NanfengGreen,
+        divider = {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        },
     ) {
         CaseDetailSection.entries.forEach { section ->
             Tab(
@@ -5985,7 +5927,16 @@ private fun CaseDetailTabs(
                 text = {
                     Text(
                         section.displayName(),
-                        color = if (selectedSection == section) NanfengGold else Color.White,
+                        color = if (selectedSection == section) {
+                            NanfengGreen
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontWeight = if (selectedSection == section) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        },
                     )
                 },
             )
@@ -6004,6 +5955,8 @@ private fun WenzhenCaseIdentityHeader(
             .fillMaxWidth()
             .testTag("case_identity_header"),
         color = NanfengNavigation,
+        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+        shadowElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
@@ -6019,12 +5972,34 @@ private fun WenzhenCaseIdentityHeader(
                 border = androidx.compose.foundation.BorderStroke(2.dp, NanfengGold),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        result?.basicChartDetails?.zodiac?.take(1) ?: "命",
-                        color = NanfengGold,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        val westernZodiac = result?.basicChartDetails?.westernZodiac
+                        val iconRes = westernZodiac.constellationIconRes()
+                        if (iconRes != null) {
+                            Icon(
+                                painter = painterResource(iconRes),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = NanfengGold,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = NanfengGold,
+                            )
+                        }
+                        Text(
+                            westernZodiac
+                                ?.removeSuffix("座")
+                                ?.let { "${it}座" }
+                                ?: "待计算",
+                            color = NanfengGold,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
@@ -6092,11 +6067,25 @@ private fun CaseDetailContent(
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     var managementExpanded by rememberSaveable(case.id) { mutableStateOf(false) }
+    var showObservationPicker by rememberSaveable(case.id) { mutableStateOf(false) }
+    if (showObservationPicker) {
+        ObservationDateTimePickerSheet(
+            currentDate = fortuneObservationDate,
+            currentTime = fortuneObservationTime,
+            onDismiss = { showObservationPicker = false },
+            onConfirm = { date, time ->
+                onFortuneObservationDateChange(date)
+                onFortuneObservationTimeChange(time)
+                showObservationPicker = false
+            },
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .background(NanfengPageBackground)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         if (selectedSection == CaseDetailSection.BASIC_INFO) {
             if (case.deletedAt == null) {
@@ -6516,32 +6505,54 @@ private fun CaseDetailContent(
                         adopted.result.fortuneStart.endAt.display(),
                         tag = "fortune_transfer_time",
                     )
-                    OutlinedTextField(
-                        value = fortuneObservationDate,
-                        onValueChange = onFortuneObservationDateChange,
-                        label = { Text("观察日期（YYYY-MM-DD）") },
-                        singleLine = true,
-                        isError = fortunePositionError != null,
-                        supportingText = fortunePositionError?.let { message ->
-                            { Text(message) }
-                        },
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp, bottom = 8.dp)
-                            .testTag("fortune_observation_date"),
-                    )
-                    OutlinedTextField(
-                        value = fortuneObservationTime,
-                        onValueChange = onFortuneObservationTimeChange,
-                        label = { Text("观察时间（HH:mm）") },
-                        singleLine = true,
-                        isError = fortunePositionError != null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp)
-                            .testTag("fortune_observation_time"),
-                    )
+                            .padding(top = 4.dp, bottom = 10.dp)
+                            .clickable { showObservationPicker = true }
+                            .testTag("fortune_observation_picker"),
+                        color = NanfengControlSurface,
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (fortunePositionError == null) {
+                                MaterialTheme.colorScheme.outlineVariant
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "观察时刻",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    "$fortuneObservationDate  $fortuneObservationTime",
+                                    modifier = Modifier.padding(top = 2.dp),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                fortunePositionError?.let { message ->
+                                    Text(
+                                        message,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = NanfengGold,
+                            )
+                        }
+                    }
                     fortunePosition?.let { position ->
                         CurrentFortunePositionView(position)
                     }
@@ -6892,11 +6903,16 @@ private fun DetailSection(
             .fillMaxWidth()
             .padding(bottom = 14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
@@ -6914,17 +6930,25 @@ private fun DetailRow(
     value: String,
     tag: String? = null,
 ) {
-    Column(
+    Row(
         modifier = Modifier
+            .fillMaxWidth()
             .then(if (tag == null) Modifier else Modifier.testTag(tag))
-            .padding(bottom = 10.dp),
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
             label,
+            modifier = Modifier.width(92.dp),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(value, modifier = Modifier.padding(top = 2.dp))
+        Text(
+            value,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }
 
@@ -7398,12 +7422,16 @@ private fun SectionHeading(title: String, description: String) {
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
     )
-    Text(
-        description,
-        modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    if (description.isNotBlank()) {
+        Text(
+            description,
+            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        Spacer(modifier = Modifier.height(8.dp))
+    }
 }
 
 @Composable

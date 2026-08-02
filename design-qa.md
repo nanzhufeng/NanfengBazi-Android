@@ -1,40 +1,40 @@
-# alpha73 视觉与交互验收
+# alpha74 视觉与交互验收
 
 验收日期：2026-08-02
 
 ## 验收范围
 
 - 设备：仅 `emulator-5554`，Android API 35，1140×2616，442 dpi。
-- 页面：排盘首页、公历/农历日期时间滚轮、三级地点滚轮、四柱/年份范围/IANA 时区滚轮、记录、设置和案例详情既有主流程。
+- 页面：紧凑排盘首页、公历/农历日期时间滚轮、三级地点滚轮、四柱/年份范围/IANA 时区滚轮、8 条姓名化记录预览、设置和四个案例详情页。
 - 参考：用户提供的问真八字首页、日期时间、地点、四柱反查与详情截图；配色和材质继续沿用南枫记的白底、低阴影、绿色主色与黑金主操作。
-- 图标：以 `design/assets/app-icon-master.png` 为唯一母版，生成 legacy/adaptive 启动资源；不重绘、不拉伸、不裁切主体。
+- 图标：App 启动图以 `design/assets/app-icon-master.png` 为唯一母版；西方星座显示采用 Tabler Icons 官方 12 个 MIT 矢量资源，不用 Unicode/Emoji 代替。
 
 ## 并排视觉检查
 
-- 日期时间与地点选择器参考/实现并排图：`design/qa/alpha73/reference-comparison.jpg`。
-- 最终首页：`design/qa/alpha73/home.png`。
-- 最终日期时间滚轮：`design/qa/alpha73/time-picker.png`。
-- 最终地点滚轮：`design/qa/alpha73/place-picker.png`。
-- 启动器图标：`design/qa/alpha73/launcher.jpg`。
+- 用户问题首页与最终实现同 1140×2616 并排：`design/qa/alpha74/home-comparison.png`。
+- 最终首页：`design/qa/alpha74/home.png`。
+- 8 条姓名化记录与星座圆标：`design/qa/alpha74/records.png`。
+- alpha73 日期、地点滚轮和启动器保真证据继续有效；alpha74 另外人工核对四柱、年份、时区和观察时刻滚轮。
 
 可见检查结论：
 
-1. 底部弹层、暗色遮罩、分段切换、五列/三列滚轮、中央选中带和黑金确认按钮的层级与参考一致；标题、按钮和滚轮均未裁切。
-2. 首页恢复问真式单任务表单密度：别名、性别、历法、出生时间、出生地区、保存与主按钮依次呈现；三个主入口固定在底部，不再使用悬浮黑色导航胶囊。
+1. 底部弹层、分段切换、五列/三列滚轮、中央选中带和黑金确认按钮的层级与参考一致；标题、按钮和滚轮均未裁切。
+2. 首页压缩为扁平姓名行、38dp 分段、左右时间/地区信息行、保存开关和单一主按钮；删除卡内重复快捷能力与日期式默认假名字。
 3. 未知地点不会被静默写成北京；打开地点滚轮只作北京预览，只有用户确认后才写入地点、时区和城市中心参考坐标。
 4. 日期、地点、四柱、年份范围和 IANA 时区均由滚轮选择；滚轮跨过离散项时有触觉反馈，表单不要求输入格式化日期、行政区或干支字符串。
-5. App 图标在 API 35 启动器可辨识，平台圆形遮罩内主体完整；源图近方形的 4px 高宽差仅以原背景色补边，不改变主体比例。
+5. App 图标在 API 35 启动器可辨识；记录页 8 条案例使用普通姓名，西方星座图形和完整“座”后缀同处 46dp 黑金圆标，比例未压迫四柱或 A–Z 索引。
+6. “点击滑动选择”“点击三级联动选择”“民用时 · Asia/Shanghai”等不能新增判断信息的小字已删除；候选非唯一、子时口径和真太阳时风险仍保留。
 
 ## 有意保留的产品差异
 
 - 底部导航按本产品确定范围保留“排盘/记录/设置”三项，不复制问真的“学堂”。
 - 不放置未接通的聊天、工具箱、VIP 或 AI 入口，也不复制问真品牌资产。
-- 地点首版使用离线常用地区目录和明确的城市中心参考坐标；不联网、不调用 GPS、不宣称覆盖完整地理编码。
+- 地点首版使用离线常用地区目录和明确的城市中心参考坐标；App 运行时不调用 GPS、不宣称覆盖完整地理编码。
 - 夏令时由所选 IANA 时区自动解析，不提供容易导致错误的手动夏令时开关。
 - 四柱反查候选仍明确只是可复算的民用代表时刻，不证明出生分钟唯一，也不静默推算真太阳时。
 
 ## 自动化与构建证据
 
-- `AutomatedPickerFlowTest`：API 35 串行 `OK (2 tests)`，覆盖日期/地点预填滚轮和四柱/年份/时区选择器。
-- 全量命令 `test lint assembleDebug assembleRelease assembleDebugAndroidTest --offline`：`BUILD SUCCESSFUL in 2m 26s`，399 个 Gradle 任务。
-- 本轮没有向 OPPO 下发命令，没有联网、接入外部 AI、push 或发布。
+- `AutomatedPickerFlowTest`：API 35 串行 `OK (2 tests)`；保存命例进入记录/详情专项 `OK (1 test)`；显式姓名化预览数据 `OK (1 test)`。
+- 全量命令 `test lint assembleDebug assembleRelease assembleDebugAndroidTest --offline`：`BUILD SUCCESSFUL in 1m 4s`，399 个 Gradle 任务。
+- ADB 只操作 `emulator-5554`；未向 OPPO 下发命令，未接外部 AI、push 或发布。联网仅用于取得官方 Tabler Icons 星座 SVG 与 MIT 许可。

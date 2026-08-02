@@ -39,11 +39,14 @@ interface AppContainer {
     val screenshotImportCommitter: ScreenshotImportCommitter
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
+    val calculationPreferenceStore: CalculationPreferenceStore
 }
 
 class DefaultAppContainer(
     application: Application,
 ) : AppContainer {
+    override val calculationPreferenceStore: CalculationPreferenceStore =
+        AndroidCalculationPreferenceStore(application)
     private val database = Room.databaseBuilder(
         application,
         NanfengBaziDatabase::class.java,

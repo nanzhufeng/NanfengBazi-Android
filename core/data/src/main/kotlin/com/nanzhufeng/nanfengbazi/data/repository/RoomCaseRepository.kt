@@ -505,6 +505,10 @@ private fun CaseEntity.toSummary(
         ?.result
         ?.basicChartDetails
         ?.zodiac,
+    westernZodiac = adoptedSnapshot
+        ?.result
+        ?.basicChartDetails
+        ?.westernZodiac,
 )
 
 private fun CaseSummary.hasSameBirthIdentity(

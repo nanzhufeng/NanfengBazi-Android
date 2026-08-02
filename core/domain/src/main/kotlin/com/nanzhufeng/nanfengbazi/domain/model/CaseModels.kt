@@ -501,4 +501,5 @@ data class CaseSummary(
     val revision: Long,
     val canonicalSolarDateTime: CivilDateTime? = null,
     val zodiac: String? = null,
+    val westernZodiac: String? = null,
 )

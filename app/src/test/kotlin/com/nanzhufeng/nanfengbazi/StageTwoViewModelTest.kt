@@ -125,6 +125,32 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `子时口径从设置存储读取并同步到新排盘与四柱反查`() = runTest {
+        val repository = FakeCaseRepository()
+        val preferenceStore = InMemoryCalculationPreferenceStore(
+            RatHourRule.LATE_RAT_SAME_DAY,
+        )
+        val viewModel = createViewModel(
+            repository = repository,
+            calculationPreferenceStore = preferenceStore,
+        )
+
+        assertEquals(RatHourRule.LATE_RAT_SAME_DAY, viewModel.state.value.defaultRatHourRule)
+        assertEquals(RatHourRule.LATE_RAT_SAME_DAY, viewModel.state.value.form.ratHourRule)
+
+        viewModel.updateDefaultRatHourRule(RatHourRule.TYME_DEFAULT)
+        viewModel.openFourPillarsLookup(listOf("甲子", "乙丑", "丙寅", "丁卯"))
+
+        assertEquals(RatHourRule.TYME_DEFAULT, preferenceStore.readRatHourRule())
+        assertEquals(RatHourRule.TYME_DEFAULT, viewModel.state.value.form.ratHourRule)
+        assertEquals(
+            RatHourRule.TYME_DEFAULT,
+            viewModel.state.value.fourPillarsLookupForm.ratHourRule,
+        )
+        assertEquals("甲子", viewModel.state.value.fourPillarsLookupForm.yearPillar)
+    }
+
+    @Test
     fun `命例对比读取全部活动命例并生成客观字段报告`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["left"] = sampleStoredCase("left").copy(alias = "甲盘")
@@ -1496,6 +1522,8 @@ class StageTwoViewModelTest {
         fortunePositionResolver: FortunePositionResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
         caseImageRenderer: com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer? = null,
+        calculationPreferenceStore: CalculationPreferenceStore =
+            InMemoryCalculationPreferenceStore(),
         savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
     ): StageTwoViewModel {
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
@@ -1557,6 +1585,7 @@ class StageTwoViewModelTest {
             caseBackupService = backupOperations,
             backupAttachmentRoot = backupRoot?.resolve("attachments"),
             backupWorkRoot = backupRoot?.resolve("work"),
+            calculationPreferenceStore = calculationPreferenceStore,
             ioDispatcher = dispatcher,
             savedStateHandle = savedStateHandle,
         )

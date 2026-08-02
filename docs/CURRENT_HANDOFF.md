@@ -1,4 +1,4 @@
-# 当前交接：alpha73 低输入滚轮、问真式视觉与保真图标
+# 当前交接：alpha74 问真式紧凑首页、星座圆标与详情视觉
 
 更新日期：2026-08-02
 
@@ -7,80 +7,71 @@
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 分支：`main`；本地准确提交以现场 `git log -1` 为准，禁止 push/发布。
-- 版本：`versionCode 74`，`versionName 0.3.0-alpha73`。
-- 本轮只向 `emulator-5554` 下发 ADB 命令，现场确认 API 35；未操作 OPPO。
-- 本轮未联网、未调用外部 AI、未写入真实个人资料，模拟器案例均为合成测试数据。
+- 版本：`versionCode 75`，`versionName 0.3.0-alpha74`。
+- 本轮 ADB 只操作 `emulator-5554`，现场确认 API 35；仅列出连接设备时看见 OPPO，未向其下发命令。
+- 用户已取消本任务“不联网”约束；本轮联网仅检索并取得 Tabler Icons 官方星座 SVG 与 MIT 许可，App 运行时仍为本地优先，未接外部 AI。
 - 现场代码和最新测试证据优先于本文；若不一致，先修正本文。
 
-## B. alpha73 已完成
+## B. alpha74 已完成
 
-### 低输入选择与三主界面
+### 首页、选择器与设置
 
-- 排盘首页继续按用户提供的问真参考：顶部“首页排盘”、白色圆角表单卡、
-  性别与公历/农历/四柱分段、时间与地区、保存开关、黑金“开始排盘”、即时排盘卡和能力入口；
-  Material 图标替换文字假图标，比例、间距和信息密度已在 API 35 重新校准。
-- 新建、编辑和候选表单的公历/农历日期时间统一为五列联动滚轮；默认预填
-  `1990-01-01 00:00` 并自动生成可编辑别名。未知地点保持未选，不静默猜北京。
-- 出生地点统一为国内/海外与省/市/区县联动滚轮；确认后写入 IANA 时区和明确标注的
-  城市中心参考坐标。四柱反查的四柱、年份范围和 IANA 时区也改为滚轮选择。
-- 记录页直接展示全部保存案例：用户列表/回收站、搜索与筛选、密集案例行、元素着色四柱、
-  黑金生肖圆标与 A–Z 索引。新排盘、截图建档、单例导入、对比、备份/恢复保留在更多菜单。
-- 设置页改为白底分组列表，继续接通本地导入、完整备份、恢复和诊断版本能力。
-- 底部导航收口为带真实 Material 图标的白色三入口“排盘/记录/设置”，不复制未接通的学堂、
-  聊天、VIP 或 AI 入口。
+- 首页删除即时排盘前的重复功能卡和快捷入口，保留姓名、性别、公历/农历/四柱、出生时间、
+  出生地区、保存开关和单一“开始排盘”。四柱按钮直接打开四列六十甲子滚轮。
+- 首页输入卡按 1140×2616 实机截图重排为扁平姓名行、38dp 分段、左右信息行和 50dp 主按钮；
+  默认日期仍便于快速确认，但不再生成“1990-01-01 命例”这类日期式假名字。
+- 删除复述控件的辅助小字：点击/滑动选择、三级联动、民用时与重复时区不再占层级；
+  子时、真太阳时、反查候选非唯一和数据写入后果等实际判断信息继续保留。
+- 日期、农历、地点、四柱、年份范围、时区和专业岁运观察时刻统一复用紧凑滚轮与系统触觉；
+  不申请振动权限。子时默认口径移至设置并持久化，只影响新计算和新反查。
 
-### App 图标
+### 记录、星座与详情
 
-- 用户提供的原图已保存为 `design/assets/app-icon-master.png`，并生成 legacy 和 adaptive
-  各密度启动资源；主体未裁切、未拉伸、未近似重绘。
-- 原图仅因 1448×1444 的近方形尺寸补齐 4px 原背景色边缘，API 35 启动器遮罩内主体完整。
+- `CaseSummary.westernZodiac` 只从采用计算快照映射，Compose 不按日期重算。
+- 列表使用 Tabler Icons 官方 12 星座 MIT 矢量资源；图形在上、完整星座名在下，两者同处
+  46dp 黑金圆标。详情身份头复用同一映射，不使用 Unicode 星座字符或 Emoji。
+- 记录列表按问真密集行展示真实姓名式标题、性别、阳历日期、彩色四柱和 A–Z 索引。
+  `RecordPreviewFixtureTest` 仅在显式参数下向模拟器写入 8 条姓名化合成案例用于视觉预览；
+  正常测试跳过，正式构建和首次启动不内置样例。
+- 四个详情页统一为白色标签、黑金身份头、20dp 内容区和紧凑标签/值行；专业岁运观察时刻
+  已从原始日期文本框替换为五列滚轮。
 
-### 案例详情
+### 字体、图标与真值边界
 
-- 顶部为“南枫八字”与四标签：基本信息、基本排盘、专业细盘、断事笔记。
-- 黑金身份头在四标签切换后固定保留；基本排盘继续显示四柱、主星、藏干、副星、星运等已有表格。
-- 低频命例管理动作默认折叠，编辑资料和管理分类保留在首屏；自动测试已按显式展开语义更新。
-
-### 数据和证据
-
-- Room 升级至 v8，`CaseTextRecord` 新增持久化 `TextRecordSourceType`；历史有来源附件者
-  归一为 `IMPORTED_IMAGE`，其余归一为 `USER`。备份、单例交换、历史和外部分析回填保留来源。
-- 分析分类增加“关键年份”和“待核对问题”。
-- `four-pillars-golden-v2.psv` 升级为 schema v2：60 条样本显式保存性别与证据元数据，
-  并明确它们是合成/冻结回归证据，不是真实问真案例。
-- 线上算法入口未改：UI 不调 Tyme4j，四柱反查仍经 `FourPillarsLookup` 与唯一正向引擎复核。
+- App 使用本地 Noto Sans SC Variable 字体的 Normal/Medium/SemiBold/Bold 权重。
+- 用户提供的 App 图标母版继续保真生成 adaptive/legacy 资源。
+- UI 只消费 `BaziEngine`、`FourPillarsLookup`、仓库和采用快照；Tyme4j 仍只存在于引擎适配层。
+- Tabler Icons 许可文本保存在 `app/src/main/assets/licenses/tabler-icons-MIT.txt`。
 
 ## C. 最新验证
 
-- 最终组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest --offline`：
-  `BUILD SUCCESSFUL in 2m 26s`，399 个 Gradle 任务。
-- `emulator-5554` API 35：`AutomatedPickerFlowTest` 串行 `OK (2 tests)`，覆盖日期/地点预填滚轮
-  与四柱/年份范围/IANA 时区滚轮；全仓 JVM 已继续覆盖 VX-09 无解、非法干支、范围边界、
-  60 年周期、两种子时口径和全局 `LunarHour.provider` 状态恢复。
-- 人工视觉复验已覆盖最终首页、日期时间弹层、地点弹层和启动器图标；参考/实现并排证据见
-  `design/qa/alpha73/reference-comparison.jpg`，完整说明见 `design-qa.md`。
+- 最终离线组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：
+  `BUILD SUCCESSFUL in 1m 4s`，399 个 Gradle 任务。
+- `emulator-5554` API 35：`AutomatedPickerFlowTest` `OK (2 tests)`；保存命例、记录搜索、进入
+  详情并返回专项 `OK (1 test)`；姓名化预览数据生成 `OK (1 test)`。
+- JVM 回归继续覆盖 VX-09 无解、非法干支、1800–2100 边界、60 年周期、两种子时口径和
+  全局 `LunarHour.provider` 异常恢复。
+- 人工视觉已核对紧凑首页、记录 8 条密集列表、星座圆标、四柱/日期/地点/观察时刻滚轮、
+  设置子时口径和详情四标签。触觉调用链已验证，马达手感仍需真机。
 
-alpha73 产物：
+alpha74 产物：
 
-- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha73-debug.apk`
-- `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha73-release-unsigned.apk`
-- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha73-debug-androidTest.apk`
+- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha74-debug.apk`
+- `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha74-release-unsigned.apk`
+- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha74-debug-androidTest.apk`
 
 ## D. 明确待办与禁止项
 
-### 仍需外部条件
-
 - 真实问真基本资料/专业细盘/点评页迁移准确率：需继续授权样本和逐字段确认。
-- OPPO Find N5 安装、折叠/展开、数据保留与朗读：需用户明确授权，本轮未触碰。
-- 正式签名、发布、GitHub Release 和回滚：需签名材料与发布授权。
-- 禁止：不联网、不接外部 AI、不接触 OPPO、不 push、不发布、不用模拟器或合成数据冒充真机/真实资料证据。
+- OPPO Find N5 安装、折叠/展开、数据保留、朗读和马达手感：留作真机验收，本轮未操作。
+- 正式签名、发布、GitHub Release 和回滚：需签名材料与明确发布授权。
+- 当前禁止：不向 OPPO 下发命令、不 push、不发布，不用模拟器或合成数据冒充真机/真实资料证据。
 
 ## E. 下一轮直接启动
 
-1. 先只读确认 Git 根、分支和工作区计数，然后读 `AGENTS.md` 与本文。
-2. 没有新外部资料或授权时，只继续可在本地证明的功能，不要要求用户再发“继续”交接语。
-3. 真机授权到位后按顺序验收 OPPO 安装、折叠/展开、数据保留、朗读和真实问真整例；
-   在此之前不得把模拟器、合成样本或视觉相似度冒充真机/真实资料证据。
+1. 只读确认 Git 根、分支和工作区计数，读取 `AGENTS.md` 与本文后直接继续，不要求用户重复交接。
+2. 没有新外部资料或授权时，继续可在本地证明的功能、视觉和自动化能力。
+3. 真机授权到位后按顺序验收 OPPO 安装、折叠/展开、数据保留、朗读和触觉；正式签名与发布另行授权。
 
 ---
 

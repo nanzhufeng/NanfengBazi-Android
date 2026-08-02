@@ -379,6 +379,7 @@ data class StageTwoUiState(
     val fourPillarsLookupLoading: Boolean = false,
     val fourPillarsLookupHasSearched: Boolean = false,
     val fourPillarsLookupError: String? = null,
+    val defaultRatHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
     val listLoading: Boolean = false,
     val listError: String? = null,
     val form: CaseFormState = CaseFormState(),
@@ -497,13 +498,21 @@ class StageTwoViewModel(
     private val caseBackupService: CaseBackupOperations? = null,
     private val backupAttachmentRoot: Path? = null,
     private val backupWorkRoot: Path? = null,
+    private val calculationPreferenceStore: CalculationPreferenceStore =
+        InMemoryCalculationPreferenceStore(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
+    private val restoredStateBundle = savedStateHandle.get<Bundle>(SAVED_UI_STATE_KEY)
     private val mutableState = MutableStateFlow(
-        savedStateHandle.get<Bundle>(SAVED_UI_STATE_KEY)
-            ?.toStageTwoUiState()
-            ?: StageTwoUiState(),
+        restoredStateBundle?.toStageTwoUiState() ?: run {
+            val defaultRule = calculationPreferenceStore.readRatHourRule()
+            StageTwoUiState(
+                defaultRatHourRule = defaultRule,
+                form = CaseFormState(ratHourRule = defaultRule),
+                fourPillarsLookupForm = FourPillarsLookupFormState(ratHourRule = defaultRule),
+            )
+        },
     )
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
@@ -516,6 +525,11 @@ class StageTwoViewModel(
     private var pendingCaseImage: RenderedCaseImage? = null
 
     init {
+        if (restoredStateBundle != null) {
+            mutableState.update {
+                it.copy(defaultRatHourRule = calculationPreferenceStore.readRatHourRule())
+            }
+        }
         if (mutableState.value.fortuneObservationDate.isBlank()) {
             mutableState.update {
                 it.copy(
@@ -2593,12 +2607,46 @@ class StageTwoViewModel(
         loadComparisonWorkspace()
     }
 
-    fun openFourPillarsLookup() {
+    fun openFourPillarsLookup(pillars: List<String> = emptyList()) {
         mutableState.update {
+            val selected = if (pillars.size == 4) {
+                it.fourPillarsLookupForm.copy(
+                    yearPillar = pillars[0],
+                    monthPillar = pillars[1],
+                    dayPillar = pillars[2],
+                    hourPillar = pillars[3],
+                    ratHourRule = it.defaultRatHourRule,
+                )
+            } else {
+                it.fourPillarsLookupForm.copy(ratHourRule = it.defaultRatHourRule)
+            }
             it.copy(
                 destination = navigator.openFourPillarsLookup(),
+                fourPillarsLookupForm = selected,
+                fourPillarsLookupCandidates = emptyList(),
+                fourPillarsLookupEvidence = null,
+                fourPillarsLookupHasSearched = false,
                 fourPillarsLookupError = null,
                 message = null,
+            )
+        }
+    }
+
+    fun updateDefaultRatHourRule(rule: RatHourRule) {
+        calculationPreferenceStore.writeRatHourRule(rule)
+        fourPillarsLookupJob?.cancel()
+        mutableState.update {
+            it.copy(
+                defaultRatHourRule = rule,
+                form = it.form.copy(ratHourRule = rule),
+                fourPillarsLookupForm = it.fourPillarsLookupForm.copy(ratHourRule = rule),
+                fourPillarsLookupCandidates = emptyList(),
+                fourPillarsLookupEvidence = null,
+                fourPillarsLookupHasSearched = false,
+                fourPillarsLookupError = null,
+                message = "子时口径已设为${
+                    if (rule == RatHourRule.TYME_DEFAULT) "23:00 换日" else "晚子时算当天"
+                }。新排盘与四柱反查将使用该口径。",
             )
         }
     }
@@ -4641,6 +4689,7 @@ class StageTwoViewModel(
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
                 backupWorkRoot = container.backupWorkRoot,
+                calculationPreferenceStore = container.calculationPreferenceStore,
                 savedStateHandle = extras.createSavedStateHandle(),
             ) as T
         }
@@ -4699,6 +4748,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
         fourPillarsLookupForm.toSavedStateBundle(),
     )
     putBoolean("fourPillarsLookupHasSearched", fourPillarsLookupHasSearched)
+    putString("defaultRatHourRule", defaultRatHourRule.name)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
     putString("detailSection", detailSection.name)
@@ -4754,6 +4804,10 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         fourPillarsLookupLoading =
             destination == AppDestination.FourPillarsLookup &&
                 getBoolean("fourPillarsLookupHasSearched"),
+        defaultRatHourRule = enumValueOrDefault(
+            getString("defaultRatHourRule"),
+            RatHourRule.TYME_DEFAULT,
+        ),
         sortOrder = enumValueOrDefault(
             getString("sortOrder"),
             CaseSortOrder.UPDATED_DESC,

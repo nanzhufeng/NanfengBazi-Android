@@ -14,12 +14,14 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.semantics.SemanticsActions
@@ -98,14 +100,17 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("open_four_pillars_lookup")
             .performScrollTo()
             .performClick()
+        composeRule.onNodeWithTag("lookup_year_pillar_wheel").performScrollToIndex(25)
+        composeRule.onNodeWithTag("lookup_month_pillar_wheel").performScrollToIndex(9)
+        composeRule.onNodeWithTag("lookup_day_pillar_wheel").performScrollToIndex(0)
+        composeRule.onNodeWithTag("lookup_hour_pillar_wheel").performScrollToIndex(8)
+        composeRule.onNodeWithTag("confirm_four_pillars_wheels").performClick()
         composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("four_pillars_lookup_notice").assertIsDisplayed()
-        composeRule.onNodeWithTag("lookup_year_pillar").performTextInput("己丑")
-        composeRule.onNodeWithTag("lookup_month_pillar").performTextInput("癸酉")
-        composeRule.onNodeWithTag("lookup_day_pillar").performTextInput("甲子")
-        composeRule.onNodeWithTag("lookup_hour_pillar").performTextInput("壬申")
-        composeRule.onNodeWithTag("lookup_start_year").performTextReplacement("1949")
-        composeRule.onNodeWithTag("lookup_end_year").performTextReplacement("1949")
+        composeRule.onNodeWithTag("open_lookup_year_range_picker").performScrollTo().performClick()
+        composeRule.onNodeWithTag("lookup_start_year_wheel").performScrollToIndex(149)
+        composeRule.onNodeWithTag("lookup_end_year_wheel").performScrollToIndex(149)
+        composeRule.onNodeWithTag("confirm_lookup_year_range").performClick()
         composeRule.onNodeWithTag("lookup_search")
             .performScrollTo()
             .performClick()
@@ -132,24 +137,28 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("lookup_result_count").assertIsDisplayed()
         composeRule.onNodeWithTag("four_pillars_lookup_screen")
             .performScrollToNode(hasText("返回"))
-        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithContentDescription("返回").performClick()
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
     }
 
     @Test
     fun savedCaseAppearsInRecordListAndOpensDetail() {
-        val alias = "最近命例-${System.currentTimeMillis()}"
+        val alias = "席瑞"
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
-        composeRule.onNodeWithTag("birth_year").performTextInput("1992")
-        composeRule.onNodeWithTag("birth_month").performTextInput("8")
-        composeRule.onNodeWithTag("birth_day").performTextInput("24")
-        composeRule.onNodeWithTag("birth_hour").performTextInput("12")
-        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
-        composeRule.onNodeWithTag("birth_location")
+        composeRule.onNodeWithTag("open_birth_datetime_picker")
             .performScrollTo()
-            .performTextInput("江苏省宿迁市泗阳县")
+            .performClick()
+        composeRule.onNodeWithTag("birth_year_wheel").performScrollToIndex(1992 - 1800)
+        composeRule.onNodeWithTag("birth_month_wheel").performScrollToIndex(8 - 1)
+        composeRule.onNodeWithTag("birth_day_wheel").performScrollToIndex(24 - 1)
+        composeRule.onNodeWithTag("birth_hour_wheel").performScrollToIndex(12)
+        composeRule.onNodeWithTag("confirm_birth_datetime").performClick()
+        composeRule.onNodeWithTag("open_birthplace_picker")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("confirm_birthplace").performClick()
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
@@ -177,7 +186,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("case_search").performTextReplacement("")
         composeRule.onNodeWithText(alias).performClick()
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
-        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithContentDescription("返回").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
     }
 
@@ -354,12 +363,7 @@ class StageTwoFlowTest {
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
         composeRule.onNodeWithTag("detail_tab_fortune").performScrollTo().performClick()
-        composeRule.onNodeWithTag("fortune_observation_date")
-            .performScrollTo()
-            .performTextReplacement("2026-07-30")
-        composeRule.onNodeWithTag("fortune_observation_time")
-            .performScrollTo()
-            .performTextReplacement("23:00")
+        setFortuneObservation(year = 2026, month = 7, day = 30, hour = 23, minute = 0)
         composeRule.onNode(
             hasTestTag("fortune_profile_id").and(
                 hasAnyDescendant(hasText("tyme-late-rat-same-day-v1")),
@@ -703,10 +707,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("decade_fortune_details")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithTag("fortune_observation_date")
-            .performScrollTo()
-            .assertIsDisplayed()
-        composeRule.onNodeWithTag("fortune_observation_time")
+        composeRule.onNodeWithTag("fortune_observation_picker")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("current_fortune_position")
@@ -735,9 +736,7 @@ class StageTwoFlowTest {
                 .performScrollTo()
                 .assertIsDisplayed()
         }
-        composeRule.onNodeWithTag("fortune_observation_time")
-            .performScrollTo()
-            .performTextReplacement("23:00")
+        setFortuneObservation(hour = 23, minute = 0)
         composeRule.onNodeWithTag("copy_fortune_diagnostics")
             .performScrollTo()
             .performClick()
@@ -747,8 +746,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("annual_fortune_details")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithTag("fortune_observation_date")
-            .performTextReplacement("2026-02-03")
+        setFortuneObservation(year = 2026, month = 2, day = 3)
         composeRule.onNode(
             hasTestTag("current_annual_fortune")
                 .and(hasAnyDescendant(hasText("乙巳", substring = true))),
@@ -1308,5 +1306,33 @@ class StageTwoFlowTest {
             .assertIsDisplayed()
         composeRule.onNodeWithTag("close_full_backup_preview").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
+    }
+
+    private fun setFortuneObservation(
+        year: Int? = null,
+        month: Int? = null,
+        day: Int? = null,
+        hour: Int? = null,
+        minute: Int? = null,
+    ) {
+        composeRule.onNodeWithTag("fortune_observation_picker")
+            .performScrollTo()
+            .performClick()
+        year?.let {
+            composeRule.onNodeWithTag("fortune_year_wheel").performScrollToIndex(it - 1800)
+        }
+        month?.let {
+            composeRule.onNodeWithTag("fortune_month_wheel").performScrollToIndex(it - 1)
+        }
+        day?.let {
+            composeRule.onNodeWithTag("fortune_day_wheel").performScrollToIndex(it - 1)
+        }
+        hour?.let {
+            composeRule.onNodeWithTag("fortune_hour_wheel").performScrollToIndex(it)
+        }
+        minute?.let {
+            composeRule.onNodeWithTag("fortune_minute_wheel").performScrollToIndex(it)
+        }
+        composeRule.onNodeWithTag("confirm_fortune_observation").performClick()
     }
 }

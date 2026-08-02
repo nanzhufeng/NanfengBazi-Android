@@ -27,6 +27,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsField
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
@@ -156,13 +159,6 @@ private fun FourPillarsSelectionCard(pillars: List<String>, onClick: () -> Unit)
                     }
                 }
             }
-            Text(
-                "点击滑动选择四柱",
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodySmall,
-                color = NanfengGold,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }
@@ -255,11 +251,8 @@ internal fun FourPillarsLookupScreen(
             TopAppBar(
                 title = { Text("四柱反查", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    TextButton(
-                        onClick = onBack,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) {
-                        Text("返回")
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
             )
@@ -290,7 +283,7 @@ internal fun FourPillarsLookupScreen(
                 HomePickerRow(
                     title = "查找年份范围",
                     value = "${form.startYear}–${form.endYear}",
-                    supporting = "点击用双列滚轮选择",
+                    supporting = "",
                     onClick = { showYearRangePicker = true },
                     tag = "open_lookup_year_range_picker",
                 )
@@ -307,42 +300,26 @@ internal fun FourPillarsLookupScreen(
                 HomePickerRow(
                     title = "IANA 时区",
                     value = form.timeZoneId,
-                    supporting = "点击滑动选择常用时区",
+                    supporting = "",
                     onClick = { showTimeZonePicker = true },
                     tag = "open_lookup_time_zone_picker",
                 )
             }
         }
         item {
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                color = NanfengWarmTint,
+                shape = RoundedCornerShape(16.dp),
             ) {
-                Text("子时口径", fontWeight = FontWeight.Medium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RatHourRuleButton(
-                        label = "23:00 换日",
-                        selected = form.ratHourRule == RatHourRule.TYME_DEFAULT,
-                        tag = "lookup_rat_default",
-                        onClick = {
-                            onFormChange {
-                                it.copy(ratHourRule = RatHourRule.TYME_DEFAULT)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    RatHourRuleButton(
-                        label = "晚子时算当天",
-                        selected = form.ratHourRule == RatHourRule.LATE_RAT_SAME_DAY,
-                        tag = "lookup_rat_late",
-                        onClick = {
-                            onFormChange {
-                                it.copy(ratHourRule = RatHourRule.LATE_RAT_SAME_DAY)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                Text(
+                    "当前子时口径：${form.ratHourRule.displayName()} · 可在设置中修改",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
         item {
@@ -529,7 +506,7 @@ private fun YearInput(
 }
 
 @Composable
-private fun RatHourRuleButton(
+internal fun RatHourRuleButton(
     label: String,
     selected: Boolean,
     tag: String,

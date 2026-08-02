@@ -39,14 +39,10 @@ class AutomatedPickerFlowTest {
         composeRule.onNodeWithTag("open_four_pillars_lookup")
             .performScrollTo()
             .performClick()
-        composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
-
-        composeRule.onNodeWithTag("open_four_pillars_wheel_picker")
-            .performScrollTo()
-            .performClick()
         composeRule.onNodeWithTag("four_pillars_wheel_sheet").assertIsDisplayed()
         composeRule.onNodeWithTag("lookup_year_pillar_wheel").assertIsDisplayed()
         composeRule.onNodeWithTag("confirm_four_pillars_wheels").performClick()
+        composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
 
         composeRule.onNodeWithTag("open_lookup_year_range_picker")
             .performScrollTo()

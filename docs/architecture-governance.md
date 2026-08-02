@@ -183,3 +183,14 @@
 | 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 表示层只枚举有效六十甲子和公开查询边界；查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
 | 离散触觉反馈 | Compose `ValueWheel` → Android `performHapticFeedback(CLOCK_TICK)` | 只在中心刻度变化时反馈并尊重系统触觉开关；不申请振动权限，不用触觉表示计算正确 |
 | 启动图标 | `design/assets/app-icon-master.png` → `mipmap-*` / adaptive icon | 原图是唯一母版；不得重绘、改色、裁切主体或添加额外托盘，平台蒙版差异用真实启动器截图核对 |
+
+## alpha74 详情视觉、星座资源与文案边界
+
+| 概念 | 唯一所有者/入口 | 边界 |
+|---|---|---|
+| 西方星座真值 | `CalculationResult.basicChartDetails.westernZodiac` → `CaseSummary.westernZodiac` | 由唯一排盘引擎产出并随采用快照进入列表；UI 不按公历日期重新判断星座 |
+| 星座表现资源 | `CaseSummaryRow` / 详情身份头 → `zodiac_*.xml` | 只把引擎中文星座名映射到 Tabler Icons 的 12 个 MIT 矢量资源；图形和“处女座”等名称同处黑金圆标，不改变算法真值 |
+| 子时默认口径 | `CalculationPreferenceStore` → `StageTwoViewModel` → 新表单/反查表单 | 设置页持久化默认值，只影响新查询和新计算；既有计算快照不被静默重算 |
+| 首页与详情视觉 | `NanfengBaziTheme` + Compose 共享组件 | 问真负责信息架构与密度参照，南枫记提供字体、圆角、颜色、滚轮和触觉；UI 仍只消费公开领域接口 |
+| 辅助文案 | 各页面 Compose 文案 → 视觉 QA | 复述“点击/滑动/三级联动”或重复相邻值的小字不显示；只有业务口径、风险、证据边界、异常和写入后果可占辅助说明层 |
+| 本地预览案例 | `RecordPreviewFixtureTest` + 显式 `seedPreviewCases=true` | 仅在 API 35 视觉验收时写入姓名化合成案例；正常测试会跳过，正式构建与首次启动不内置、不自动生成 |

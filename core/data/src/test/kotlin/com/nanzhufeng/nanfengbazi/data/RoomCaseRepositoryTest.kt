@@ -118,6 +118,7 @@ class RoomCaseRepositoryTest {
             nameResults.single().fourPillars,
         )
         assertEquals("虎", nameResults.single().zodiac)
+        assertEquals("双子", nameResults.single().westernZodiac)
         assertTrue(nameResults.single().isFavorite)
         assertTrue(nameResults.single().isPinned)
         assertEquals(source.groups, nameResults.single().groups)

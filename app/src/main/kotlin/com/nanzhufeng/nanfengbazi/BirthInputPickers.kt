@@ -1,6 +1,5 @@
 package com.nanzhufeng.nanfengbazi
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -46,7 +47,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -86,6 +86,7 @@ internal fun BirthDateTimePickerSheet(
     onOpenFourPillars: () -> Unit,
     showFourPillarsOption: Boolean = true,
 ) {
+    val haptic = rememberAppHapticFeedback()
     val initial = remember(form) { form.toPickerDateTime() }
     var mode by remember {
         mutableStateOf(
@@ -162,6 +163,7 @@ internal fun BirthDateTimePickerSheet(
                 }
                 Button(
                     onClick = {
+                        haptic.perform(AppHapticEvent.CONFIRM)
                         if (mode == BirthPickerMode.FOUR_PILLARS) {
                             onDismiss()
                             onOpenFourPillars()
@@ -213,11 +215,10 @@ internal fun BirthDateTimePickerSheet(
                         )
                     }
                 }
-                Row(
+                WheelSelectionPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(BirthWheelViewportHeight),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     ValueWheel(
                         label = "年",
@@ -374,6 +375,7 @@ internal fun BirthplacePickerSheet(
     onDismiss: () -> Unit,
     onConfirm: (BirthplaceOption) -> Unit,
 ) {
+    val haptic = rememberAppHapticFeedback()
     val initial = remember(form.locationName, form.timeZoneId) {
         BirthplaceCatalog.bestMatch(form.locationName, form.timeZoneId)
     }
@@ -428,7 +430,10 @@ internal fun BirthplacePickerSheet(
                     modifier = Modifier.weight(1f),
                 )
                 Button(
-                    onClick = { onConfirm(selected) },
+                    onClick = {
+                        haptic.perform(AppHapticEvent.CONFIRM)
+                        onConfirm(selected)
+                    },
                     modifier = Modifier
                         .height(48.dp)
                         .testTag("confirm_birthplace"),
@@ -442,11 +447,10 @@ internal fun BirthplacePickerSheet(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
+            WheelSelectionPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(BirthWheelViewportHeight),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 ValueWheel(
                     label = if (domestic) "省份" else "国家/地区",
@@ -513,6 +517,7 @@ internal fun FourPillarsWheelPickerSheet(
     onDismiss: () -> Unit,
     onConfirm: (List<String>) -> Unit,
 ) {
+    val haptic = rememberAppHapticFeedback()
     val cycle = remember { sexagenaryCycle() }
     var year by remember { mutableStateOf(current.getOrNull(0).takeIf { it in cycle } ?: "甲子") }
     var month by remember { mutableStateOf(current.getOrNull(1).takeIf { it in cycle } ?: "甲子") }
@@ -541,7 +546,10 @@ internal fun FourPillarsWheelPickerSheet(
                     )
                 }
                 Button(
-                    onClick = { onConfirm(listOf(year, month, day, hour)) },
+                    onClick = {
+                        haptic.perform(AppHapticEvent.CONFIRM)
+                        onConfirm(listOf(year, month, day, hour))
+                    },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = NanfengNavigation,
                         contentColor = NanfengGoldLight,
@@ -553,11 +561,10 @@ internal fun FourPillarsWheelPickerSheet(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
+            WheelSelectionPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(BirthWheelViewportHeight),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 ValueWheel("年柱", cycle, year, { it }, { year = it }, Modifier.weight(1f), "lookup_year_pillar_wheel")
                 ValueWheel("月柱", cycle, month, { it }, { month = it }, Modifier.weight(1f), "lookup_month_pillar_wheel")
@@ -583,6 +590,7 @@ internal fun YearRangeWheelPickerSheet(
     onDismiss: () -> Unit,
     onConfirm: (Int, Int) -> Unit,
 ) {
+    val haptic = rememberAppHapticFeedback()
     val years = remember { (1800..2100).toList() }
     var start by remember { mutableIntStateOf(startYear.coerceIn(1800, 2100)) }
     var end by remember { mutableIntStateOf(endYear.coerceIn(1800, 2100)) }
@@ -602,17 +610,19 @@ internal fun YearRangeWheelPickerSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("查找年份范围", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 Button(
-                    onClick = { onConfirm(minOf(start, end), maxOf(start, end)) },
+                    onClick = {
+                        haptic.perform(AppHapticEvent.CONFIRM)
+                        onConfirm(minOf(start, end), maxOf(start, end))
+                    },
                     colors = ButtonDefaults.buttonColors(NanfengNavigation, NanfengGoldLight),
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.testTag("confirm_lookup_year_range"),
                 ) { Text("确定") }
             }
-            Row(
+            WheelSelectionPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(BirthWheelViewportHeight),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 ValueWheel("起始年", years, start, Int::toString, { start = it }, Modifier.weight(1f), "lookup_start_year_wheel")
                 ValueWheel("结束年", years, end, Int::toString, { end = it }, Modifier.weight(1f), "lookup_end_year_wheel")
@@ -628,6 +638,7 @@ internal fun IanaTimeZoneWheelPickerSheet(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val haptic = rememberAppHapticFeedback()
     val zones = remember { BirthplaceCatalog.options.map(BirthplaceOption::timeZoneId).distinct() }
     var selected by remember { mutableStateOf(current.takeIf { it in zones } ?: "Asia/Shanghai") }
     ModalBottomSheet(
@@ -649,23 +660,104 @@ internal fun IanaTimeZoneWheelPickerSheet(
                     Text("离线常用时区", style = MaterialTheme.typography.bodySmall)
                 }
                 Button(
-                    onClick = { onConfirm(selected) },
+                    onClick = {
+                        haptic.perform(AppHapticEvent.CONFIRM)
+                        onConfirm(selected)
+                    },
                     colors = ButtonDefaults.buttonColors(NanfengNavigation, NanfengGoldLight),
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.testTag("confirm_lookup_time_zone"),
                 ) { Text("确定") }
             }
-            ValueWheel(
-                label = "时区",
-                values = zones,
-                selectedValue = selected,
-                display = { it },
-                onSelected = { selected = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(BirthWheelViewportHeight),
-                tag = "lookup_time_zone_wheel",
-            )
+            WheelSelectionPanel(
+                modifier = Modifier.fillMaxWidth().height(BirthWheelViewportHeight),
+            ) {
+                ValueWheel(
+                    label = "时区",
+                    values = zones,
+                    selectedValue = selected,
+                    display = { it },
+                    onSelected = { selected = it },
+                    modifier = Modifier.weight(1f),
+                    tag = "lookup_time_zone_wheel",
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ObservationDateTimePickerSheet(
+    currentDate: String,
+    currentTime: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit,
+) {
+    val now = remember { LocalDateTime.now() }
+    val parsedDate = remember(currentDate) {
+        runCatching { LocalDate.parse(currentDate) }.getOrDefault(now.toLocalDate())
+    }
+    val parsedTime = remember(currentTime) {
+        runCatching { java.time.LocalTime.parse(currentTime) }.getOrDefault(now.toLocalTime())
+    }
+    var year by remember { mutableIntStateOf(parsedDate.year.coerceIn(1800, 2100)) }
+    var month by remember { mutableIntStateOf(parsedDate.monthValue) }
+    var day by remember { mutableIntStateOf(parsedDate.dayOfMonth) }
+    var hour by remember { mutableIntStateOf(parsedTime.hour) }
+    var minute by remember { mutableIntStateOf(parsedTime.minute) }
+    val maxDay = remember(year, month) {
+        runCatching { LocalDate.of(year, month, 1).lengthOfMonth() }.getOrDefault(31)
+    }
+    val haptic = rememberAppHapticFeedback()
+    LaunchedEffect(maxDay) {
+        if (day > maxDay) day = maxDay
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 18.dp)
+                .testTag("fortune_observation_picker_sheet"),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("选择观察时刻", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "用于定位当前大运、流年与流月",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = {
+                        haptic.perform(AppHapticEvent.CONFIRM)
+                        onConfirm(
+                            "%04d-%02d-%02d".format(year, month, day),
+                            "%02d:%02d".format(hour, minute),
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(NanfengNavigation, NanfengGoldLight),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.testTag("confirm_fortune_observation"),
+                ) { Text("确定") }
+            }
+            WheelSelectionPanel(
+                modifier = Modifier.fillMaxWidth().height(BirthWheelViewportHeight),
+            ) {
+                ValueWheel("年", (1800..2100).toList(), year, Int::toString, { year = it }, Modifier.weight(1.22f), "fortune_year_wheel")
+                ValueWheel("月", (1..12).toList(), month, Int::twoDigits, { month = it }, Modifier.weight(1f), "fortune_month_wheel")
+                ValueWheel("日", (1..maxDay).toList(), day.coerceAtMost(maxDay), Int::twoDigits, { day = it }, Modifier.weight(1f), "fortune_day_wheel")
+                ValueWheel("时", (0..23).toList(), hour, Int::twoDigits, { hour = it }, Modifier.weight(1f), "fortune_hour_wheel")
+                ValueWheel("分", (0..59).toList(), minute, Int::twoDigits, { minute = it }, Modifier.weight(1f), "fortune_minute_wheel")
+            }
         }
     }
 }
@@ -678,6 +770,7 @@ private fun <T> PickerSegmentedControl(
     onSelected: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val haptic = rememberAppHapticFeedback()
     Surface(
         modifier = modifier,
         color = NanfengControlSurface,
@@ -691,7 +784,12 @@ private fun <T> PickerSegmentedControl(
                         .weight(1f)
                         .height(42.dp)
                         .clip(RoundedCornerShape(21.dp))
-                        .clickable { onSelected(value) },
+                        .clickable {
+                            if (!isSelected) {
+                                haptic.perform(AppHapticEvent.SELECTION)
+                                onSelected(value)
+                            }
+                        },
                     color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
                     shadowElevation = if (isSelected) 1.dp else 0.dp,
                 ) {
@@ -744,7 +842,7 @@ private fun <T> ValueWheel(
     val currentValues by rememberUpdatedState(values)
     val currentSelected by rememberUpdatedState(selectedValue)
     val currentOnSelected by rememberUpdatedState(onSelected)
-    val view = LocalView.current
+    val haptic = rememberAppHapticFeedback()
     var lastCenteredIndex by remember(values) { mutableIntStateOf(selectedIndex) }
 
     LaunchedEffect(values, selectedValue) {
@@ -762,7 +860,7 @@ private fun <T> ValueWheel(
                     lastCenteredIndex = index
                     val next = currentValues[index]
                     if (scrolling && next != currentSelected) {
-                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        haptic.perform(AppHapticEvent.SNAP)
                         currentOnSelected(next)
                     }
                 }
@@ -782,19 +880,6 @@ private fun <T> ValueWheel(
                 .fillMaxWidth()
                 .height(BirthWheelListHeight),
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth()
-                    .height(BirthWheelItemHeight)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(NanfengControlSurface)
-                    .border(
-                        1.dp,
-                        NanfengGold.copy(alpha = 0.12f),
-                        RoundedCornerShape(12.dp),
-                    ),
-            )
             LazyColumn(
                 state = listState,
                 flingBehavior = flingBehavior,
@@ -844,6 +929,39 @@ private fun <T> ValueWheel(
     }
 }
 
+@Composable
+private fun WheelSelectionPanel(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFFFBFBFA))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset(y = BirthWheelSelectionBandOffset)
+                .padding(horizontal = 8.dp)
+                .height(BirthWheelItemHeight)
+                .clip(RoundedCornerShape(12.dp))
+                .background(NanfengGold.copy(alpha = 0.10f))
+                .border(
+                    1.dp,
+                    NanfengGold.copy(alpha = 0.22f),
+                    RoundedCornerShape(12.dp),
+                ),
+        )
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            content = content,
+        )
+    }
+}
+
 private fun androidx.compose.foundation.lazy.LazyListState.centeredWheelIndex(): Int? {
     val center = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
     return layoutInfo.visibleItemsInfo.minByOrNull {
@@ -889,10 +1007,11 @@ private fun sexagenaryCycle(): List<String> {
     return List(60) { index -> stems[index % stems.size] + branches[index % branches.size] }
 }
 
-private val BirthWheelViewportHeight = 276.dp
-private val BirthWheelListHeight = 248.dp
-private val BirthWheelItemHeight = 48.dp
+private val BirthWheelViewportHeight = 166.dp
+private val BirthWheelListHeight = 138.dp
+private val BirthWheelItemHeight = 44.dp
 private val BirthWheelPadding = (BirthWheelListHeight - BirthWheelItemHeight) / 2
+private val BirthWheelSelectionBandOffset = 28.dp + BirthWheelPadding
 
 internal object BirthplaceCatalog {
     val options: List<BirthplaceOption> = listOf(
