@@ -1,455 +1,176 @@
-# 当前交接：alpha75 本地响应式万年历
+# 当前交接：alpha75 冻结基线与下一轮入口
 
 更新日期：2026-08-03
 
-## A. 现场快照
+本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
+历史演进以 Git、`decision-log.md` 和需求审计为准。
 
-- 项目：南枫八字，本地优先 Android App。
-- 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
-- 分支：`main`；本地准确提交以现场 `git log -1` 为准，禁止 push/发布。
-- 版本：`versionCode 76`，`versionName 0.3.0-alpha75`。
-- 本轮 ADB 只操作 `emulator-5554`，现场确认 API 35；仅列出连接设备时看见 OPPO，未向其下发命令。
-- 用户已取消本任务“不联网”约束；本轮联网只审计参考万年历与检索开源方案，App 运行时
-  未增加网络权限、WebView 或外部 AI。
-- 现场代码和最新测试证据优先于本文；若不一致，先修正本文。
+## 1. 一句话状态
 
-## B. alpha75 已完成
-
-### 万年历能力与入口
-
-- 排盘首页主输入卡下方新增“万年历”入口，可直接打开本地月历。
-- `core:domain` 新增 `AlmanacReader`、月份查询、42 格日期摘要、日详情和结构化错误；
-  `core:engine-tyme` 由 `TymeAlmanacReader` 唯一实现，Compose 不直接调用 Tyme4j。
-- 月历显示公历、农历、节气/节日、日柱；日期详情显示年月日柱、星座、建除、值神、
-  星宿、胎神和宜忌，并可将所选日期带回正常排盘表单。
-- 手机使用单列月历—详情；宽度达到 760dp 时使用月历—详情双栏。月份、日期和确认动作
-  复用系统语义触觉，状态写入 `SavedStateHandle`。
-- 首版范围固定 1800–2100；宜忌等明确标记为传统民俗资料，不作为事实判断。
-
-### 参考站点与真值边界
-
-- 已实际审计 `https://wnl.zydxt.top/index.php`：其移动页面布局存在明显重叠，数据依赖未公开
-  稳定合同的 POST 接口，且未找到可确认的同源开源仓库，因此不把远端页面直接嵌入 App。
-- GitHub 调研确认 `6tail/lunar-javascript` 是可用 MIT 方案，但当前 Android 已有 Tyme4j
-  生产适配层；为避免第二算法真值和新增运行依赖，本轮不引入该库。
-- 最终 merged manifest/APK 不包含 `INTERNET`；源码 manifest 继续用 `tools:node="remove"`
-  阻断依赖传入网络权限；参考站点代码、接口响应和素材均未复制入仓库。
-
-## C. 最新验证
-
-- 离线组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：
-  使用 `--rerun-tasks` 强制执行，`BUILD SUCCESSFUL in 3m 10s`，399/399 个 Gradle 任务；
-  聚合测试 XML 为 485 tests、0 failures、0 errors、0 skipped。
-- `TymeAlmanacReaderTest` 覆盖 42 格、指定日农历/日柱/星座、节气、60 日周期、非法年份和
-  非法日期；`StageTwoViewModelTest` 覆盖打开、选择日期及返回排盘。
-- `emulator-5554` API 35：日期/地点滚轮、四柱/范围/时区滚轮和万年历入口—页面—带回
-  排盘共 `OK (3 tests)`；手机态首页和月历完成截图复验，证据在 `design/qa/alpha75/`。
-- 最终 Debug APK SHA-256：`688a855e35ac30bedbc58233d591d753ca75332cf9f5593ccef4822a88cdc763`；
-  模拟器已安装 `versionCode 76` / `0.3.0-alpha75`，设备内 base.apk 回读哈希与本地完全一致。
-- Release APK 未签名，SHA-256：`8f7a34f265e96c0f4deee21c9d674f37622cfd14df7dc1c24b61049f18a1272d`。
-- 只安装和操作 `emulator-5554`；未操作 OPPO。
-
-alpha75 产物：
-
-- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha75-debug.apk`
-- `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha75-release-unsigned.apk`
-- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha75-debug-androidTest.apk`
-
-## D. alpha74 既有能力继续有效
-
-### 首页、选择器与设置
-
-- 首页删除即时排盘前的重复功能卡和快捷入口，保留姓名、性别、公历/农历/四柱、出生时间、
-  出生地区、保存开关和单一“开始排盘”。四柱按钮直接打开四列六十甲子滚轮。
-- 首页输入卡按 1140×2616 实机截图重排为扁平姓名行、38dp 分段、左右信息行和 50dp 主按钮；
-  默认日期仍便于快速确认，但不再生成“1990-01-01 命例”这类日期式假名字。
-- 删除复述控件的辅助小字：点击/滑动选择、三级联动、民用时与重复时区不再占层级；
-  子时、真太阳时、反查候选非唯一和数据写入后果等实际判断信息继续保留。
-- 日期、农历、地点、四柱、年份范围、时区和专业岁运观察时刻统一复用紧凑滚轮与系统触觉；
-  不申请振动权限。子时默认口径移至设置并持久化，只影响新计算和新反查。
-
-### 记录、星座与详情
-
-- `CaseSummary.westernZodiac` 只从采用计算快照映射，Compose 不按日期重算。
-- 列表使用 Tabler Icons 官方 12 星座 MIT 矢量资源；图形在上、完整星座名在下，两者同处
-  46dp 黑金圆标。详情身份头复用同一映射，不使用 Unicode 星座字符或 Emoji。
-- 记录列表按问真密集行展示真实姓名式标题、性别、阳历日期、彩色四柱和 A–Z 索引。
-  `RecordPreviewFixtureTest` 仅在显式参数下向模拟器写入 8 条姓名化合成案例用于视觉预览；
-  正常测试跳过，正式构建和首次启动不内置样例。
-- 四个详情页统一为白色标签、黑金身份头、20dp 内容区和紧凑标签/值行；专业岁运观察时刻
-  已从原始日期文本框替换为五列滚轮。
-
-### 字体、图标与真值边界
-
-- App 使用本地 Noto Sans SC Variable 字体的 Normal/Medium/SemiBold/Bold 权重。
-- 用户提供的 App 图标母版继续保真生成 adaptive/legacy 资源。
-- UI 只消费 `BaziEngine`、`FourPillarsLookup`、仓库和采用快照；Tyme4j 仍只存在于引擎适配层。
-- Tabler Icons 许可文本保存在 `app/src/main/assets/licenses/tabler-icons-MIT.txt`。
-
-## E. alpha74 历史验证
-
-- 最终离线组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：
-  `BUILD SUCCESSFUL in 1m 4s`，399 个 Gradle 任务。
-- `emulator-5554` API 35：`AutomatedPickerFlowTest` `OK (2 tests)`；保存命例、记录搜索、进入
-  详情并返回专项 `OK (1 test)`；姓名化预览数据生成 `OK (1 test)`。
-- JVM 回归继续覆盖 VX-09 无解、非法干支、1800–2100 边界、60 年周期、两种子时口径和
-  全局 `LunarHour.provider` 异常恢复。
-- 人工视觉已核对紧凑首页、记录 8 条密集列表、星座圆标、四柱/日期/地点/观察时刻滚轮、
-  设置子时口径和详情四标签。触觉调用链已验证，马达手感仍需真机。
-
-alpha74 产物：
-
-- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha74-debug.apk`
-- `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha74-release-unsigned.apk`
-- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha74-debug-androidTest.apk`
-
-## F. 明确待办与禁止项
-
-- 真实问真基本资料/专业细盘/点评页迁移准确率：需继续授权样本和逐字段确认。
-- OPPO Find N5 安装、折叠/展开、数据保留、朗读和马达手感：留作真机验收，本轮未操作。
-- 正式签名、发布、GitHub Release 和回滚：需签名材料与明确发布授权。
-- 当前禁止：不向 OPPO 下发命令、不 push、不发布，不用模拟器或合成数据冒充真机/真实资料证据。
-
-## G. 下一轮直接启动
-
-1. 只读确认 Git 根、分支和工作区计数，读取 `AGENTS.md` 与本文后直接继续，不要求用户重复交接。
-2. 没有新外部资料或授权时，继续可在本地证明的功能、视觉和自动化能力。
-3. 真机授权到位后按顺序验收 OPPO 安装、折叠/展开、数据保留、朗读和触觉；正式签名与发布另行授权。
-
----
-
-# 历史交接：alpha70 VX-11 无网络外部分析手动桥接
-
-更新日期：2026-08-01
-
-## 1. 接手快照
-
-- 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 当前分支：`main`
-- alpha70 接手基线：`a4e76b0 docs: align VX-09 year contract`；本轮在其上实现 VX-11
-  纯本地手动桥接，最终本地 checkpoint 以现场 `git log -1` 为准。
-- 版本：`versionCode 71`，`versionName 0.3.0-alpha70`
-- 本轮开始前工作区干净；接手时仍须现场复查当前提交和工作区。
-- alpha70 验收只向 `emulator-5554`（API 35）下发命令；未操作 OPPO。
-- 本轮使用两张用户授权真实问真列表做脱敏指标验收；原图、OCR 原文和姓名未进入 Git
-  或正式测试输出。生日与四柱只在不含姓名的一次性模拟器诊断中用于逐行核对；诊断源码、
-  文本和模拟器副本均已删除，未进入 Git 或正式产物。
-- 本轮未操作 OPPO、网络、外部 AI、远端推送或发布；VX-11 只使用系统剪贴板和本地 Room。
+- 当前业务基线提交：`a13d623 feat: 内置本地响应式万年历`；交接文档提交以现场 `HEAD` 为准
+- 版本：`0.3.0-alpha75`，`versionCode 76`
+- 交接前业务工作区：干净
+- 本地能力：v1 核心、VX-01～VX-11、问真式三主界面、四柱反查、本地响应式万年历均已完成当前模拟器验收
+- 剩余事项：真实问真样本、OPPO Find N5、正式签名与发布等外部门禁；当前没有应被擅自创造的本地功能缺口
 
-现场事实优先级：当前代码与最新测试证据 > 本文件 > 稳定项目文档 > 历史聊天。
+## 2. 新对话的最小读取顺序
 
-## 2. 产品目标与首要验收
+1. 只读确认 Git 根目录、分支、HEAD 和工作区文件数量。
+2. 完整读取根目录 `AGENTS.md`。
+3. 完整读取本文件。
+4. 读取 `docs/next-codex-prompt.md`。
+5. 只读取当前任务涉及的：
+   - `docs/REQUIREMENT_GAP_AUDIT.md`
+   - `docs/architecture-governance.md`
+   - `docs/domain-rules.md`
+   - `docs/TEST_STRATEGY.md`
+   - `docs/decision-log.md`
+6. 再检查现场代码和最新测试证据；不要读取旧对话全文。
 
-南枫八字用于本地管理命例、版本化排盘、研究记录和问真截图迁移。
+现场代码与最新测试证据优先于本文件。发现不一致时，先报告并修正文档，再继续开发。
 
-“问真输出是首要验收标准”的准确含义是：
+## 3. 产品与架构基线
 
-1. 用户会把问真八字中已经保存的案例，通过用户列表、基本资料、基本排盘、专业细盘、
-   命主反馈和师傅点评等截图导入南枫八字。
-2. 当前首先适配问真八字截图格式；不承诺兼容所有排盘软件。
-3. 截图来源值、OCR 规范值、人工采用值和南枫本机计算值必须分离保存。
-4. 截图迁移保真不等于算法真值；正式排盘仍只能经过版本化计算入口。
-5. 自动化不得生成确定性吉凶、合婚、事业、婚姻或健康结论。
+### 产品边界
 
-## 3. 接手前必须读取
+- 三个主入口固定为：排盘、记录、设置。
+- 首页承担出生输入、即时排盘入口、四柱反查入口和本地万年历入口。
+- 记录页展示全部保存案例；点击后进入同一命例的四标签详情。
+- 详情四标签：基本信息、基本排盘、专业细盘、断事笔记。
+- 时间、地区、四柱、年份范围和时区优先使用联动滚轮，避免不必要的手工输入。
+- 删除只复述操作方式或当前状态的辅助小字；保留风险、证据、异常和业务判断信息。
 
-按顺序读取，避免加载不必要历史：
+### 唯一真值与模块边界
 
-1. `AGENTS.md`：每轮必须遵守的安全边界和入口。
-2. 本文件：当前代码事实、证据、未完成和下一任务。
-3. `docs/REQUIREMENT_GAP_AUDIT.md`：全方案逐项状态。
-4. `docs/architecture-governance.md`：概念所有者、公开入口和模块边界。
-5. `docs/domain-rules.md`：本项目稳定业务规则。
-6. 只在需要时读取 `docs/PRODUCT_REQUIREMENTS.md`、`docs/TEST_STRATEGY.md`、
-   `docs/DATA_CONTRACT.md` 和 `docs/decision-log.md` 的相关段落。
+- UI 不直接调用 Tyme4j，也不自行复制历法或四柱算法。
+- `core:domain` 定义公开合同、模型和结构化错误。
+- `core:engine-tyme` 是 Tyme4j 生产适配器。
+- `core:data` 负责 Room、附件、备份和持久化。
+- 测试差分引擎只存在于测试依赖，不得进入生产入口。
+- Tyme4j 全局 `LunarHour.provider` 只允许在四柱反查适配器中受锁访问，并在成功、失败、取消和并发路径恢复原对象。
 
-不要把旧聊天摘要当当前事实，不要一次性读取完整历史日志。
+### 主要公开合同
 
-## 4. 当前架构与唯一所有者
-
-| 概念 | 唯一所有者/入口 | 禁止分叉 |
+| 能力 | 领域入口 | 生产实现/事实源 |
 |---|---|---|
-| 排盘计算 | `BaziEngine.calculate()` → `TymeBaziEngine` | UI、OCR、数据库直接调用历法库 |
-| 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | UI 直接调用 Tyme4j、展示未经复核候选或把候选自动保存为命例 |
-| 命盘图片导出 | `CaseImageExportContract` → `CaseImageRenderer` | 截取 Compose 可见视口、保存/分享各拼一套内容或重新排盘 |
-| 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` | UI、剪贴板或图片各自拼字段、重算旧快照或生成主观解释 |
-| 计算配置 | `CalculationProfile` | 页面用默认值重解释旧快照 |
-| 命例聚合写入 | `CaseRepository` | 页面或导入器直接写 DAO |
-| 完整备份恢复 | `CaseBackupService` | UI 自行解析、合并或恢复 |
-| 单命例交换 | 对应 exchange/bundle service | 将引用元数据冒充附件字节 |
-| 问真来源字段 | `WenzhenSourceFidelityContract` | 来源值覆盖本机真值 |
-| 图片导入会话 | `ImportSessionRepository` + recognition coordinator | 后台任务直接生成正式命例 |
-| 命例客观对比 | `CaseComparisonEngine` | 生成吉凶、合婚或关系结论 |
-| 页面恢复状态 | `StageTwoViewModel` + `SavedStateHandle` | Activity 与局部页面各存一套状态 |
+| 正向排盘 | `BaziEngine` | `TymeBaziEngine` |
+| 四柱反查 | `FourPillarsLookup` | `TymeFourPillarsLookup` |
+| 本地万年历 | `AlmanacReader` | `TymeAlmanacReader` |
+| 命例管理 | 领域用例与仓储合同 | Room 仓储实现 |
+| 截图导入 | 图片会话、候选与冲突合同 | bundled OCR + 本地解析器 |
+| 客观摘要 | 摘要合同 | 唯一采用快照与正式记录 |
+| 图片导出/分享 | 图片文档合同 | 同一渲染字节 |
+| 外部分析桥接 | `ExternalAnalysisBridge` | 本地手动导出/回填，不含自动联网客户端 |
 
-物理模块：
+## 4. 已完成的当前成果
 
-- `core:domain`：模型、接口、领域合同。
-- `core:engine-tyme`：Tyme4j 1.5.1 唯一生产适配器。
-- `core:solar-time`：真太阳时计算及证据。
-- `core:data`：Room、仓储、交换、备份与附件事务。
-- `core:image-parser`：离线 OCR、问真分类、解析和图片指纹。
-- `app`：用例协调、Compose UI、系统文件/分享/后台任务适配。
+### alpha74：界面与输入体系收口
 
-## 5. 已完成到哪里
+- 首页、记录、设置按问真同类信息架构重构，并使用南枫产品视觉规范。
+- 首页输入卡已重新校准排版、比例、层级和主次按钮。
+- 日期、地区、四柱、年份范围、时区均为滑动/联动选择；选项切换带轻触觉反馈。
+- 首页重复的“即时排盘 / 四柱反查 / 详细设置”快捷卡已删除。
+- 首页“四柱”分段直接打开四柱选择器；子时口径迁入设置页。
+- 案例列表使用真实姓名式预览数据，不再使用时间戳假名或重复同一八字。
+- 星座列表项为“圆形星座符号 + 圆下方完整名称（如处女座）”，比例保持克制。
+- App 图标使用用户提供的原始资源并保持图形保真。
+- 详情四个标签共用固定身份头和同一命例/采用快照，不形成第二算法真值。
 
-### v1.0 核心
+### alpha75：本地响应式万年历
 
-- 公历、农历、闰月、地区、经纬度、IANA 时区、DST 重叠选择和不存在时刻拒绝。
-- 民用时/真太阳时、两种子时口径、标准公农历转换及完整版本证据。
-- 四柱、生肖、星座、十神、藏干、纳音、长生、空亡、胎元、胎息、命宫、身宫。
-- 起运方向/年龄/精确交运、前八步大运、完整流年、流月、流日和流时。
-- 命例新建、即时排盘、编辑重算、多出生时间候选、搜索筛选、分类、记录、事件、
-  历史版本、复制、软删除和回收站。
-- 单命例 JSON、带附件 `.nfbcase`、完整 ZIP 备份、密码保护、冲突计划、事务回滚、
-  独立临时 Room 数据库预演和真实进程强杀恢复。
-- 问真 P0/P1/P2 截图导入基础设施、bundled ML Kit 离线 OCR、长图分段、多图归组、
-  来源证据、人工修正、正式复算和可恢复导入会话。
-- 手机/展开态自适应、四主入口、详情四标签、可恢复页面/草稿、字体放大和 TalkBack
-  模拟器矩阵。
+- 首页下方新增真实可操作入口，不嵌入外部网页。
+- `core:domain` 定义 `AlmanacReader`、日期、月视图、日详情和结构化错误。
+- `core:engine-tyme` 通过 `TymeAlmanacReader` 本地生成数据。
+- 月视图固定 42 格，包含公历、农历、节气、节日和日柱；日期详情可复算。
+- “用于排盘”只把所选日期带回既有出生表单，最终仍经过唯一排盘引擎。
+- 手机使用单列；宽度 `>=760dp` 使用双栏月历/详情。
+- 支持范围为 1800～2100。
+- App 运行时没有 `INTERNET` 权限，不含 WebView 或外部 AI 自动调用。
 
-### alpha61
+### v1 与 VX 能力
 
-- 增加两个活动命例的客观对比入口。
-- 只读取各自最新已采用快照和正式研究资料。
-- 按出生历法、基础命盘、起运大运、计算档案、研究资料五层显示相同/不同/缺失。
-- 左右命例稳定 ID 和页面状态可恢复。
-- 明确不生成吉凶、合婚或关系判断。
+- 命例创建、编辑、复制、软删除、回收站恢复、检索、筛选、排序和最近查看。
+- 正向排盘、农历输入、IANA 时区、两种子时口径、真太阳时显式口径和边界处理。
+- 大运、流年、流月、流日、流时及客观证据展示。
+- 图片导入、可恢复 OCR 会话、候选/冲突人工确认和来源保留。
+- 单命例交换、完整备份、密码加密、附件事务和恢复预演。
+- 图片导出、长图分享、命例对比、客观摘要和本地手动外部分析桥接。
+- VX-09 四柱反查：1800～2100、IANA 时区、两种子时口径、逐候选正向复算；候选只代表可解释的民用时刻，不证明出生分钟唯一，也不静默推算真太阳时。
 
-### alpha62
+## 5. alpha75 冻结验证证据
 
-- 增加“排盘 → 四柱反查”真实入口，输入四柱、1900–2100 年范围、IANA 时区和两种
-  子时口径。
-- `core:domain` 已定义查询、候选、结构化错误和 `FourPillarsLookup` 公开接口；
-  `core:engine-tyme` 使用 `EightChar#getSolarTimes` 生成原始候选。
-- 每个候选按 IANA 时区解析 UTC offset；DST 重叠按 offset 分列、不存在时刻排除，
-  并再次经过 `BaziEngine.calculate()` 复算一致才返回。
-- `LunarHour.provider` 只在反查适配器进程级锁内临时切换，成功、异常、取消和并发后
-  均恢复；既有正向排盘继续使用实例 provider。
-- 页面明确候选只是民用代表时刻，不是出生分钟唯一证明；首版不做真太阳时推算，
-  不自动保存正式命例。
-- 反查页面、表单、查询参数和已查询标记进入 `SavedStateHandle`；重建后重新查询，
-  不保存可能过期的候选副本。
+- 强制全量 Gradle：`399/399` tasks，`BUILD SUCCESSFUL in 3m10s`。
+- JVM 聚合：`485` tests，`0` failures，`0` errors，`0` skipped。
+- 设备：仅 `emulator-5554`，Android API 35。
+- 自动设备流：`AutomatedPickerFlowTest OK (3 tests)`，覆盖日期/地点、四柱/年份/时区和万年历带回排盘。
+- Debug APK 安装后，设备 `base.apk` 读回哈希与本地产物完全一致。
+- Debug SHA-256：`688a855e35ac30bedbc58233d591d753ca75332cf9f5593ccef4822a88cdc763`
+- 未签名 Release SHA-256：`8f7a34f265e96c0f4deee21c9d674f37622cfd14df7dc1c24b61049f18a1272d`
+- 视觉证据：
+  - `design/qa/alpha75/home.png`
+  - `design/qa/alpha75/almanac-mobile.png`
+- 未操作 OPPO，未 push，未发布。
 
-### alpha63
+本轮若只修改交接文档，不重复运行全量构建；业务代码变化后才按风险重新取证。
 
-- 两张授权真实问真用户列表长图均由 bundled ML Kit 在 `emulator-5554` 离线识别，
-  页面分类均为 `USER_LIST`，共保留 49 个独立日期行候选。
-- 修复真实列表中姓名块漏识别后被下一日期重复复用的问题；解析器 v8 改用日期行中点
-  划分区域，姓名/性别漏识别时仍保留可定位、可人工修正的证据，不再让空行拖垮整图。
-- 49 条候选中姓名/性别自动规范化 43 条，四柱自动完整规范化 16 条；16 条完整四柱
-  在两种子时口径下均能由 VX-09 找到同日民用候选并通过唯一正向引擎复算。
-- 问真列表正式提交器已复用 `FourPillarsLookup`，保存所有去重后的同日民用时辰候选，
-  只采用一个确定性代表候选；全部候选均标记 `DOUBLE_HOUR_ONLY`，不推算真太阳时。
-- 核对页固定显示“候选不是出生分钟唯一证明”的说明；生日与四柱在两种口径下都无解时
-  显式阻止写入，并提示核对 OCR、原图或问真口径。
-- 一条真实候选完成私有复制、OCR、字段采用、反查、正向复算、附件复制、Room 写入，
-  并在宿主进程强停后成功读取；验收后模拟器敏感数据已清除。
+## 6. 尚未完成：全部属于外部门禁或新增授权
 
-### alpha64
+### 真实问真样本
 
-- `core:domain` 增加图片文档 v1、导出输入、结构化渲染事实、稳定失败码和
-  `CaseImageRenderer` 公开端口；只允许唯一已采用快照和当前正式记录进入图片。
-- Android 渲染器生成完整 1080px 宽 PNG，支持中文、长记录换行和 24,000px/像素上限；
-  超限明确拒绝，不截取当前 Compose 视口。
-- 详情页增加“导出图片”和“分享长图”，两者按命例 revision 与采用快照复用同一
-  `RenderedCaseImage` 字节；命例事实变化后缓存自动失效。
-- SAF 系统文件写入、受限 FileProvider 和系统分享选择器已接通；取消、输出失败、无
-  分享目标及启动失败均返回结构化结果，并保留当前详情和已生成图片。
-- 图片固定显示文档/命例修订、计算档案、来源边界和隐私提示；分享只声明交给目标应用，
-  不误报为已经发送。
+- `IM-13 / QA-07`：当前两张授权用户列表已有 50 条日期候选、身份 50/50；39 条合法完整 OCR 四柱同日一致，0 冲突。
+- 仍有 10 条 OCR 缺失和 1 条来源星号隐去，必须结合用户批准的原图逐条确认；不得用历法猜值补齐。
+- 基本资料、专业细盘、命主反馈和师傅点评的更多真实页面类型，仍需用户批准的脱敏样本。
+- `CH-04 / FT-07 / FT-08` 的真实问真边界比较同样依赖批准样本。
 
-### alpha65
+### 真机
 
-- `core:domain` 增加客观摘要 v1、固定五层章节、字段来源、缺失状态、稳定失败码和
-  `CaseObjectiveSummaryGenerator` 公开入口；只允许唯一已采用快照进入摘要。
-- 摘要覆盖出生资料、四柱与基础盘、起运大运、计算档案和正式资料计数；旧快照缺少
-  转换、基础盘、前后节或精确边界时明确显示未记录，不按当前规则反推。
-- 师傅点评、命主反馈、关键事件和附件只进入计数，不读取原文生成算法结论；模板标题、
-  标签和说明有禁止性文案扫描。
-- 详情页增加客观摘要入口，系统剪贴板不可用和异常分别返回结构化失败；复制成功由
-  剪贴板读回验证，页面与命例稳定 ID 可经 Activity 及新 ViewModel 重建恢复。
-- 图片导出改为复用同一客观摘要字段投影；修正图片曾把 `FortuneStart.startAt` 误标为
-  精确交运的问题，现在与详情统一读取 `FortuneStart.endAt`。
+- `QA-08`：OPPO Find N5 安装、折叠/展开、数据保留、TalkBack、触觉和真实宽屏视觉。
+- `UI-11` 的宽屏分支与状态已有自动化；不能把模拟器或代码分支冒充 OPPO 实机证据。
+- 未获得明确授权前，不连接、不安装、不清数据、不卸载 OPPO App。
 
-### alpha66
+### 签名与发布
 
-- `core:domain` 增加点评候选 v1、UTF-16 半开原文区间、规则证据、审核状态、结构化
-  提取/采用错误和 `MasterCommentaryCandidateExtractor` 公开入口。
-- `core:image-parser` 增加本地确定性实现：只按中文/ASCII 标点与换行切分可定位句段，
-  重复句保留首次出现，候选稳定 ID 绑定来源记录、revision、区间和原文；九类建议采用
-  保守本地词表，UI 不含第二套规则。
-- 点评候选页明确显示规则版本、来源 revision、原文区间、分类建议、规则证据及
-  “候选不代表观点正确、不是本机算法结论”；支持编辑、拒绝、恢复和逐条采用。
-- 编辑/拒绝只属于 `SavedStateHandle` 审核状态；采用通过既有 `TextRecordUseCase`
-  重读聚合，核对来源类型、revision、区间原文和聚合 revision，只新增正式
-  `ANALYSIS`，完整点评、历史与附件引用保持不变。
-- 修复恢复竞态：候选 Bundle 先恢复、详情尚未重载时按钮禁用，调用层返回
-  `CONTEXT_NOT_READY`，不再无声丢弃采用操作。
+- `QA-10`：正式签名、同签名覆盖、GitHub Release、回滚和正式产物冻结。
+- 需要正式签名材料与明确发布授权；密钥不得进入仓库。
+- 未授权时不 push、不发布。
 
-### alpha67
+### 外部 AI 自动服务
 
-- `core:domain` 增加反馈主题候选 v1、UTF-16 半开证据区间、规范主题、分类建议、审核
-  状态、结构化提取/采用错误和 `FeedbackThemeCandidateExtractor` 公开入口。
-- `core:image-parser` 增加本地确定性实现：只按中文/ASCII 标点和换行切分可定位句段，
-  用保守词表聚合学业、事业、财运、感情、家庭、健康与迁移主题；候选 ID 绑定来源、
-  revision、规范主题和证据区间，UI 不含第二套规则。
-- 主题候选页显示规则版本、来源 revision、规范主题、事件分类建议、逐段证据和规则说明，
-  并明确“候选只是标签建议，不代表用户确认，也不是本机排盘算法真值”。
-- 编辑、拒绝与恢复只属于 `SavedStateHandle` 审核状态；采用通过
-  `CaseMetadataUseCase.adoptFeedbackThemeCandidate()` 重读聚合并校验来源类型、revision、
-  全部证据区间和聚合 revision，只追加一个正式标签，优先复用同名全局标签 ID。
-- 已有同名标签、标签上限、来源或证据过期、聚合冲突与存储失败均结构化拒绝且零写入；
-  完整命主反馈、记录历史和既有事件保持不变。
+- VX-11 的本地手动导出/回填已完成，不是未实现能力。
+- 自动联网、选择服务、发送字段或接入外部 AI 是新的产品授权，不能从“继续”推断。
 
-### alpha68
+## 7. 下一轮默认动作
 
-- `OcrDocumentRefiner` 把页面特定精识别留在 `core:image-parser`；用户列表按日期行分别
-  放大身份区、四柱区和四个字位，多阈值 bundled ML Kit 结果回映原图，UI 无 OCR 规则。
-- parser v9 去重同一物理日期锚点，支持带括号时柱注记姓名、姓名/性别分块和逐列四柱；
-  四柱必须属于六十甲子，来源 `*`/`＊` 明确保持未知，不从邻近像素或历法补值。
-- `WenzhenPillarDateConsistencyRefiner` 通过 VX-09 公开接口分别检查两种子时口径的同日
-  候选；匹配记一致性，冲突保留来源值并在复核页警告，正式提交仍由既有反查门禁阻断。
-- 两张真实列表稳定拆出 20+29 行，姓名/性别 49/49；43 条合法完整 OCR 四柱中同日一致
-  30、冲突 13，另有 6 条未完整，其中 1 条来源本身以星号隐去时柱。该分层指标取代
-  alpha63 的 43 条身份/16 条四柱旧证据。该初始指标随后被 alpha69 的逐行原图复核
-  纠正，不再作为当前基线。
+1. 完成第 2 节的最小读取和只读现场核对。
+2. 检查 `REQUIREMENT_GAP_AUDIT` 是否存在仍可在既定边界内完成的真实本地缺口。
+3. 若现场已覆盖该缺口，跳过，不重复实现；先修正文档。
+4. 若没有新的样本、真机或发布授权，保持 alpha75 稳定，不为了制造进度擅自增加功能或升级 alpha。
+5. 用户给出新的明确产品任务时，从 alpha75 基线继续，并只在 `emulator-5554` API 35 验收，除非用户另行扩展设备范围。
 
-### alpha69
+本项目不要求用户再次粘贴旧交接。新对话直接使用 `docs/next-codex-prompt.md` 中的提示词即可。
 
-- 新增用户列表灰色日期列二次扫描，只补首次 OCR 附近没有日期锚点的新块；第一张由
-  20 条恢复为 21 条完整日期候选。已有日期不参与二次置信度竞争，避免 11 月被覆盖成
-  1 月；截图底边另有 1 条缺完整生日的截断记录，保持非候选。
-- 姓名字符合同补充 ASCII 句点，真实两图身份达到 50/50。日期列补锚、身份区和四柱
-  复识别都只追加带原图坐标的证据，UI 无 OCR 规则。
-- parser v9 禁止把多阈值产生的四个成对块跨块拼为四柱；优先单块四柱或完整天干/地支
-  行，空间证据以天干列为基准要求地支同列一一配对。缺字即保持未知，不跨列借字。
-- VX-09 年份合同扩为 1800–2100。真实样本暴露 Tyme4j 原始 `getSolarTimes` 对一条可由
-  正向引擎在当天 05:00/06:00 复算的四柱返回空；适配器在原始为空时按日柱 60 日周期
-  扫描民用代表时刻，每个候选仍经唯一 `BaziEngine.calculate()`、IANA 时区、DST 和
-  子时口径复核。全范围无解诊断约 843ms，页面既有 `ioDispatcher` 隔离主线程。
-- 两张真实列表稳定拆出 21+29 共 50 条完整日期候选，身份 50/50；39 条取得合法完整
-  四柱且 39/39 同日复算一致，冲突 0。11 条保持未完整，其中 1 条来源本身以星号隐藏
-  时柱；其余 10 条需要按原图人工补录，不能用历法推算来源值。
-- 续轮完成需求逐项复核，发现项目 `AGENTS.md` 仍残留 VX-09 的历史 `1900–2100`
-  口径；已与领域合同、适配器和 alpha69 证据统一为 `1800–2100`。历史黄金集和
-  alpha62 阶段记录仍可保留 `1900–2100`，不冒充当前公开查询边界。
-
-### alpha70
-
-- 修正交接判断：没有联网授权只限制自动服务适配器，不等于 VX-11 的字段导出和结果回填
-  整体不可实现。首版采用无网络手动桥接，未增加网络权限、外部 SDK 或服务端依赖。
-- `core:domain` 增加 `ExternalAnalysisBridge` v1：只消费
-  `CaseObjectiveSummaryGenerator` 的同一五组客观字段投影，定义字段选择、默认脱敏、
-  精确预览、确定性材料 ID、结构化导出/回填失败和过期命例/采用快照拒绝。
-- 详情页增加“外部分析桥接”：默认选择全部字段组，隐藏身份、性别口径、精确出生时间、
-  地点、经纬度和时区，并明确四柱/岁运仍属敏感资料；用户核对精确文本并主动确认后，
-  App 才写入系统剪贴板并读回验证。App 不选择外部服务、不调用 AI、不自动发送。
-- 用户手动粘贴结果时必须填写来源，可选填写模型并再次确认“只作为外部研究记录”；成功
-  只通过既有 `TextRecordUseCase` 新增带来源、模型、材料编号、命例 revision 和边界说明的
-  正式 `ANALYSIS`，计算快照、来源记录和算法真值均不改变。
-- 字段选择、脱敏状态、来源/模型/结果草稿进入 `SavedStateHandle`；复制和回填确认属于
-  一次性授权，Activity/进程重建后故意重置。保存期间的命例 revision 或采用快照变化会
-  结构化拒绝旧材料。API 35 验收还修复了底部系统区域遮挡确认/保存触控的真实布局问题。
-
-详细逐项证据以 `docs/REQUIREMENT_GAP_AUDIT.md` 为准。
-
-## 6. 最新验证证据
-
-alpha70 最终 clean 命令：
-
-```bash
-JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
-  ./gradlew clean test lint assembleDebug assembleRelease assembleDebugAndroidTest \
-  --no-daemon --max-workers=1
-```
-
-结果：
-
-- 405 个 Gradle task 成功（388 executed，17 up-to-date），耗时 4 分 4 秒；当前累计
-  471 次 JVM 测试执行，零失败、零错误、零跳过。
-- Lint 0 错误；app 12 条 warning、`core:data` 6 条、`core:image-parser` 2 条，
-  均为已知非阻断项。
-- 最终 clean alpha70 产物覆盖安装到 API 35 `emulator-5554` 后复验：VX-11 从合成命例
-  进入、默认脱敏预览、剪贴板读回、Activity 重建、来源/模型/结果草稿恢复、一次性确认
-  重置、Room 正式分析写入与详情读回 1/1；既有页面状态、VX-09 和候选采用恢复 4/4。
-- 两张授权真实列表的一次性脱敏诊断在同一模拟器通过：分类 2/2、日期行 21+29、身份
-  50/50；39 条合法完整 OCR 四柱同日一致 39/39、冲突 0、未完整 11。诊断源码、文本和
-  模拟器副本均已删除，未进入 Git 或正式产物。
-- Debug/Release 合并清单均为 `versionCode 71`、`0.3.0-alpha70`，且没有
-  `INTERNET` 或 `ACCESS_NETWORK_STATE`。
-- 设备写操作仅指向 `emulator-5554`；未触碰 OPPO。
-
-构建产物是可再生的忽略文件，不进入 Git：
-
-- Debug：
-  `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha70-debug.apk`
-  - 56,172,203 字节
-  - SHA-256
-    `4e57b81d050d2d75a9cdeef9c23a5ffa32fa4222e64e174a684b1eaeb0097b6a`
-- 未签名 Release：
-  `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha70-release-unsigned.apk`
-  - 52,302,584 字节
-  - SHA-256
-    `dce8f0e73de2d65560bd8ca89d06d03b828a570866f4961eee22001f85456c0b`
-
-## 7. 尚未完成
-
-### 可在本地继续实现
-
-当前需求审计中没有仍可在既定边界内继续实现的本地能力。VX-01～VX-11 和核心阶段均已
-完成当前自动化及 API 35 模拟器证据；不得为了保持开发进行而擅自创造新需求。
-
-### 外部门禁
-
-- `IM-13/QA-07`：真实问真截图迁移准确率，需要用户批准的脱敏或真实样本。
-- `VX-11 自动服务适配器`：自动联网、选择具体服务或发送资料需要新的明确授权；手动
-  导出/回填已完成，不再列为未实现能力。
-- `QA-08`：OPPO Find N5 安装、展开/折叠、数据保留，需要用户明确授权。
-- `QA-10`：正式签名、发布、GitHub Release 和回滚，需要签名材料与发布授权。
-
-这些门禁不能用合成数据、模拟器或未签名 APK 代替。
-
-## 8. 下一任务：等待真实样本或外部授权
-
-### 目标
-
-保持 alpha70 本地基线稳定。下次自动继续时，先只读复核代码、测试和需求审计；对 10 条
-OCR 缺失和 1 条来源星号隐去只做带原图定位的人工确认，不允许用历法猜值。确认后再
-验收 50 条身份、49 条来源可提供完整四柱的正式写入、进程重建和逐例一致性；星号行
-必须保持来源未知，不能冒充完整命例。
-
-### 可能解除门禁的输入
-
-- 用户对当前 10 条 OCR 缺失行的逐条确认，可推进 49 条完整四柱真实列表正式迁移闭环；
-  来源星号行只能保留未完整证据。
-- 用户批准的基本资料、命主反馈或师傅点评真实问真样本，可推进 IM-13/QA-07 分页面验收。
-- 用户明确批准自动联网、具体外部服务和发送字段后，才可在既有 VX-11 合同后增加服务
-  适配器；不得绕过当前预览、默认脱敏、主动确认和来源标记。
-- 用户明确授权 OPPO 与同签名安装后，才可执行 QA-08。
-- 正式签名材料与发布授权齐备后，才可执行 QA-10。
-
-### 禁止项
-
-- 不用合成数据冒充真实问真页面准确率或 OPPO 设备证据。
-- 不默认联网、调用外部 AI、发送命例资料或自行选择外部服务。
-- 不接触 OPPO、不清数据、不卸载真机 App。
-- 不提交真实姓名、八字、截图、密钥或构建产物。
-- 不 push、不发布；没有新授权时不制造下一 alpha。
-
-## 9. 下一轮启动检查
+## 8. 安全启动命令
 
 ```bash
 cd "/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi"
 git rev-parse --show-toplevel
 git branch --show-current
+git rev-parse --short HEAD
 git status --porcelain=v1 | awk 'END { print "entries=" NR }'
-rg -n -m 20 'VX-11|IM-13|QA-08|QA-10|外部门禁' \
-  docs/REQUIREMENT_GAP_AUDIT.md docs/CURRENT_HANDOFF.md
 ```
 
-若现场与本文件不一致，以现场代码和最新测试证据为准，先修正文档。无新资料或授权时，
-直接保持等待，不要求用户再次发送“继续”提示，也不越过外部门禁。不要读取旧对话全文。
+禁止裸跑未知规模的 `git status/diff/log`。先计数或 `--stat`，再限定文件查看。
 
-可直接使用的启动提示见 `docs/next-codex-prompt.md`。
+## 9. 关键文件索引
+
+- 执行契约：`AGENTS.md`
+- 下一轮提示词：`docs/next-codex-prompt.md`
+- 需求与差距：`docs/REQUIREMENT_GAP_AUDIT.md`
+- 架构边界：`docs/architecture-governance.md`
+- 领域规则：`docs/domain-rules.md`
+- 测试门禁：`docs/TEST_STRATEGY.md`
+- 决策记录：`docs/decision-log.md`
+- 产品需求：`docs/PRODUCT_REQUIREMENTS.md`
+- alpha75 视觉证据：`design/qa/alpha75/`
