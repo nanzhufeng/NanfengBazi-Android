@@ -317,6 +317,16 @@ fun NanfengBaziApp(
                         onSearch = viewModel::searchFourPillars,
                         modifier = Modifier.padding(padding),
                     )
+                    AppDestination.Almanac -> AlmanacScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onPreviousMonth = { viewModel.moveAlmanacMonth(-1) },
+                        onNextMonth = { viewModel.moveAlmanacMonth(1) },
+                        onToday = viewModel::showTodayInAlmanac,
+                        onSelectDate = viewModel::selectAlmanacDate,
+                        onUseForChart = viewModel::useAlmanacDateForChart,
+                        modifier = Modifier.padding(padding),
+                    )
                     AppDestination.RecordHub -> RecordHubScreen(
                         cases = state.cases,
                         loading = state.listLoading,
@@ -354,6 +364,7 @@ fun NanfengBaziApp(
                         onSubmit = { viewModel.submitCase() },
                         onConfirmDuplicate = { viewModel.submitCase(allowDuplicate = true) },
                         onOpenFourPillarsLookup = viewModel::openFourPillarsLookup,
+                        onOpenAlmanac = viewModel::openAlmanac,
                         modifier = Modifier.padding(padding),
                     )
                     is AppDestination.CaseDetail -> {
@@ -3838,6 +3849,7 @@ private fun CreateCaseScreen(
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
     onOpenFourPillarsLookup: (List<String>) -> Unit,
+    onOpenAlmanac: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     WenzhenCreateCaseScreen(
@@ -3847,6 +3859,7 @@ private fun CreateCaseScreen(
         onSubmit = onSubmit,
         onConfirmDuplicate = onConfirmDuplicate,
         onOpenFourPillarsLookup = onOpenFourPillarsLookup,
+        onOpenAlmanac = onOpenAlmanac,
         modifier = modifier,
     )
 }
@@ -3859,6 +3872,7 @@ private fun WenzhenCreateCaseScreen(
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
     onOpenFourPillarsLookup: (List<String>) -> Unit,
+    onOpenAlmanac: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var saveCase by rememberSaveable { mutableStateOf(true) }
@@ -4140,6 +4154,7 @@ private fun WenzhenCreateCaseScreen(
                     }
                 }
             }
+            AlmanacHomeEntry(onClick = onOpenAlmanac)
             state.formError?.let { error ->
                 Card(
                     modifier = Modifier

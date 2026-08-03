@@ -12,11 +12,13 @@ import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.RoomImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
+import com.nanzhufeng.nanfengbazi.engine.tyme.TymeAlmanacReader
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeFourPillarsLookup
 import com.nanzhufeng.nanfengbazi.imageparser.AnchorBasedWenzhenPageClassifier
 import com.nanzhufeng.nanfengbazi.imageparser.DHashImageFingerprintEngine
@@ -26,6 +28,7 @@ import com.nanzhufeng.nanfengbazi.imageparser.MlKitChineseOcrEngine
 import java.nio.file.Path
 
 interface AppContainer {
+    val almanacReader: AlmanacReader
     val caseRepository: CaseRepository
     val baziEngine: BaziEngine
     val caseImageRenderer: CaseImageRenderer
@@ -45,6 +48,7 @@ interface AppContainer {
 class DefaultAppContainer(
     application: Application,
 ) : AppContainer {
+    override val almanacReader: AlmanacReader = TymeAlmanacReader()
     override val calculationPreferenceStore: CalculationPreferenceStore =
         AndroidCalculationPreferenceStore(application)
     private val database = Room.databaseBuilder(

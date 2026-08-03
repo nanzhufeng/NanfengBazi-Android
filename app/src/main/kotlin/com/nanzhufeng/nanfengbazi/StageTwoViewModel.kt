@@ -35,6 +35,13 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreview
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
+import com.nanzhufeng.nanfengbazi.domain.AlmanacContract
+import com.nanzhufeng.nanfengbazi.domain.AlmanacDate
+import com.nanzhufeng.nanfengbazi.domain.AlmanacError
+import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthQuery
+import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
+import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
+import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode
@@ -122,6 +129,7 @@ import java.nio.file.Path
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -137,6 +145,7 @@ sealed interface AppDestination {
     data object CaseList : AppDestination
     data object CaseComparison : AppDestination
     data object FourPillarsLookup : AppDestination
+    data object Almanac : AppDestination
     data object RecordHub : AppDestination
     data object Settings : AppDestination
     data object CreateCase : AppDestination
@@ -203,6 +212,8 @@ class StageTwoNavigator {
     fun openFourPillarsLookup(): AppDestination {
         return push(AppDestination.FourPillarsLookup)
     }
+
+    fun openAlmanac(): AppDestination = push(AppDestination.Almanac)
 
     fun openScreenshotImportReview(): AppDestination {
         return push(AppDestination.ScreenshotImportReview)
@@ -278,6 +289,11 @@ class StageTwoNavigator {
             }
 
             AppDestination.FourPillarsLookup -> {
+                stack += AppDestination.CreateCase
+                stack += destination
+            }
+
+            AppDestination.Almanac -> {
                 stack += AppDestination.CreateCase
                 stack += destination
             }
@@ -379,6 +395,12 @@ data class StageTwoUiState(
     val fourPillarsLookupLoading: Boolean = false,
     val fourPillarsLookupHasSearched: Boolean = false,
     val fourPillarsLookupError: String? = null,
+    val almanacYear: Int = LocalDate.now().year,
+    val almanacMonth: Int = LocalDate.now().monthValue,
+    val almanacSelectedDay: Int = LocalDate.now().dayOfMonth,
+    val almanacView: AlmanacMonthView? = null,
+    val almanacLoading: Boolean = false,
+    val almanacError: String? = null,
     val defaultRatHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
     val listLoading: Boolean = false,
     val listError: String? = null,
@@ -483,6 +505,7 @@ class StageTwoViewModel(
     private val fortunePositionResolver: FortunePositionResolver? = null,
     private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     private val fourPillarsLookup: FourPillarsLookup? = null,
+    private val almanacReader: AlmanacReader? = null,
     private val caseImageRenderer: CaseImageRenderer? = null,
     private val objectiveSummaryGenerator: CaseObjectiveSummaryGenerator =
         CaseObjectiveSummaryContract,
@@ -518,6 +541,7 @@ class StageTwoViewModel(
     private var searchJob: Job? = null
     private var comparisonJob: Job? = null
     private var fourPillarsLookupJob: Job? = null
+    private var almanacJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
@@ -557,6 +581,9 @@ class StageTwoViewModel(
             mutableState.value.fourPillarsLookupHasSearched
         ) {
             searchFourPillars()
+        }
+        if (mutableState.value.destination == AppDestination.Almanac) {
+            loadAlmanac()
         }
     }
 
@@ -2632,6 +2659,132 @@ class StageTwoViewModel(
         }
     }
 
+    fun openAlmanac() {
+        val today = LocalDate.now(observationClock)
+        mutableState.update {
+            it.copy(
+                destination = navigator.openAlmanac(),
+                almanacYear = today.year,
+                almanacMonth = today.monthValue,
+                almanacSelectedDay = today.dayOfMonth,
+                almanacView = null,
+                almanacError = null,
+                message = null,
+            )
+        }
+        loadAlmanac()
+    }
+
+    fun moveAlmanacMonth(offset: Int) {
+        if (offset == 0) return
+        val state = mutableState.value
+        val target = YearMonth.of(state.almanacYear, state.almanacMonth).plusMonths(offset.toLong())
+        if (target.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR) return
+        mutableState.update {
+            it.copy(
+                almanacYear = target.year,
+                almanacMonth = target.monthValue,
+                almanacSelectedDay = it.almanacSelectedDay.coerceAtMost(target.lengthOfMonth()),
+                almanacView = null,
+                almanacError = null,
+            )
+        }
+        loadAlmanac()
+    }
+
+    fun showTodayInAlmanac() {
+        val today = LocalDate.now(observationClock)
+        mutableState.update {
+            it.copy(
+                almanacYear = today.year,
+                almanacMonth = today.monthValue,
+                almanacSelectedDay = today.dayOfMonth,
+                almanacView = null,
+                almanacError = null,
+            )
+        }
+        loadAlmanac()
+    }
+
+    fun selectAlmanacDate(date: AlmanacDate) {
+        if (date.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR) return
+        mutableState.update {
+            it.copy(
+                almanacYear = date.year,
+                almanacMonth = date.month,
+                almanacSelectedDay = date.day,
+                almanacView = null,
+                almanacError = null,
+            )
+        }
+        loadAlmanac()
+    }
+
+    fun useAlmanacDateForChart() {
+        val state = mutableState.value
+        val selected = state.almanacView?.selected?.date
+            ?: AlmanacDate(state.almanacYear, state.almanacMonth, state.almanacSelectedDay)
+        mutableState.update {
+            it.copy(
+                destination = navigator.openCreate(),
+                form = it.form.copy(
+                    calendarSystem = CalendarSystem.SOLAR,
+                    year = selected.year.toString(),
+                    month = selected.month.toString(),
+                    day = selected.day.toString(),
+                    isLeapMonth = false,
+                ).clearTimeZoneResolution(),
+                message = null,
+            )
+        }
+    }
+
+    private fun loadAlmanac() {
+        val reader = almanacReader
+        if (reader == null) {
+            mutableState.update {
+                it.copy(almanacLoading = false, almanacError = "万年历引擎当前不可用。")
+            }
+            return
+        }
+        val state = mutableState.value
+        val query = AlmanacMonthQuery(
+            year = state.almanacYear,
+            month = state.almanacMonth,
+            selectedDay = state.almanacSelectedDay,
+        )
+        almanacJob?.cancel()
+        almanacJob = viewModelScope.launch {
+            mutableState.update { it.copy(almanacLoading = true, almanacError = null) }
+            val result = try {
+                withContext(ioDispatcher) { reader.loadMonth(query) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                AlmanacResult.Failed(AlmanacError.EngineUnavailable)
+            }
+            if (
+                mutableState.value.almanacYear != query.year ||
+                mutableState.value.almanacMonth != query.month ||
+                mutableState.value.almanacSelectedDay != query.selectedDay
+            ) return@launch
+            mutableState.update {
+                when (result) {
+                    is AlmanacResult.Completed -> it.copy(
+                        almanacView = result.month,
+                        almanacLoading = false,
+                        almanacError = null,
+                    )
+                    is AlmanacResult.Failed -> it.copy(
+                        almanacView = null,
+                        almanacLoading = false,
+                        almanacError = result.error.toAlmanacUserMessage(),
+                    )
+                }
+            }
+        }
+    }
+
     fun updateDefaultRatHourRule(rule: RatHourRule) {
         calculationPreferenceStore.writeRatHourRule(rule)
         fourPillarsLookupJob?.cancel()
@@ -4684,6 +4837,7 @@ class StageTwoViewModel(
                 professionalFortuneResolver =
                     com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
                 fourPillarsLookup = container.fourPillarsLookup,
+                almanacReader = container.almanacReader,
                 caseImageRenderer = container.caseImageRenderer,
                 singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
@@ -4729,11 +4883,19 @@ private fun AppDestination.caseIdOrNull(): String? = when (this) {
     AppDestination.CaseList,
     AppDestination.CaseComparison,
     AppDestination.FourPillarsLookup,
+    AppDestination.Almanac,
     AppDestination.RecordHub,
     AppDestination.Settings,
     AppDestination.CreateCase,
     AppDestination.ScreenshotImportReview,
     -> null
+}
+
+private fun AlmanacError.toAlmanacUserMessage(): String = when (this) {
+    is AlmanacError.YearOutOfBounds -> "万年历支持 $minimum–$maximum 年。"
+    is AlmanacError.InvalidMonth -> "月份 $month 无效。"
+    is AlmanacError.InvalidDay -> "日期 $year-$month-$day 无效。"
+    AlmanacError.EngineUnavailable -> "万年历计算失败，请重试。"
 }
 
 private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
@@ -4748,6 +4910,9 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
         fourPillarsLookupForm.toSavedStateBundle(),
     )
     putBoolean("fourPillarsLookupHasSearched", fourPillarsLookupHasSearched)
+    putInt("almanacYear", almanacYear)
+    putInt("almanacMonth", almanacMonth)
+    putInt("almanacSelectedDay", almanacSelectedDay)
     putString("defaultRatHourRule", defaultRatHourRule.name)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
@@ -4804,6 +4969,12 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         fourPillarsLookupLoading =
             destination == AppDestination.FourPillarsLookup &&
                 getBoolean("fourPillarsLookupHasSearched"),
+        almanacYear = getInt("almanacYear").takeIf { it != 0 } ?: LocalDate.now().year,
+        almanacMonth = getInt("almanacMonth").takeIf { it in 1..12 }
+            ?: LocalDate.now().monthValue,
+        almanacSelectedDay = getInt("almanacSelectedDay").takeIf { it in 1..31 }
+            ?: LocalDate.now().dayOfMonth,
+        almanacLoading = destination == AppDestination.Almanac,
         defaultRatHourRule = enumValueOrDefault(
             getString("defaultRatHourRule"),
             RatHourRule.TYME_DEFAULT,
@@ -4883,6 +5054,7 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
         AppDestination.CaseList -> putString("type", "case_list")
         AppDestination.CaseComparison -> putString("type", "case_comparison")
         AppDestination.FourPillarsLookup -> putString("type", "four_pillars_lookup")
+        AppDestination.Almanac -> putString("type", "almanac")
         AppDestination.RecordHub -> putString("type", "record_hub")
         AppDestination.Settings -> putString("type", "settings")
         AppDestination.CreateCase -> putString("type", "create_case")
@@ -4940,6 +5112,7 @@ private fun Bundle.toAppDestination(): AppDestination {
         "case_list", "record_hub" -> AppDestination.CaseList
         "case_comparison" -> AppDestination.CaseComparison
         "four_pillars_lookup" -> AppDestination.FourPillarsLookup
+        "almanac" -> AppDestination.Almanac
         "settings" -> AppDestination.Settings
         "create_case" -> AppDestination.CreateCase
         "screenshot_review" -> AppDestination.ScreenshotImportReview

@@ -47,6 +47,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -78,6 +79,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.engine.tyme.TymeAlmanacReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -148,6 +150,34 @@ class StageTwoViewModelTest {
             viewModel.state.value.fourPillarsLookupForm.ratHourRule,
         )
         assertEquals("甲子", viewModel.state.value.fourPillarsLookupForm.yearPillar)
+    }
+
+    @Test
+    fun `万年历默认今天并可将所选公历日期带回排盘首页`() = runTest {
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            almanacReader = TymeAlmanacReader(),
+        )
+
+        viewModel.openAlmanac()
+
+        assertEquals(AppDestination.Almanac, viewModel.state.value.destination)
+        assertEquals(2026, viewModel.state.value.almanacYear)
+        assertEquals(7, viewModel.state.value.almanacMonth)
+        assertEquals(30, viewModel.state.value.almanacSelectedDay)
+        assertNotNull(viewModel.state.value.almanacView)
+
+        viewModel.moveAlmanacMonth(1)
+        viewModel.selectAlmanacDate(
+            com.nanzhufeng.nanfengbazi.domain.AlmanacDate(2026, 8, 2),
+        )
+        viewModel.useAlmanacDateForChart()
+
+        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals(CalendarSystem.SOLAR, viewModel.state.value.form.calendarSystem)
+        assertEquals("2026", viewModel.state.value.form.year)
+        assertEquals("8", viewModel.state.value.form.month)
+        assertEquals("2", viewModel.state.value.form.day)
     }
 
     @Test
@@ -1521,6 +1551,7 @@ class StageTwoViewModelTest {
         engine: BaziEngine = RecordingEngine(),
         fortunePositionResolver: FortunePositionResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
+        almanacReader: AlmanacReader? = null,
         caseImageRenderer: com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer? = null,
         calculationPreferenceStore: CalculationPreferenceStore =
             InMemoryCalculationPreferenceStore(),
@@ -1574,6 +1605,7 @@ class StageTwoViewModelTest {
             observationClock = fixedClock,
             fortunePositionResolver = fortunePositionResolver,
             fourPillarsLookup = fourPillarsLookup,
+            almanacReader = almanacReader,
             caseImageRenderer = caseImageRenderer,
             singleCaseExchange = SingleCaseExchangeService(
                 repository = repository,

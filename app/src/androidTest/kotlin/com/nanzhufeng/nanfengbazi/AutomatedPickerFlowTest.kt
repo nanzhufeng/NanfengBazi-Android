@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -57,5 +58,24 @@ class AutomatedPickerFlowTest {
             .performClick()
         composeRule.onNodeWithTag("lookup_time_zone_sheet").assertIsDisplayed()
         composeRule.onNodeWithTag("lookup_time_zone_wheel").assertIsDisplayed()
+    }
+
+    @Test
+    fun almanacOpensFromHomeAndSelectedDateReturnsToChart() {
+        composeRule.onNodeWithTag("open_almanac")
+            .performScrollTo()
+            .performClick()
+
+        composeRule.onNodeWithTag("almanac_screen").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("use_almanac_date_for_chart")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("use_almanac_date_for_chart")
+            .performScrollTo()
+            .performClick()
+
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
     }
 }

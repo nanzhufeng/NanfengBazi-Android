@@ -1,18 +1,61 @@
-# 当前交接：alpha74 问真式紧凑首页、星座圆标与详情视觉
+# 当前交接：alpha75 本地响应式万年历
 
-更新日期：2026-08-02
+更新日期：2026-08-03
 
 ## A. 现场快照
 
 - 项目：南枫八字，本地优先 Android App。
 - 仓库：`/Users/nanzhufeng/Documents/工具开发/nanfeng-bazi`
 - 分支：`main`；本地准确提交以现场 `git log -1` 为准，禁止 push/发布。
-- 版本：`versionCode 75`，`versionName 0.3.0-alpha74`。
+- 版本：`versionCode 76`，`versionName 0.3.0-alpha75`。
 - 本轮 ADB 只操作 `emulator-5554`，现场确认 API 35；仅列出连接设备时看见 OPPO，未向其下发命令。
-- 用户已取消本任务“不联网”约束；本轮联网仅检索并取得 Tabler Icons 官方星座 SVG 与 MIT 许可，App 运行时仍为本地优先，未接外部 AI。
+- 用户已取消本任务“不联网”约束；本轮联网只审计参考万年历与检索开源方案，App 运行时
+  未增加网络权限、WebView 或外部 AI。
 - 现场代码和最新测试证据优先于本文；若不一致，先修正本文。
 
-## B. alpha74 已完成
+## B. alpha75 已完成
+
+### 万年历能力与入口
+
+- 排盘首页主输入卡下方新增“万年历”入口，可直接打开本地月历。
+- `core:domain` 新增 `AlmanacReader`、月份查询、42 格日期摘要、日详情和结构化错误；
+  `core:engine-tyme` 由 `TymeAlmanacReader` 唯一实现，Compose 不直接调用 Tyme4j。
+- 月历显示公历、农历、节气/节日、日柱；日期详情显示年月日柱、星座、建除、值神、
+  星宿、胎神和宜忌，并可将所选日期带回正常排盘表单。
+- 手机使用单列月历—详情；宽度达到 760dp 时使用月历—详情双栏。月份、日期和确认动作
+  复用系统语义触觉，状态写入 `SavedStateHandle`。
+- 首版范围固定 1800–2100；宜忌等明确标记为传统民俗资料，不作为事实判断。
+
+### 参考站点与真值边界
+
+- 已实际审计 `https://wnl.zydxt.top/index.php`：其移动页面布局存在明显重叠，数据依赖未公开
+  稳定合同的 POST 接口，且未找到可确认的同源开源仓库，因此不把远端页面直接嵌入 App。
+- GitHub 调研确认 `6tail/lunar-javascript` 是可用 MIT 方案，但当前 Android 已有 Tyme4j
+  生产适配层；为避免第二算法真值和新增运行依赖，本轮不引入该库。
+- 最终 merged manifest/APK 不包含 `INTERNET`；源码 manifest 继续用 `tools:node="remove"`
+  阻断依赖传入网络权限；参考站点代码、接口响应和素材均未复制入仓库。
+
+## C. 最新验证
+
+- 离线组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：
+  使用 `--rerun-tasks` 强制执行，`BUILD SUCCESSFUL in 3m 10s`，399/399 个 Gradle 任务；
+  聚合测试 XML 为 485 tests、0 failures、0 errors、0 skipped。
+- `TymeAlmanacReaderTest` 覆盖 42 格、指定日农历/日柱/星座、节气、60 日周期、非法年份和
+  非法日期；`StageTwoViewModelTest` 覆盖打开、选择日期及返回排盘。
+- `emulator-5554` API 35：日期/地点滚轮、四柱/范围/时区滚轮和万年历入口—页面—带回
+  排盘共 `OK (3 tests)`；手机态首页和月历完成截图复验，证据在 `design/qa/alpha75/`。
+- 最终 Debug APK SHA-256：`688a855e35ac30bedbc58233d591d753ca75332cf9f5593ccef4822a88cdc763`；
+  模拟器已安装 `versionCode 76` / `0.3.0-alpha75`，设备内 base.apk 回读哈希与本地完全一致。
+- Release APK 未签名，SHA-256：`8f7a34f265e96c0f4deee21c9d674f37622cfd14df7dc1c24b61049f18a1272d`。
+- 只安装和操作 `emulator-5554`；未操作 OPPO。
+
+alpha75 产物：
+
+- `app/build/outputs/apk/debug/NanfengBazi-Android-v0.3.0-alpha75-debug.apk`
+- `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha75-release-unsigned.apk`
+- `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha75-debug-androidTest.apk`
+
+## D. alpha74 既有能力继续有效
 
 ### 首页、选择器与设置
 
@@ -43,7 +86,7 @@
 - UI 只消费 `BaziEngine`、`FourPillarsLookup`、仓库和采用快照；Tyme4j 仍只存在于引擎适配层。
 - Tabler Icons 许可文本保存在 `app/src/main/assets/licenses/tabler-icons-MIT.txt`。
 
-## C. 最新验证
+## E. alpha74 历史验证
 
 - 最终离线组合 `test lint assembleDebug assembleRelease assembleDebugAndroidTest`：
   `BUILD SUCCESSFUL in 1m 4s`，399 个 Gradle 任务。
@@ -60,14 +103,14 @@ alpha74 产物：
 - `app/build/outputs/apk/release/NanfengBazi-Android-v0.3.0-alpha74-release-unsigned.apk`
 - `app/build/outputs/apk/androidTest/debug/NanfengBazi-Android-v0.3.0-alpha74-debug-androidTest.apk`
 
-## D. 明确待办与禁止项
+## F. 明确待办与禁止项
 
 - 真实问真基本资料/专业细盘/点评页迁移准确率：需继续授权样本和逐字段确认。
 - OPPO Find N5 安装、折叠/展开、数据保留、朗读和马达手感：留作真机验收，本轮未操作。
 - 正式签名、发布、GitHub Release 和回滚：需签名材料与明确发布授权。
 - 当前禁止：不向 OPPO 下发命令、不 push、不发布，不用模拟器或合成数据冒充真机/真实资料证据。
 
-## E. 下一轮直接启动
+## G. 下一轮直接启动
 
 1. 只读确认 Git 根、分支和工作区计数，读取 `AGENTS.md` 与本文后直接继续，不要求用户重复交接。
 2. 没有新外部资料或授权时，继续可在本地证明的功能、视觉和自动化能力。

@@ -194,3 +194,13 @@
 | 首页与详情视觉 | `NanfengBaziTheme` + Compose 共享组件 | 问真负责信息架构与密度参照，南枫记提供字体、圆角、颜色、滚轮和触觉；UI 仍只消费公开领域接口 |
 | 辅助文案 | 各页面 Compose 文案 → 视觉 QA | 复述“点击/滑动/三级联动”或重复相邻值的小字不显示；只有业务口径、风险、证据边界、异常和写入后果可占辅助说明层 |
 | 本地预览案例 | `RecordPreviewFixtureTest` + 显式 `seedPreviewCases=true` | 仅在 API 35 视觉验收时写入姓名化合成案例；正常测试会跳过，正式构建与首次启动不内置、不自动生成 |
+
+## alpha75 本地万年历边界
+
+| 概念 | 唯一所有者/入口 | 边界 |
+|---|---|---|
+| 万年历领域合同 | `AlmanacReader`、`AlmanacMonthQuery`、`AlmanacResult` | `core:domain` 定义查询、42 格月份、日详情和结构化错误，不依赖 Tyme4j 或 Compose |
+| 万年历生产实现 | `TymeAlmanacReader` | 只在 `core:engine-tyme` 调用 Tyme4j；UI 不读取远端接口、不嵌 WebView、不复制第二历法算法 |
+| 首页与日期回填 | `StageTwoViewModel` → `AlmanacScreen` → 正常排盘表单 | 月份、所选日和目的地进入 `SavedStateHandle`；“用此日期排盘”只更新公历日期，完整计算仍经过 `BaziEngine` |
+| 响应式表示 | `AlmanacScreen` | 手机单列，760dp 以上双栏；宽度只改变布局，不改变领域结果或缓存第二份事实 |
+| 传统资料说明 | `AlmanacDayDetails` → 详情页 | 宜忌、值神等作为传统民俗资料展示，不生成事实断言、吉凶结论或自动写入命例 |
