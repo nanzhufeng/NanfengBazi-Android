@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -6304,13 +6306,6 @@ private fun ReferenceCaseDetailContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .graphicsLayer {
-                translationY = if (selectedSection == CaseDetailSection.BASIC_INFO) {
-                    (-12).dp.toPx()
-                } else {
-                    0f
-                }
-            }
             .background(
                 color = Color.White,
                 shape = if (selectedSection == CaseDetailSection.BASIC_INFO) {
@@ -6321,7 +6316,7 @@ private fun ReferenceCaseDetailContent(
             )
             .padding(
                 horizontal = if (wide) 28.dp else 10.dp,
-                vertical = if (selectedSection == CaseDetailSection.BASIC_INFO) 0.dp else 6.dp,
+                vertical = if (selectedSection == CaseDetailSection.BASIC_INFO) 8.dp else 6.dp,
             ),
     ) {
         when (selectedSection) {
@@ -6394,11 +6389,9 @@ private fun ReferenceBasicInfo(
         "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}${lunar.month}月${lunar.day}日 " +
             "%02d:%02d:%02d".format(lunar.hour, lunar.minute, lunar.second)
     } ?: "暂无换算结果"
-    WenzhenDualFactRow(
-        leftLabel = "姓名",
-        leftValue = case.name.value ?: case.alias,
-        rightLabel = "性别",
-        rightValue = case.sexForFortuneDirection.displayName(),
+    WenzhenIdentityFactRow(
+        name = case.name.value ?: case.alias,
+        sex = case.sexForFortuneDirection.displayName(),
         alternate = nextAlternate(),
     )
     WenzhenFactRow("农历", lunarText, alternate = nextAlternate())
@@ -6566,9 +6559,6 @@ private fun ReferenceBasicChart(
             dateValues = solar?.let {
                 listOf("${it.year}年", "${it.month}月", "${it.day}日", "%02d时".format(it.hour))
             },
-            natalShenSha = BasicShenShaRules.resolve(basic.pillars).map { shenSha ->
-                shenSha.names.joinToString("、")
-            },
         )
     } ?: ReferenceEmptyText("当前计算快照缺少基础排盘明细。")
     result.warnings.forEach { warning ->
@@ -6671,6 +6661,45 @@ private fun WenzhenDualFactRow(
             WenzhenInlineFact(leftLabel, leftValue, Modifier.weight(1f))
             Spacer(Modifier.width(12.dp))
             WenzhenInlineFact(rightLabel, rightValue, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun WenzhenIdentityFactRow(
+    name: String,
+    sex: String,
+    alternate: Boolean,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (alternate) NanfengControlSurface else Color.White,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "姓名：",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                name,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "性别：",
+                modifier = Modifier.padding(start = 16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(sex, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -7933,7 +7962,7 @@ private fun ProfessionalPillarCell(
                 if (column.key.startsWith("flow_")) Modifier.testTag("${column.key}_pillar")
                 else Modifier,
             )
-            .height(184.dp),
+            .heightIn(min = 202.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -7963,10 +7992,7 @@ private fun ProfessionalPillarCell(
                 lineHeight = 19.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            ProfessionalElementAndTenGod(
-                element = column.heavenStemElement,
-                tenGod = column.stemTenGod,
-            )
+            ProfessionalTenGodLabel(column.stemTenGod)
             Text(
                 branch.toString(),
                 modifier = Modifier.padding(top = 5.dp),
@@ -7975,12 +8001,11 @@ private fun ProfessionalPillarCell(
                 lineHeight = 19.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            ProfessionalElementAndTenGod(element = column.earthBranchElement)
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(73.dp)
+                .heightIn(min = 82.dp)
                 .padding(top = 6.dp)
                 .background(NanfengControlSurface)
                 .padding(horizontal = 1.dp, vertical = 4.dp),
@@ -7992,19 +8017,19 @@ private fun ProfessionalPillarCell(
                 column.hiddenStems.forEach { hidden ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
                             hidden.heavenStem,
                             color = hidden.heavenStem.firstOrNull()?.let(::baziElementColor) ?: NanfengInk,
-                            fontSize = 7.sp,
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Text(hidden.element, fontSize = 7.sp, color = baziElementColor(hidden.element))
                         Text(
-                            tenGodAbbreviation(hidden.tenGod),
-                            fontSize = 7.sp,
+                            hidden.tenGod,
+                            fontSize = 8.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
                     }
                 }
@@ -8014,24 +8039,16 @@ private fun ProfessionalPillarCell(
 }
 
 @Composable
-private fun ProfessionalElementAndTenGod(
-    element: String,
-    tenGod: String? = null,
+private fun ProfessionalTenGodLabel(
+    tenGod: String,
 ) {
-    Row(
-        modifier = Modifier.height(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(element, fontSize = 7.sp, color = baziElementColor(element))
-        tenGod?.let {
-            Text(
-                tenGodAbbreviation(it),
-                fontSize = 7.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    Text(
+        tenGod,
+        modifier = Modifier.height(15.dp),
+        fontSize = 9.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+    )
 }
 
 @Composable
@@ -8059,17 +8076,21 @@ private fun ProfessionalTimelineRow(
                 title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(NanfengControlSurface.copy(alpha = 0.82f))
+                    .background(NanfengControlSurface.copy(alpha = 0.58f))
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-                items.forEach { item ->
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(items, key = ProfessionalTimelineItem::key) { item ->
                     ProfessionalTimelineCell(
                         item = item,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.width(72.dp),
                         onClick = { onSelect(item.observedAt) },
                     )
                 }
@@ -8079,11 +8100,11 @@ private fun ProfessionalTimelineRow(
 }
 
 private fun professionalTimelineCardColor(title: String): Color = when (title) {
-    "大运" -> Color(0xFFFFFBF3)
-    "流年" -> Color(0xFFF6F9F3)
-    "流月" -> Color(0xFFF7F5F9)
-    "流日" -> Color(0xFFF3F8F8)
-    "流时" -> Color(0xFFF9F5F2)
+    "大运" -> Color(0xFFFFFCF6)
+    "流年" -> Color(0xFFFBFEF9)
+    "流月" -> Color(0xFFFDFCFF)
+    "流日" -> Color(0xFFF8FEFE)
+    "流时" -> Color(0xFFFFFBF8)
     else -> Color.White
 }
 
@@ -8102,13 +8123,13 @@ private fun ProfessionalTimelineCell(
         shape = RoundedCornerShape(8.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 0.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 3.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
                 item.label,
-                fontSize = 7.sp,
-                lineHeight = 8.sp,
+                fontSize = 8.sp,
+                lineHeight = 10.sp,
                 color = if (item.selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
@@ -8118,19 +8139,19 @@ private fun ProfessionalTimelineCell(
                 Text(
                     stem.toString(),
                     color = baziElementColor(stem),
-                    fontSize = 13.sp,
-                    lineHeight = 14.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                ProfessionalElementAndTenGod(item.heavenStemElement, item.stemTenGod)
+                ProfessionalTenGodLabel(item.stemTenGod)
             }
             if (branch != null) {
                 Text(
                     branch.toString(),
                     modifier = Modifier.padding(top = 2.dp),
                     color = baziElementColor(branch),
-                    fontSize = 13.sp,
-                    lineHeight = 14.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 ProfessionalTimelineBranchDetail(item)
@@ -8150,24 +8171,26 @@ private fun ProfessionalTimelineCell(
 
 @Composable
 private fun ProfessionalTimelineBranchDetail(item: ProfessionalTimelineItem) {
-    val hidden = item.primaryHiddenStem
-    Row(
-        modifier = Modifier.height(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    Column(
+        modifier = Modifier.heightIn(min = 13.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(item.earthBranchElement, fontSize = 7.sp, color = baziElementColor(item.earthBranchElement))
-        hidden?.let {
-            Text(
-                it.heavenStem,
-                fontSize = 7.sp,
-                color = it.heavenStem.firstOrNull()?.let(::baziElementColor) ?: NanfengInk,
-            )
-            Text(
-                tenGodAbbreviation(it.tenGod),
-                fontSize = 7.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        item.hiddenStems.forEach { hidden ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    hidden.heavenStem,
+                    fontSize = 9.sp,
+                    color = hidden.heavenStem.firstOrNull()?.let(::baziElementColor) ?: NanfengInk,
+                )
+                Text(
+                    tenGodAbbreviation(hidden.tenGod),
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -8410,10 +8433,12 @@ private fun BasicChartDetailsView(
     details: BasicChartDetails,
     sex: SexForFortuneDirection,
     dateValues: List<String>? = null,
-    natalShenSha: List<String> = emptyList(),
 ) {
     val pillars = details.pillars.associateBy { it.position }
     val ordered = PillarPosition.entries.map { requireNotNull(pillars[it]) }
+    val natalShenSha = BasicShenShaRules.resolve(details.pillars).map { shenSha ->
+        shenSha.names.joinToString("、")
+    }
 
     Column(
         modifier = Modifier
@@ -8484,12 +8509,12 @@ private fun BasicChartHiddenStemRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (shaded) NanfengControlSurface else Color.White)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = 11.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
             "藏干",
-            modifier = Modifier.width(44.dp),
+            modifier = Modifier.width(40.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -8503,14 +8528,17 @@ private fun BasicChartHiddenStemRow(
                         Text(
                             hidden.heavenStem,
                             textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
                             color = baziElementColor(hidden.element),
                         )
                         Text(
                             hidden.tenGod,
                             modifier = Modifier.padding(start = 2.dp),
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
                     }
                 }

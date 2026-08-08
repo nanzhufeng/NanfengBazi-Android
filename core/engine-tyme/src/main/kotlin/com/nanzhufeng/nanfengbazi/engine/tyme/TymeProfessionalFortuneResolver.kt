@@ -145,7 +145,7 @@ private fun buildTimelineItem(
         stemTenGod = detail.stemTenGod,
         heavenStemElement = detail.heavenStemElement,
         earthBranchElement = detail.earthBranchElement,
-        primaryHiddenStem = detail.hiddenStems.firstOrNull(),
+        hiddenStems = detail.hiddenStems,
         selected = selected,
     )
 }
@@ -256,8 +256,8 @@ private fun buildDailyTimeline(
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> {
     val selected = LocalDate.of(observedAt.year, observedAt.month, observedAt.day)
-    val start = selected.minusDays(4).coerceInSupportedCalendarRange(10)
-    return (0 until 10).map { offset ->
+    val start = selected.withDayOfMonth(1)
+    return (0 until selected.lengthOfMonth()).map { offset ->
         val date = start.plusDays(offset.toLong())
         val at = CivilDateTime(
             date.year,
@@ -286,13 +286,16 @@ private fun buildHourlyTimeline(
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> {
     val selectedDate = LocalDate.of(observedAt.year, observedAt.month, observedAt.day)
-    val selectedPillar = observedAt.toTyme().lunarHour
-        .resolveEightChar(result.profile.ratHourRule).hour.name
     val hours = listOf(23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21)
     return hours.mapNotNull { hour ->
-        val date = if (hour == 23) selectedDate.minusDays(1) else selectedDate
-        if (date !in SUPPORTED_CALENDAR_START..SUPPORTED_CALENDAR_END) return@mapNotNull null
-        val at = CivilDateTime(date.year, date.monthValue, date.dayOfMonth, hour, 0, 0)
+        val at = CivilDateTime(
+            selectedDate.year,
+            selectedDate.monthValue,
+            selectedDate.dayOfMonth,
+            hour,
+            0,
+            0,
+        )
         val pillar = at.toTyme().lunarHour.resolveEightChar(result.profile.ratHourRule).hour.name
         buildTimelineItem(
             key = "hour_${at.year}_${at.month}_${at.day}_$hour",
@@ -300,23 +303,19 @@ private fun buildHourlyTimeline(
             subtitle = pillar.takeLast(1) + "时",
             observedAt = at,
             pillar = pillar,
-            selected = pillar == selectedPillar,
+            selected = observedAt.hour.belongsToDoubleHourStartingAt(hour),
             dayMaster = dayMaster,
         )
     }
 }
 
+private fun Int.belongsToDoubleHourStartingAt(startHour: Int): Boolean = when (startHour) {
+    23 -> this == 23 || this == 0
+    else -> this in startHour..(startHour + 1)
+}
+
 private fun CivilDateTime.isWithinSupportedCalendarRange(): Boolean =
     LocalDate.of(year, month, day) in SUPPORTED_CALENDAR_START..SUPPORTED_CALENDAR_END
-
-private fun LocalDate.coerceInSupportedCalendarRange(windowSize: Int): LocalDate {
-    val latestStart = SUPPORTED_CALENDAR_END.minusDays((windowSize - 1).toLong())
-    return when {
-        this < SUPPORTED_CALENDAR_START -> SUPPORTED_CALENDAR_START
-        this > latestStart -> latestStart
-        else -> this
-    }
-}
 
 private fun java.time.DayOfWeek.chineseShortName(): String = when (this) {
     java.time.DayOfWeek.MONDAY -> "周一"

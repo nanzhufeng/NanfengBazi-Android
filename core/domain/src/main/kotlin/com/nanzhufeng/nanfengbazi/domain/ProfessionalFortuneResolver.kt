@@ -53,8 +53,8 @@ data class ProfessionalTimelineItem(
     val stemTenGod: String,
     val heavenStemElement: String,
     val earthBranchElement: String,
-    /** 时间轴密集项只展示地支的主藏干；完整藏干仍保留在九列总览。 */
-    val primaryHiddenStem: ProfessionalHiddenStem?,
+    /** 时间轴在地支下完整展示藏干；十神以紧凑简称呈现。 */
+    val hiddenStems: List<ProfessionalHiddenStem> = emptyList(),
     val selected: Boolean,
 )
 

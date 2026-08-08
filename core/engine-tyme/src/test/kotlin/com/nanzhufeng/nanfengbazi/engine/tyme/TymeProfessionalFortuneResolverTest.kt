@@ -98,13 +98,13 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals("4–14周岁", position.decadeTimeline.first().subtitle)
         assertTrue(position.annualTimeline.none { it.subtitle.startsWith("虚") })
         assertEquals(12, position.monthlyTimeline.size)
-        assertEquals(10, position.dailyTimeline.size)
+        assertEquals(31, position.dailyTimeline.size)
         assertEquals(12, position.hourlyTimeline.size)
         assertTrue(position.annualTimeline.any { it.selected })
         assertTrue(position.monthlyTimeline.any { it.selected })
         assertTrue(position.dailyTimeline.single { it.selected }.subtitle == "已选")
         assertTrue(position.hourlyTimeline.any { it.selected })
-        assertTrue(position.hourlyTimeline.all { it.primaryHiddenStem != null })
+        assertTrue(position.hourlyTimeline.all { it.hiddenStems.isNotEmpty() })
         assertEquals(33, position.completedAge)
         assertEquals(
             listOf("岁运天干", "岁运地支", "原局天干", "原局地支"),
@@ -179,10 +179,31 @@ class TymeProfessionalFortuneResolverTest {
         val end = resolver.locate(result, CivilDateTime(2200, 12, 31, 21, 0, 0))
 
         assertTrue(end.monthlyTimeline.all { it.observedAt.year <= 2200 })
-        assertEquals(10, end.dailyTimeline.size)
+        assertEquals(31, end.dailyTimeline.size)
         assertTrue(end.dailyTimeline.all { it.observedAt.year <= 2200 })
         assertTrue(end.hourlyTimeline.all { it.observedAt.year <= 2200 })
         assertTrue(end.dailyTimeline.any { it.selected })
+    }
+
+    @Test
+    fun `流日整月横向选择不再以新选日居中且流时保持同一民用日期`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val initial = resolver.locate(result, CivilDateTime(2026, 7, 30, 12, 0, 0))
+
+        assertEquals(1, initial.dailyTimeline.first().observedAt.day)
+        assertEquals(31, initial.dailyTimeline.last().observedAt.day)
+
+        val selectedDay = initial.dailyTimeline.first { it.observedAt.day == 14 }
+        val afterDaySelect = resolver.locate(result, selectedDay.observedAt)
+        assertEquals(1, afterDaySelect.dailyTimeline.first().observedAt.day)
+        assertEquals(31, afterDaySelect.dailyTimeline.last().observedAt.day)
+        assertEquals(14, afterDaySelect.dailyTimeline.single { it.selected }.observedAt.day)
+
+        val lateHour = afterDaySelect.hourlyTimeline.first { it.observedAt.hour == 23 }
+        assertEquals(14, lateHour.observedAt.day)
+        val afterHourSelect = resolver.locate(result, lateHour.observedAt)
+        assertEquals(14, afterHourSelect.position.observedAt.day)
+        assertEquals(afterDaySelect.flowPillars.month, afterHourSelect.flowPillars.month)
     }
 
     private fun sampleInput(): BirthInput = BirthInput(
