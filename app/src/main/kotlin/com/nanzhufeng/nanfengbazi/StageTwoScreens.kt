@@ -110,17 +110,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
-import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
+import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
+import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
-import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
-import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
@@ -129,6 +128,8 @@ import com.nanzhufeng.nanfengbazi.domain.ProfessionalTextGroup
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTimelineItem
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
+import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
@@ -6383,6 +6384,9 @@ private fun ReferenceBasicInfo(
     mutationSaving: Boolean,
     mutationError: String?,
 ) {
+    var alternateRow = false
+    fun nextAlternate(): Boolean = alternateRow.also { alternateRow = !alternateRow }
+
     val result = adopted?.result
     val conversion = result?.calendarConversion
     val solarText = conversion?.solarDateTime?.display() ?: case.birthInput.displayDateTime()
@@ -6395,17 +6399,21 @@ private fun ReferenceBasicInfo(
         leftValue = case.name.value ?: case.alias,
         rightLabel = "性别",
         rightValue = case.sexForFortuneDirection.displayName(),
-        alternate = false,
+        alternate = nextAlternate(),
     )
-    WenzhenFactRow("农历", lunarText, alternate = true)
-    WenzhenFactRow("阳历", solarText.removePrefix("公历 "), alternate = false)
+    WenzhenFactRow("农历", lunarText, alternate = nextAlternate())
+    WenzhenFactRow("阳历", solarText.removePrefix("公历 "), alternate = nextAlternate())
     result?.trueSolarTimeEvidence?.let { evidence ->
-        WenzhenFactRow("真太阳时", evidence.trueSolarDateTime.display(), alternate = true)
+        WenzhenFactRow(
+            "真太阳时",
+            evidence.trueSolarDateTime.display(),
+            alternate = nextAlternate(),
+        )
     }
     WenzhenFactRow(
         "出生地区",
         case.birthInput.locationName ?: "未提供",
-        alternate = result?.trueSolarTimeEvidence == null,
+        alternate = nextAlternate(),
     )
     result?.basicChartDetails?.let { basic ->
         WenzhenDualFactRow(
@@ -6417,30 +6425,45 @@ private fun ReferenceBasicInfo(
             } else {
                 "${basic.westernZodiac}座"
             },
-            alternate = true,
+            alternate = nextAlternate(),
         )
-        WenzhenDualFactRow(
-            "前节",
+        WenzhenFactRow(
+            "前一节气",
             "${basic.previousSolarTerm.name} ${basic.previousSolarTerm.at.display()}",
-            "后节",
+            alternate = nextAlternate(),
+        )
+        WenzhenFactRow(
+            "后一节气",
             "${basic.nextSolarTerm.name} ${basic.nextSolarTerm.at.display()}",
-            alternate = false,
+            alternate = nextAlternate(),
         )
     }
     if (result != null) {
-        WenzhenDualFactRow("胎元", result.fetalOrigin, "胎息", result.fetalBreath, true)
-        WenzhenDualFactRow("命宫", result.ownSign, "身宫", result.bodySign, false)
+        WenzhenDualFactRow(
+            "胎元",
+            result.fetalOrigin,
+            "胎息",
+            result.fetalBreath,
+            nextAlternate(),
+        )
+        WenzhenDualFactRow(
+            "命宫",
+            result.ownSign,
+            "身宫",
+            result.bodySign,
+            nextAlternate(),
+        )
         WenzhenSectionHeader(
             "命盘摘要",
             modifier = Modifier.padding(top = 14.dp),
         )
-        WenzhenFactRow("四柱", result.fourPillars.display(), alternate = true)
+        WenzhenFactRow("四柱", result.fourPillars.display(), alternate = nextAlternate())
         WenzhenDualFactRow(
             "日主",
             result.basicChartDetails?.dayMaster ?: "暂无",
             "起运方向",
             if (result.fortuneStart.direction.name == "FORWARD") "顺排" else "逆排",
-            alternate = false,
+            alternate = nextAlternate(),
         )
         WenzhenDualFactRow(
             "起运年龄",
@@ -6448,7 +6471,7 @@ private fun ReferenceBasicInfo(
                 "${result.fortuneStart.days}日",
             "交运年份",
             result.fortuneStart.endAt.year.toString(),
-            alternate = true,
+            alternate = nextAlternate(),
         )
     }
     if (case.groups.isNotEmpty() || case.tags.isNotEmpty()) {
@@ -6458,7 +6481,7 @@ private fun ReferenceBasicInfo(
                 addAll(case.groups.map { it.name })
                 addAll(case.tags.map { it.name })
             }.joinToString(" · "),
-            alternate = false,
+            alternate = nextAlternate(),
         )
     }
     if (case.birthTimeCandidates.size > 1) {
@@ -6522,20 +6545,10 @@ private fun ReferenceBasicChart(
         return
     }
     val result = adopted.result
-    result.basicChartDetails?.let { basic ->
-        val solar = result.calendarConversion?.solarDateTime
-        BasicChartDetailsView(
-            details = basic,
-            sex = case.sexForFortuneDirection,
-            dateValues = solar?.let {
-                listOf("${it.year}年", "${it.month}月", "${it.day}日", "%02d时".format(it.hour))
-            },
-        )
-    } ?: ReferenceEmptyText("当前计算快照缺少基础排盘明细。")
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            .padding(bottom = 10.dp),
         color = NanfengControlSurface,
     ) {
         Text(
@@ -6545,6 +6558,19 @@ private fun ReferenceBasicChart(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+    result.basicChartDetails?.let { basic ->
+        val solar = result.calendarConversion?.solarDateTime
+        BasicChartDetailsView(
+            details = basic,
+            sex = case.sexForFortuneDirection,
+            dateValues = solar?.let {
+                listOf("${it.year}年", "${it.month}月", "${it.day}日", "%02d时".format(it.hour))
+            },
+            natalShenSha = BasicShenShaRules.resolve(basic.pillars).map { shenSha ->
+                shenSha.names.joinToString("、")
+            },
+        )
+    } ?: ReferenceEmptyText("当前计算快照缺少基础排盘明细。")
     result.warnings.forEach { warning ->
         Text(
             warning.message,
@@ -8199,6 +8225,7 @@ private fun BasicChartDetailsView(
     details: BasicChartDetails,
     sex: SexForFortuneDirection,
     dateValues: List<String>? = null,
+    natalShenSha: List<String> = emptyList(),
 ) {
     val pillars = details.pillars.associateBy { it.position }
     val ordered = PillarPosition.entries.map { requireNotNull(pillars[it]) }
@@ -8221,7 +8248,7 @@ private fun BasicChartDetailsView(
             )
         }
         BasicChartTableRow(
-            label = "主星",
+            label = "十神",
             values = ordered.map { pillar ->
                 if (pillar.position == PillarPosition.DAY) {
                     if (sex == SexForFortuneDirection.MAN) "元男" else "元女"
@@ -8230,13 +8257,13 @@ private fun BasicChartDetailsView(
                 }
             },
             tag = "basic_chart_primary",
+            shaded = true,
         )
         BasicChartTableRow(
             "天干",
             ordered.map(PillarDetail::heavenStem),
             valueColors = ordered.map { baziElementColor(it.heavenStemElement) },
             emphasis = true,
-            shaded = true,
         )
         BasicChartTableRow(
             "地支",
@@ -8244,13 +8271,7 @@ private fun BasicChartDetailsView(
             valueColors = ordered.map { baziElementColor(it.earthBranchElement) },
             emphasis = true,
         )
-        BasicChartHiddenStemRow(ordered)
-        BasicChartTableRow(
-            "副星",
-            ordered.map { it.hiddenStems.joinToString("\n") { hidden -> hidden.tenGod } },
-            tag = "basic_chart_secondary",
-        )
-        BasicChartTableRow("星运", ordered.map(PillarDetail::terrain), shaded = true)
+        BasicChartHiddenStemRow(ordered, shaded = true)
         BasicChartTableRow("自坐", ordered.map(PillarDetail::selfSittingTerrain))
         BasicChartTableRow(
             "空亡",
@@ -8258,22 +8279,26 @@ private fun BasicChartDetailsView(
             shaded = true,
         )
         BasicChartTableRow("纳音", ordered.map(PillarDetail::naYin))
-        Text(
-            "前节气 ${details.previousSolarTerm.name} ${details.previousSolarTerm.at.display()}　" +
-                "后节气 ${details.nextSolarTerm.name} ${details.nextSolarTerm.at.display()}",
-            modifier = Modifier.padding(top = 10.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        BasicChartTableRow(
+            label = "神煞",
+            values = List(PillarPosition.entries.size) { index ->
+                natalShenSha.getOrNull(index)?.ifBlank { "—" } ?: "—"
+            },
+            tag = "basic_chart_shensha",
+            shaded = true,
         )
     }
 }
 
 @Composable
-private fun BasicChartHiddenStemRow(pillars: List<PillarDetail>) {
+private fun BasicChartHiddenStemRow(
+    pillars: List<PillarDetail>,
+    shaded: Boolean,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(NanfengControlSurface)
+            .background(if (shaded) NanfengControlSurface else Color.White)
             .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top,
     ) {

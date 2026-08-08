@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -102,12 +103,23 @@ class CaseDetailReferenceLayoutTest {
                 .isNotEmpty()
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("case_detail_screen")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         composeRule.onNodeWithTag("case_identity_header").assertIsDisplayed()
         composeRule.onNodeWithText("出生地区").assertIsDisplayed()
+        composeRule.onNodeWithText("前一节气").assertIsDisplayed()
+        composeRule.onNodeWithText("后一节气").assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_basic_chart").performClick()
         composeRule.onNodeWithTag("basic_chart_details").assertIsDisplayed()
+        composeRule.onNodeWithText("十神").assertIsDisplayed()
         composeRule.onNodeWithText("藏干").assertIsDisplayed()
+        composeRule.onNodeWithTag("basic_chart_shensha").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("副星").assertDoesNotExist()
+        composeRule.onNodeWithText("星运").assertDoesNotExist()
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()

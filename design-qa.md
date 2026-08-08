@@ -19,3 +19,26 @@
 - 神煞仅显示 `professional-detail-relations-shensha-v1` 明确列出的基础集合，不冒充第三方完整流派全集。
 
 final result: passed
+
+---
+
+# 基本信息／基本排盘 Design QA
+
+- 参考：`codex-clipboard-bb8475ac-d47f-48d9-bcb5-3487bae2bae7.png`、`codex-clipboard-069a9161-3cc5-44ed-b9ad-9310fede0d6d.png`
+- 实现：`/tmp/nanfeng-basic-info-final.png`、`/tmp/nanfeng-basic-chart-final.png`
+- 局部同态对比：`/tmp/nanfeng-basic-chart-comparison.png`
+- 视口：Android API 35 `emulator-5554`，1080 × 2400
+
+## 阻断项
+
+- P0：无。
+- P1：无。基本排盘已统一为“十神、天干、地支、藏干、自坐、空亡、纳音、神煞”；副星已并入藏干，独立副星与星运行已移除，底部神煞显示领域规则结果。
+- P2：无。一般事实行严格灰白交错；按用户覆盖规则，天干、地支连续保持白底，藏干承接灰底后恢复交替。基本信息的前一／后一节气改为各占一条完整事实行，无连续灰底或双列挤压换行。
+
+## 可接受差异
+
+- 两张来源图是第三方局部裁切，当前实现保留南枫八字自己的四柱标题、日期行、字号和统一五行色板。
+- 来源图天干行为灰底；用户最新明确规则优先，当前天干、地支均为白底，藏干使用灰底。
+- 基础神煞只展示 `BasicShenShaRules` 与专业细盘共用的已版本化基础集合，不冒充第三方完整流派全集。
+
+final result: passed
