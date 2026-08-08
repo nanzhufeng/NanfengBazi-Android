@@ -164,6 +164,13 @@ class CaseDetailReferenceLayoutTest {
             .fetchSemanticsNode().boundsInRoot.left
         assertEquals(dayLeftBeforeClick, dayLeftAfterClick, 1f)
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
+        val decadeList = composeRule.onNodeWithTag("decade_fortune_details_list")
+        decadeList.performScrollToNode(hasTestTag("timeline_decade_0"))
+        (0 until 10).forEach { index ->
+            composeRule.onNodeWithTag("timeline_decade_$index").assertIsDisplayed()
+        }
+        decadeList.performScrollToNode(hasTestTag("timeline_decade_11"))
+        composeRule.onNodeWithTag("timeline_decade_11").assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_annual_2017").performClick()
         composeRule.onNodeWithText("阳历 2017-", substring = true)

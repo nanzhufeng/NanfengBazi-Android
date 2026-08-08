@@ -55,14 +55,14 @@ class TymeBaziEngineTest {
         assertEquals("辛丑", result.bodySign)
         assertEquals("甲申", result.fetalOrigin)
         assertEquals("戊辰", result.fetalBreath)
-        assertEquals(8, result.decadeFortunes.size)
+        assertEquals(12, result.decadeFortunes.size)
         assertEquals("1.5.1", result.evidence.engineVersion)
         assertEquals(Instant.parse("2026-01-01T00:00:00Z"), result.evidence.calculatedAt)
         assertEquals(CalendarSystem.SOLAR, result.calendarConversion?.inputCalendarSystem)
     }
 
     @Test
-    fun `流年基础覆盖出生年到第八步大运结束且保留精确十年区间`() = runTest {
+    fun `流年基础覆盖出生年到一百二十年大运结束且保留精确十年区间`() = runTest {
         val result = engine.calculate(
             input = solarInput(1992, 8, 24, 12, 0, 0),
             profile = CalculationProfile.tymeDefault(),

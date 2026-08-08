@@ -9,7 +9,11 @@ import com.nanzhufeng.nanfengbazi.domain.ProfessionalTextGroup
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTimelineItem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
+import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
+import com.nanzhufeng.nanfengbazi.domain.model.DECADE_FORTUNE_COUNT
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.MonthBoundaryRule
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
@@ -21,6 +25,7 @@ import com.tyme.solar.SolarTime
 import com.tyme.sixtycycle.EarthBranch
 import com.tyme.sixtycycle.HeavenStem
 import com.tyme.sixtycycle.SixtyCycle
+import com.tyme.sixtycycle.SixtyCycleYear
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -32,27 +37,28 @@ class TymeProfessionalFortuneResolver(
         result: CalculationResult,
         observedAt: CivilDateTime,
     ): ProfessionalFortunePosition {
-        require(result.profile.yearBoundaryRule == YearBoundaryRule.SPRING_EXACT) {
+        val coveredResult = result.withProfessionalDecadeCoverage()
+        require(coveredResult.profile.yearBoundaryRule == YearBoundaryRule.SPRING_EXACT) {
             "当前专业岁运只支持精确立春换年。"
         }
-        require(result.profile.monthBoundaryRule == MonthBoundaryRule.SOLAR_TERM_EXACT) {
+        require(coveredResult.profile.monthBoundaryRule == MonthBoundaryRule.SOLAR_TERM_EXACT) {
             "当前专业岁运只支持精确节令换月。"
         }
         val solar = observedAt.toTyme()
-        val eightChar = solar.lunarHour.resolveEightChar(result.profile.ratHourRule)
+        val eightChar = solar.lunarHour.resolveEightChar(coveredResult.profile.ratHourRule)
         val previousTerm = solar.term
-        val dayMaster = HeavenStem.fromName(result.fourPillars.day.take(1))
-        val position = fortunePositionResolver.locate(result, observedAt)
+        val dayMaster = HeavenStem.fromName(coveredResult.fourPillars.day.take(1))
+        val position = fortunePositionResolver.locate(coveredResult, observedAt)
         val rawColumns = listOf(
             "flow_hour" to ("流时" to eightChar.hour.name),
             "flow_day" to ("流日" to eightChar.day.name),
             "flow_month" to ("流月" to eightChar.month.name),
             "flow_year" to ("流年" to eightChar.year.name),
             "decade" to ("大运" to (position.decadeFortune?.name ?: "—")),
-            "natal_year" to ("年柱" to result.fourPillars.year),
-            "natal_month" to ("月柱" to result.fourPillars.month),
-            "natal_day" to ("日柱" to result.fourPillars.day),
-            "natal_hour" to ("时柱" to result.fourPillars.hour),
+            "natal_year" to ("年柱" to coveredResult.fourPillars.year),
+            "natal_month" to ("月柱" to coveredResult.fourPillars.month),
+            "natal_day" to ("日柱" to coveredResult.fourPillars.day),
+            "natal_hour" to ("时柱" to coveredResult.fourPillars.hour),
         )
         val columns = rawColumns.map { (key, labelled) ->
             labelled.second.toPillarColumn(key, labelled.first, dayMaster)
@@ -66,23 +72,76 @@ class TymeProfessionalFortuneResolver(
                 hour = eightChar.hour.name,
             ),
             pillarColumns = columns,
-            decadeTimeline = buildDecadeTimeline(result, position, dayMaster),
-            annualTimeline = buildAnnualTimeline(result, position, dayMaster),
-            monthlyTimeline = buildMonthlyTimeline(result, position, observedAt, dayMaster),
-            dailyTimeline = buildDailyTimeline(result, observedAt, dayMaster),
-            hourlyTimeline = buildHourlyTimeline(result, observedAt, dayMaster),
+            decadeTimeline = buildDecadeTimeline(coveredResult, position, dayMaster),
+            annualTimeline = buildAnnualTimeline(coveredResult, position, dayMaster),
+            monthlyTimeline = buildMonthlyTimeline(coveredResult, position, observedAt, dayMaster),
+            dailyTimeline = buildDailyTimeline(coveredResult, observedAt, dayMaster),
+            hourlyTimeline = buildHourlyTimeline(coveredResult, observedAt, dayMaster),
             interactionGroups = buildInteractionGroups(columns),
             shenShaGroups = buildShenShaGroups(columns),
-            completedAge = result.completedAgeAt(observedAt),
+            completedAge = coveredResult.completedAgeAt(observedAt),
             selectedDateDetail = solar.toSelectedDateDetail(eightChar.hour.earthBranch.name),
             previousSolarTerm = previousTerm.toDomainPoint(),
             nextSolarTerm = previousTerm.next(1).toDomainPoint(),
             observationTimeMode = SolarTimeMode.CIVIL_TIME,
-            profileId = result.profile.id,
-            ruleVersion = result.profile.ruleVersion,
+            profileId = coveredResult.profile.id,
+            ruleVersion = coveredResult.profile.ruleVersion,
             detailRuleVersion = DETAIL_RULE_VERSION,
         )
     }
+}
+
+private fun CalculationResult.withProfessionalDecadeCoverage(): CalculationResult {
+    if (decadeFortunes.size >= DECADE_FORTUNE_COUNT || decadeFortunes.isEmpty()) return this
+    val directionStep = if (fortuneStart.direction == FortuneDirection.FORWARD) 1 else -1
+    val completedDecades = buildList {
+        addAll(decadeFortunes)
+        while (size < DECADE_FORTUNE_COUNT) {
+            val previous = last()
+            val startAt = previous.endAtExclusive
+                ?: CivilDateTime(previous.endYear + 1, 1, 1, 0, 0, 0)
+            add(
+                DecadeFortune(
+                    name = SixtyCycle.fromName(previous.name).next(directionStep).name,
+                    startAge = previous.startAge + 10,
+                    endAge = previous.endAge + 10,
+                    startYear = previous.startYear + 10,
+                    endYear = previous.endYear + 10,
+                    startAt = startAt,
+                    endAtExclusive = startAt.plusYearsForCoverage(10),
+                ),
+            )
+        }
+    }
+    val birthYear = calendarConversion?.solarDateTime?.year
+        ?: (normalizedInput.calendarInput as? com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)
+            ?.dateTime?.year
+        ?: annualFortunes.firstOrNull()?.calendarYear
+        ?: return copy(decadeFortunes = completedDecades)
+    val completedAnnuals = (birthYear..completedDecades.last().endYear).map { year ->
+        val decadeIndex = completedDecades.indexOfFirst { year in it.startYear..it.endYear }
+            .takeIf { it >= 0 }
+        AnnualFortune(
+            name = SixtyCycleYear.fromYear(year).sixtyCycle.name,
+            calendarYear = year,
+            nominalAge = year - birthYear + 1,
+            decadeIndex = decadeIndex?.plus(1),
+            decadeName = decadeIndex?.let(completedDecades::get)?.name,
+        )
+    }
+    return copy(decadeFortunes = completedDecades, annualFortunes = completedAnnuals)
+}
+
+private fun CivilDateTime.plusYearsForCoverage(years: Long): CivilDateTime {
+    val value = LocalDateTime.of(year, month, day, hour, minute, second).plusYears(years)
+    return CivilDateTime(
+        year = value.year,
+        month = value.monthValue,
+        day = value.dayOfMonth,
+        hour = value.hour,
+        minute = value.minute,
+        second = value.second,
+    )
 }
 
 private fun SolarTime.toSelectedDateDetail(hourBranch: String): String {

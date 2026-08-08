@@ -7952,7 +7952,7 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
                         val x = size.width * 5f / 9f
                         drawLine(
                             color = groupDividerColor,
-                            start = Offset(x, 0f),
+                            start = Offset(x, 6.dp.toPx()),
                             end = Offset(x, size.height),
                             strokeWidth = 1.dp.toPx(),
                         )
@@ -7986,7 +7986,7 @@ private fun ProfessionalPillarCell(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .background(NanfengControlSurface),
+                .background(ProfessionalPillarGridSurface),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -8042,7 +8042,7 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(NanfengControlSurface)
+                    .background(ProfessionalPillarGridSurface)
                     .padding(vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -8089,7 +8089,7 @@ private fun ProfessionalTenGodLabel(
         modifier = if (segmented) {
             Modifier
                 .fillMaxWidth()
-                .background(NanfengControlSurface)
+                .background(ProfessionalPillarGridSurface)
                 .padding(vertical = 1.dp)
         } else {
             Modifier.padding(vertical = if (compact) 0.dp else 1.dp)
@@ -8099,6 +8099,8 @@ private fun ProfessionalTenGodLabel(
         textAlign = TextAlign.Center,
     )
 }
+
+private val ProfessionalPillarGridSurface = Color(0xFFF9F9F8)
 
 @Composable
 private fun ProfessionalTimelineRow(
@@ -8141,9 +8143,9 @@ private fun ProfessionalTimelineRow(
                     )
                 }
             }
-            if (title == "流日") {
+            if (title == "大运" || title == "流日") {
                 BoxWithConstraints(modifier = Modifier.weight(1f)) {
-                    val dailyCellWidth = maxWidth / 10f
+                    val scrollableCellWidth = maxWidth / 10f
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -8154,7 +8156,7 @@ private fun ProfessionalTimelineRow(
                         items(items, key = ProfessionalTimelineItem::key) { item ->
                             ProfessionalTimelineCell(
                                 item = item,
-                                modifier = Modifier.width(dailyCellWidth),
+                                modifier = Modifier.width(scrollableCellWidth),
                                 compact = true,
                                 onClick = { onSelect(item.observedAt) },
                             )
@@ -8179,13 +8181,12 @@ private fun ProfessionalTimelineRow(
     }
 }
 
+private val ProfessionalTimelinePrimarySurface = Color.White
+private val ProfessionalTimelineAlternateSurface = Color(0xFFFCFCFB)
+
 private fun professionalTimelineCardColor(title: String): Color = when (title) {
-    "大运" -> Color(0xFFFFFEFB)
-    "流年" -> Color(0xFFFDFFFD)
-    "流月" -> Color(0xFFFFFDFF)
-    "流日" -> Color(0xFFFCFEFE)
-    "流时" -> Color(0xFFFFFDFB)
-    else -> Color.White
+    "流年", "流日" -> ProfessionalTimelineAlternateSurface
+    else -> ProfessionalTimelinePrimarySurface
 }
 
 @Composable

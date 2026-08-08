@@ -51,7 +51,7 @@ class FourPillarsGoldenMatrixTest {
                 golden.expected,
                 golden.referencePillars(),
             )
-            assertEquals("${golden.id} 必须生成八步大运", 8, actual.decadeFortunes.size)
+            assertEquals("${golden.id} 必须生成十二步大运", 12, actual.decadeFortunes.size)
             assertTrue(
                 "${golden.id} 必须冻结时区解析结果",
                 actual.normalizedInput.resolvedUtcOffsetSeconds != null,

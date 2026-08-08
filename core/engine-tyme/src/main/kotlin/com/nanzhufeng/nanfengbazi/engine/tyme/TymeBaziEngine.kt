@@ -18,6 +18,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationWarning
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
+import com.nanzhufeng.nanfengbazi.domain.model.DECADE_FORTUNE_COUNT
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneStart
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
@@ -94,7 +95,7 @@ class TymeBaziEngine(
             val startDecade = childLimit.startDecadeFortune
             val firstDecadeStart = childLimit.endTime.toDomain()
             val decades = generateSequence(startDecade) { it.next(1) }
-                .take(8)
+                .take(DECADE_FORTUNE_COUNT)
                 .mapIndexed { index, fortune ->
                     DecadeFortune(
                         name = fortune.name,

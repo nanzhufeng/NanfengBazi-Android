@@ -3,6 +3,9 @@ package com.nanzhufeng.nanfengbazi.domain.model
 import java.time.Instant
 import kotlinx.serialization.Serializable
 
+const val DECADE_FORTUNE_COVERAGE_YEARS = 120
+const val DECADE_FORTUNE_COUNT = DECADE_FORTUNE_COVERAGE_YEARS / 10
+
 @Serializable
 data class FourPillars(
     val year: String,

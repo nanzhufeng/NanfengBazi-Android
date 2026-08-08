@@ -145,7 +145,7 @@
 
 | 能力 | 唯一入口 | 事实边界 |
 |---|---|---|
-| 流年序列 | `BaziEngine.calculate()` → `CalculationResult.annualFortunes` | 从标准公历出生年生成至前八步大运终点；保存干支、年份、虚岁和摘要大运归属 |
+| 流年序列 | `BaziEngine.calculate()` → `CalculationResult.annualFortunes` | 从标准公历出生年生成至 120 年／十二步大运终点；保存干支、年份、虚岁和摘要大运归属 |
 | 当前流年 | `ProfessionalFortuneResolver.locate()` | 观察日期与时分由用户配置，默认当地中午；按配置中的精确立春切换，不按公历元旦切换 |
 | 当前大运 | `FortunePositionResolver.locate()` | 优先使用每步大运的 `[startAt, endAtExclusive)` 精确半开区间；旧快照无精确边界时才按年份降级 |
 | 流月/流日/流时 | `ProfessionalFortuneResolver.locate()` | 流月只在十二节切换；流日明确服从快照中的子时规则；观察时刻按民用时直接计算，不冒充已完成观察地点真太阳时校正 |
@@ -222,7 +222,7 @@
 
 | 概念 | 唯一所有者/入口 | 边界 |
 |---|---|---|
-| 命例详情投影 | `CaseDetailScreen` → 当前命例/已采用 `CalculationResult` | 居中基本身份区、紧凑详情身份条、连续信息表、四柱矩阵、九列流运总览、八步大运／十年流年和反馈时间线只是同一模型的表示；职业等主观资料读取 `CaseProfile`，不重算、不回写、不新建详情专用真值 |
+| 命例详情投影 | `CaseDetailScreen` → 当前命例/已采用 `CalculationResult` | 居中基本身份区、紧凑详情身份条、连续信息表、四柱矩阵、九列流运总览、120 年大运／十年流年和反馈时间线只是同一模型的表示；职业等主观资料读取 `CaseProfile`，不重算、不回写、不新建详情专用真值 |
 | 五行呈现 | `BaziElementPresentation` | 天干、地支、藏干、流运及候选都调用同一字符到色彩映射；金的亮黄色与记录页同源，底板不承担真值或状态含义 |
 | 信息表底色 | `WenzhenFactRow` / `WenzhenDualFactRow` / `BasicChartDetailsView` | 一般事实行严格灰白交错；基本排盘的天干、地支属于连续八字本体，固定同为白底，交错规则让位，下一行藏干承接灰底后继续白灰交替 |
 | 管理动作 | 详情右上角菜单 → 既有用例 | 编辑、导出、复制、软删除等只调整入口优先级；不删除功能、不跳过确认、不改变用例边界 |

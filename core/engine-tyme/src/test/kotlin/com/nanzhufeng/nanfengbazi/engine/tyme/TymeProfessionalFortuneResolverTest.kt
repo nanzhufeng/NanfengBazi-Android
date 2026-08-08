@@ -94,7 +94,7 @@ class TymeProfessionalFortuneResolverTest {
         assertTrue(position.pillarColumns.all { it.earthBranchElement in setOf("木", "火", "土", "金", "水") })
         assertTrue(position.pillarColumns.all { it.hiddenStems.isNotEmpty() })
         assertTrue(position.pillarColumns.flatMap { it.hiddenStems }.all { it.tenGod.isNotBlank() })
-        assertEquals(8, position.decadeTimeline.size)
+        assertEquals(12, position.decadeTimeline.size)
         assertEquals("4–14周岁", position.decadeTimeline.first().subtitle)
         assertTrue(position.annualTimeline.none { it.subtitle.startsWith("虚") })
         assertEquals(12, position.monthlyTimeline.size)
@@ -111,6 +111,27 @@ class TymeProfessionalFortuneResolverTest {
         assertTrue(position.shenShaGroups.isNotEmpty())
         assertTrue(position.shenShaGroups.flatMap { it.lines }.all { "：—" !in it })
         assertEquals("professional-detail-relations-shensha-v2", position.detailRuleVersion)
+    }
+
+    @Test
+    fun `旧八步快照在专业时间轴兼容补足一百二十年`() = runTest {
+        val complete = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val legacyDecades = complete.decadeFortunes.take(8)
+        val legacy = complete.copy(
+            decadeFortunes = legacyDecades,
+            annualFortunes = complete.annualFortunes.filter {
+                it.calendarYear <= legacyDecades.last().endYear
+            },
+        )
+
+        val position = resolver.locate(legacy, CivilDateTime(2026, 8, 24, 12, 0, 0))
+
+        assertEquals(12, position.decadeTimeline.size)
+        assertEquals(legacyDecades.map { it.name }, position.decadeTimeline.take(8).map { it.pillar })
+        assertEquals(
+            complete.decadeFortunes.map { it.name },
+            position.decadeTimeline.map { it.pillar },
+        )
     }
 
     @Test

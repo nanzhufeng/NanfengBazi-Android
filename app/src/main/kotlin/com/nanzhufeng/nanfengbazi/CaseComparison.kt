@@ -160,11 +160,11 @@ object CaseComparisonEngine {
                             rightFortune?.displayAge(),
                         ),
                         row(
-                            "前八步大运",
-                            leftResult?.decadeFortunes?.take(8)?.joinToString(" · ") {
+                            "120 年大运",
+                            leftResult?.decadeFortunes?.take(12)?.joinToString(" · ") {
                                 "${it.name} ${it.startAge}-${it.endAge}岁"
                             },
-                            rightResult?.decadeFortunes?.take(8)?.joinToString(" · ") {
+                            rightResult?.decadeFortunes?.take(12)?.joinToString(" · ") {
                                 "${it.name} ${it.startAge}-${it.endAge}岁"
                             },
                         ),
