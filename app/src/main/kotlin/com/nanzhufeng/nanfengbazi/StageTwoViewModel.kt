@@ -4334,8 +4334,6 @@ class StageTwoViewModel(
                     value.day,
                 ),
                 fortuneObservationTime = "%02d:%02d".format(value.hour, value.minute),
-                fortunePosition = null,
-                professionalFortunePosition = null,
                 fortunePositionError = null,
             )
         }

@@ -173,6 +173,23 @@ class TymeProfessionalFortuneResolverTest {
     }
 
     @Test
+    fun `流年流月候选截断到分钟后仍定位自身而不回退左侧`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(2026, 8, 8, 12, 34, 0))
+
+        current.annualTimeline.forEach { item ->
+            val relocated = resolver.locate(result, item.observedAt.copy(second = 0))
+            assertEquals(item.pillar, relocated.flowPillars.year)
+            assertEquals(item.key, relocated.annualTimeline.single { it.selected }.key)
+        }
+        current.monthlyTimeline.forEach { item ->
+            val relocated = resolver.locate(result, item.observedAt.copy(second = 0))
+            assertEquals(item.pillar, relocated.flowPillars.month)
+            assertEquals(item.key, relocated.monthlyTimeline.single { it.selected }.key)
+        }
+    }
+
+    @Test
     fun `专业时间轴候选不越过统一支持的二二零零年边界`() = runTest {
         val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
         val end = resolver.locate(result, CivilDateTime(2200, 12, 31, 21, 0, 0))
@@ -198,11 +215,13 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals(31, afterDaySelect.dailyTimeline.last().observedAt.day)
         assertEquals(14, afterDaySelect.dailyTimeline.single { it.selected }.observedAt.day)
 
-        val lateHour = afterDaySelect.hourlyTimeline.first { it.observedAt.hour == 23 }
-        assertEquals(14, lateHour.observedAt.day)
-        val afterHourSelect = resolver.locate(result, lateHour.observedAt)
-        assertEquals(14, afterHourSelect.position.observedAt.day)
-        assertEquals(afterDaySelect.flowPillars.month, afterHourSelect.flowPillars.month)
+        afterDaySelect.hourlyTimeline.forEach { hour ->
+            assertEquals(14, hour.observedAt.day)
+            val afterHourSelect = resolver.locate(result, hour.observedAt)
+            assertEquals(14, afterHourSelect.position.observedAt.day)
+            assertEquals(afterDaySelect.flowPillars.month, afterHourSelect.flowPillars.month)
+            assertEquals(hour.key, afterHourSelect.hourlyTimeline.single { it.selected }.key)
+        }
     }
 
     private fun sampleInput(): BirthInput = BirthInput(

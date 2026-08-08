@@ -175,7 +175,7 @@ private fun buildDecadeTimeline(
         key = "decade_$index",
         label = decade.startYear.toString(),
         subtitle = "${result.completedAgeAt(startAt)}–${result.completedAgeAt(finalMoment)}周岁",
-        observedAt = startAt,
+        observedAt = startAt.stableMinuteAfterBoundary(),
         pillar = decade.name,
         selected = position.decadeFortune?.name == decade.name,
         dayMaster = dayMaster,
@@ -197,11 +197,12 @@ private fun buildAnnualTimeline(
     }
     return visible.map { annual ->
         val annualStart = SolarTerm.fromName(annual.calendarYear, "立春").julianDay.solarTime.toDomain()
-        val at = position.decadeFortune?.startAt
+        val boundaryAt = position.decadeFortune?.startAt
             ?.takeIf { start ->
                 start.year == annual.calendarYear && annualStart.toTyme().isBefore(start.toTyme())
             }
             ?: annualStart
+        val at = boundaryAt.stableMinuteAfterBoundary()
         buildTimelineItem(
             key = "annual_${annual.calendarYear}",
             label = annual.calendarYear.toString(),
@@ -226,6 +227,24 @@ private fun CivilDateTime.minusOneSecond(): CivilDateTime {
     )
 }
 
+/**
+ * 时间轴候选会写回只精确到分钟的观察时间。边界若带秒数，直接截断会落回上一柱，
+ * 因此候选统一使用边界后的第一个完整分钟作为可重复定位的点击锚点。
+ */
+private fun CivilDateTime.stableMinuteAfterBoundary(): CivilDateTime {
+    val value = LocalDateTime.of(year, month, day, hour, minute, second)
+        .plusMinutes(1)
+        .withSecond(0)
+    return CivilDateTime(
+        year = value.year,
+        month = value.monthValue,
+        day = value.dayOfMonth,
+        hour = value.hour,
+        minute = value.minute,
+        second = 0,
+    )
+}
+
 private fun buildMonthlyTimeline(
     result: CalculationResult,
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
@@ -234,12 +253,13 @@ private fun buildMonthlyTimeline(
 ): List<ProfessionalTimelineItem> {
     val firstJie = SolarTerm.fromName(position.annualFortune.calendarYear, "立春")
     return (0 until 12).mapNotNull { index ->
-        val at = firstJie.next(index * 2).julianDay.solarTime.toDomain()
+        val boundaryAt = firstJie.next(index * 2).julianDay.solarTime.toDomain()
+        val at = boundaryAt.stableMinuteAfterBoundary()
         if (!at.isWithinSupportedCalendarRange()) return@mapNotNull null
         val pillar = at.toTyme().lunarHour.resolveEightChar(result.profile.ratHourRule).month.name
         buildTimelineItem(
-            key = "month_${at.year}_${at.month}_${at.day}",
-            label = "${at.month}/${at.day}",
+            key = "month_${boundaryAt.year}_${boundaryAt.month}_${boundaryAt.day}",
+            label = "${boundaryAt.month}/${boundaryAt.day}",
             subtitle = firstJie.next(index * 2).name,
             observedAt = at,
             pillar = pillar,

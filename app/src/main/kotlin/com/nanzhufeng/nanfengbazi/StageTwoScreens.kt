@@ -8118,7 +8118,9 @@ private fun ProfessionalTimelineRow(
             }
             if (title == "流日") {
                 LazyRow(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("${tag}_list"),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 5.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {

@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
@@ -19,8 +21,10 @@ import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -128,7 +132,20 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
         composeRule.onAllNodesWithText("周岁", substring = true)[0].assertIsDisplayed()
-        composeRule.onNodeWithTag("fortune_today").assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_today").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
+        val today = LocalDate.now()
+        val targetDay = if (today.dayOfMonth == 14) 15 else 14
+        val selectedDayTag = "timeline_day_${today.withDayOfMonth(targetDay)}"
+        composeRule.onNodeWithTag("daily_fortune_details_list")
+            .performScrollToNode(hasTestTag(selectedDayTag))
+        val dayLeftBeforeClick = composeRule.onNodeWithTag(selectedDayTag)
+            .fetchSemanticsNode().boundsInRoot.left
+        composeRule.onNodeWithTag(selectedDayTag).performClick()
+        composeRule.waitForIdle()
+        val dayLeftAfterClick = composeRule.onNodeWithTag(selectedDayTag)
+            .fetchSemanticsNode().boundsInRoot.left
+        assertEquals(dayLeftBeforeClick, dayLeftAfterClick, 1f)
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_annual_2017").performClick()
