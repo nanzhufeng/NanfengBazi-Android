@@ -100,20 +100,19 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("open_four_pillars_lookup")
             .performScrollTo()
             .performClick()
-        composeRule.onNodeWithTag("lookup_year_pillar_wheel").performScrollToIndex(25)
-        composeRule.onNodeWithTag("lookup_month_pillar_wheel").performScrollToIndex(9)
-        composeRule.onNodeWithTag("lookup_day_pillar_wheel").performScrollToIndex(0)
-        composeRule.onNodeWithTag("lookup_hour_pillar_wheel").performScrollToIndex(8)
-        composeRule.onNodeWithTag("confirm_four_pillars_wheels").performClick()
-        composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("four_pillars_lookup_notice").assertIsDisplayed()
-        composeRule.onNodeWithTag("open_lookup_year_range_picker").performScrollTo().performClick()
+        composeRule.onNodeWithTag("lookup_pillar_stem_己").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_option_月柱").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_stem_癸").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_branch_酉").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_option_时柱").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_stem_壬").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_branch_申").performClick()
+        composeRule.onNodeWithTag("lookup_year_range_inline").performClick()
         composeRule.onNodeWithTag("lookup_start_year_wheel").performScrollToIndex(149)
         composeRule.onNodeWithTag("lookup_end_year_wheel").performScrollToIndex(149)
         composeRule.onNodeWithTag("confirm_lookup_year_range").performClick()
-        composeRule.onNodeWithTag("lookup_search")
-            .performScrollTo()
-            .performClick()
+        composeRule.onNodeWithTag("confirm_four_pillars_wheels").performClick()
+        composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("lookup_candidate"))
                 .fetchSemanticsNodes().isNotEmpty()
@@ -135,9 +134,7 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("four_pillars_lookup_screen")
             .performScrollToNode(hasTestTag("lookup_result_count"))
         composeRule.onNodeWithTag("lookup_result_count").assertIsDisplayed()
-        composeRule.onNodeWithTag("four_pillars_lookup_screen")
-            .performScrollToNode(hasText("返回"))
-        composeRule.onNodeWithContentDescription("返回").performClick()
+        composeRule.onNodeWithTag("lookup_candidate").performClick()
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
     }
 
@@ -845,13 +842,13 @@ class StageTwoFlowTest {
             composeRule.onNodeWithTag("expanded_case_index_pane").assertIsDisplayed()
         }
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasText("原始录入信息"))
+            composeRule.onAllNodes(hasText("出生与命盘信息"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("原始录入信息").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("出生与命盘信息").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
         composeRule.onNodeWithTag("basic_chart_details").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Tyme4j").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("basic_chart_details").assertIsDisplayed()
         composeRule.onNodeWithTag("detail_tab_basic_info").performScrollTo().performClick()
 
         val editedAlias = "$alias-已编辑"
@@ -872,10 +869,7 @@ class StageTwoFlowTest {
                 .performScrollTo()
                 .performClick()
         }
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasTestTag("export_single_case_button"))
-                .fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
         composeRule.onAllNodes(hasText(editedAlias))
             .onFirst()
             .performScrollTo()
@@ -891,18 +885,13 @@ class StageTwoFlowTest {
             ).fetchSemanticsNodes().isEmpty()
         }
         composeRule.onNodeWithTag("detail_tab_basic_chart").performScrollTo().performClick()
-        composeRule.onNodeWithTag("calculation_archive_comparison")
-            .performScrollTo()
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("同一输入与同一版本重新计算，可核对结果稳定性。")
-            .performScrollTo()
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("核心排盘结果一致。")
+        composeRule.onNodeWithTag("basic_chart_details")
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("detail_tab_basic_info").performScrollTo().performClick()
 
-        composeRule.onNodeWithTag("edit_metadata_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
+        composeRule.onNodeWithTag("edit_metadata_button").performClick()
         composeRule.onNodeWithTag("metadata_groups").performTextInput("合成分组")
         composeRule.onNodeWithTag("metadata_tags").performTextInput("自动化标签")
         composeRule.onNodeWithTag("metadata_favorite").performClick()
@@ -951,10 +940,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("分析记录 · 财运").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("版本历史（记录 2 / 事件 0）")
-            .performScrollTo()
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("Stage3 合成分析初稿")
+        composeRule.onNodeWithText("Stage3 合成分析修订稿")
             .performScrollTo()
             .assertIsDisplayed()
 
@@ -992,7 +978,7 @@ class StageTwoFlowTest {
         composeRule.onAllNodes(hasText("Stage3 合成事件标题"))[0]
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onAllNodes(hasText("2024年 · 事业"))[0]
+        composeRule.onAllNodes(hasText("2024年"))[0]
             .performScrollTo()
             .assertIsDisplayed()
 

@@ -1,7 +1,17 @@
 package com.nanzhufeng.nanfengbazi
 
 import androidx.test.platform.app.InstrumentationRegistry
+import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
+import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -44,9 +54,78 @@ class RecordPreviewFixtureTest {
                 "${fixture.name} 写入失败：$result",
                 result is CreateCaseResult.Created || result is CreateCaseResult.AlreadyExists,
             )
+            if (fixture.name == "席瑞") {
+                val caseId = when (result) {
+                    is CreateCaseResult.Created -> result.caseId
+                    is CreateCaseResult.AlreadyExists -> result.caseId
+                    else -> error("预览命例创建失败")
+                }
+                val repository = application.container.caseRepository
+                val current = requireNotNull(repository.findById(caseId))
+                if (current.textRecords.isEmpty() && current.events.isEmpty()) {
+                    val now = Instant.parse("2026-08-08T12:00:00Z")
+                    val enriched = current.copy(
+                        profile = current.profile.copy(
+                            occupation = ExplicitText.present("产品与技术管理"),
+                            education = ExplicitText.present("本科"),
+                            finance = ExplicitText.present("求稳健，关注长期配置"),
+                            marriage = ExplicitText.present("未填写"),
+                            health = ExplicitText.present("作息不稳定，需持续记录"),
+                        ),
+                        textRecords = listOf(
+                            CaseTextRecord(
+                                id = "preview-owner-feedback-$caseId",
+                                type = CaseTextRecordType.OWNER_FEEDBACK,
+                                content = "近两年工作方向有调整，希望重点核对事业节奏与长期财务安排。",
+                                sourceType = TextRecordSourceType.USER,
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                            CaseTextRecord(
+                                id = "preview-master-commentary-$caseId",
+                                type = CaseTextRecordType.MASTER_COMMENTARY,
+                                content = "此处为模拟器视觉验收用点评正文。排版应当直接、清晰，长内容自然换行，不使用层层卡片包裹。",
+                                sourceType = TextRecordSourceType.USER,
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                            CaseTextRecord(
+                                id = "preview-analysis-$caseId",
+                                type = CaseTextRecordType.ANALYSIS,
+                                content = "事业与财富主题的人工复盘草稿。",
+                                analysisCategory = AnalysisCategory.CAREER,
+                                sourceType = TextRecordSourceType.USER,
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                        ),
+                        events = listOf(
+                            previewEvent("preview-event-1-$caseId", 1999, "进入新的学习阶段，开始适应环境变化。", now),
+                            previewEvent("preview-event-2-$caseId", 2004, "参加重要项目并承担更多责任。", now),
+                            previewEvent("preview-event-3-$caseId", 2017, "工作方向发生明显调整。", now),
+                        ),
+                    )
+                    val saved = repository.save(enriched, expectedRevision = current.revision)
+                    assertTrue("预览笔记写入失败：$saved", saved is CaseWriteResult.Updated)
+                }
+            }
         }
     }
 }
+
+private fun previewEvent(
+    id: String,
+    year: Int,
+    text: String,
+    now: Instant,
+) = CaseEvent(
+    id = id,
+    category = CaseEventCategory.GENERAL,
+    year = year,
+    datePrecision = EventDatePrecision.YEAR,
+    rawText = text,
+    createdAt = now,
+)
 
 private data class PreviewCaseFixture(
     val name: String,

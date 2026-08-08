@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.imageparser
 
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookup
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupQuery
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseFieldEvidence
@@ -18,7 +19,7 @@ object NoOpWenzhenParseResultRefiner : WenzhenParseResultRefiner {
 
 class WenzhenPillarDateConsistencyRefiner(
     private val fourPillarsLookup: FourPillarsLookup,
-    private val timeZoneId: String = "Asia/Shanghai",
+    private val timeZoneId: String = BaziTimeZoneDefaults.BEIJING_IANA_ID,
 ) : WenzhenParseResultRefiner {
     override suspend fun refine(result: WenzhenP0ParseResult): WenzhenP0ParseResult {
         val fieldsById = result.fields.associateBy(CaseFieldEvidence::id)

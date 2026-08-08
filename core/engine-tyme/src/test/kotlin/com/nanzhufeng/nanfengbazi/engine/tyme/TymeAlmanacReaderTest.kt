@@ -23,6 +23,7 @@ class TymeAlmanacReaderTest {
         assertEquals("狮子座", month.selected.constellation)
         assertEquals("六月二十", month.selected.lunarDateText)
         assertEquals(2, month.cells.count { it.marker == "立秋" || it.marker == "处暑" })
+        assertEquals(2, month.cells.count { it.solarTerm == "立秋" || it.solarTerm == "处暑" })
     }
 
     @Test
@@ -31,6 +32,22 @@ class TymeAlmanacReaderTest {
         val second = reader.loadMonth(AlmanacMonthQuery(2026, 10, 1)) as AlmanacResult.Completed
 
         assertEquals(first.month.selected.dayPillar, second.month.selected.dayPillar)
+    }
+
+    @Test
+    fun `selected double hour yields four pillars with hidden stems and folk weight`() = runTest {
+        val child = reader.loadMonth(
+            AlmanacMonthQuery(2026, 8, 2, selectedDoubleHourIndex = 0),
+        ) as AlmanacResult.Completed
+        val noon = reader.loadMonth(
+            AlmanacMonthQuery(2026, 8, 2, selectedDoubleHourIndex = 6),
+        ) as AlmanacResult.Completed
+
+        assertEquals(4, child.month.selected.pillars.size)
+        assertEquals("子", child.month.selected.selectedDoubleHour.branch)
+        assertTrue(child.month.selected.pillars.all { it.hiddenStems.isNotEmpty() })
+        assertTrue(child.month.selected.hourPillar != noon.month.selected.hourPillar)
+        assertTrue(child.month.selected.folkBoneWeight != null)
     }
 
     @Test

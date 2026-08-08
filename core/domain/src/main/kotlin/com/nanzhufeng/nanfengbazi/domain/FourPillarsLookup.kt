@@ -91,9 +91,9 @@ fun interface FourPillarsLookup {
 }
 
 object FourPillarsLookupContract {
-    const val MIN_YEAR = 1800
-    const val MAX_YEAR = 2100
-    const val MAX_INCLUSIVE_YEAR_COUNT = 301
+    const val MIN_YEAR = AlmanacContract.MIN_YEAR
+    const val MAX_YEAR = AlmanacContract.MAX_YEAR
+    const val MAX_INCLUSIVE_YEAR_COUNT = MAX_YEAR - MIN_YEAR + 1
 
     const val CANDIDATE_NOTICE =
         "候选仅表示该民用代表时刻可复算出所填四柱，不是出生分钟的唯一证明；" +

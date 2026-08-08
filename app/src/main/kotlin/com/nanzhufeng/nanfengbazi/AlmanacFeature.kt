@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -37,6 +38,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,8 +56,12 @@ import androidx.compose.ui.unit.sp
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDate
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDayDetails
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDaySummary
+import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
+import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarDetail
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeight
 import java.time.LocalDate
+import java.time.LocalTime
 
 @Composable
 internal fun AlmanacHomeEntry(
@@ -123,10 +132,14 @@ internal fun AlmanacScreen(
     onNextMonth: () -> Unit,
     onToday: () -> Unit,
     onSelectDate: (AlmanacDate) -> Unit,
+    onSelectDateTime: (AlmanacDate, Int) -> Unit,
+    onSelectDoubleHour: (Int) -> Unit,
+    onAdjustFourPillars: (List<String>) -> Unit,
     onUseForChart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = rememberAppHapticFeedback()
+    var showDateTimePicker by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -141,87 +154,77 @@ internal fun AlmanacScreen(
         ) {
             val expanded = maxWidth >= 760.dp
             val month = state.almanacView
-            if (expanded) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    AlmanacCalendarCard(
-                        year = state.almanacYear,
-                        month = state.almanacMonth,
-                        selectedDay = state.almanacSelectedDay,
-                        view = month,
-                        loading = state.almanacLoading,
-                        error = state.almanacError,
-                        expanded = true,
-                        onPreviousMonth = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onPreviousMonth()
-                        },
-                        onNextMonth = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onNextMonth()
-                        },
-                        onToday = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onToday()
-                        },
-                        onSelectDate = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onSelectDate(it)
-                        },
-                        modifier = Modifier.weight(1.65f),
-                    )
-                    AlmanacDetailsCard(
-                        details = month?.selected,
-                        onUseForChart = {
-                            haptics.perform(AppHapticEvent.CONFIRM)
-                            onUseForChart()
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            } else {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    AlmanacCalendarCard(
-                        year = state.almanacYear,
-                        month = state.almanacMonth,
-                        selectedDay = state.almanacSelectedDay,
-                        view = month,
-                        loading = state.almanacLoading,
-                        error = state.almanacError,
-                        expanded = false,
-                        onPreviousMonth = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onPreviousMonth()
-                        },
-                        onNextMonth = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onNextMonth()
-                        },
-                        onToday = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onToday()
-                        },
-                        onSelectDate = {
-                            haptics.perform(AppHapticEvent.SELECTION)
-                            onSelectDate(it)
-                        },
-                    )
-                    AlmanacDetailsCard(
-                        details = month?.selected,
-                        onUseForChart = {
-                            haptics.perform(AppHapticEvent.CONFIRM)
-                            onUseForChart()
-                        },
-                    )
-                }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(if (expanded) 16.dp else 12.dp),
+            ) {
+                AlmanacCalendarCard(
+                    year = state.almanacYear,
+                    month = state.almanacMonth,
+                    selectedDay = state.almanacSelectedDay,
+                    view = month,
+                    loading = state.almanacLoading,
+                    error = state.almanacError,
+                    expanded = expanded,
+                    onPreviousMonth = {
+                        haptics.perform(AppHapticEvent.SELECTION)
+                        onPreviousMonth()
+                    },
+                    onNextMonth = {
+                        haptics.perform(AppHapticEvent.SELECTION)
+                        onNextMonth()
+                    },
+                    onToday = {
+                        haptics.perform(AppHapticEvent.SELECTION)
+                        onToday()
+                    },
+                    onOpenDateTimePicker = {
+                        haptics.perform(AppHapticEvent.SELECTION)
+                        showDateTimePicker = true
+                    },
+                    onSelectDate = {
+                        haptics.perform(AppHapticEvent.SELECTION)
+                        onSelectDate(it)
+                    },
+                )
+                AlmanacDetailsCard(
+                    details = month?.selected,
+                    selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
+                    onSelectDoubleHour = onSelectDoubleHour,
+                    onAdjustFourPillars = onAdjustFourPillars,
+                    onUseForChart = {
+                        haptics.perform(AppHapticEvent.CONFIRM)
+                        onUseForChart()
+                    },
+                )
             }
         }
+    }
+    if (showDateTimePicker) {
+        ObservationDateTimePickerSheet(
+            currentDate = "%04d-%02d-%02d".format(
+                state.almanacYear,
+                state.almanacMonth,
+                state.almanacSelectedDay,
+            ),
+            currentTime = "%02d:00".format(
+                AlmanacDoubleHours.fromIndex(state.almanacSelectedDoubleHourIndex).representativeHour,
+            ),
+            onDismiss = { showDateTimePicker = false },
+            onConfirm = { selectedDate, selectedTime ->
+                val date = runCatching { LocalDate.parse(selectedDate) }.getOrNull()
+                val time = runCatching { LocalTime.parse(selectedTime) }.getOrNull()
+                if (date != null && time != null) {
+                    haptics.perform(AppHapticEvent.CONFIRM)
+                    onSelectDateTime(AlmanacDate(date.year, date.monthValue, date.dayOfMonth), time.hour)
+                }
+                showDateTimePicker = false
+            },
+            title = "快速跳转日期与时间",
+            supportingText = "时间会定位到对应时辰",
+            confirmTag = "confirm_almanac_date_time",
+            sheetTag = "almanac_date_time_picker_sheet",
+        )
     }
 }
 
@@ -263,6 +266,7 @@ private fun AlmanacCalendarCard(
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onToday: () -> Unit,
+    onOpenDateTimePicker: () -> Unit,
     onSelectDate: (AlmanacDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -283,7 +287,11 @@ private fun AlmanacCalendarCard(
                 }
                 Text(
                     "$year 年 $month 月",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onOpenDateTimePicker)
+                        .semantics { contentDescription = "选择年月与时间" }
+                        .testTag("open_almanac_date_time_picker"),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
@@ -389,8 +397,10 @@ private fun AlmanacDayCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val solarTermDay = day.solarTerm != null
     val contentColor = when {
         selected -> Color.White
+        solarTermDay -> NanfengSolarTermRed
         day.inSelectedMonth -> NanfengInk
         else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
     }
@@ -399,7 +409,10 @@ private fun AlmanacDayCell(
             .height(if (expanded) 80.dp else 62.dp)
             .clickable(onClick = onClick)
             .semantics {
-                contentDescription = "${day.date.year}年${day.date.month}月${day.date.day}日，${day.lunarDayText}，${day.dayPillar}日"
+                contentDescription = buildString {
+                    append("${day.date.year}年${day.date.month}月${day.date.day}日，${day.lunarDayText}，${day.dayPillar}日")
+                    day.solarTerm?.let { append("，节气$it") }
+                }
             }
             .testTag("almanac_day_${day.date.year}_${day.date.month}_${day.date.day}"),
         shape = RoundedCornerShape(12.dp),
@@ -408,7 +421,11 @@ private fun AlmanacDayCell(
             today -> Color(0xFFF6EFE2)
             else -> NanfengPageBackground.copy(alpha = if (day.inSelectedMonth) 0.72f else 0.35f)
         },
-        border = if (today && !selected) BorderStroke(1.dp, NanfengGold) else null,
+        border = when {
+            selected -> null
+            today -> BorderStroke(1.dp, NanfengGold)
+            else -> null
+        },
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 3.dp, vertical = 5.dp),
@@ -418,7 +435,7 @@ private fun AlmanacDayCell(
             Text(
                 day.date.day.toString(),
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (selected || today) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (selected || today || solarTermDay) FontWeight.Bold else FontWeight.Medium,
                 color = contentColor,
             )
             Text(
@@ -427,7 +444,9 @@ private fun AlmanacDayCell(
                 fontSize = if (expanded) 12.sp else 10.sp,
                 lineHeight = 13.sp,
                 color = if (selected) Color.White.copy(alpha = 0.9f) else {
-                    if (day.marker != null) NanfengGold else contentColor.copy(alpha = 0.72f)
+                    if (solarTermDay) NanfengSolarTermRed
+                    else if (day.marker != null) NanfengGold
+                    else contentColor.copy(alpha = 0.72f)
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -446,6 +465,9 @@ private fun AlmanacDayCell(
 @Composable
 private fun AlmanacDetailsCard(
     details: AlmanacDayDetails?,
+    selectedDoubleHourIndex: Int,
+    onSelectDoubleHour: (Int) -> Unit,
+    onAdjustFourPillars: (List<String>) -> Unit,
     onUseForChart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -502,29 +524,46 @@ private fun AlmanacDetailsCard(
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
             Text(
-                "当日干支",
+                "时辰",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            Row(
+            AlmanacDoubleHourRail(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PillarBlock("年柱", details.yearPillar, Modifier.weight(1f))
-                PillarBlock("月柱", details.monthPillar, Modifier.weight(1f))
-                PillarBlock("日柱", details.dayPillar, Modifier.weight(1f))
+                selectedIndex = selectedDoubleHourIndex,
+                onSelect = onSelectDoubleHour,
+            )
+            Text(
+                "${details.selectedDoubleHour.branch}时 · ${details.selectedDoubleHour.timeRangeLabel}；子时按当前口径设置计算。",
+                modifier = Modifier.padding(top = 7.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
+            Text(
+                "八字排盘",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            AlmanacEightCharacterTable(
+                pillars = details.pillars,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+            if (details.relations.isNotEmpty()) {
+                Text(
+                    details.relations.joinToString(" · ") { "${it.category}：${it.pillars}" },
+                    modifier = Modifier.padding(top = 10.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Column(
-                modifier = Modifier.padding(top = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(9.dp),
-            ) {
-                AlmanacInfoRow("星座", details.constellation)
-                AlmanacInfoRow("建除", details.duty)
-                AlmanacInfoRow("值神", details.twelveStar)
-                AlmanacInfoRow("星宿", details.twentyEightStar)
-                AlmanacInfoRow("胎神", details.fetusPosition)
+            details.folkBoneWeight?.let { bone ->
+                FolkBoneWeightSection(
+                    bone = bone,
+                    modifier = Modifier.padding(top = 14.dp),
+                )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
             AlmanacAdviceSection("宜", details.recommends, NanfengGreen)
@@ -545,8 +584,18 @@ private fun AlmanacDetailsCard(
             ) {
                 Text("用此日期排盘", fontWeight = FontWeight.SemiBold)
             }
+            OutlinedButton(
+                onClick = { onAdjustFourPillars(details.pillars.map(AlmanacPillarDetail::value)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .testTag("adjust_almanac_four_pillars"),
+                shape = RoundedCornerShape(25.dp),
+            ) {
+                Text("人工调整四柱")
+            }
             Text(
-                "宜忌、值神等属于传统民俗资料，不作为事实判断。",
+                "称骨歌诀与宜忌均属传统民俗资料，不作为事实判断。",
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),
@@ -559,48 +608,224 @@ private fun AlmanacDetailsCard(
 }
 
 @Composable
-private fun PillarBlock(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = NanfengPageBackground,
+private fun AlmanacDoubleHourRail(
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                value,
-                modifier = Modifier.padding(top = 2.dp),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = NanfengInk,
-            )
+        AlmanacDoubleHours.all.forEach { hour ->
+            val selected = hour.index == selectedIndex
+            Surface(
+                modifier = Modifier
+                    .size(width = 42.dp, height = 46.dp)
+                    .clickable { onSelect(hour.index) }
+                    .testTag("almanac_double_hour_${hour.branch}"),
+                shape = RoundedCornerShape(13.dp),
+                color = if (selected) NanfengNavigation else NanfengPageBackground,
+                border = if (selected) null else BorderStroke(1.dp, Color(0x1A1B2732)),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        hour.branch,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (selected) Color(0xFFF2D8A5) else baziElementColor(branchElement(hour.branch)),
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun AlmanacInfoRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+private fun AlmanacEightCharacterTable(
+    pillars: List<AlmanacPillarDetail>,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = NanfengPageBackground,
+    ) {
+        Column(modifier = Modifier.padding(vertical = 10.dp)) {
+            AlmanacPillarRow("", pillars) { pillar ->
+                Text(
+                    pillar.label,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AlmanacPillarRow("天干", pillars) { pillar ->
+                Text(
+                    pillar.heavenStem,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = baziElementColor(pillar.heavenStemElement),
+                )
+            }
+            AlmanacPillarRow("地支", pillars) { pillar ->
+                Text(
+                    pillar.earthBranch,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = baziElementColor(pillar.earthBranchElement),
+                )
+            }
+            AlmanacPillarRow("藏干", pillars, topAligned = true) { pillar ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    pillar.hiddenStems.forEach { hidden ->
+                        Text(
+                            hidden.heavenStem,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = baziElementColor(hidden.element),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlmanacPillarRow(
+    label: String,
+    pillars: List<AlmanacPillarDetail>,
+    topAligned: Boolean = false,
+    cell: @Composable (AlmanacPillarDetail) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+        verticalAlignment = if (topAligned) Alignment.Top else Alignment.CenterVertically,
+    ) {
         Text(
             label,
-            modifier = Modifier.width(46.dp),
-            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.width(36.dp),
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        pillars.forEach { pillar ->
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = if (topAligned) Alignment.TopCenter else Alignment.Center,
+            ) { cell(pillar) }
+        }
+    }
+}
+
+private fun formatQian(qian: Int): String = "${qian / 10}两${qian % 10}钱"
+
+@Composable
+private fun FolkBoneWeightSection(
+    bone: FolkBoneWeight,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("folk_bone_weight_section"),
+        colors = CardDefaults.cardColors(containerColor = NanfengWarmTint),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "称骨 · 民俗断语",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "农历年、月、日、时辰四项合计",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    formatQian(bone.totalQian),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = NanfengGold,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                listOf(
+                    "年" to bone.yearQian,
+                    "月" to bone.monthQian,
+                    "日" to bone.dayQian,
+                    "时" to bone.hourQian,
+                ).forEach { (label, qian) ->
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 7.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(label, style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                formatQian(qian),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+            FolkBoneVerdict("男命断语", bone.maleVerdict, Modifier.padding(top = 16.dp))
+            FolkBoneVerdict("女命断语", bone.femaleVerdict, Modifier.padding(top = 14.dp))
+        }
+    }
+}
+
+@Composable
+private fun FolkBoneVerdict(
+    label: String,
+    verse: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            value,
-            modifier = Modifier.weight(1f),
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = NanfengGold,
+        )
+        Text(
+            verse,
+            modifier = Modifier.padding(top = 5.dp),
             style = MaterialTheme.typography.bodyMedium,
+            lineHeight = 24.sp,
             color = NanfengInk,
         )
     }
+}
+
+private fun branchElement(branch: String): String = when (branch) {
+    "寅", "卯" -> "木"
+    "巳", "午" -> "火"
+    "申", "酉" -> "金"
+    "亥", "子" -> "水"
+    else -> "土"
 }
 
 @Composable

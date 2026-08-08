@@ -101,7 +101,8 @@ class StageSixAccessibilityTest {
             auditPage("case_detail_screen")
         }
 
-        composeRule.onNodeWithTag("edit_metadata_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
+        composeRule.onNodeWithTag("edit_metadata_button").performClick()
         auditPage("metadata_editor_screen")
         composeRule.onNodeWithTag("save_metadata").performScrollTo()
         auditPage("metadata_editor_screen")

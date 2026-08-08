@@ -36,7 +36,9 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCasePreviewResult
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.AlmanacContract
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDate
+import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacError
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthQuery
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
@@ -128,6 +130,7 @@ import java.io.PushbackInputStream
 import java.nio.file.Path
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
@@ -398,9 +401,12 @@ data class StageTwoUiState(
     val almanacYear: Int = LocalDate.now().year,
     val almanacMonth: Int = LocalDate.now().monthValue,
     val almanacSelectedDay: Int = LocalDate.now().dayOfMonth,
+    val almanacSelectedDoubleHourIndex: Int = 0,
     val almanacView: AlmanacMonthView? = null,
     val almanacLoading: Boolean = false,
+    val almanacRefreshingSelection: Boolean = false,
     val almanacError: String? = null,
+    val birthPickerTodaySnapshot: BirthPickerTodaySnapshot? = null,
     val defaultRatHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
     val listLoading: Boolean = false,
     val listError: String? = null,
@@ -542,6 +548,7 @@ class StageTwoViewModel(
     private var comparisonJob: Job? = null
     private var fourPillarsLookupJob: Job? = null
     private var almanacJob: Job? = null
+    private var birthPickerTodayJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
@@ -2675,6 +2682,55 @@ class StageTwoViewModel(
         loadAlmanac()
     }
 
+    fun prepareBirthPickerToday() {
+        val reader = almanacReader ?: return
+        val now = LocalDateTime.now(observationClock)
+        val doubleHourIndex = when (now.hour) {
+            0, 23 -> 0
+            else -> (now.hour + 1) / 2
+        }
+        val query = AlmanacMonthQuery(
+            year = now.year,
+            month = now.monthValue,
+            selectedDay = now.dayOfMonth,
+            selectedDoubleHourIndex = doubleHourIndex,
+            ratHourRule = mutableState.value.defaultRatHourRule,
+        )
+        birthPickerTodayJob?.cancel()
+        mutableState.update { it.copy(birthPickerTodaySnapshot = null) }
+        birthPickerTodayJob = viewModelScope.launch {
+            val result = try {
+                withContext(ioDispatcher) { reader.loadMonth(query) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                AlmanacResult.Failed(AlmanacError.EngineUnavailable)
+            }
+            val details = (result as? AlmanacResult.Completed)?.month?.selected ?: return@launch
+            mutableState.update {
+                it.copy(
+                    birthPickerTodaySnapshot = BirthPickerTodaySnapshot(
+                        solarYear = details.date.year,
+                        solarMonth = details.date.month,
+                        solarDay = details.date.day,
+                        lunarYear = details.lunarYear,
+                        lunarMonth = details.lunarMonth,
+                        lunarDay = details.lunarDay,
+                        isLeapMonth = details.isLeapMonth,
+                        hour = now.hour,
+                        minute = now.minute,
+                        pillars = listOf(
+                            details.yearPillar,
+                            details.monthPillar,
+                            details.dayPillar,
+                            details.hourPillar,
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
     fun moveAlmanacMonth(offset: Int) {
         if (offset == 0) return
         val state = mutableState.value
@@ -2713,17 +2769,45 @@ class StageTwoViewModel(
                 almanacYear = date.year,
                 almanacMonth = date.month,
                 almanacSelectedDay = date.day,
-                almanacView = null,
                 almanacError = null,
             )
         }
-        loadAlmanac()
+        loadAlmanac(preserveVisibleContent = true)
+    }
+
+    /** 快捷跳转一次性更新日期与民用时间对应的时辰，避免界面重复刷新。 */
+    fun selectAlmanacDateTime(date: AlmanacDate, civilHour: Int) {
+        if (date.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR || civilHour !in 0..23) return
+        mutableState.update {
+            it.copy(
+                almanacYear = date.year,
+                almanacMonth = date.month,
+                almanacSelectedDay = date.day,
+                almanacSelectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(civilHour),
+                almanacError = null,
+            )
+        }
+        loadAlmanac(preserveVisibleContent = true)
+    }
+
+    fun selectAlmanacDoubleHour(index: Int) {
+        if (index !in 0..11 || index == mutableState.value.almanacSelectedDoubleHourIndex) return
+        mutableState.update {
+            it.copy(
+                almanacSelectedDoubleHourIndex = index,
+                almanacError = null,
+            )
+        }
+        loadAlmanac(preserveVisibleContent = true)
     }
 
     fun useAlmanacDateForChart() {
         val state = mutableState.value
         val selected = state.almanacView?.selected?.date
             ?: AlmanacDate(state.almanacYear, state.almanacMonth, state.almanacSelectedDay)
+        val selectedHour = AlmanacDoubleHours
+            .fromIndex(state.almanacSelectedDoubleHourIndex)
+            .representativeHour
         mutableState.update {
             it.copy(
                 destination = navigator.openCreate(),
@@ -2732,6 +2816,9 @@ class StageTwoViewModel(
                     year = selected.year.toString(),
                     month = selected.month.toString(),
                     day = selected.day.toString(),
+                    hour = selectedHour.toString(),
+                    minute = "0",
+                    second = "0",
                     isLeapMonth = false,
                 ).clearTimeZoneResolution(),
                 message = null,
@@ -2739,11 +2826,15 @@ class StageTwoViewModel(
         }
     }
 
-    private fun loadAlmanac() {
+    private fun loadAlmanac(preserveVisibleContent: Boolean = false) {
         val reader = almanacReader
         if (reader == null) {
             mutableState.update {
-                it.copy(almanacLoading = false, almanacError = "万年历引擎当前不可用。")
+                it.copy(
+                    almanacLoading = false,
+                    almanacRefreshingSelection = false,
+                    almanacError = "万年历引擎当前不可用。",
+                )
             }
             return
         }
@@ -2752,10 +2843,18 @@ class StageTwoViewModel(
             year = state.almanacYear,
             month = state.almanacMonth,
             selectedDay = state.almanacSelectedDay,
+            selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
+            ratHourRule = state.defaultRatHourRule,
         )
         almanacJob?.cancel()
         almanacJob = viewModelScope.launch {
-            mutableState.update { it.copy(almanacLoading = true, almanacError = null) }
+            mutableState.update {
+                it.copy(
+                    almanacLoading = !preserveVisibleContent,
+                    almanacRefreshingSelection = preserveVisibleContent,
+                    almanacError = null,
+                )
+            }
             val result = try {
                 withContext(ioDispatcher) { reader.loadMonth(query) }
             } catch (cancelled: CancellationException) {
@@ -2766,18 +2865,21 @@ class StageTwoViewModel(
             if (
                 mutableState.value.almanacYear != query.year ||
                 mutableState.value.almanacMonth != query.month ||
-                mutableState.value.almanacSelectedDay != query.selectedDay
+                mutableState.value.almanacSelectedDay != query.selectedDay ||
+                mutableState.value.almanacSelectedDoubleHourIndex != query.selectedDoubleHourIndex ||
+                mutableState.value.defaultRatHourRule != query.ratHourRule
             ) return@launch
             mutableState.update {
                 when (result) {
                     is AlmanacResult.Completed -> it.copy(
                         almanacView = result.month,
                         almanacLoading = false,
+                        almanacRefreshingSelection = false,
                         almanacError = null,
                     )
                     is AlmanacResult.Failed -> it.copy(
-                        almanacView = null,
                         almanacLoading = false,
+                        almanacRefreshingSelection = false,
                         almanacError = result.error.toAlmanacUserMessage(),
                     )
                 }
@@ -2816,6 +2918,71 @@ class StageTwoViewModel(
                 fourPillarsLookupLoading = false,
                 fourPillarsLookupHasSearched = false,
                 fourPillarsLookupError = null,
+            )
+        }
+    }
+
+    internal fun confirmFourPillarsLookup(selection: FourPillarsLookupSelection) {
+        fourPillarsLookupJob?.cancel()
+        val destination = if (mutableState.value.destination == AppDestination.FourPillarsLookup) {
+            AppDestination.FourPillarsLookup
+        } else {
+            navigator.openFourPillarsLookup()
+        }
+        mutableState.update {
+            it.copy(
+                destination = destination,
+                fourPillarsLookupForm = it.fourPillarsLookupForm.copy(
+                    yearPillar = selection.pillars[0],
+                    monthPillar = selection.pillars[1],
+                    dayPillar = selection.pillars[2],
+                    hourPillar = selection.pillars[3],
+                    startYear = selection.startYear.toString(),
+                    endYear = selection.endYear.toString(),
+                    timeZoneId = it.form.timeZoneId,
+                    ratHourRule = it.defaultRatHourRule,
+                ),
+                fourPillarsLookupCandidates = emptyList(),
+                fourPillarsLookupEvidence = null,
+                fourPillarsLookupLoading = false,
+                fourPillarsLookupHasSearched = false,
+                fourPillarsLookupError = null,
+                message = null,
+            )
+        }
+        searchFourPillars()
+    }
+
+    fun useFourPillarsLookupCandidate(candidate: FourPillarsLookupCandidate) {
+        fourPillarsLookupJob?.cancel()
+        val destination = navigator.back()
+        mutableState.update {
+            val candidateTime = candidate.civilDateTime
+            val needsBirthplace = it.form.locationName.isBlank()
+            it.copy(
+                destination = destination,
+                form = it.form.copy(
+                    calendarSystem = CalendarSystem.SOLAR,
+                    year = candidateTime.year.toString(),
+                    month = candidateTime.month.toString(),
+                    day = candidateTime.day.toString(),
+                    hour = candidateTime.hour.toString(),
+                    minute = "0",
+                    second = "0",
+                    isLeapMonth = false,
+                    timeZoneId = it.form.timeZoneId,
+                    resolvedUtcOffsetSeconds = candidate.resolvedUtcOffsetSeconds,
+                    availableUtcOffsetSeconds = emptyList(),
+                    useTrueSolarTime = false,
+                    ratHourRule = candidate.ratHourRule,
+                    timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+                ),
+                fourPillarsLookupLoading = false,
+                message = if (needsBirthplace) {
+                    "已回填四柱候选时间，请补充出生地区。"
+                } else {
+                    "已回填四柱候选时间。"
+                },
             )
         }
     }
@@ -4895,6 +5062,7 @@ private fun AlmanacError.toAlmanacUserMessage(): String = when (this) {
     is AlmanacError.YearOutOfBounds -> "万年历支持 $minimum–$maximum 年。"
     is AlmanacError.InvalidMonth -> "月份 $month 无效。"
     is AlmanacError.InvalidDay -> "日期 $year-$month-$day 无效。"
+    is AlmanacError.InvalidDoubleHour -> "时辰序号 $index 无效。"
     AlmanacError.EngineUnavailable -> "万年历计算失败，请重试。"
 }
 
@@ -4913,6 +5081,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putInt("almanacYear", almanacYear)
     putInt("almanacMonth", almanacMonth)
     putInt("almanacSelectedDay", almanacSelectedDay)
+    putInt("almanacSelectedDoubleHourIndex", almanacSelectedDoubleHourIndex)
     putString("defaultRatHourRule", defaultRatHourRule.name)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
@@ -4974,6 +5143,8 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
             ?: LocalDate.now().monthValue,
         almanacSelectedDay = getInt("almanacSelectedDay").takeIf { it in 1..31 }
             ?: LocalDate.now().dayOfMonth,
+        almanacSelectedDoubleHourIndex =
+            getInt("almanacSelectedDoubleHourIndex").takeIf { it in 0..11 } ?: 0,
         almanacLoading = destination == AppDestination.Almanac,
         defaultRatHourRule = enumValueOrDefault(
             getString("defaultRatHourRule"),
@@ -5419,7 +5590,7 @@ private fun Bundle.toCaseFormState(): CaseFormState = CaseFormState(
     locationName = getString("locationName").orEmpty(),
     longitude = getString("longitude").orEmpty(),
     latitude = getString("latitude").orEmpty(),
-    timeZoneId = getString("timeZoneId") ?: "Asia/Shanghai",
+    timeZoneId = getString("timeZoneId") ?: BaziTimeZoneDefaults.BEIJING_IANA_ID,
     resolvedUtcOffsetSeconds = if (containsKey("resolvedUtcOffsetSeconds")) {
         getInt("resolvedUtcOffsetSeconds")
     } else {

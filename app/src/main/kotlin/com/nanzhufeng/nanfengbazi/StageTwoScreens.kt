@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -69,6 +70,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -102,7 +106,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
@@ -314,8 +320,8 @@ fun NanfengBaziApp(
                     AppDestination.FourPillarsLookup -> FourPillarsLookupScreen(
                         state = state,
                         onBack = viewModel::navigateBack,
-                        onFormChange = viewModel::updateFourPillarsLookupForm,
-                        onSearch = viewModel::searchFourPillars,
+                        onConfirmSelection = viewModel::confirmFourPillarsLookup,
+                        onUseCandidate = viewModel::useFourPillarsLookupCandidate,
                         modifier = Modifier.padding(padding),
                     )
                     AppDestination.Almanac -> AlmanacScreen(
@@ -325,6 +331,9 @@ fun NanfengBaziApp(
                         onNextMonth = { viewModel.moveAlmanacMonth(1) },
                         onToday = viewModel::showTodayInAlmanac,
                         onSelectDate = viewModel::selectAlmanacDate,
+                        onSelectDateTime = viewModel::selectAlmanacDateTime,
+                        onSelectDoubleHour = viewModel::selectAlmanacDoubleHour,
+                        onAdjustFourPillars = viewModel::openFourPillarsLookup,
                         onUseForChart = viewModel::useAlmanacDateForChart,
                         modifier = Modifier.padding(padding),
                     )
@@ -364,7 +373,8 @@ fun NanfengBaziApp(
                         onPreview = viewModel::previewCase,
                         onSubmit = { viewModel.submitCase() },
                         onConfirmDuplicate = { viewModel.submitCase(allowDuplicate = true) },
-                        onOpenFourPillarsLookup = viewModel::openFourPillarsLookup,
+                        onConfirmFourPillarsLookup = viewModel::confirmFourPillarsLookup,
+                        onPrepareBirthPickerToday = viewModel::prepareBirthPickerToday,
                         onOpenAlmanac = viewModel::openAlmanac,
                         modifier = Modifier.padding(padding),
                     )
@@ -2831,15 +2841,6 @@ private fun CaseSummaryRow(
     }
 }
 
-private fun baziElementColor(char: Char): Color = when (char) {
-    '甲', '乙', '寅', '卯' -> Color(0xFF2F9B55)
-    '丙', '丁', '巳', '午' -> Color(0xFFD94B43)
-    '戊', '己', '辰', '戌', '丑', '未' -> Color(0xFFA47B14)
-    '庚', '辛', '申', '酉' -> Color(0xFFD98B17)
-    '壬', '癸', '亥', '子' -> Color(0xFF2E83C8)
-    else -> Color(0xFF202420)
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CaseComparisonScreen(
@@ -3918,7 +3919,8 @@ private fun CreateCaseScreen(
     onPreview: () -> Unit,
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
-    onOpenFourPillarsLookup: (List<String>) -> Unit,
+    onConfirmFourPillarsLookup: (FourPillarsLookupSelection) -> Unit,
+    onPrepareBirthPickerToday: () -> Unit,
     onOpenAlmanac: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -3928,7 +3930,8 @@ private fun CreateCaseScreen(
         onPreview = onPreview,
         onSubmit = onSubmit,
         onConfirmDuplicate = onConfirmDuplicate,
-        onOpenFourPillarsLookup = onOpenFourPillarsLookup,
+        onConfirmFourPillarsLookup = onConfirmFourPillarsLookup,
+        onPrepareBirthPickerToday = onPrepareBirthPickerToday,
         onOpenAlmanac = onOpenAlmanac,
         modifier = modifier,
     )
@@ -3941,17 +3944,22 @@ private fun WenzhenCreateCaseScreen(
     onPreview: () -> Unit,
     onSubmit: () -> Unit,
     onConfirmDuplicate: () -> Unit,
-    onOpenFourPillarsLookup: (List<String>) -> Unit,
+    onConfirmFourPillarsLookup: (FourPillarsLookupSelection) -> Unit,
+    onPrepareBirthPickerToday: () -> Unit,
     onOpenAlmanac: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var saveCase by rememberSaveable { mutableStateOf(true) }
     var showBirthPicker by rememberSaveable { mutableStateOf(false) }
+    var birthPickerEntryMode by rememberSaveable { mutableStateOf(BirthPickerMode.SOLAR) }
     var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
-    var showFourPillarsPicker by rememberSaveable { mutableStateOf(false) }
     val form = state.form
+    LaunchedEffect(showBirthPicker) {
+        if (showBirthPicker) onPrepareBirthPickerToday()
+    }
     LaunchedEffect(Unit) {
         if (form.sex == null && form.year.isBlank() && form.locationName.isBlank()) {
+            val defaultBirthplace = BirthplaceCatalog.defaultBirthplace
             onFormChange {
                 it.copy(
                     sex = SexForFortuneDirection.MAN,
@@ -3961,6 +3969,10 @@ private fun WenzhenCreateCaseScreen(
                     hour = "0",
                     minute = "0",
                     second = "0",
+                    locationName = defaultBirthplace.displayName,
+                    timeZoneId = defaultBirthplace.timeZoneId,
+                    latitude = defaultBirthplace.latitude.toString(),
+                    longitude = defaultBirthplace.longitude.toString(),
                 ).clearTimeZoneResolution()
             }
         }
@@ -3988,25 +4000,22 @@ private fun WenzhenCreateCaseScreen(
                 }
                 showBirthPicker = false
             },
-            onOpenFourPillars = {
+            onConfirmFourPillars = { selection ->
                 showBirthPicker = false
-                showFourPillarsPicker = true
+                onConfirmFourPillarsLookup(selection)
             },
-        )
-    }
-    if (showFourPillarsPicker) {
-        FourPillarsWheelPickerSheet(
-            current = listOf(
+            fourPillarsCurrent = listOf(
                 state.fourPillarsLookupForm.yearPillar,
                 state.fourPillarsLookupForm.monthPillar,
                 state.fourPillarsLookupForm.dayPillar,
                 state.fourPillarsLookupForm.hourPillar,
             ),
-            onDismiss = { showFourPillarsPicker = false },
-            onConfirm = { pillars ->
-                showFourPillarsPicker = false
-                onOpenFourPillarsLookup(pillars)
-            },
+            fourPillarsStartYear = state.fourPillarsLookupForm.startYear.toIntOrNull()
+                ?: FourPillarsLookupContract.MIN_YEAR,
+            fourPillarsEndYear = state.fourPillarsLookupForm.endYear.toIntOrNull()
+                ?: FourPillarsLookupContract.MAX_YEAR,
+            initialMode = birthPickerEntryMode,
+            todaySnapshot = state.birthPickerTodaySnapshot,
         )
     }
     if (showBirthplacePicker) {
@@ -4018,8 +4027,8 @@ private fun WenzhenCreateCaseScreen(
                     it.copy(
                         locationName = place.displayName,
                         timeZoneId = place.timeZoneId,
-                        latitude = place.latitude.toString(),
-                        longitude = place.longitude.toString(),
+                        latitude = place.latitude?.toString().orEmpty(),
+                        longitude = place.longitude?.toString().orEmpty(),
                     ).clearTimeZoneResolution()
                 }
                 showBirthplacePicker = false
@@ -4136,18 +4145,18 @@ private fun WenzhenCreateCaseScreen(
                                 "四柱" to false,
                             ),
                             onSelect = { label ->
-                                if (label == "四柱") {
-                                    showFourPillarsPicker = true
-                                } else {
-                                    onFormChange {
-                                        it.copy(
-                                            calendarSystem = if (label == "公历") {
-                                                CalendarSystem.SOLAR
-                                            } else {
-                                                CalendarSystem.LUNAR
-                                            },
-                                            isLeapMonth = false,
-                                        ).clearTimeZoneResolution()
+                                when (label) {
+                                    "四柱" -> {
+                                        birthPickerEntryMode = BirthPickerMode.FOUR_PILLARS
+                                        showBirthPicker = true
+                                    }
+                                    "公历" -> {
+                                        birthPickerEntryMode = BirthPickerMode.SOLAR
+                                        showBirthPicker = true
+                                    }
+                                    else -> {
+                                        birthPickerEntryMode = BirthPickerMode.LUNAR
+                                        showBirthPicker = true
                                     }
                                 }
                             },
@@ -4163,7 +4172,14 @@ private fun WenzhenCreateCaseScreen(
                         title = "出生时间",
                         value = form.birthDateTimeDisplay(),
                         supporting = "",
-                        onClick = { showBirthPicker = true },
+                        onClick = {
+                            birthPickerEntryMode = if (form.calendarSystem == CalendarSystem.LUNAR) {
+                                BirthPickerMode.LUNAR
+                            } else {
+                                BirthPickerMode.SOLAR
+                            }
+                            showBirthPicker = true
+                        },
                         tag = "open_birth_datetime_picker",
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -4421,7 +4437,6 @@ internal fun CaseFormScreen(
                 }
                 showBirthPicker = false
             },
-            onOpenFourPillars = {},
             showFourPillarsOption = false,
         )
     }
@@ -4434,8 +4449,8 @@ internal fun CaseFormScreen(
                     it.copy(
                         locationName = place.displayName,
                         timeZoneId = place.timeZoneId,
-                        latitude = place.latitude.toString(),
-                        longitude = place.longitude.toString(),
+                        latitude = place.latitude?.toString().orEmpty(),
+                        longitude = place.longitude?.toString().orEmpty(),
                     ).clearTimeZoneResolution()
                 }
                 showBirthplacePicker = false
@@ -5888,6 +5903,7 @@ private fun CaseDetailScreen(
     onFortuneObservationTimeChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var managementMenuExpanded by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -5909,8 +5925,77 @@ private fun CaseDetailScreen(
                 }
             },
             actions = {
-                androidx.compose.material3.IconButton(onClick = onEditMetadata) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "管理命例")
+                Box {
+                    androidx.compose.material3.IconButton(
+                        onClick = { managementMenuExpanded = true },
+                        modifier = Modifier.testTag("toggle_case_management"),
+                    ) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "管理命例")
+                    }
+                    DropdownMenu(
+                        expanded = managementMenuExpanded,
+                        onDismissRequest = { managementMenuExpanded = false },
+                    ) {
+                        fun closeThen(action: () -> Unit) {
+                            managementMenuExpanded = false
+                            action()
+                        }
+                        DropdownMenuItem(
+                            text = { Text("编辑基本资料") },
+                            onClick = { closeThen(onEditCase) },
+                            modifier = Modifier.testTag("edit_case_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("分组与标签") },
+                            onClick = { closeThen(onEditMetadata) },
+                            modifier = Modifier.testTag("edit_metadata_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("管理出生时间候选") },
+                            onClick = { closeThen(onAddBirthTimeCandidate) },
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("客观命盘摘要") },
+                            onClick = { closeThen(onOpenObjectiveSummary) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("外部分析桥接") },
+                            onClick = { closeThen(onOpenExternalAnalysis) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("导出单命例") },
+                            onClick = { closeThen(onExportSingleCase) },
+                            enabled = !state.singleCaseExchangeBusy,
+                            modifier = Modifier.testTag("export_single_case_button"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("导出命盘长图") },
+                            onClick = { closeThen(onExportCaseImage) },
+                            enabled = !state.caseImageBusy,
+                        )
+                        DropdownMenuItem(
+                            text = { Text("分享命盘长图") },
+                            onClick = { closeThen(onShareCaseImage) },
+                            enabled = !state.caseImageBusy,
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("复制命例") },
+                            onClick = { closeThen(onDuplicate) },
+                        )
+                        if (state.detail?.deletedAt == null) {
+                            DropdownMenuItem(
+                                text = { Text("移入回收站", color = MaterialTheme.colorScheme.error) },
+                                onClick = { closeThen(onMoveToTrash) },
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("恢复命例") },
+                                onClick = { closeThen(onRestore) },
+                            )
+                        }
+                    }
                 }
             },
         )
@@ -5923,6 +6008,7 @@ private fun CaseDetailScreen(
                 case = state.detail,
                 adopted = state.detail.calculationSnapshots.asReversed()
                     .firstOrNull { it.adopted },
+                expanded = state.detailSection == CaseDetailSection.BASIC_INFO,
             )
         }
         Box(modifier = Modifier.weight(1f)) {
@@ -5933,29 +6019,18 @@ private fun CaseDetailScreen(
                     actionLabel = "返回列表",
                     onAction = onBack,
                 )
-                state.detail != null -> CaseDetailContent(
+                state.detail != null -> ReferenceCaseDetailContent(
                     case = state.detail,
                     onEditCase = onEditCase,
                     onAddBirthTimeCandidate = onAddBirthTimeCandidate,
                     onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
-                    onEditMetadata = onEditMetadata,
                     onAddRecord = onAddRecord,
                     onEditRecord = onEditRecord,
                     onOpenCommentaryCandidates = onOpenCommentaryCandidates,
                     onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
                     onAddEvent = onAddEvent,
                     onEditEvent = onEditEvent,
-                    onDuplicate = onDuplicate,
-                    onExportSingleCase = onExportSingleCase,
-                    onOpenObjectiveSummary = onOpenObjectiveSummary,
-                    onOpenExternalAnalysis = onOpenExternalAnalysis,
-                    onExportCaseImage = onExportCaseImage,
-                    onShareCaseImage = onShareCaseImage,
-                    onMoveToTrash = onMoveToTrash,
-                    onRestore = onRestore,
                     selectedSection = state.detailSection,
-                    singleCaseExchangeBusy = state.singleCaseExchangeBusy,
-                    caseImageBusy = state.caseImageBusy,
                     mutationSaving = state.mutationSaving,
                     mutationError = state.mutationError,
                     fortuneObservationDate = state.fortuneObservationDate,
@@ -5990,16 +6065,23 @@ private fun CaseDetailTabs(
     selectedSection: CaseDetailSection,
     onSelectSection: (CaseDetailSection) -> Unit,
 ) {
-    ScrollableTabRow(
+    TabRow(
         selectedTabIndex = CaseDetailSection.entries.indexOf(selectedSection),
-        edgePadding = 0.dp,
         modifier = Modifier
             .fillMaxWidth()
             .testTag("case_detail_tabs"),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = NanfengGreen,
+        containerColor = NanfengNavigation,
+        contentColor = NanfengGold,
         divider = {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+        },
+        indicator = { tabPositions ->
+            TabRowDefaults.SecondaryIndicator(
+                modifier = Modifier.tabIndicatorOffset(
+                    tabPositions[CaseDetailSection.entries.indexOf(selectedSection)],
+                ),
+                color = NanfengGold,
+            )
         },
     ) {
         CaseDetailSection.entries.forEach { section ->
@@ -6013,9 +6095,9 @@ private fun CaseDetailTabs(
                     Text(
                         section.displayName(),
                         color = if (selectedSection == section) {
-                            NanfengGreen
+                            NanfengGoldLight
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            Color.White.copy(alpha = 0.82f)
                         },
                         fontWeight = if (selectedSection == section) {
                             FontWeight.SemiBold
@@ -6033,85 +6115,819 @@ private fun CaseDetailTabs(
 private fun WenzhenCaseIdentityHeader(
     case: BaziCase,
     adopted: CaseCalculationSnapshot?,
+    expanded: Boolean,
 ) {
     val result = adopted?.result
+    val westernZodiac = result?.basicChartDetails?.westernZodiac
+    val iconRes = westernZodiac.constellationIconRes()
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("case_identity_header"),
         color = NanfengNavigation,
-        shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-        shadowElevation = 2.dp,
+        shape = RoundedCornerShape(0.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Surface(
+        if (expanded) {
+            Column(
                 modifier = Modifier
-                    .width(58.dp)
-                    .height(58.dp),
-                shape = RoundedCornerShape(30.dp),
-                color = Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(2.dp, NanfengGold),
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val westernZodiac = result?.basicChartDetails?.westernZodiac
-                        val iconRes = westernZodiac.constellationIconRes()
-                        if (iconRes != null) {
-                            Icon(
-                                painter = painterResource(iconRes),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = NanfengGold,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.Star,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = NanfengGold,
-                            )
-                        }
-                        Text(
-                            westernZodiac
-                                ?.removeSuffix("座")
-                                ?.let { "${it}座" }
-                                ?: "待计算",
-                            color = NanfengGold,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
+                ZodiacIdentityBadge(
+                    westernZodiac = westernZodiac,
+                    iconRes = iconRes,
+                    size = 66.dp,
+                    iconSize = 25.dp,
+                )
                 Text(
                     case.name.value ?: case.alias,
-                    color = NanfengGold,
-                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(top = 7.dp),
+                    color = NanfengGoldLight,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Medium,
                 )
-                Text(
-                    case.birthInput.displayDateTime(),
-                    modifier = Modifier.padding(top = 3.dp),
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
+            }
+        } else {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ZodiacIdentityBadge(
+                    westernZodiac = westernZodiac,
+                    iconRes = iconRes,
+                    size = 46.dp,
+                    iconSize = 17.dp,
                 )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        case.name.value ?: case.alias,
+                        color = NanfengGoldLight,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        "公历 ${case.birthInput.displayDateTime().removePrefix("公历 ")}",
+                        modifier = Modifier.padding(top = 2.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        result?.fourPillars?.display() ?: "暂无已采用排盘",
+                        modifier = Modifier.padding(top = 2.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
                 Text(
-                    result?.fourPillars?.display() ?: "暂无已采用排盘",
-                    modifier = Modifier.padding(top = 4.dp),
+                    case.sexForFortuneDirection.displayName(),
                     color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZodiacIdentityBadge(
+    westernZodiac: String?,
+    iconRes: Int?,
+    size: Dp,
+    iconSize: Dp,
+) {
+    Surface(
+        modifier = Modifier.size(size),
+        shape = CircleShape,
+        color = Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(2.dp, NanfengGold),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            if (iconRes != null) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(iconSize),
+                    tint = NanfengGold,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    modifier = Modifier.size(iconSize),
+                    tint = NanfengGold,
                 )
             }
             Text(
-                case.sexForFortuneDirection.displayName(),
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
+                westernZodiac?.let { if (it.endsWith("座")) it else "${it}座" } ?: "待计算",
+                color = NanfengGold,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
             )
+        }
+    }
+}
+
+private enum class CaseNotesMode {
+    OWNER_FEEDBACK,
+    MASTER_COMMENTARY,
+}
+
+@Composable
+private fun ReferenceCaseDetailContent(
+    case: BaziCase,
+    onEditCase: () -> Unit,
+    onAddBirthTimeCandidate: () -> Unit,
+    onAdoptBirthTimeCandidate: (String) -> Unit,
+    onAddRecord: () -> Unit,
+    onEditRecord: (String) -> Unit,
+    onOpenCommentaryCandidates: (String) -> Unit,
+    onOpenFeedbackThemeCandidates: (String) -> Unit,
+    onAddEvent: () -> Unit,
+    onEditEvent: (String) -> Unit,
+    selectedSection: CaseDetailSection,
+    mutationSaving: Boolean,
+    mutationError: String?,
+    fortuneObservationDate: String,
+    fortuneObservationTime: String,
+    fortunePosition: FortunePosition?,
+    professionalFortunePosition: ProfessionalFortunePosition?,
+    fortunePositionError: String?,
+    onFortuneObservationDateChange: (String) -> Unit,
+    onFortuneObservationTimeChange: (String) -> Unit,
+) {
+    val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
+    var showObservationPicker by rememberSaveable(case.id) { mutableStateOf(false) }
+    var notesMode by rememberSaveable(case.id) {
+        mutableStateOf(
+            if (
+                case.textRecords.any { it.type == CaseTextRecordType.MASTER_COMMENTARY } &&
+                case.textRecords.none { it.type == CaseTextRecordType.OWNER_FEEDBACK }
+            ) {
+                CaseNotesMode.MASTER_COMMENTARY
+            } else {
+                CaseNotesMode.OWNER_FEEDBACK
+            },
+        )
+    }
+    if (showObservationPicker) {
+        ObservationDateTimePickerSheet(
+            currentDate = fortuneObservationDate,
+            currentTime = fortuneObservationTime,
+            onDismiss = { showObservationPicker = false },
+            onConfirm = { date, time ->
+                onFortuneObservationDateChange(date)
+                onFortuneObservationTimeChange(time)
+                showObservationPicker = false
+            },
+        )
+    }
+    val wide = LocalConfiguration.current.screenWidthDp >= 840
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .graphicsLayer {
+                translationY = if (selectedSection == CaseDetailSection.BASIC_INFO) {
+                    (-12).dp.toPx()
+                } else {
+                    0f
+                }
+            }
+            .background(
+                color = Color.White,
+                shape = if (selectedSection == CaseDetailSection.BASIC_INFO) {
+                    RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+                } else {
+                    RoundedCornerShape(0.dp)
+                },
+            )
+            .padding(
+                horizontal = if (wide) 28.dp else 10.dp,
+                vertical = if (selectedSection == CaseDetailSection.BASIC_INFO) 0.dp else 6.dp,
+            ),
+    ) {
+        when (selectedSection) {
+            CaseDetailSection.BASIC_INFO -> ReferenceBasicInfo(
+                case = case,
+                adopted = adopted,
+                onEditCase = onEditCase,
+                onAddBirthTimeCandidate = onAddBirthTimeCandidate,
+                onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
+                mutationSaving = mutationSaving,
+                mutationError = mutationError,
+            )
+
+            CaseDetailSection.BASIC_CHART -> ReferenceBasicChart(
+                case = case,
+                adopted = adopted,
+            )
+
+            CaseDetailSection.FORTUNE -> {
+                if (adopted == null) {
+                    ReferenceEmptyText("当前命例没有已采用的计算快照。")
+                } else {
+                    FortuneDetailsView(
+                        calculation = adopted.result,
+                        fortuneObservationDate = fortuneObservationDate,
+                        fortuneObservationTime = fortuneObservationTime,
+                        fortunePosition = fortunePosition,
+                        professionalFortunePosition = professionalFortunePosition,
+                        fortunePositionError = fortunePositionError,
+                        onOpenObservationPicker = { showObservationPicker = true },
+                    )
+                }
+            }
+
+            CaseDetailSection.RECORDS -> ReferenceCaseNotes(
+                case = case,
+                mode = notesMode,
+                onModeChange = { notesMode = it },
+                onAddRecord = onAddRecord,
+                onEditRecord = onEditRecord,
+                onOpenCommentaryCandidates = onOpenCommentaryCandidates,
+                onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
+                onAddEvent = onAddEvent,
+                onEditEvent = onEditEvent,
+            )
+        }
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+@Composable
+private fun ReferenceBasicInfo(
+    case: BaziCase,
+    adopted: CaseCalculationSnapshot?,
+    onEditCase: () -> Unit,
+    onAddBirthTimeCandidate: () -> Unit,
+    onAdoptBirthTimeCandidate: (String) -> Unit,
+    mutationSaving: Boolean,
+    mutationError: String?,
+) {
+    val result = adopted?.result
+    val conversion = result?.calendarConversion
+    val solarText = conversion?.solarDateTime?.display() ?: case.birthInput.displayDateTime()
+    val lunarText = conversion?.lunarDateTime?.let { lunar ->
+        "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}${lunar.month}月${lunar.day}日 " +
+            "%02d:%02d:%02d".format(lunar.hour, lunar.minute, lunar.second)
+    } ?: "暂无换算结果"
+    WenzhenDualFactRow(
+        leftLabel = "姓名",
+        leftValue = case.name.value ?: case.alias,
+        rightLabel = "性别",
+        rightValue = case.sexForFortuneDirection.displayName(),
+        alternate = false,
+    )
+    WenzhenFactRow("农历", lunarText, alternate = true)
+    WenzhenFactRow("阳历", solarText.removePrefix("公历 "), alternate = false)
+    result?.trueSolarTimeEvidence?.let { evidence ->
+        WenzhenFactRow("真太阳时", evidence.trueSolarDateTime.display(), alternate = true)
+    }
+    WenzhenFactRow(
+        "出生地区",
+        case.birthInput.locationName ?: "未提供",
+        alternate = result?.trueSolarTimeEvidence == null,
+    )
+    result?.basicChartDetails?.let { basic ->
+        WenzhenDualFactRow(
+            leftLabel = "生肖",
+            leftValue = basic.zodiac,
+            rightLabel = "星座",
+            rightValue = if (basic.westernZodiac.endsWith("座")) {
+                basic.westernZodiac
+            } else {
+                "${basic.westernZodiac}座"
+            },
+            alternate = true,
+        )
+        WenzhenDualFactRow(
+            "前节",
+            "${basic.previousSolarTerm.name} ${basic.previousSolarTerm.at.display()}",
+            "后节",
+            "${basic.nextSolarTerm.name} ${basic.nextSolarTerm.at.display()}",
+            alternate = false,
+        )
+    }
+    if (result != null) {
+        WenzhenDualFactRow("胎元", result.fetalOrigin, "胎息", result.fetalBreath, true)
+        WenzhenDualFactRow("命宫", result.ownSign, "身宫", result.bodySign, false)
+        WenzhenSectionHeader(
+            "命盘摘要",
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        WenzhenFactRow("四柱", result.fourPillars.display(), alternate = true)
+        WenzhenDualFactRow(
+            "日主",
+            result.basicChartDetails?.dayMaster ?: "暂无",
+            "起运方向",
+            if (result.fortuneStart.direction.name == "FORWARD") "顺排" else "逆排",
+            alternate = false,
+        )
+        WenzhenDualFactRow(
+            "起运年龄",
+            "${result.fortuneStart.years}年${result.fortuneStart.months}月" +
+                "${result.fortuneStart.days}日",
+            "交运年份",
+            result.fortuneStart.endAt.year.toString(),
+            alternate = true,
+        )
+    }
+    if (case.groups.isNotEmpty() || case.tags.isNotEmpty()) {
+        WenzhenFactRow(
+            "分组标签",
+            buildList {
+                addAll(case.groups.map { it.name })
+                addAll(case.tags.map { it.name })
+            }.joinToString(" · "),
+            alternate = false,
+        )
+    }
+    if (case.birthTimeCandidates.size > 1) {
+        WenzhenSectionHeader(
+            title = "出生时间候选",
+            actionLabel = "添加",
+            onAction = onAddBirthTimeCandidate,
+            modifier = Modifier.padding(top = 18.dp),
+        )
+        case.birthTimeCandidates.forEach { candidate ->
+            val snapshot = case.calculationSnapshots.firstOrNull {
+                it.id == candidate.calculationSnapshotId
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (candidate.adopted) "${candidate.label} · 当前采用" else candidate.label,
+                        fontWeight = if (candidate.adopted) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                    Text(
+                        "${candidate.birthInput.displayDateTime()}　${snapshot?.result?.fourPillars?.display().orEmpty()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (!candidate.adopted && case.deletedAt == null) {
+                    TextButton(
+                        onClick = { onAdoptBirthTimeCandidate(candidate.id) },
+                        enabled = !mutationSaving && snapshot != null,
+                        modifier = Modifier.testTag("adopt_birth_time_candidate_${candidate.id}"),
+                    ) {
+                        Text("采用")
+                    }
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        }
+        mutationError?.let { error ->
+            Text(
+                error,
+                modifier = Modifier.padding(top = 8.dp),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReferenceBasicChart(
+    case: BaziCase,
+    adopted: CaseCalculationSnapshot?,
+) {
+    if (adopted == null) {
+        ReferenceEmptyText("当前命例没有已采用的计算快照。")
+        return
+    }
+    val result = adopted.result
+    result.basicChartDetails?.let { basic ->
+        val solar = result.calendarConversion?.solarDateTime
+        BasicChartDetailsView(
+            details = basic,
+            sex = case.sexForFortuneDirection,
+            dateValues = solar?.let {
+                listOf("${it.year}年", "${it.month}月", "${it.day}日", "%02d时".format(it.hour))
+            },
+        )
+    } ?: ReferenceEmptyText("当前计算快照缺少基础排盘明细。")
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        color = NanfengControlSurface,
+    ) {
+        Text(
+            "胎元 ${result.fetalOrigin}　胎息 ${result.fetalBreath}　" +
+                "命宫 ${result.ownSign}　身宫 ${result.bodySign}",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    result.warnings.forEach { warning ->
+        Text(
+            warning.message,
+            modifier = Modifier.padding(top = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
+private fun WenzhenSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    actionTag: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(20.dp)
+                .background(NanfengGold),
+        )
+        Text(
+            title,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (actionLabel != null && onAction != null) {
+            TextButton(
+                onClick = onAction,
+                modifier = if (actionTag == null) Modifier else Modifier.testTag(actionTag),
+                colors = ButtonDefaults.textButtonColors(contentColor = NanfengGold),
+            ) { Text(actionLabel) }
+        }
+    }
+}
+
+@Composable
+private fun WenzhenFactRow(
+    label: String,
+    value: String,
+    alternate: Boolean,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (alternate) NanfengControlSurface else Color.White,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                label,
+                modifier = Modifier.width(78.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                value,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WenzhenDualFactRow(
+    leftLabel: String,
+    leftValue: String,
+    rightLabel: String,
+    rightValue: String,
+    alternate: Boolean,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (alternate) NanfengControlSurface else Color.White,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            WenzhenInlineFact(leftLabel, leftValue, Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            WenzhenInlineFact(rightLabel, rightValue, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun WenzhenInlineFact(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier) {
+        Text(
+            "$label：",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(value, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun ReferenceEmptyText(message: String) {
+    Text(
+        message,
+        modifier = Modifier.padding(vertical = 24.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun ReferenceCaseNotes(
+    case: BaziCase,
+    mode: CaseNotesMode,
+    onModeChange: (CaseNotesMode) -> Unit,
+    onAddRecord: () -> Unit,
+    onEditRecord: (String) -> Unit,
+    onOpenCommentaryCandidates: (String) -> Unit,
+    onOpenFeedbackThemeCandidates: (String) -> Unit,
+    onAddEvent: () -> Unit,
+    onEditEvent: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NanfengGold.copy(alpha = 0.75f)),
+    ) {
+        Row(modifier = Modifier.padding(3.dp)) {
+            NotesModeTab(
+                text = "命主反馈",
+                selected = mode == CaseNotesMode.OWNER_FEEDBACK,
+                onClick = { onModeChange(CaseNotesMode.OWNER_FEEDBACK) },
+                modifier = Modifier.weight(1f),
+            )
+            NotesModeTab(
+                text = "师傅点评",
+                selected = mode == CaseNotesMode.MASTER_COMMENTARY,
+                onClick = { onModeChange(CaseNotesMode.MASTER_COMMENTARY) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+    if (mode == CaseNotesMode.OWNER_FEEDBACK) {
+        ReferenceOwnerProfileSheet(case)
+        val feedback = case.textRecords.filter { it.type == CaseTextRecordType.OWNER_FEEDBACK }
+        WenzhenSectionHeader(
+            title = "命主反馈",
+            actionLabel = if (feedback.isEmpty()) "添加" else "编辑",
+            actionTag = "add_record_button",
+            onAction = {
+                feedback.firstOrNull()?.let { onEditRecord(it.id) } ?: onAddRecord()
+            },
+            modifier = Modifier.padding(top = 18.dp),
+        )
+        if (feedback.isEmpty()) {
+            ReferenceEmptyText("暂无命主反馈。")
+        } else {
+            feedback.forEachIndexed { index, record ->
+                Text(
+                    record.content,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = case.deletedAt == null) { onEditRecord(record.id) }
+                        .padding(vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                if (index != feedback.lastIndex) HorizontalDivider()
+            }
+            if (case.deletedAt == null) {
+                TextButton(
+                    onClick = { onOpenFeedbackThemeCandidates(feedback.first().id) },
+                    modifier = Modifier.testTag("open_feedback_theme_candidates_button"),
+                ) { Text("整理主题标签") }
+            }
+        }
+        WenzhenSectionHeader(
+            title = "关键事件反馈记录",
+            actionLabel = "添加",
+            actionTag = "add_event_button",
+            onAction = onAddEvent,
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        if (case.events.isEmpty()) {
+            ReferenceEmptyText("暂无关键事件。")
+        } else {
+            case.events.sortedWith(compareBy<CaseEvent> { it.year ?: Int.MAX_VALUE }
+                .thenBy { it.month ?: 0 }
+                .thenBy { it.day ?: 0 })
+                .forEachIndexed { index, event ->
+                    ReferenceEventTimelineItem(
+                        event = event,
+                        last = index == case.events.lastIndex,
+                        enabled = case.deletedAt == null,
+                        onClick = { onEditEvent(event.id) },
+                    )
+                }
+        }
+        ReferenceOtherNotes(case = case, onEditRecord = onEditRecord)
+    } else {
+        val commentary = case.textRecords.filter {
+            it.type == CaseTextRecordType.MASTER_COMMENTARY
+        }
+        WenzhenSectionHeader(
+            title = "师傅点评",
+            actionLabel = if (commentary.isEmpty()) "添加" else "编辑",
+            actionTag = "add_record_button",
+            onAction = {
+                commentary.firstOrNull()?.let { onEditRecord(it.id) } ?: onAddRecord()
+            },
+            modifier = Modifier.padding(top = 18.dp),
+        )
+        if (commentary.isEmpty()) {
+            ReferenceEmptyText("暂无师傅点评。")
+        } else {
+            commentary.forEachIndexed { index, record ->
+                Text(
+                    record.content,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = case.deletedAt == null) { onEditRecord(record.id) }
+                        .padding(vertical = 10.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    lineHeight = MaterialTheme.typography.bodyLarge.lineHeight,
+                )
+                if (index != commentary.lastIndex) HorizontalDivider()
+            }
+            if (case.deletedAt == null) {
+                TextButton(
+                    onClick = { onOpenCommentaryCandidates(commentary.first().id) },
+                    modifier = Modifier.testTag("open_commentary_candidates_button"),
+                ) { Text("整理观点候选") }
+            }
+        }
+        ReferenceOtherNotes(case = case, onEditRecord = onEditRecord)
+    }
+}
+
+@Composable
+private fun ReferenceOwnerProfileSheet(case: BaziCase) {
+    val occupation = case.profile.occupation.value
+    val education = case.profile.education.value
+    val finance = case.profile.finance.value
+    val marriage = case.profile.marriage.value
+    val health = case.profile.health.value
+    if (listOf(occupation, education, finance, marriage, health).all { it == null }) return
+    Column(modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) {
+        if (occupation != null || education != null) {
+            WenzhenDualFactRow(
+                "职业",
+                occupation ?: "未填写",
+                "学历",
+                education ?: "未填写",
+                alternate = false,
+            )
+        }
+        if (finance != null || marriage != null) {
+            WenzhenDualFactRow(
+                "财富",
+                finance ?: "未填写",
+                "婚姻",
+                marriage ?: "未填写",
+                alternate = true,
+            )
+        }
+        health?.let {
+            WenzhenFactRow("健康状态", it, alternate = false)
+        }
+    }
+}
+
+@Composable
+private fun ReferenceOtherNotes(
+    case: BaziCase,
+    onEditRecord: (String) -> Unit,
+) {
+    val otherNotes = case.textRecords.filter {
+        it.type == CaseTextRecordType.NOTE || it.type == CaseTextRecordType.ANALYSIS
+    }
+    if (otherNotes.isEmpty()) return
+    WenzhenSectionHeader("其他笔记", modifier = Modifier.padding(top = 14.dp))
+    otherNotes.forEach { record ->
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("record_card")
+                .clickable(enabled = case.deletedAt == null) { onEditRecord(record.id) }
+                .padding(vertical = 9.dp),
+        ) {
+            Text(
+                buildString {
+                    append(record.type.displayName())
+                    if (record.type == CaseTextRecordType.ANALYSIS) {
+                        append(" · ")
+                        append((record.analysisCategory ?: AnalysisCategory.GENERAL).displayName())
+                    }
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = NanfengGold,
+            )
+            Text(record.content, modifier = Modifier.padding(top = 3.dp))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    }
+}
+
+@Composable
+private fun NotesModeTab(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = 42.dp)
+            .clickable(onClick = onClick),
+        color = if (selected) NanfengGold else Color.Transparent,
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReferenceEventTimelineItem(
+    event: CaseEvent,
+    last: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(
+            modifier = Modifier.width(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = CircleShape,
+                color = NanfengGold,
+            ) {}
+            if (!last) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(74.dp)
+                        .background(NanfengGold.copy(alpha = 0.36f)),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 6.dp, bottom = 16.dp),
+        ) {
+            Text(
+                buildString {
+                    append(event.displayDate())
+                    event.stemBranch?.let { append("　$it") }
+                },
+                color = NanfengGold,
+                fontWeight = FontWeight.Medium,
+            )
+            event.title?.let { title ->
+                Text(title, modifier = Modifier.padding(top = 3.dp), fontWeight = FontWeight.SemiBold)
+            }
+            Text(event.rawText, modifier = Modifier.padding(top = 3.dp))
         }
     }
 }
@@ -6942,58 +7758,21 @@ private fun FortuneDetailsView(
     onOpenObservationPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val expanded = LocalConfiguration.current.screenWidthDp >= 840 &&
-            maxWidth >= EXPANDED_DETAIL_MIN_WIDTH
-        if (expanded) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("expanded_fortune_layout"),
-            ) {
-                FortuneOverviewPane(
-                    calculation = calculation,
-                    fortuneObservationDate = fortuneObservationDate,
-                    fortuneObservationTime = fortuneObservationTime,
-                    fortunePosition = fortunePosition,
-                    professionalFortunePosition = professionalFortunePosition,
-                    fortunePositionError = fortunePositionError,
-                    onOpenObservationPicker = onOpenObservationPicker,
-                    modifier = Modifier
-                        .weight(0.9f)
-                        .testTag("expanded_fortune_overview_pane"),
-                )
-                VerticalDivider(modifier = Modifier.padding(horizontal = 12.dp))
-                Column(
-                    modifier = Modifier
-                        .weight(1.1f)
-                        .testTag("expanded_fortune_timeline_pane"),
-                ) {
-                    DecadeFortuneDetailsView(calculation.decadeFortunes)
-                    AnnualFortuneDetailsView(
-                        annuals = calculation.annualFortunes,
-                        current = fortunePosition,
-                    )
-                }
-            }
-        } else {
-            Column {
-                FortuneOverviewPane(
-                    calculation = calculation,
-                    fortuneObservationDate = fortuneObservationDate,
-                    fortuneObservationTime = fortuneObservationTime,
-                    fortunePosition = fortunePosition,
-                    professionalFortunePosition = professionalFortunePosition,
-                    fortunePositionError = fortunePositionError,
-                    onOpenObservationPicker = onOpenObservationPicker,
-                )
-                DecadeFortuneDetailsView(calculation.decadeFortunes)
-                AnnualFortuneDetailsView(
-                    annuals = calculation.annualFortunes,
-                    current = fortunePosition,
-                )
-            }
-        }
+    Column(modifier = modifier.fillMaxWidth()) {
+        FortuneOverviewPane(
+            calculation = calculation,
+            fortuneObservationDate = fortuneObservationDate,
+            fortuneObservationTime = fortuneObservationTime,
+            fortunePosition = fortunePosition,
+            professionalFortunePosition = professionalFortunePosition,
+            fortunePositionError = fortunePositionError,
+            onOpenObservationPicker = onOpenObservationPicker,
+        )
+        DecadeFortuneDetailsView(calculation.decadeFortunes)
+        AnnualFortuneDetailsView(
+            annuals = calculation.annualFortunes,
+            current = fortunePosition,
+        )
     }
 }
 
@@ -7009,52 +7788,47 @@ private fun FortuneOverviewPane(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        DetailRow(
+        professionalFortunePosition?.let { position ->
+            ProfessionalFortunePositionView(position, calculation)
+        }
+        WenzhenSectionHeader(
+            "岁运定位",
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        WenzhenDualFactRow(
             "起运方向",
             if (calculation.fortuneStart.direction.name == "FORWARD") "顺排" else "逆排",
-        )
-        DetailRow(
             "起运年龄",
-            "${calculation.fortuneStart.years} 年 ${calculation.fortuneStart.months} 月 " +
-                "${calculation.fortuneStart.days} 日 ${calculation.fortuneStart.hours} 时 " +
-                "${calculation.fortuneStart.minutes} 分",
+            "${calculation.fortuneStart.years}年${calculation.fortuneStart.months}月" +
+                "${calculation.fortuneStart.days}日",
+            alternate = true,
         )
-        DetailRow(
-            "精确交运时间",
+        WenzhenFactRow(
+            "交运时间",
             calculation.fortuneStart.endAt.display(),
-            tag = "fortune_transfer_time",
+            alternate = false,
         )
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp, bottom = 10.dp)
                 .clickable(onClick = onOpenObservationPicker)
                 .testTag("fortune_observation_picker"),
             color = NanfengControlSurface,
-            shape = RoundedCornerShape(16.dp),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (fortunePositionError == null) {
-                    MaterialTheme.colorScheme.outlineVariant
-                } else {
-                    MaterialTheme.colorScheme.error
-                },
-            ),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    "观察时刻",
+                    modifier = Modifier.width(78.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "观察时刻",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
                         "$fortuneObservationDate  $fortuneObservationTime",
-                        modifier = Modifier.padding(top = 2.dp),
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                     fortunePositionError?.let { message ->
                         Text(
@@ -7073,14 +7847,6 @@ private fun FortuneOverviewPane(
             }
         }
         fortunePosition?.let { position -> CurrentFortunePositionView(position) }
-        professionalFortunePosition?.let { position -> ProfessionalFortunePositionView(position) }
-        Text(
-            "定位规则：流年以精确立春切换；流月以交节瞬间切换；" +
-                "流日按命例子时规则；大运以精确交运时刻切换。",
-            modifier = Modifier.padding(bottom = 10.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -7122,44 +7888,14 @@ private fun DecadeFortuneDetailsView(
             .padding(top = 8.dp, bottom = 4.dp)
             .testTag("decade_fortune_details"),
     ) {
-        Text(
-            "前八步大运",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Row(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)) {
-            Text("大运", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-            Text(
-                "起止年龄",
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.labelSmall,
-            )
-            Text(
-                "起止年份",
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.End,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-        decades.forEachIndexed { index, decade ->
-            Row(modifier = Modifier.padding(vertical = 3.dp)) {
-                Text(
-                    "${index + 1}. ${decade.name}",
+        WenzhenSectionHeader("大运")
+        Row(modifier = Modifier.fillMaxWidth()) {
+            decades.take(8).forEachIndexed { index, decade ->
+                DenseFortuneTimelineCell(
+                    title = "${index + 1}运",
+                    pillar = decade.name,
+                    subtitle = "${decade.startAge}–${decade.endAge}岁\n${decade.startYear}",
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "${decade.startAge}–${decade.endAge} 岁",
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "${decade.startYear}–${decade.endYear}",
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.End,
-                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
@@ -7182,19 +7918,20 @@ private fun CurrentFortunePositionView(
             .padding(bottom = 8.dp)
             .testTag("current_fortune_position"),
     ) {
-        DetailRow(
+        WenzhenDualFactRow(
             "当前流年",
-            "${position.annualFortune.calendarYear} ${position.annualFortune.name} · " +
-                "虚岁 ${position.annualFortune.nominalAge}",
-            tag = "current_annual_fortune",
+            "${position.annualFortune.calendarYear} ${position.annualFortune.name}",
+            "当前大运",
+            decadeText,
+            alternate = false,
         )
-        DetailRow("当前大运", decadeText, tag = "current_decade_fortune")
     }
 }
 
 @Composable
 private fun ProfessionalFortunePositionView(
     position: ProfessionalFortunePosition,
+    calculation: CalculationResult,
 ) {
     val context = LocalContext.current
     var copied by remember(position) { mutableStateOf(false) }
@@ -7204,36 +7941,11 @@ private fun ProfessionalFortunePositionView(
             .padding(bottom = 8.dp)
             .testTag("professional_fortune_position"),
     ) {
-        Text(
-            "专业流运",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        DetailRow("流年柱", position.flowPillars.year, tag = "flow_year_pillar")
-        DetailRow("流月柱", position.flowPillars.month, tag = "flow_month_pillar")
-        DetailRow("流日柱", position.flowPillars.day, tag = "flow_day_pillar")
-        DetailRow("流时柱", position.flowPillars.hour, tag = "flow_hour_pillar")
-        DetailRow(
-            "前一节气",
-            "${position.previousSolarTerm.name}（${position.previousSolarTerm.type.displayName()}） " +
-                position.previousSolarTerm.at.display(),
-            tag = "previous_solar_term",
-        )
-        DetailRow(
-            "后一节气",
-            "${position.nextSolarTerm.name}（${position.nextSolarTerm.type.displayName()}） " +
-                position.nextSolarTerm.at.display(),
-            tag = "next_solar_term",
-        )
-        DetailRow("计算档案", position.profileId, tag = "fortune_profile_id")
-        DetailRow("规则版本", position.ruleVersion, tag = "fortune_rule_version")
-        DetailRow(
-            "观察时刻口径",
-            "民用时（不额外校正观察地点真太阳时）",
-            tag = "fortune_observation_time_mode",
-        )
-        TextButton(
-            onClick = {
+        WenzhenSectionHeader(
+            title = "当前流运",
+            actionLabel = if (copied) "已复制" else "复制诊断",
+            actionTag = "copy_fortune_diagnostics",
+            onAction = {
                 val clipboard = context.getSystemService(ClipboardManager::class.java)
                 clipboard?.setPrimaryClip(
                     ClipData.newPlainText(
@@ -7243,12 +7955,28 @@ private fun ProfessionalFortunePositionView(
                 )
                 copied = true
             },
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .testTag("copy_fortune_diagnostics"),
-        ) {
-            Text(if (copied) "诊断已复制" else "复制流运诊断")
+        )
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf(
+                "流时" to position.flowPillars.hour,
+                "流日" to position.flowPillars.day,
+                "流月" to position.flowPillars.month,
+                "流年" to position.flowPillars.year,
+                "大运" to (position.position.decadeFortune?.name ?: "—"),
+                "年柱" to calculation.fourPillars.year,
+                "月柱" to calculation.fourPillars.month,
+                "日柱" to calculation.fourPillars.day,
+                "时柱" to calculation.fourPillars.hour,
+            ).forEach { (label, pillar) ->
+                FortunePillarCell(label, pillar, Modifier.weight(1f))
+            }
         }
+        WenzhenFactRow(
+            "节气区间",
+            "${position.previousSolarTerm.name} ${position.previousSolarTerm.at.display()}　" +
+                "${position.nextSolarTerm.name} ${position.nextSolarTerm.at.display()}",
+            alternate = true,
+        )
     }
 }
 
@@ -7288,77 +8016,112 @@ private fun AnnualFortuneDetailsView(
     current: FortunePosition?,
 ) {
     if (annuals.isEmpty()) return
+    val currentIndex = annuals.indexOfFirst {
+        it.calendarYear == current?.annualFortune?.calendarYear
+    }.coerceAtLeast(0)
+    val visibleAnnuals = annuals.drop((currentIndex / 10) * 10).take(10)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp, bottom = 4.dp)
             .testTag("annual_fortune_details"),
     ) {
-        Text(
-            "流年表",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "出生年至前八步大运终点；交运年份的当前归属以上方精确时刻定位为准。",
-            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(modifier = Modifier.padding(vertical = 2.dp)) {
-            Text("年份", modifier = Modifier.weight(0.8f), style = MaterialTheme.typography.labelSmall)
-            Text("流年", modifier = Modifier.weight(0.8f), style = MaterialTheme.typography.labelSmall)
-            Text(
-                "虚岁",
-                modifier = Modifier.weight(0.6f),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.labelSmall,
-            )
-            Text(
-                "大运",
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.End,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-        annuals.forEach { annual ->
-            val isCurrent = current?.annualFortune?.calendarYear == annual.calendarYear
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp)
-                    .then(
-                        if (isCurrent) {
-                            Modifier.testTag("current_annual_fortune_row")
-                        } else {
-                            Modifier
-                        },
-                    ),
-            ) {
-                val style = if (isCurrent) {
-                    MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                } else {
-                    MaterialTheme.typography.bodySmall
-                }
-                Text(
-                    annual.calendarYear.toString(),
-                    modifier = Modifier.weight(0.8f),
-                    style = style,
-                )
-                Text(annual.name, modifier = Modifier.weight(0.8f), style = style)
-                Text(
-                    annual.nominalAge.toString(),
-                    modifier = Modifier.weight(0.6f),
-                    textAlign = TextAlign.Center,
-                    style = style,
-                )
-                Text(
-                    annual.decadeName ?: "未交运",
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.End,
-                    style = style,
+        WenzhenSectionHeader("流年")
+        Row(modifier = Modifier.fillMaxWidth()) {
+            visibleAnnuals.forEach { annual ->
+                val isCurrent = current?.annualFortune?.calendarYear == annual.calendarYear
+                DenseFortuneTimelineCell(
+                    title = annual.calendarYear.toString(),
+                    pillar = annual.name,
+                    subtitle = "虚${annual.nominalAge}",
+                    selected = isCurrent,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (isCurrent) Modifier.testTag("current_annual_fortune_row") else Modifier,
+                        ),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DenseFortuneTimelineCell(
+    title: String,
+    pillar: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+) {
+    Surface(
+        modifier = modifier,
+        color = if (selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 1.dp, vertical = 7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                title,
+                fontSize = 9.sp,
+                color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                pillar.take(2).forEach { character ->
+                    Text(
+                        character.toString(),
+                        color = baziElementColor(character),
+                        fontSize = 17.sp,
+                        lineHeight = 19.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Text(
+                subtitle,
+                textAlign = TextAlign.Center,
+                fontSize = 9.sp,
+                lineHeight = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FortunePillarCell(
+    label: String,
+    pillar: String,
+    modifier: Modifier = Modifier,
+) {
+    val pillarTag: String? = when (label) {
+        "流年" -> "flow_year_pillar"
+        "流月" -> "flow_month_pillar"
+        "流日" -> "flow_day_pillar"
+        "流时" -> "flow_hour_pillar"
+        else -> null
+    }
+    Column(
+        modifier = modifier
+            .then(if (pillarTag == null) Modifier else Modifier.testTag(pillarTag))
+            .padding(vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            label,
+            fontSize = 9.sp,
+            lineHeight = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        pillar.take(2).forEach { character ->
+            Text(
+                character.toString(),
+                color = baziElementColor(character),
+                fontSize = 18.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
@@ -7457,6 +8220,7 @@ private fun CalculationArchiveComparisonView(
 private fun BasicChartDetailsView(
     details: BasicChartDetails,
     sex: SexForFortuneDirection,
+    dateValues: List<String>? = null,
 ) {
     val pillars = details.pillars.associateBy { it.position }
     val ordered = PillarPosition.entries.map { requireNotNull(pillars[it]) }
@@ -7467,50 +8231,17 @@ private fun BasicChartDetailsView(
             .padding(bottom = 12.dp)
             .testTag("basic_chart_details"),
     ) {
-        Text(
-            "基础排盘明细",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "生肖 ${details.zodiac} · ${details.westernZodiac}座 · 日主 ${details.dayMaster}",
-            modifier = Modifier.padding(top = 4.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            "前节气 ${details.previousSolarTerm.name} " +
-                details.previousSolarTerm.at.display(),
-            modifier = Modifier.padding(top = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            "后节气 ${details.nextSolarTerm.name} ${details.nextSolarTerm.at.display()}",
-            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val previousJie = details.previousJie
-        val nextJie = details.nextJie
-        if (previousJie != null && nextJie != null) {
-            Text(
-                "问真同口径前一节 ${previousJie.name} " +
-                    previousJie.at.display(),
-                modifier = Modifier.padding(top = 2.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "问真同口径后一节 ${nextJie.name} ${nextJie.at.display()}",
-                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         BasicChartTableRow(
             label = "",
             values = listOf("年柱", "月柱", "日柱", "时柱"),
+            shaded = true,
         )
+        dateValues?.let {
+            BasicChartTableRow(
+                label = "日期",
+                values = it,
+            )
+        }
         BasicChartTableRow(
             label = "主星",
             values = ordered.map { pillar ->
@@ -7522,24 +8253,81 @@ private fun BasicChartDetailsView(
             },
             tag = "basic_chart_primary",
         )
-        BasicChartTableRow("天干", ordered.map(PillarDetail::heavenStem))
-        BasicChartTableRow("地支", ordered.map(PillarDetail::earthBranch))
         BasicChartTableRow(
-            "藏干",
-            ordered.map { it.hiddenStems.joinToString("\n") { hidden -> hidden.heavenStem } },
+            "天干",
+            ordered.map(PillarDetail::heavenStem),
+            valueColors = ordered.map { baziElementColor(it.heavenStemElement) },
+            emphasis = true,
+            shaded = true,
         )
+        BasicChartTableRow(
+            "地支",
+            ordered.map(PillarDetail::earthBranch),
+            valueColors = ordered.map { baziElementColor(it.earthBranchElement) },
+            emphasis = true,
+        )
+        BasicChartHiddenStemRow(ordered)
         BasicChartTableRow(
             "副星",
             ordered.map { it.hiddenStems.joinToString("\n") { hidden -> hidden.tenGod } },
             tag = "basic_chart_secondary",
         )
-        BasicChartTableRow("星运", ordered.map(PillarDetail::terrain))
+        BasicChartTableRow("星运", ordered.map(PillarDetail::terrain), shaded = true)
         BasicChartTableRow("自坐", ordered.map(PillarDetail::selfSittingTerrain))
         BasicChartTableRow(
             "空亡",
             ordered.map { it.voidEarthBranches.joinToString("") },
+            shaded = true,
         )
         BasicChartTableRow("纳音", ordered.map(PillarDetail::naYin))
+        Text(
+            "前节气 ${details.previousSolarTerm.name} ${details.previousSolarTerm.at.display()}　" +
+                "后节气 ${details.nextSolarTerm.name} ${details.nextSolarTerm.at.display()}",
+            modifier = Modifier.padding(top = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun BasicChartHiddenStemRow(pillars: List<PillarDetail>) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NanfengControlSurface)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            "藏干",
+            modifier = Modifier.width(44.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        pillars.forEach { pillar ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                pillar.hiddenStems.forEach { hidden ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            hidden.heavenStem,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = baziElementColor(hidden.element),
+                        )
+                        Text(
+                            hidden.tenGod,
+                            modifier = Modifier.padding(start = 2.dp),
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -7548,12 +8336,16 @@ private fun BasicChartTableRow(
     label: String,
     values: List<String>,
     tag: String? = null,
+    valueColors: List<Color> = emptyList(),
+    emphasis: Boolean = false,
+    shaded: Boolean = false,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (tag == null) Modifier else Modifier.testTag(tag))
-            .padding(vertical = 5.dp),
+            .background(if (shaded) NanfengControlSurface else Color.White)
+            .padding(horizontal = 8.dp, vertical = if (emphasis) 12.dp else 9.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
@@ -7562,13 +8354,22 @@ private fun BasicChartTableRow(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        values.forEach { value ->
+        values.forEachIndexed { index, value ->
             Text(
                 value,
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodySmall,
-                lineHeight = MaterialTheme.typography.bodySmall.lineHeight,
+                style = if (emphasis) {
+                    MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                },
+                lineHeight = if (emphasis) {
+                    MaterialTheme.typography.headlineSmall.lineHeight
+                } else {
+                    MaterialTheme.typography.bodyMedium.lineHeight
+                },
+                color = valueColors.getOrNull(index) ?: MaterialTheme.colorScheme.onSurface,
             )
         }
     }

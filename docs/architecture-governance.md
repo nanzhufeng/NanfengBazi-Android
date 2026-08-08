@@ -156,7 +156,8 @@
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
 | 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
-| 四柱反查 | `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 | 只查 1800–2100 的民用时；输入 IANA 时区与子时口径，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；原始反查为空时仅在适配器内按 60 日周期扫描民用代表时刻且仍由唯一正向引擎复算；页面与表单进入 `SavedStateHandle`，候选不自动保存 |
+| 四柱反查 | 首页地区／时间 → `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 → 用户点选回填 `CaseFormState` | 首页地区是时区的唯一来源；四柱面板只编辑四柱与年份范围，不重复显示或修改地区／时区。只查 1800–2200 的民用时，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；原始反查为空时仅在适配器内按 60 日周期扫描民用代表时刻且仍由唯一正向引擎复算；点选只回填日期、时辰和 offset 并标记 `DOUBLE_HOUR_ONLY`，不改写地区／时区，不伪造真太阳时/精确分钟，候选不自动保存 |
+| 北京时间默认 | `BaziTimeZoneDefaults` → 新建/恢复/导入/国内地点/备份命名 | `Asia/Shanghai` 是唯一默认值与备份文件名时区；只在缺失值时回退，历史命例与用户选择的 IANA 时区保持原样 |
 | 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |
 | 客观命盘摘要 | `CaseObjectiveSummaryGenerator` → `CaseObjectiveSummaryContract` → 摘要页/剪贴板/图片合同 | 只投影唯一已采用快照和正式资料计数；固定字段来源与缺失状态，页面和图片不得重算或生成主观解释 |
 | 外部分析手动桥接 | `CaseObjectiveSummaryGenerator` → `ExternalAnalysisBridge.prepareExport/prepareImport()` → 剪贴板/`TextRecordUseCase` | 只消费同一客观摘要投影；按字段组预览，默认隐藏身份、精确出生时间、地点和时区，复制与回填分别主动确认；草稿可恢复但确认不跨重建，旧命例 revision/快照拒绝回填；结果仅保存为带来源的 `ANALYSIS`，无网络客户端 |
@@ -170,19 +171,19 @@
 | 三主界面导航 | `StageTwoNavigator` + `StageTwoViewModel` | 根级只保留排盘、记录、设置；导入、对比、备份等能力仍复用原有用例，只改变入口层级，不复制业务逻辑 |
 | 问真式视觉壳 | `NanfengBaziTheme` + Compose screen components | 参考信息层级、密度和交互位置，使用南枫本地绿/黑金皮肤；不复制第三方素材或形成页面算法 |
 | 记录密集摘要 | `CaseRepository.search()` → `CaseSummaryRow` | 只消费命例聚合和已采用快照；四柱着色、生肖和 A–Z 索引只是展示，不重算、不改写事实 |
-| 详情四标签 | `CaseDetailScreen` + `StageTwoUiState.detailSection` | 基本信息/基本排盘/专业细盘/断事笔记共用固定身份头和同一快照；低频管理动作默认折叠，不改变用例所有权 |
+| 详情四标签 | `CaseDetailScreen` + `StageTwoUiState.detailSection` | 基本信息/基本排盘/专业细盘/断事笔记共用固定身份头和同一快照；低频管理动作统一进入右上角菜单，不改变用例所有权 |
 | 记录来源类型 | `CaseTextRecord.sourceType` + `TextRecordSourceType` | Room v8 持久化 USER/RULE_TEMPLATE/EXTERNAL_AI/IMPORTED_IMAGE/历史未指定；历史缺省只按是否有来源附件归一，不根据文本猜测来源 |
-| App 图标主图 | 用户提供的原始附件 | 必须从原图生成 adaptive/legacy 资源并做像素对照；当前临时附件已被系统清理，禁止以近似重绘冒充完成 |
+| App 图标主图 | 用户提供的原始附件 | 构建、分层、缩放与真机门禁以 [启动图标保真构建规范](app-icon-fidelity-standard.md) 为唯一正文；禁止近似重绘或额外托盘 |
 
 ## alpha73 低输入选择器与图标资源边界
 
 | 概念 | 唯一所有者/入口 | 边界 |
 |---|---|---|
-| 日期时间滚轮 | `BirthDateTimePickerSheet` → `CaseFormState` | 只选择公历/农历民用输入并自动定位现值；合法日期、闰月、时区与排盘仍由领域/引擎验证 |
-| 地点三级联动 | `BirthplaceCatalog` → `BirthplacePickerSheet` → `CaseFormState` | 离线目录只提供名称、IANA 时区和城市中心参考坐标；未知地点不得静默预填，真太阳时默认关闭 |
-| 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 表示层只枚举有效六十甲子和公开查询边界；查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
+| 日期时间滚轮 | `BirthDateTimePickerSheet` → `CaseFormState` | 固定底部弹窗在 API 35 目标画幅至少 560dp；滚轮独占纵向手势，弹窗不可随滚轮拖动。只选择公历/农历民用输入，合法日期、闰月、时区与排盘仍由领域/引擎验证 |
+| 地点三级联动 | `BirthplaceCatalog` → `BirthplacePickerSheet` → `CaseFormState` | 与出生时间共用 680dp 固定底部弹窗、外部空白点击关闭和滚轮独占纵向手势。离线目录提供地点名、IANA 时区及仅在可信时存在的城市中心参考坐标；缺少坐标不得用省会／猜值填充，真太阳时默认关闭 |
+| 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 四柱页直接选择柱位、天干及阴阳相合的地支，表示层只构造有效六十甲子和公开查询边界；查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
 | 离散触觉反馈 | Compose `ValueWheel` → Android `performHapticFeedback(CLOCK_TICK)` | 只在中心刻度变化时反馈并尊重系统触觉开关；不申请振动权限，不用触觉表示计算正确 |
-| 启动图标 | `design/assets/app-icon-master.jpg` → `app_icon_source`、`mipmap-*` / adaptive icon | 用户提供 JPEG 是唯一当前母版；旧 PNG 仅为历史素材。不得重绘、改色、裁切主体或添加额外托盘，平台蒙版差异用真实启动器截图核对 |
+| 启动图标 | `design/assets/app-icon-master.jpg` → `app_icon_source`、`mipmap-*` / adaptive icon | 用户提供 JPEG 是唯一当前母版；两层 adaptive 构建与启动器核对严格按 [启动图标保真构建规范](app-icon-fidelity-standard.md) 执行 |
 
 ## alpha74 详情视觉、星座资源与文案边界
 
@@ -201,9 +202,11 @@
 |---|---|---|
 | 万年历领域合同 | `AlmanacReader`、`AlmanacMonthQuery`、`AlmanacResult` | `core:domain` 定义查询、42 格月份、日详情和结构化错误，不依赖 Tyme4j 或 Compose |
 | 万年历生产实现 | `TymeAlmanacReader` | 只在 `core:engine-tyme` 调用 Tyme4j；UI 不读取远端接口、不嵌 WebView、不复制第二历法算法 |
-| 首页与日期回填 | `StageTwoViewModel` → `AlmanacScreen` → 正常排盘表单 | 月份、所选日和目的地进入 `SavedStateHandle`；“用此日期排盘”只更新公历日期，完整计算仍经过 `BaziEngine` |
-| 响应式表示 | `AlmanacScreen` | 手机单列，760dp 以上双栏；宽度只改变布局，不改变领域结果或缓存第二份事实 |
-| 传统资料说明 | `AlmanacDayDetails` → 详情页 | 宜忌、值神等作为传统民俗资料展示，不生成事实断言、吉凶结论或自动写入命例 |
+| 首页与日期回填 | `StageTwoViewModel` → `AlmanacScreen` → 正常排盘表单 | 月份、所选日、所选时辰和目的地进入 `SavedStateHandle`；“用此日期排盘”回填公历日期与时辰代表时刻，完整计算仍经过 `BaziEngine` |
+| 响应式表示 | `AlmanacScreen` | 所有宽度保持“月历在上、日详情在下”的同向信息流；760dp 以上仅加大整宽月历格与卡片间距，不将日详情挤入窄右栏。宽度只改变布局，不改变领域结果或缓存第二份事实 |
+| 时辰与八字详情 | `AlmanacMonthQuery` → `TymeAlmanacReader` → `AlmanacDayDetails` | 12 时辰、四柱、五行、藏干和天干五合/地支六合六冲只由 Tyme4j 结果派生；Compose 只呈现，不维护第二套干支算法 |
+| 五行视觉语义 | `BaziElementPresentation` | 记录列表、四柱录入、万年历和基础排盘都调用同一字符／元素映射；庚辛申酉固定亮黄色，颜色不参与领域计算 |
+| 传统资料说明 | `AlmanacDayDetails` → 详情页 | 宜忌与称骨作为传统民俗资料展示；称骨以独立版本化权重表和男女断语表呈现，明确标注民俗、版本差异与非事实边界，绝不自动写入命例；建除、值神、星宿、胎神不进合同或 UI |
 
 ## alpha76 UI-11 展开态边界
 
@@ -212,3 +215,12 @@
 | 截图审阅双栏 | `ScreenshotImportReviewScreen` → `ScreenshotEvidencePreview` | 左栏只读取当前 `ScreenshotImportUiState` 中已私有复制的原图和同一字段来源框；右栏继续采用、确认或保留候选，不重跑 OCR、不补全字段。 |
 | 岁运双栏 | `CaseDetailContent` → `FortuneDetailsView` | 概览、大运和流年详情共同消费同一已采用 `CalculationResult` 与当前定位结果；布局不得自行复算四柱、岁运或生成第二快照。 |
 | 展开断点 | `StageTwoScreens.kt` | 只有全屏 `>=840dp` 且嵌套详情内容至少 `360dp` 时并列；不足时保持单列。断点只改变表示，不改变保存、候选或领域状态。 |
+
+## alpha82 命例详情与区县目录边界
+
+| 概念 | 唯一所有者/入口 | 边界 |
+|---|---|---|
+| 命例详情投影 | `CaseDetailScreen` → 当前命例/已采用 `CalculationResult` | 居中基本身份区、紧凑详情身份条、连续信息表、四柱矩阵、九列流运总览、八步大运／十年流年和反馈时间线只是同一模型的表示；职业等主观资料读取 `CaseProfile`，不重算、不回写、不新建详情专用真值 |
+| 五行呈现 | `BaziElementPresentation` | 天干、地支、藏干、流运及候选都调用同一字符到色彩映射；金的亮黄色与记录页同源，底板不承担真值或状态含义 |
+| 管理动作 | 详情右上角菜单 → 既有用例 | 编辑、导出、复制、软删除等只调整入口优先级；不删除功能、不跳过确认、不改变用例边界 |
+| 国内行政区目录 | `china-districts.csv` → `BirthplaceCatalog` | 锁定上游提交生成 2,846 条省／市／区县名称；仅补全选择目录和北京民用时，不用区县名伪造经纬度或真太阳时证据 |

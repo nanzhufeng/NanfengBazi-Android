@@ -224,7 +224,7 @@ class TymeBaziEngineTest {
     }
 
     @Test
-    fun `1900到2100跨年段立春前时后1秒同步切换年柱生肖与前后节`() = runTest {
+    fun `1900到2200跨年段立春前时后1秒同步切换年柱生肖与前后节`() = runTest {
         val zodiacByBranch = mapOf(
             '子' to "鼠",
             '丑' to "牛",
@@ -240,7 +240,7 @@ class TymeBaziEngineTest {
             '亥' to "猪",
         )
 
-        (1900..2100 step 10).forEach { year ->
+        (1900..2200 step 10).forEach { year ->
             val spring = SolarTerm.fromIndex(year, 3).julianDay.solarTime
             val before = engine.calculate(
                 spring.next(-1).toBirthInput(),

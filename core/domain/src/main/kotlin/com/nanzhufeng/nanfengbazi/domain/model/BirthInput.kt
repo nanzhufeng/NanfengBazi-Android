@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi.domain.model
 
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -86,7 +87,7 @@ data class BirthInput(
     val calendarInput: BirthCalendarInput,
     val sexForFortuneDirection: SexForFortuneDirection,
     val timePrecision: TimePrecision,
-    val timeZoneId: String = "Asia/Shanghai",
+    val timeZoneId: String = BaziTimeZoneDefaults.BEIJING_IANA_ID,
     val resolvedUtcOffsetSeconds: Int? = null,
     val timeZoneDataVersion: String? = null,
     val locationName: String? = null,

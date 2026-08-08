@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
@@ -66,7 +67,13 @@ class CaseFormValidatorTest {
         assertEquals(29, solar.dateTime.day)
         assertEquals("合成命例甲", valid.alias)
         assertEquals("江苏省苏州市", valid.birthInput.locationName)
-        assertEquals("Asia/Shanghai", valid.birthInput.timeZoneId)
+        assertEquals(BaziTimeZoneDefaults.BEIJING_IANA_ID, valid.birthInput.timeZoneId)
+    }
+
+    @Test
+    fun `新建表单默认北京时间并保留用户明确时区`() {
+        assertEquals(BaziTimeZoneDefaults.BEIJING_IANA_ID, CaseFormState().timeZoneId)
+        assertEquals("America/New_York", CaseFormState(timeZoneId = "America/New_York").timeZoneId)
     }
 
     @Test

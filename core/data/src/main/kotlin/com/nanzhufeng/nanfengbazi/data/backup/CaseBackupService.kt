@@ -16,6 +16,7 @@ import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
 import com.nanzhufeng.nanfengbazi.data.repository.toDomainCases
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
@@ -33,7 +34,6 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Clock
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.zip.ZipEntry
@@ -161,10 +161,10 @@ class CaseBackupService(
     }
 
     override fun suggestedFileName(): String =
-        "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(ZoneId.systemDefault()))}.zip"
+        "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(BaziTimeZoneDefaults.beijingZoneId))}.zip"
 
     override fun suggestedEncryptedFileName(): String =
-        "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(ZoneId.systemDefault()))}_加密.nfbak"
+        "南枫八字备份_${FILE_NAME_TIME_FORMAT.format(clock.instant().atZone(BaziTimeZoneDefaults.beijingZoneId))}_加密.nfbak"
 
     override suspend fun preview(
         input: InputStream,

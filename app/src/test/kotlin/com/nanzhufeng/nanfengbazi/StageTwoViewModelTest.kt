@@ -171,6 +171,7 @@ class StageTwoViewModelTest {
         viewModel.selectAlmanacDate(
             com.nanzhufeng.nanfengbazi.domain.AlmanacDate(2026, 8, 2),
         )
+        viewModel.selectAlmanacDoubleHour(6)
         viewModel.useAlmanacDateForChart()
 
         assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
@@ -178,6 +179,49 @@ class StageTwoViewModelTest {
         assertEquals("2026", viewModel.state.value.form.year)
         assertEquals("8", viewModel.state.value.form.month)
         assertEquals("2", viewModel.state.value.form.day)
+        assertEquals("11", viewModel.state.value.form.hour)
+    }
+
+    @Test
+    fun `万年历快捷跳转一次性更新日期与对应时辰`() = runTest {
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            almanacReader = TymeAlmanacReader(),
+        )
+
+        viewModel.openAlmanac()
+        viewModel.selectAlmanacDateTime(
+            com.nanzhufeng.nanfengbazi.domain.AlmanacDate(2026, 8, 7),
+            civilHour = 15,
+        )
+
+        assertEquals(2026, viewModel.state.value.almanacYear)
+        assertEquals(8, viewModel.state.value.almanacMonth)
+        assertEquals(7, viewModel.state.value.almanacSelectedDay)
+        assertEquals(8, viewModel.state.value.almanacSelectedDoubleHourIndex)
+        assertEquals("申", viewModel.state.value.almanacView?.selected?.selectedDoubleHour?.branch)
+    }
+
+    @Test
+    fun `出生时间今天同时准备公历农历与当前四柱`() = runTest {
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            almanacReader = TymeAlmanacReader(),
+        )
+
+        viewModel.prepareBirthPickerToday()
+
+        val today = requireNotNull(viewModel.state.value.birthPickerTodaySnapshot)
+        assertEquals(2026, today.solarYear)
+        assertEquals(7, today.solarMonth)
+        assertEquals(30, today.solarDay)
+        assertEquals(8, today.hour)
+        assertEquals(0, today.minute)
+        assertTrue(today.lunarYear in 2025..2026)
+        assertTrue(today.lunarMonth in 1..12)
+        assertTrue(today.lunarDay in 1..30)
+        assertEquals(4, today.pillars.size)
+        assertTrue(today.pillars.all { it.length == 2 })
     }
 
     @Test
@@ -1221,24 +1265,34 @@ class StageTwoViewModelTest {
         )
 
         viewModel.openCreate()
-        viewModel.openFourPillarsLookup()
-        viewModel.updateFourPillarsLookupForm {
-            it.copy(
-                yearPillar = "己丑",
-                monthPillar = "癸酉",
-                dayPillar = "甲子",
-                hourPillar = "壬申",
-                startYear = "1949",
-                endYear = "1949",
-            )
-        }
-        viewModel.searchFourPillars()
+        viewModel.confirmFourPillarsLookup(
+            FourPillarsLookupSelection(
+                pillars = listOf("己丑", "癸酉", "甲子", "壬申"),
+                startYear = 1949,
+                endYear = 1949,
+            ),
+        )
 
         assertEquals(AppDestination.FourPillarsLookup, viewModel.state.value.destination)
         assertEquals(1, recordedQueries.size)
         assertEquals(1, viewModel.state.value.fourPillarsLookupCandidates.size)
         assertEquals("Tyme4j", viewModel.state.value.fourPillarsLookupEvidence?.engineName)
         assertNull(viewModel.state.value.fourPillarsLookupError)
+
+        viewModel.useFourPillarsLookupCandidate(
+            viewModel.state.value.fourPillarsLookupCandidates.single(),
+        )
+
+        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals("1949", viewModel.state.value.form.year)
+        assertEquals("10", viewModel.state.value.form.month)
+        assertEquals("1", viewModel.state.value.form.day)
+        assertEquals("16", viewModel.state.value.form.hour)
+        assertEquals("0", viewModel.state.value.form.minute)
+        assertEquals("Asia/Shanghai", viewModel.state.value.form.timeZoneId)
+        assertEquals(28_800, viewModel.state.value.form.resolvedUtcOffsetSeconds)
+        assertEquals(TimePrecision.DOUBLE_HOUR_ONLY, viewModel.state.value.form.timePrecision)
+        assertEquals("", viewModel.state.value.form.locationName)
     }
 
     @Test

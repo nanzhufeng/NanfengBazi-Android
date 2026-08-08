@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
@@ -44,7 +45,7 @@ data class CaseFormState(
     val locationName: String = "",
     val longitude: String = "",
     val latitude: String = "",
-    val timeZoneId: String = "Asia/Shanghai",
+    val timeZoneId: String = BaziTimeZoneDefaults.BEIJING_IANA_ID,
     val resolvedUtcOffsetSeconds: Int? = null,
     val availableUtcOffsetSeconds: List<Int> = emptyList(),
     val useTrueSolarTime: Boolean = false,

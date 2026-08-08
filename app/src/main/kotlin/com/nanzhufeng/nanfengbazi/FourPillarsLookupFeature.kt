@@ -44,7 +44,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsField
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupCandidate
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupError
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupQuery
 import com.nanzhufeng.nanfengbazi.domain.YearRangeBoundary
@@ -59,7 +61,7 @@ data class FourPillarsLookupFormState(
     val hourPillar: String = "",
     val startYear: String = FourPillarsLookupContract.MIN_YEAR.toString(),
     val endYear: String = FourPillarsLookupContract.MAX_YEAR.toString(),
-    val timeZoneId: String = "Asia/Shanghai",
+    val timeZoneId: String = BaziTimeZoneDefaults.BEIJING_IANA_ID,
     val ratHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
 )
 
@@ -98,7 +100,7 @@ internal fun FourPillarsLookupError.toUserMessage(): String = when (this) {
     is FourPillarsLookupError.YearRangeTooLarge ->
         "一次最多查询 $maximumInclusiveYearCount 个年份，请缩小范围。"
     is FourPillarsLookupError.InvalidTimeZone ->
-        "IANA 时区“$timeZoneId”无效，请填写如 Asia/Shanghai。"
+        "所选时区无效，请重新选择。"
     FourPillarsLookupError.EngineUnavailable ->
         "四柱反查引擎未能完成查询，请核对输入后重试。"
 }
@@ -129,36 +131,15 @@ private fun FourPillarsSelectionCard(pillars: List<String>, onClick: () -> Unit)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                listOf("年柱", "月柱", "日柱", "时柱").forEach { label ->
-                    Text(label, style = MaterialTheme.typography.labelMedium)
-                }
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                pillars.forEachIndexed { index, pillar ->
-                    Surface(
-                        modifier = Modifier.size(66.dp),
-                        shape = CircleShape,
-                        color = listOf(
-                            Color(0xFFF6F0E5),
-                            Color(0xFFFCECED),
-                            Color(0xFFEDF5EF),
-                            Color(0xFFEEF2FA),
-                        )[index],
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                pillar.ifBlank { "选择" },
-                                style = MaterialTheme.typography.titleLarge,
-                                color = NanfengInk,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                }
-            }
+            Text("四柱", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            FourPillarsInputGrid(pillars = pillars)
+            Text(
+                "点击后依次选择柱位、天干和地支",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -184,7 +165,7 @@ internal fun Bundle.toFourPillarsLookupFormState(): FourPillarsLookupFormState =
             ?: FourPillarsLookupContract.MIN_YEAR.toString(),
         endYear = getString("endYear")
             ?: FourPillarsLookupContract.MAX_YEAR.toString(),
-        timeZoneId = getString("timeZoneId") ?: "Asia/Shanghai",
+        timeZoneId = getString("timeZoneId") ?: BaziTimeZoneDefaults.BEIJING_IANA_ID,
         ratHourRule = runCatching {
             RatHourRule.valueOf(getString("ratHourRule").orEmpty())
         }.getOrDefault(RatHourRule.TYME_DEFAULT),
@@ -195,49 +176,26 @@ internal fun Bundle.toFourPillarsLookupFormState(): FourPillarsLookupFormState =
 internal fun FourPillarsLookupScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
-    onFormChange: ((FourPillarsLookupFormState) -> FourPillarsLookupFormState) -> Unit,
-    onSearch: () -> Unit,
+    onConfirmSelection: (FourPillarsLookupSelection) -> Unit,
+    onUseCandidate: (FourPillarsLookupCandidate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val form = state.fourPillarsLookupForm
-    var showPillarPicker by rememberSaveable { mutableStateOf(false) }
-    var showYearRangePicker by rememberSaveable { mutableStateOf(false) }
-    var showTimeZonePicker by rememberSaveable { mutableStateOf(false) }
+    var showPillarPicker by rememberSaveable(state.fourPillarsLookupHasSearched) {
+        mutableStateOf(!state.fourPillarsLookupHasSearched)
+    }
     if (showPillarPicker) {
         FourPillarsWheelPickerSheet(
             current = listOf(form.yearPillar, form.monthPillar, form.dayPillar, form.hourPillar),
-            onDismiss = { showPillarPicker = false },
-            onConfirm = { pillars ->
-                onFormChange {
-                    it.copy(
-                        yearPillar = pillars[0],
-                        monthPillar = pillars[1],
-                        dayPillar = pillars[2],
-                        hourPillar = pillars[3],
-                    )
-                }
-                showPillarPicker = false
-            },
-        )
-    }
-    if (showYearRangePicker) {
-        YearRangeWheelPickerSheet(
             startYear = form.startYear.toIntOrNull() ?: FourPillarsLookupContract.MIN_YEAR,
             endYear = form.endYear.toIntOrNull() ?: FourPillarsLookupContract.MAX_YEAR,
-            onDismiss = { showYearRangePicker = false },
-            onConfirm = { start, end ->
-                onFormChange { it.copy(startYear = start.toString(), endYear = end.toString()) }
-                showYearRangePicker = false
+            onDismiss = {
+                showPillarPicker = false
+                if (!state.fourPillarsLookupHasSearched) onBack()
             },
-        )
-    }
-    if (showTimeZonePicker) {
-        IanaTimeZoneWheelPickerSheet(
-            current = form.timeZoneId,
-            onDismiss = { showTimeZonePicker = false },
-            onConfirm = { zone ->
-                onFormChange { it.copy(timeZoneId = zone) }
-                showTimeZonePicker = false
+            onConfirm = { selection ->
+                showPillarPicker = false
+                onConfirmSelection(selection)
             },
         )
     }
@@ -256,84 +214,6 @@ internal fun FourPillarsLookupScreen(
                     }
                 },
             )
-        }
-        item {
-            Text(
-                FourPillarsLookupContract.CANDIDATE_NOTICE,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .testTag("four_pillars_lookup_notice"),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        item {
-            FourPillarsSelectionCard(
-                pillars = listOf(form.yearPillar, form.monthPillar, form.dayPillar, form.hourPillar),
-                onClick = { showPillarPicker = true },
-            )
-        }
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                HomePickerRow(
-                    title = "查找年份范围",
-                    value = "${form.startYear}–${form.endYear}",
-                    supporting = "",
-                    onClick = { showYearRangePicker = true },
-                    tag = "open_lookup_year_range_picker",
-                )
-            }
-        }
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(18.dp),
-            ) {
-                HomePickerRow(
-                    title = "IANA 时区",
-                    value = form.timeZoneId,
-                    supporting = "",
-                    onClick = { showTimeZonePicker = true },
-                    tag = "open_lookup_time_zone_picker",
-                )
-            }
-        }
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                color = NanfengWarmTint,
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text(
-                    "当前子时口径：${form.ratHourRule.displayName()} · 可在设置中修改",
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item {
-            Button(
-                onClick = onSearch,
-                enabled = !state.fourPillarsLookupLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .heightIn(min = 48.dp)
-                    .testTag("lookup_search"),
-            ) {
-                Text(if (state.fourPillarsLookupLoading) "查询中…" else "查询民用时候选")
-            }
         }
         when {
             state.fourPillarsLookupLoading -> item {
@@ -375,9 +255,14 @@ internal fun FourPillarsLookupScreen(
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Text(
-                            "找到 ${state.fourPillarsLookupCandidates.size} 个候选",
+                            "选择出生时间",
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.testTag("lookup_result_count"),
+                        )
+                        Text(
+                            "${state.fourPillarsLookupCandidates.size} 个候选；点选后直接回填录入页。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         state.fourPillarsLookupEvidence?.let { evidence ->
                             Text(
@@ -397,6 +282,7 @@ internal fun FourPillarsLookupScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
+                            .clickable { onUseCandidate(candidate) }
                             .testTag("lookup_candidate"),
                     ) {
                         Column(
@@ -408,14 +294,21 @@ internal fun FourPillarsLookupScreen(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                "${candidate.timeZoneId} " +
+                                "${BaziTimeZoneDefaults.displayName(candidate.timeZoneId)} " +
                                     ZoneOffset.ofTotalSeconds(
                                         candidate.resolvedUtcOffsetSeconds,
                                     ).id,
                             )
-                            Text(
-                                "四柱：${candidate.fourPillars.display()}",
-                                style = MaterialTheme.typography.bodySmall,
+                            FourPillarsInputGrid(
+                                pillars = listOf(
+                                    candidate.fourPillars.year,
+                                    candidate.fourPillars.month,
+                                    candidate.fourPillars.day,
+                                    candidate.fourPillars.hour,
+                                ),
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .testTag("lookup_candidate_pillars"),
                             )
                             Text(
                                 "民用代表时刻 · ${candidate.timeZoneDataVersion} · " +
@@ -437,10 +330,24 @@ internal fun FourPillarsLookupScreen(
                 }
             }
         }
+        if (
+            state.fourPillarsLookupHasSearched &&
+            state.fourPillarsLookupCandidates.isEmpty() &&
+            !state.fourPillarsLookupLoading
+        ) item {
+            OutlinedButton(
+                onClick = { showPillarPicker = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .testTag("lookup_reselect"),
+            ) {
+                Text("重新选择四柱")
+            }
+        }
         item {
             Text(
-                "支持年份：${FourPillarsLookupContract.MIN_YEAR}–" +
-                    "${FourPillarsLookupContract.MAX_YEAR}；结果不会自动保存为命例。",
+                "当前子时口径：${form.ratHourRule.displayName()}；结果不会自动保存为命例。",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

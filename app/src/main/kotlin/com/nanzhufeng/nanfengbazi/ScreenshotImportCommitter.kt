@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.data.imports.PrivateImportImageStore
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
@@ -369,7 +370,7 @@ class ScreenshotImportCommitter(
                         fourPillars = sourcePillars,
                         startYear = solarDate.year,
                         endYear = solarDate.year,
-                        timeZoneId = IMPORT_TIME_ZONE_ID,
+                        timeZoneId = BaziTimeZoneDefaults.BEIJING_IANA_ID,
                         ratHourRule = rule,
                     ),
                 )
@@ -453,7 +454,7 @@ class ScreenshotImportCommitter(
             calendarInput = BirthCalendarInput.Solar(dateTime),
             sexForFortuneDirection = sex,
             timePrecision = timePrecision,
-            timeZoneId = IMPORT_TIME_ZONE_ID,
+            timeZoneId = BaziTimeZoneDefaults.BEIJING_IANA_ID,
             resolvedUtcOffsetSeconds = resolvedUtcOffsetSeconds,
             timeZoneDataVersion = timeZoneDataVersion,
             locationName = locationName,
@@ -900,7 +901,6 @@ class ScreenshotImportCommitter(
         const val FIELD_PROFESSIONAL_NATAL_DAY = "professional.natal_day"
         const val FIELD_PROFESSIONAL_NATAL_HOUR = "professional.natal_hour"
         const val FIELD_EVENT_PREFIX = "event.candidate."
-        const val IMPORT_TIME_ZONE_ID = "Asia/Shanghai"
         const val TIME_ZONE_EVIDENCE_VERSION = "Asia-Shanghai-fixed-UTC+08-import-v1"
         val EVENT_FIELD_PATTERN = Regex(
             "event\\.candidate\\.((?:19|20)\\d{2})\\.\\d+",

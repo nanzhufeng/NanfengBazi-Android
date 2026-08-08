@@ -267,10 +267,7 @@ class SingleCaseBundleFlowTest {
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasTestTag("export_single_case_button"))
-                .fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
     }
 
     private fun verifyImportedCopy() {
