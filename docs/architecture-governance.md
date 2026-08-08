@@ -182,7 +182,7 @@
 | 地点三级联动 | `BirthplaceCatalog` → `BirthplacePickerSheet` → `CaseFormState` | 离线目录只提供名称、IANA 时区和城市中心参考坐标；未知地点不得静默预填，真太阳时默认关闭 |
 | 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 表示层只枚举有效六十甲子和公开查询边界；查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
 | 离散触觉反馈 | Compose `ValueWheel` → Android `performHapticFeedback(CLOCK_TICK)` | 只在中心刻度变化时反馈并尊重系统触觉开关；不申请振动权限，不用触觉表示计算正确 |
-| 启动图标 | `design/assets/app-icon-master.png` → `mipmap-*` / adaptive icon | 原图是唯一母版；不得重绘、改色、裁切主体或添加额外托盘，平台蒙版差异用真实启动器截图核对 |
+| 启动图标 | `design/assets/app-icon-master.jpg` → `app_icon_source`、`mipmap-*` / adaptive icon | 用户提供 JPEG 是唯一当前母版；旧 PNG 仅为历史素材。不得重绘、改色、裁切主体或添加额外托盘，平台蒙版差异用真实启动器截图核对 |
 
 ## alpha74 详情视觉、星座资源与文案边界
 

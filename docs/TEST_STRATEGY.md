@@ -408,3 +408,12 @@ OPPO 真机安装、进程重启后的持久读取及真实问真迁移仍需独
    `adb shell wm size reset`；模拟器不替代 OPPO 折叠、马达手感、TalkBack 或数据保留验收。
 4. 批量后台识别、真实样本、OPPO、正式签名和发布各自独立记录；任一项未通过不得被
    单图审阅或布局测试覆盖掉。
+
+## alpha77 启动图标门禁
+
+1. 当前母版只能是 `design/assets/app-icon-master.jpg`；`app_icon_source`、所有 `mipmap-*`
+   与 `roundIcon` 位图只能从该母版缩放导出，不得以旧导出图二次缩放。
+2. Manifest 的 `android:icon` 与 `android:roundIcon` 必须继续指向 `ic_launcher` 和
+   `ic_launcher_round`，API 26+ 自适应前景不得引入额外底板、裁切或重绘。
+3. API 35 至少核对系统应用信息页和 Pixel Launcher；OPPO/ColorOS 的真实启动器蒙版只在
+   真机授权后验收，不能用模拟器冒充。
