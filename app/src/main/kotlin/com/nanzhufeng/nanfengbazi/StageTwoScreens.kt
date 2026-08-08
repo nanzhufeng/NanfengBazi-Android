@@ -8295,7 +8295,7 @@ private fun ProfessionalTimelineCell(
                     branch.toString(),
                     modifier = Modifier
                         .padding(top = 2.dp)
-                        .offset(y = 1.dp)
+                        .offset(y = 3.dp)
                         .testTag("timeline_${item.key}_branch"),
                     color = baziElementColor(branch),
                     fontSize = if (compact) 13.sp else 14.sp,
@@ -8325,7 +8325,7 @@ private fun ProfessionalTimelineBranchDetail(
     Text(
         item.hiddenStems.joinToString(separator = "") { tenGodAbbreviation(it.tenGod) },
         modifier = Modifier
-            .padding(vertical = 1.dp)
+            .padding(top = 3.dp, bottom = 1.dp)
             .testTag("timeline_${item.key}_branch_detail"),
         fontSize = if (compact) 7.sp else 8.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
