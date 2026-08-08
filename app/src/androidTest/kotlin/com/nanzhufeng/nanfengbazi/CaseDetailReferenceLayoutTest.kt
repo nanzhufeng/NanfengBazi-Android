@@ -114,7 +114,14 @@ class CaseDetailReferenceLayoutTest {
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
-        composeRule.onNodeWithTag("case_identity_header").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("case_detail_tabs")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("detail_tab_basic_info").performClick()
+        composeRule.onNodeWithTag("case_identity_header", useUnmergedTree = true)
+            .assertIsDisplayed()
         composeRule.onNodeWithText("出生地区").assertIsDisplayed()
         composeRule.onNodeWithText("前一节气").assertIsDisplayed()
         composeRule.onNodeWithText("后一节气").assertIsDisplayed()
@@ -175,8 +182,13 @@ class CaseDetailReferenceLayoutTest {
         assertEquals(dayLeftBeforeClick, dayLeftAfterClick, 1f)
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
         val decadeList = composeRule.onNodeWithTag("decade_fortune_details_list")
-        decadeList.performScrollToNode(hasTestTag("timeline_decade_0"))
-        (0 until 10).forEach { index ->
+        decadeList.performScrollToNode(hasTestTag("timeline_minor_stage"))
+        composeRule.onNodeWithTag("timeline_minor_stage").assertIsDisplayed()
+        composeRule.onNodeWithTag("timeline_minor_stage_upper", useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("timeline_minor_stage_lower", useUnmergedTree = true)
+            .assertIsDisplayed()
+        (0 until 9).forEach { index ->
             composeRule.onNodeWithTag("timeline_decade_$index").assertIsDisplayed()
         }
         decadeList.performScrollToNode(hasTestTag("timeline_decade_11"))
@@ -193,6 +205,17 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithContentDescription("定位今天").assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_interactions").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_shensha").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
+        decadeList.performScrollToNode(hasTestTag("timeline_minor_stage"))
+        composeRule.onNodeWithTag("timeline_minor_stage").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("timeline_annual_1997").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("timeline_annual_1997").assertIsDisplayed()
+        composeRule.onNodeWithText("阳历 1992-", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_records").performClick()
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()

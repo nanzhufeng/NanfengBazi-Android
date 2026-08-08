@@ -10,6 +10,7 @@ data class ProfessionalFortunePosition(
     val position: FortunePosition,
     val flowPillars: FourPillars,
     val pillarColumns: List<ProfessionalPillarColumn> = emptyList(),
+    val minorTimeline: List<ProfessionalTimelineItem> = emptyList(),
     val decadeTimeline: List<ProfessionalTimelineItem> = emptyList(),
     val annualTimeline: List<ProfessionalTimelineItem> = emptyList(),
     val monthlyTimeline: List<ProfessionalTimelineItem> = emptyList(),
@@ -26,6 +27,7 @@ data class ProfessionalFortunePosition(
     val profileId: String,
     val ruleVersion: String,
     val detailRuleVersion: String = "professional-detail-v1",
+    val minorFortuneRuleVersion: String = "professional-minor-fortune-v1",
 )
 
 data class ProfessionalPillarColumn(
@@ -56,6 +58,8 @@ data class ProfessionalTimelineItem(
     /** 时间轴在地支下完整展示藏干；十神以紧凑简称呈现。 */
     val hiddenStems: List<ProfessionalHiddenStem> = emptyList(),
     val selected: Boolean,
+    /** 大运时间轴中的阶段汇总列；非空时不把 pillar 当作单一干支渲染。 */
+    val stageLabel: String? = null,
 )
 
 data class ProfessionalTextGroup(

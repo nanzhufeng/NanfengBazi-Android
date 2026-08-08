@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi.engine.tyme
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
+import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalHiddenStem
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalPillarColumn
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTextGroup
@@ -63,6 +64,7 @@ class TymeProfessionalFortuneResolver(
         val columns = rawColumns.map { (key, labelled) ->
             labelled.second.toPillarColumn(key, labelled.first, dayMaster)
         }
+        val minorTimeline = buildMinorTimeline(coveredResult, position, dayMaster)
         return ProfessionalFortunePosition(
             position = position,
             flowPillars = FourPillars(
@@ -72,7 +74,13 @@ class TymeProfessionalFortuneResolver(
                 hour = eightChar.hour.name,
             ),
             pillarColumns = columns,
-            decadeTimeline = buildDecadeTimeline(coveredResult, position, dayMaster),
+            minorTimeline = minorTimeline,
+            decadeTimeline = buildDecadeTimeline(
+                coveredResult,
+                position,
+                dayMaster,
+                minorTimeline,
+            ),
             annualTimeline = buildAnnualTimeline(coveredResult, position, dayMaster),
             monthlyTimeline = buildMonthlyTimeline(coveredResult, position, observedAt, dayMaster),
             dailyTimeline = buildDailyTimeline(coveredResult, observedAt, dayMaster),
@@ -87,6 +95,7 @@ class TymeProfessionalFortuneResolver(
             profileId = coveredResult.profile.id,
             ruleVersion = coveredResult.profile.ruleVersion,
             detailRuleVersion = DETAIL_RULE_VERSION,
+            minorFortuneRuleVersion = MINOR_FORTUNE_RULE_VERSION,
         )
     }
 }
@@ -222,22 +231,108 @@ private fun CalculationResult.completedAgeAt(observedAt: CivilDateTime): Int {
         .coerceAtLeast(0)
 }
 
+/**
+ * 小运采用《三命通会·论小运》的时柱起法：落地即从时柱下一位起，
+ * 阳男阴女顺排、阴男阳女逆排，一位一年，只覆盖精确交运前的童限。
+ */
+private fun buildMinorTimeline(
+    result: CalculationResult,
+    position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
+    dayMaster: HeavenStem,
+): List<ProfessionalTimelineItem> {
+    val birth = result.calendarConversion?.solarDateTime
+        ?: (result.normalizedInput.calendarInput as?
+            com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)?.dateTime
+        ?: return emptyList()
+    val firstDecadeStart = result.decadeFortunes.firstOrNull()?.startAt
+        ?: result.fortuneStart.endAt
+    val birthValue = birth.toLocalDateTime()
+    val firstDecadeValue = firstDecadeStart.toLocalDateTime()
+    if (!birthValue.isBefore(firstDecadeValue)) return emptyList()
+
+    val observation = position.observedAt.toLocalDateTime()
+    val directionStep = if (result.fortuneStart.direction == FortuneDirection.FORWARD) 1 else -1
+    val hourPillar = SixtyCycle.fromName(result.fourPillars.hour)
+    return buildList {
+        var index = 0
+        while (true) {
+            val periodStart = birthValue.plusYears(index.toLong())
+            if (!periodStart.isBefore(firstDecadeValue)) break
+            val fullYearEnd = birthValue.plusYears(index + 1L)
+            val periodEnd = minOf(fullYearEnd, firstDecadeValue)
+            val anchor = periodStart.plusMinutes(1).withSecond(0)
+            if (!anchor.isBefore(periodEnd)) break
+            val observedAt = anchor.toDomain()
+            val clippedAtDecadeStart = periodEnd == firstDecadeValue && periodEnd != fullYearEnd
+            val endHint = if (clippedAtDecadeStart) {
+                "·至${periodEnd.year}/${periodEnd.monthValue}/${periodEnd.dayOfMonth}"
+            } else {
+                ""
+            }
+            add(
+                buildTimelineItem(
+                    key = "minor_$index",
+                    label = periodStart.year.toString(),
+                    subtitle = "${result.completedAgeAt(observedAt)}周岁$endHint",
+                    observedAt = observedAt,
+                    pillar = hourPillar.next(directionStep * (index + 1)).name,
+                    selected = position.status == FortunePositionStatus.BEFORE_FIRST_DECADE &&
+                        !observation.isBefore(periodStart) && observation.isBefore(periodEnd),
+                    dayMaster = dayMaster,
+                ),
+            )
+            index += 1
+        }
+    }
+}
+
 private fun buildDecadeTimeline(
     result: CalculationResult,
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     dayMaster: HeavenStem,
-): List<ProfessionalTimelineItem> = result.decadeFortunes.mapIndexed { index, decade ->
-    val startAt = decade.startAt ?: CivilDateTime(decade.startYear, 7, 1, 12, 0, 0)
-    val finalMoment = decade.endAtExclusive?.minusOneSecond()
-        ?: CivilDateTime(decade.endYear, 12, 31, 23, 59, 59)
-    buildTimelineItem(
-        key = "decade_$index",
-        label = decade.startYear.toString(),
-        subtitle = "${result.completedAgeAt(startAt)}–${result.completedAgeAt(finalMoment)}周岁",
-        observedAt = startAt.stableMinuteAfterBoundary(),
-        pillar = decade.name,
-        selected = position.decadeFortune?.name == decade.name,
-        dayMaster = dayMaster,
+    minorTimeline: List<ProfessionalTimelineItem>,
+): List<ProfessionalTimelineItem> = buildList {
+    buildMinorStageItem(result, position, minorTimeline)?.let(::add)
+    result.decadeFortunes.forEachIndexed { index, decade ->
+        val startAt = decade.startAt ?: CivilDateTime(decade.startYear, 7, 1, 12, 0, 0)
+        val finalMoment = decade.endAtExclusive?.minusOneSecond()
+            ?: CivilDateTime(decade.endYear, 12, 31, 23, 59, 59)
+        add(
+            buildTimelineItem(
+                key = "decade_$index",
+                label = decade.startYear.toString(),
+                subtitle = "${result.completedAgeAt(startAt)}–${result.completedAgeAt(finalMoment)}周岁",
+                observedAt = startAt.stableMinuteAfterBoundary(),
+                pillar = decade.name,
+                selected = position.decadeFortune?.name == decade.name,
+                dayMaster = dayMaster,
+            ),
+        )
+    }
+}
+
+private fun buildMinorStageItem(
+    result: CalculationResult,
+    position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
+    minorTimeline: List<ProfessionalTimelineItem>,
+): ProfessionalTimelineItem? {
+    val firstMinor = minorTimeline.firstOrNull() ?: return null
+    val firstDecadeStart = result.decadeFortunes.firstOrNull()?.startAt
+        ?: result.fortuneStart.endAt
+    val finalMoment = firstDecadeStart.minusOneSecond()
+    val endYearShort = (firstDecadeStart.year % 100).toString().padStart(2, '0')
+    return ProfessionalTimelineItem(
+        key = "minor_stage",
+        label = "${firstMinor.observedAt.year}–$endYearShort",
+        subtitle = "${result.completedAgeAt(firstMinor.observedAt)}–" +
+            "${result.completedAgeAt(finalMoment)}周岁",
+        observedAt = firstMinor.observedAt,
+        pillar = "",
+        stemTenGod = "",
+        heavenStemElement = "",
+        earthBranchElement = "",
+        selected = position.status == FortunePositionStatus.BEFORE_FIRST_DECADE,
+        stageLabel = "小运",
     )
 }
 
@@ -246,21 +341,47 @@ private fun buildAnnualTimeline(
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> {
-    val visible = position.decadeFortune?.let { decade ->
-        result.annualFortunes.filter { it.calendarYear in decade.startYear..decade.endYear }
-    }.orEmpty().ifEmpty {
-        val index = result.annualFortunes.indexOfFirst {
-            it.calendarYear == position.annualFortune.calendarYear
-        }.coerceAtLeast(0)
-        result.annualFortunes.drop((index / 10) * 10).take(10)
+    val birth = result.calendarConversion?.solarDateTime
+        ?: (result.normalizedInput.calendarInput as?
+            com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)?.dateTime
+    val firstDecadeStart = result.decadeFortunes.firstOrNull()?.startAt
+        ?: result.fortuneStart.endAt
+    val currentDecade = position.decadeFortune
+    val visible = when {
+        position.status == FortunePositionStatus.BEFORE_FIRST_DECADE && birth != null -> {
+            val birthValue = birth.toLocalDateTime()
+            val firstDecadeValue = firstDecadeStart.toLocalDateTime()
+            result.annualFortunes.filter { annual ->
+                val annualStart = SolarTerm.fromName(annual.calendarYear, "立春")
+                    .julianDay.solarTime.toDomain().toLocalDateTime()
+                val annualEnd = SolarTerm.fromName(annual.calendarYear + 1, "立春")
+                    .julianDay.solarTime.toDomain().toLocalDateTime()
+                maxOf(annualStart, birthValue).isBefore(minOf(annualEnd, firstDecadeValue))
+            }
+        }
+        currentDecade != null -> {
+            result.annualFortunes.filter {
+                it.calendarYear in currentDecade.startYear..currentDecade.endYear
+            }
+        }
+        else -> {
+            val index = result.annualFortunes.indexOfFirst {
+                it.calendarYear == position.annualFortune.calendarYear
+            }.coerceAtLeast(0)
+            result.annualFortunes.drop((index / 10) * 10).take(10)
+        }
     }
     return visible.map { annual ->
         val annualStart = SolarTerm.fromName(annual.calendarYear, "立春").julianDay.solarTime.toDomain()
-        val boundaryAt = position.decadeFortune?.startAt
-            ?.takeIf { start ->
-                start.year == annual.calendarYear && annualStart.toTyme().isBefore(start.toTyme())
-            }
-            ?: annualStart
+        val boundaryAt = when {
+            position.status == FortunePositionStatus.BEFORE_FIRST_DECADE && birth != null &&
+                annualStart.toLocalDateTime().isBefore(birth.toLocalDateTime()) -> birth
+            else -> position.decadeFortune?.startAt
+                ?.takeIf { start ->
+                    start.year == annual.calendarYear && annualStart.toTyme().isBefore(start.toTyme())
+                }
+                ?: annualStart
+        }
         val at = boundaryAt.stableMinuteAfterBoundary()
         buildTimelineItem(
             key = "annual_${annual.calendarYear}",
@@ -303,6 +424,18 @@ private fun CivilDateTime.stableMinuteAfterBoundary(): CivilDateTime {
         second = 0,
     )
 }
+
+private fun CivilDateTime.toLocalDateTime(): LocalDateTime =
+    LocalDateTime.of(year, month, day, hour, minute, second)
+
+private fun LocalDateTime.toDomain(): CivilDateTime = CivilDateTime(
+    year = year,
+    month = monthValue,
+    day = dayOfMonth,
+    hour = hour,
+    minute = minute,
+    second = second,
+)
 
 private fun buildMonthlyTimeline(
     result: CalculationResult,
@@ -531,6 +664,7 @@ private val THREE_MEETINGS = listOf(
     setOf('亥', '子', '丑') to "亥子丑三会水局",
 )
 private const val DETAIL_RULE_VERSION = "professional-detail-relations-shensha-v2"
+private const val MINOR_FORTUNE_RULE_VERSION = "professional-minor-fortune-v1"
 private val SUPPORTED_CALENDAR_START: LocalDate = LocalDate.of(1800, 1, 1)
 private val SUPPORTED_CALENDAR_END: LocalDate = LocalDate.of(2200, 12, 31)
 

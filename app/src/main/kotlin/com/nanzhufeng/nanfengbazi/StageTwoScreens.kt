@@ -8160,7 +8160,8 @@ private fun ProfessionalTimelineRow(
                     )
                 }
             }
-            if (title == "大运" || title == "流日") {
+            val usesTenColumnScroller = title == "大运" || title == "流日"
+            if (usesTenColumnScroller) {
                 BoxWithConstraints(modifier = Modifier.weight(1f)) {
                     val scrollableCellWidth = maxWidth / 10f
                     LazyRow(
@@ -8234,7 +8235,33 @@ private fun ProfessionalTimelineCell(
             )
             val stem = item.pillar.getOrNull(0)
             val branch = item.pillar.getOrNull(1)
-            if (stem != null) {
+            val stageLabel = item.stageLabel
+            if (stageLabel != null) {
+                Text(
+                    stageLabel.take(1),
+                    modifier = Modifier.testTag("timeline_${item.key}_upper"),
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                ProfessionalTenGodLabel(" ", compact)
+                Text(
+                    stageLabel.drop(1),
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .testTag("timeline_${item.key}_lower"),
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    " ",
+                    modifier = Modifier.padding(vertical = 1.dp),
+                    fontSize = if (compact) 7.sp else 8.sp,
+                )
+            } else if (stem != null) {
                 Text(
                     stem.toString(),
                     color = baziElementColor(stem),
@@ -8244,7 +8271,7 @@ private fun ProfessionalTimelineCell(
                 )
                 ProfessionalTenGodLabel(item.stemTenGod, compact)
             }
-            if (branch != null) {
+            if (stageLabel == null && branch != null) {
                 Text(
                     branch.toString(),
                     modifier = Modifier.padding(top = 2.dp),

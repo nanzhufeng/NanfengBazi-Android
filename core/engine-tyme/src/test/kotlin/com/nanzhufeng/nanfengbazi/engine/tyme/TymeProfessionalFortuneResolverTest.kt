@@ -13,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.tyme.solar.SolarTerm
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -94,8 +95,15 @@ class TymeProfessionalFortuneResolverTest {
         assertTrue(position.pillarColumns.all { it.earthBranchElement in setOf("木", "火", "土", "金", "水") })
         assertTrue(position.pillarColumns.all { it.hiddenStems.isNotEmpty() })
         assertTrue(position.pillarColumns.flatMap { it.hiddenStems }.all { it.tenGod.isNotBlank() })
-        assertEquals(12, position.decadeTimeline.size)
-        assertEquals("4–14周岁", position.decadeTimeline.first().subtitle)
+        assertEquals(listOf("1992", "1993", "1994", "1995", "1996"), position.minorTimeline.map { it.label })
+        assertEquals(listOf("丁未", "戊申", "己酉", "庚戌", "辛亥"), position.minorTimeline.map { it.pillar })
+        assertTrue(position.minorTimeline.last().subtitle.contains("至1997/5/21"))
+        assertEquals("professional-minor-fortune-v1", position.minorFortuneRuleVersion)
+        assertEquals(13, position.decadeTimeline.size)
+        assertEquals("小运", position.decadeTimeline.first().stageLabel)
+        assertEquals("1992–97", position.decadeTimeline.first().label)
+        assertEquals("0–4周岁", position.decadeTimeline.first().subtitle)
+        assertEquals("4–14周岁", position.decadeTimeline[1].subtitle)
         assertTrue(position.annualTimeline.none { it.subtitle.startsWith("虚") })
         assertEquals(12, position.monthlyTimeline.size)
         assertEquals(31, position.dailyTimeline.size)
@@ -114,6 +122,40 @@ class TymeProfessionalFortuneResolverTest {
     }
 
     @Test
+    fun `小运由时柱下一位按岁递进且只覆盖精确交运前`() = runTest {
+        val forwardResult = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val forward = resolver.locate(forwardResult, CivilDateTime(2026, 8, 24, 12, 0, 0))
+
+        assertEquals("丁未", forward.minorTimeline.first().pillar)
+        assertEquals(5, forward.minorTimeline.size)
+        assertTrue(forward.minorTimeline.all {
+            it.observedAt.toLocalDateTime().isBefore(
+                requireNotNull(forwardResult.decadeFortunes.first().startAt).toLocalDateTime(),
+            )
+        })
+
+        val firstMinor = forward.minorTimeline.first()
+        val beforeDecade = resolver.locate(forwardResult, firstMinor.observedAt)
+        assertEquals(FortunePositionStatus.BEFORE_FIRST_DECADE, beforeDecade.position.status)
+        assertEquals(firstMinor.key, beforeDecade.minorTimeline.single { it.selected }.key)
+        assertEquals("小运", beforeDecade.decadeTimeline.single { it.selected }.stageLabel)
+        assertEquals(
+            listOf("1992", "1993", "1994", "1995", "1996", "1997"),
+            beforeDecade.annualTimeline.map { it.label },
+        )
+
+        val backwardResult = engine.calculate(
+            sampleInput(SexForFortuneDirection.WOMAN),
+            CalculationProfile.tymeDefault(),
+        )
+        val backward = resolver.locate(backwardResult, CivilDateTime(2026, 8, 24, 12, 0, 0))
+        assertEquals("乙巳", backward.minorTimeline.first().pillar)
+        assertTrue(backward.minorTimeline.last().observedAt.toLocalDateTime().isBefore(
+            requireNotNull(backwardResult.decadeFortunes.first().startAt).toLocalDateTime(),
+        ))
+    }
+
+    @Test
     fun `旧八步快照在专业时间轴兼容补足一百二十年`() = runTest {
         val complete = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
         val legacyDecades = complete.decadeFortunes.take(8)
@@ -126,11 +168,14 @@ class TymeProfessionalFortuneResolverTest {
 
         val position = resolver.locate(legacy, CivilDateTime(2026, 8, 24, 12, 0, 0))
 
-        assertEquals(12, position.decadeTimeline.size)
-        assertEquals(legacyDecades.map { it.name }, position.decadeTimeline.take(8).map { it.pillar })
+        assertEquals(13, position.decadeTimeline.size)
+        assertEquals(
+            legacyDecades.map { it.name },
+            position.decadeTimeline.drop(1).take(8).map { it.pillar },
+        )
         assertEquals(
             complete.decadeFortunes.map { it.name },
-            position.decadeTimeline.map { it.pillar },
+            position.decadeTimeline.drop(1).map { it.pillar },
         )
     }
 
@@ -245,14 +290,19 @@ class TymeProfessionalFortuneResolverTest {
         }
     }
 
-    private fun sampleInput(): BirthInput = BirthInput(
+    private fun sampleInput(
+        sex: SexForFortuneDirection = SexForFortuneDirection.MAN,
+    ): BirthInput = BirthInput(
         calendarInput = BirthCalendarInput.Solar(
             CivilDateTime(1992, 8, 24, 12, 0, 0),
         ),
-        sexForFortuneDirection = SexForFortuneDirection.MAN,
+        sexForFortuneDirection = sex,
         timePrecision = TimePrecision.EXACT_TO_SECOND,
     )
 }
 
 private fun com.tyme.solar.SolarTime.toCivilDateTime(): CivilDateTime =
     CivilDateTime(year, month, day, hour, minute, second)
+
+private fun CivilDateTime.toLocalDateTime(): LocalDateTime =
+    LocalDateTime.of(year, month, day, hour, minute, second)
