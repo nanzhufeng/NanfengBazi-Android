@@ -7984,14 +7984,22 @@ private fun ProfessionalPillarCell(
         if (stem == null || branch == null) {
             Text("—", modifier = Modifier.padding(top = 28.dp))
         } else {
-            Text(
-                stem.toString(),
-                modifier = Modifier.padding(top = 7.dp),
-                color = baziElementColor(stem),
-                fontSize = 17.sp,
-                lineHeight = 19.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("${column.key}_stem_surface")
+                    .padding(vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stem.toString(),
+                    modifier = Modifier.testTag("${column.key}_stem_text"),
+                    color = baziElementColor(stem),
+                    fontSize = 17.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             ProfessionalTenGodLabel(column.stemTenGod, segmented = true)
             Text(
                 branch.toString(),

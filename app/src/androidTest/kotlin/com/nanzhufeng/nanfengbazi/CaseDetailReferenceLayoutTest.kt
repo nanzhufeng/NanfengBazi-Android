@@ -25,6 +25,7 @@ import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -128,6 +129,16 @@ class CaseDetailReferenceLayoutTest {
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
+        val stemSurface = composeRule.onNodeWithTag("flow_hour_stem_surface")
+            .fetchSemanticsNode().boundsInRoot
+        val stemText = composeRule.onNodeWithTag("flow_hour_stem_text")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(stemSurface.height > stemText.height)
+        assertEquals(
+            stemText.top - stemSurface.top,
+            stemSurface.bottom - stemText.bottom,
+            1f,
+        )
         composeRule.onNodeWithText("八字排盘").assertIsDisplayed()
         composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
