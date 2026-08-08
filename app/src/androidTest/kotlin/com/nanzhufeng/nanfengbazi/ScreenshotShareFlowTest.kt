@@ -254,6 +254,12 @@ class ScreenshotShareFlowTest {
         composeRule.onNodeWithTag("review_screenshot_import_button").performClick()
         composeRule.onNodeWithText("核对问真导入").assertIsDisplayed()
         composeRule.onNodeWithTag("screenshot_import_time_notice").assertIsDisplayed()
+        if (
+            InstrumentationRegistry.getInstrumentation()
+                .targetContext.resources.configuration.screenWidthDp >= 840
+        ) {
+            composeRule.onNodeWithTag("expanded_screenshot_evidence_pane").assertIsDisplayed()
+        }
         composeRule
             .onNodeWithText("不是出生分钟的唯一证明", substring = true)
             .assertIsDisplayed()

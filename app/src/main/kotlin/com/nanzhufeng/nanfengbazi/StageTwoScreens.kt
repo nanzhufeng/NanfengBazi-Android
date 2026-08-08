@@ -92,6 +92,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -1834,6 +1835,7 @@ private fun SingleCaseConflictReason.displayName(): String = when (this) {
 }
 
 private val EXPANDED_NAVIGATION_MIN_WIDTH = 840.dp
+private val EXPANDED_DETAIL_MIN_WIDTH = 360.dp
 
 private data class RootNavigationAction(
     val label: String,
@@ -3192,6 +3194,13 @@ private fun ScreenshotImportReviewScreen(
         mutableStateOf(emptyMap<String, String>())
     }
     var previewFieldId by rememberSaveable { mutableStateOf<String?>(null) }
+    val previewableFields = state.reviewCandidates
+        .flatMap(ScreenshotCandidateReviewUi::fields)
+        .filter { field ->
+            field.sourceImageRelativePath.isNotBlank() && field.evidenceBox != null
+        }
+    val activePreviewField = previewableFields.firstOrNull { it.id == previewFieldId }
+        ?: previewableFields.firstOrNull()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -3217,13 +3226,32 @@ private fun ScreenshotImportReviewScreen(
                 }
             },
         )
-        LazyColumn(
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxSize()
-                .testTag("screenshot_review_list"),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .weight(1f)
+                .fillMaxWidth(),
         ) {
+            val expanded = LocalConfiguration.current.screenWidthDp >= 840 &&
+                maxWidth >= EXPANDED_DETAIL_MIN_WIDTH
+            Row(modifier = Modifier.fillMaxSize()) {
+                if (expanded) {
+                    ScreenshotImportEvidencePane(
+                        field = activePreviewField,
+                        modifier = Modifier
+                            .width(360.dp)
+                            .fillMaxHeight()
+                            .testTag("expanded_screenshot_evidence_pane"),
+                    )
+                    VerticalDivider()
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .testTag("screenshot_review_list"),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
             item {
                 Card(
                     modifier = Modifier
@@ -3528,6 +3556,48 @@ private fun ScreenshotImportReviewScreen(
                         }
                     }
                 }
+            }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScreenshotImportEvidencePane(
+    field: ScreenshotFieldReviewUi?,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("原始截图", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (field == null) {
+                Text(
+                    "当前没有可定位的字段原图；右侧字段仍保留来源名称与证据状态。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    "定位字段：${field.label}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ScreenshotEvidencePreview(field = field)
+                Text(
+                    "橙框只标示该字段的来源区域，不等同于算法真值。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -6499,92 +6569,14 @@ private fun CaseDetailContent(
                         DetailRow("计算提醒", warning.message)
                     }
                 } else {
-                    DetailRow(
-                        "起运方向",
-                        if (adopted.result.fortuneStart.direction.name == "FORWARD") {
-                            "顺排"
-                        } else {
-                            "逆排"
-                        },
-                    )
-                    DetailRow(
-                        "起运年龄",
-                        "${adopted.result.fortuneStart.years} 年 " +
-                            "${adopted.result.fortuneStart.months} 月 " +
-                            "${adopted.result.fortuneStart.days} 日 " +
-                            "${adopted.result.fortuneStart.hours} 时 " +
-                            "${adopted.result.fortuneStart.minutes} 分",
-                    )
-                    DetailRow(
-                        "精确交运时间",
-                        adopted.result.fortuneStart.endAt.display(),
-                        tag = "fortune_transfer_time",
-                    )
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp, bottom = 10.dp)
-                            .clickable { showObservationPicker = true }
-                            .testTag("fortune_observation_picker"),
-                        color = NanfengControlSurface,
-                        shape = RoundedCornerShape(16.dp),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (fortunePositionError == null) {
-                                MaterialTheme.colorScheme.outlineVariant
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            },
-                        ),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "观察时刻",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    "$fortuneObservationDate  $fortuneObservationTime",
-                                    modifier = Modifier.padding(top = 2.dp),
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                fortunePositionError?.let { message ->
-                                    Text(
-                                        message,
-                                        modifier = Modifier.padding(top = 2.dp),
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
-                            }
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = NanfengGold,
-                            )
-                        }
-                    }
-                    fortunePosition?.let { position ->
-                        CurrentFortunePositionView(position)
-                    }
-                    professionalFortunePosition?.let { position ->
-                        ProfessionalFortunePositionView(position)
-                    }
-                    Text(
-                        "定位规则：流年以精确立春切换；流月以交节瞬间切换；" +
-                            "流日按命例子时规则；大运以精确交运时刻切换。",
-                        modifier = Modifier.padding(bottom = 10.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    DecadeFortuneDetailsView(adopted.result.decadeFortunes)
-                    AnnualFortuneDetailsView(
-                        annuals = adopted.result.annualFortunes,
-                        current = fortunePosition,
+                    FortuneDetailsView(
+                        calculation = adopted.result,
+                        fortuneObservationDate = fortuneObservationDate,
+                        fortuneObservationTime = fortuneObservationTime,
+                        fortunePosition = fortunePosition,
+                        professionalFortunePosition = professionalFortunePosition,
+                        fortunePositionError = fortunePositionError,
+                        onOpenObservationPicker = { showObservationPicker = true },
                     )
                 }
             }
@@ -6936,6 +6928,159 @@ private fun DetailSection(
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
             content()
         }
+    }
+}
+
+@Composable
+private fun FortuneDetailsView(
+    calculation: CalculationResult,
+    fortuneObservationDate: String,
+    fortuneObservationTime: String,
+    fortunePosition: FortunePosition?,
+    professionalFortunePosition: ProfessionalFortunePosition?,
+    fortunePositionError: String?,
+    onOpenObservationPicker: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val expanded = LocalConfiguration.current.screenWidthDp >= 840 &&
+            maxWidth >= EXPANDED_DETAIL_MIN_WIDTH
+        if (expanded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("expanded_fortune_layout"),
+            ) {
+                FortuneOverviewPane(
+                    calculation = calculation,
+                    fortuneObservationDate = fortuneObservationDate,
+                    fortuneObservationTime = fortuneObservationTime,
+                    fortunePosition = fortunePosition,
+                    professionalFortunePosition = professionalFortunePosition,
+                    fortunePositionError = fortunePositionError,
+                    onOpenObservationPicker = onOpenObservationPicker,
+                    modifier = Modifier
+                        .weight(0.9f)
+                        .testTag("expanded_fortune_overview_pane"),
+                )
+                VerticalDivider(modifier = Modifier.padding(horizontal = 12.dp))
+                Column(
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .testTag("expanded_fortune_timeline_pane"),
+                ) {
+                    DecadeFortuneDetailsView(calculation.decadeFortunes)
+                    AnnualFortuneDetailsView(
+                        annuals = calculation.annualFortunes,
+                        current = fortunePosition,
+                    )
+                }
+            }
+        } else {
+            Column {
+                FortuneOverviewPane(
+                    calculation = calculation,
+                    fortuneObservationDate = fortuneObservationDate,
+                    fortuneObservationTime = fortuneObservationTime,
+                    fortunePosition = fortunePosition,
+                    professionalFortunePosition = professionalFortunePosition,
+                    fortunePositionError = fortunePositionError,
+                    onOpenObservationPicker = onOpenObservationPicker,
+                )
+                DecadeFortuneDetailsView(calculation.decadeFortunes)
+                AnnualFortuneDetailsView(
+                    annuals = calculation.annualFortunes,
+                    current = fortunePosition,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FortuneOverviewPane(
+    calculation: CalculationResult,
+    fortuneObservationDate: String,
+    fortuneObservationTime: String,
+    fortunePosition: FortunePosition?,
+    professionalFortunePosition: ProfessionalFortunePosition?,
+    fortunePositionError: String?,
+    onOpenObservationPicker: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        DetailRow(
+            "起运方向",
+            if (calculation.fortuneStart.direction.name == "FORWARD") "顺排" else "逆排",
+        )
+        DetailRow(
+            "起运年龄",
+            "${calculation.fortuneStart.years} 年 ${calculation.fortuneStart.months} 月 " +
+                "${calculation.fortuneStart.days} 日 ${calculation.fortuneStart.hours} 时 " +
+                "${calculation.fortuneStart.minutes} 分",
+        )
+        DetailRow(
+            "精确交运时间",
+            calculation.fortuneStart.endAt.display(),
+            tag = "fortune_transfer_time",
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 10.dp)
+                .clickable(onClick = onOpenObservationPicker)
+                .testTag("fortune_observation_picker"),
+            color = NanfengControlSurface,
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (fortunePositionError == null) {
+                    MaterialTheme.colorScheme.outlineVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            ),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "观察时刻",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "$fortuneObservationDate  $fortuneObservationTime",
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    fortunePositionError?.let { message ->
+                        Text(
+                            message,
+                            modifier = Modifier.padding(top = 2.dp),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = NanfengGold,
+                )
+            }
+        }
+        fortunePosition?.let { position -> CurrentFortunePositionView(position) }
+        professionalFortunePosition?.let { position -> ProfessionalFortunePositionView(position) }
+        Text(
+            "定位规则：流年以精确立春切换；流月以交节瞬间切换；" +
+                "流日按命例子时规则；大运以精确交运时刻切换。",
+            modifier = Modifier.padding(bottom = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -302,20 +302,29 @@ class StageTwoFlowTest {
     fun lateRatHourRuleReachesVersionedInstantChart() {
         val alias = "晚子时-${System.currentTimeMillis()}"
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_rat_late").performScrollTo().performClick()
+        composeRule.onNodeWithTag("nav_chart").performClick()
+        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias")
             .performTextInput(alias)
         composeRule.onNodeWithTag("sex_man").performClick()
-        composeRule.onNodeWithTag("birth_year").performTextInput("2026")
-        composeRule.onNodeWithTag("birth_month").performTextInput("7")
-        composeRule.onNodeWithTag("birth_day").performTextInput("30")
-        composeRule.onNodeWithTag("birth_hour").performTextInput("23")
-        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
-        composeRule.onNodeWithTag("birth_rat_hour_rule_LATE_RAT_SAME_DAY")
+        composeRule.onNodeWithTag("open_birth_datetime_picker")
             .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNodeWithTag("birth_location")
+            .performClick()
+        composeRule.onNodeWithTag("birth_year_wheel").performScrollToIndex(2026 - 1800)
+        composeRule.onNodeWithTag("birth_month_wheel").performScrollToIndex(7 - 1)
+        composeRule.onNodeWithTag("birth_day_wheel").performScrollToIndex(30 - 1)
+        composeRule.onNodeWithTag("birth_hour_wheel").performScrollToIndex(23)
+        composeRule.onNodeWithTag("birth_minute_wheel").performScrollToIndex(0)
+        composeRule.onNodeWithTag("confirm_birth_datetime").performClick()
+        composeRule.onNodeWithTag("open_birthplace_picker")
             .performScrollTo()
-            .performTextInput("江苏省宿迁市泗阳县")
+            .performClick()
+        composeRule.onNodeWithTag("confirm_birthplace").performClick()
+        composeRule.onNodeWithContentDescription("保存命例")
+            .performScrollTo()
+            .performClick()
         composeRule.onNodeWithTag("preview_case").performScrollTo().performClick()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -342,6 +351,9 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag(
             "instant_calculation_profile_tyme-late-rat-same-day-v1",
         ).fetchSemanticsNode()
+        composeRule.onNodeWithContentDescription("保存命例")
+            .performScrollTo()
+            .performClick()
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
@@ -362,7 +374,22 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("detail_tab_fortune").performScrollTo().performClick()
+        if (
+            InstrumentationRegistry.getInstrumentation()
+                .targetContext.resources.configuration.screenWidthDp >= 840
+        ) {
+            composeRule.onNodeWithTag("expanded_fortune_overview_pane")
+                .performScrollTo()
+                .assertIsDisplayed()
+            composeRule.onNodeWithTag("expanded_fortune_timeline_pane")
+                .performScrollTo()
+                .assertIsDisplayed()
+        }
         setFortuneObservation(year = 2026, month = 7, day = 30, hour = 23, minute = 0)
         composeRule.onNode(
             hasTestTag("fortune_profile_id").and(

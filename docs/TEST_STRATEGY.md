@@ -395,3 +395,16 @@ OPPO 真机安装、进程重启后的持久读取及真实问真迁移仍需独
    测试等待详情语义节点出现，不以固定延时冒充成功。
 5. 手机态截图检查 7×6 日期格、选中态、节气/节日、详情层级和可滚动性；760dp 以上使用
    双栏代码路径。OPPO 折叠/展开、马达手感和实际宽屏视觉仍是独立真机门禁。
+
+## alpha76 UI-11 展开态门禁
+
+1. `StageTwoFlowTest#lateRatHourRuleReachesVersionedInstantChart` 必须覆盖即时排盘、保存命例、
+   进入岁运详情，并在宽屏语义条件下断言 `expanded_fortune_overview_pane` 与
+   `expanded_fortune_timeline_pane`。
+2. `ScreenshotShareFlowTest#系统分享合成问真列表图后私有复制并完成离线识别` 必须断言同一
+   私有导入会话的审阅流程；宽屏语义条件下断言 `expanded_screenshot_evidence_pane`，不把
+   合成图片当作真实问真样本。
+3. API 35 可临时覆盖 `emulator-5554` 尺寸进入 `>=840dp`，两条定向流通过后必须执行
+   `adb shell wm size reset`；模拟器不替代 OPPO 折叠、马达手感、TalkBack 或数据保留验收。
+4. 批量后台识别、真实样本、OPPO、正式签名和发布各自独立记录；任一项未通过不得被
+   单图审阅或布局测试覆盖掉。

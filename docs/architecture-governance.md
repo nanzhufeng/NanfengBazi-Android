@@ -204,3 +204,11 @@
 | 首页与日期回填 | `StageTwoViewModel` → `AlmanacScreen` → 正常排盘表单 | 月份、所选日和目的地进入 `SavedStateHandle`；“用此日期排盘”只更新公历日期，完整计算仍经过 `BaziEngine` |
 | 响应式表示 | `AlmanacScreen` | 手机单列，760dp 以上双栏；宽度只改变布局，不改变领域结果或缓存第二份事实 |
 | 传统资料说明 | `AlmanacDayDetails` → 详情页 | 宜忌、值神等作为传统民俗资料展示，不生成事实断言、吉凶结论或自动写入命例 |
+
+## alpha76 UI-11 展开态边界
+
+| 概念 | 唯一所有者/入口 | 边界 |
+|---|---|---|
+| 截图审阅双栏 | `ScreenshotImportReviewScreen` → `ScreenshotEvidencePreview` | 左栏只读取当前 `ScreenshotImportUiState` 中已私有复制的原图和同一字段来源框；右栏继续采用、确认或保留候选，不重跑 OCR、不补全字段。 |
+| 岁运双栏 | `CaseDetailContent` → `FortuneDetailsView` | 概览、大运和流年详情共同消费同一已采用 `CalculationResult` 与当前定位结果；布局不得自行复算四柱、岁运或生成第二快照。 |
+| 展开断点 | `StageTwoScreens.kt` | 只有全屏 `>=840dp` 且嵌套详情内容至少 `360dp` 时并列；不足时保持单列。断点只改变表示，不改变保存、候选或领域状态。 |
