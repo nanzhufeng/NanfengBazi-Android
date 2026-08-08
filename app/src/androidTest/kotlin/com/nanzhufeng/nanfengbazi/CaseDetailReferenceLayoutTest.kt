@@ -140,16 +140,22 @@ class CaseDetailReferenceLayoutTest {
             1f,
         )
         composeRule.onNodeWithText("八字排盘").assertIsDisplayed()
+        composeRule.onNodeWithTag("professional_transit_natal_divider").assertIsDisplayed()
         composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
         composeRule.onAllNodesWithText("周岁", substring = true)[0].assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_today").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
         val today = LocalDate.now()
+        val dailyList = composeRule.onNodeWithTag("daily_fortune_details_list")
+        dailyList.performScrollToNode(hasTestTag("timeline_day_${today.withDayOfMonth(1)}"))
+        (1..10).forEach { day ->
+            composeRule.onNodeWithTag("timeline_day_${today.withDayOfMonth(day)}")
+                .assertIsDisplayed()
+        }
         val targetDay = if (today.dayOfMonth == 14) 15 else 14
         val selectedDayTag = "timeline_day_${today.withDayOfMonth(targetDay)}"
-        composeRule.onNodeWithTag("daily_fortune_details_list")
-            .performScrollToNode(hasTestTag(selectedDayTag))
+        dailyList.performScrollToNode(hasTestTag(selectedDayTag))
         val dayLeftBeforeClick = composeRule.onNodeWithTag(selectedDayTag)
             .fetchSemanticsNode().boundsInRoot.left
         composeRule.onNodeWithTag(selectedDayTag).performClick()

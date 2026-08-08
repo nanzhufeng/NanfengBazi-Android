@@ -88,6 +88,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
@@ -7942,12 +7943,28 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                columns.forEach { column ->
-                    ProfessionalPillarCell(column, Modifier.weight(1f))
+            val groupDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("professional_transit_natal_divider")
+                    .drawBehind {
+                        val x = size.width * 5f / 9f
+                        drawLine(
+                            color = groupDividerColor,
+                            start = Offset(x, 0f),
+                            end = Offset(x, size.height),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                    },
+            ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    columns.forEach { column ->
+                        ProfessionalPillarCell(column, Modifier.weight(1f))
+                    }
                 }
+                ProfessionalHiddenStemGrid(columns)
             }
-            ProfessionalHiddenStemGrid(columns)
         }
     }
 }
@@ -8125,20 +8142,23 @@ private fun ProfessionalTimelineRow(
                 }
             }
             if (title == "流日") {
-                LazyRow(
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("${tag}_list"),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    items(items, key = ProfessionalTimelineItem::key) { item ->
-                        ProfessionalTimelineCell(
-                            item = item,
-                            modifier = Modifier.width(36.dp),
-                            compact = true,
-                            onClick = { onSelect(item.observedAt) },
-                        )
+                BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                    val dailyCellWidth = maxWidth / 10f
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("${tag}_list"),
+                        contentPadding = PaddingValues(vertical = 5.dp),
+                        horizontalArrangement = Arrangement.Start,
+                    ) {
+                        items(items, key = ProfessionalTimelineItem::key) { item ->
+                            ProfessionalTimelineCell(
+                                item = item,
+                                modifier = Modifier.width(dailyCellWidth),
+                                compact = true,
+                                onClick = { onSelect(item.observedAt) },
+                            )
+                        }
                     }
                 }
             } else {
