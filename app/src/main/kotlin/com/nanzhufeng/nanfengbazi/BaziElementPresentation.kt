@@ -46,3 +46,18 @@ internal fun baziElementContainerColor(character: Char?): Color = character
 /** 选中态仍以灰为主，只比普通态多一点色相，不用高饱和底色抢文字。 */
 internal fun baziElementSelectedContainerColor(character: Char): Color =
     lerp(BaziElementContainerNeutral, baziElementColor(character), 0.055f)
+
+/** 专业细盘密集时间轴使用的统一十神缩写。 */
+internal fun tenGodAbbreviation(tenGod: String): String = when (tenGod) {
+    "比肩" -> "比"
+    "劫财" -> "劫"
+    "食神" -> "食"
+    "伤官" -> "伤"
+    "偏财" -> "才"
+    "正财" -> "财"
+    "七杀", "偏官" -> "杀"
+    "正官" -> "官"
+    "偏印" -> "枭"
+    "正印" -> "印"
+    else -> tenGod.take(1).ifBlank { "—" }
+}

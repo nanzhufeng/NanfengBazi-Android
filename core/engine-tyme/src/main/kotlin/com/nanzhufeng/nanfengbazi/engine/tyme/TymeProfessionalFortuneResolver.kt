@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi.engine.tyme
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalHiddenStem
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalPillarColumn
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTextGroup
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTimelineItem
@@ -21,6 +22,7 @@ import com.tyme.sixtycycle.EarthBranch
 import com.tyme.sixtycycle.HeavenStem
 import com.tyme.sixtycycle.SixtyCycle
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 class TymeProfessionalFortuneResolver(
     private val fortunePositionResolver: TymeFortunePositionResolver =
@@ -71,6 +73,7 @@ class TymeProfessionalFortuneResolver(
             hourlyTimeline = buildHourlyTimeline(result, observedAt, dayMaster),
             interactionGroups = buildInteractionGroups(columns),
             shenShaGroups = buildShenShaGroups(columns),
+            completedAge = result.completedAgeAt(observedAt),
             selectedDateDetail = solar.toSelectedDateDetail(eightChar.hour.earthBranch.name),
             previousSolarTerm = previousTerm.toDomainPoint(),
             nextSolarTerm = previousTerm.next(1).toDomainPoint(),
@@ -85,7 +88,8 @@ class TymeProfessionalFortuneResolver(
 private fun SolarTime.toSelectedDateDetail(hourBranch: String): String {
     val lunarDay = lunarHour.lunarDay
     val lunarMonth = lunarDay.lunarMonth
-    return "农历 ${lunarMonth.lunarYear.name}${lunarMonth.name}${lunarDay.name} $hourBranch 时"
+    val lunarYear = lunarMonth.lunarYear.name.removePrefix("农历")
+    return "农历 $lunarYear${lunarMonth.name}${lunarDay.name} $hourBranch 时"
 }
 
 private fun String.toPillarColumn(
@@ -94,7 +98,15 @@ private fun String.toPillarColumn(
     dayMaster: HeavenStem,
 ): ProfessionalPillarColumn {
     if (length < 2) {
-        return ProfessionalPillarColumn(key, label, this, "—", emptyList())
+        return ProfessionalPillarColumn(
+            key = key,
+            label = label,
+            pillar = this,
+            stemTenGod = "—",
+            heavenStemElement = "—",
+            earthBranchElement = "—",
+            hiddenStems = emptyList(),
+        )
     }
     val cycle = SixtyCycle.fromName(take(2))
     return ProfessionalPillarColumn(
@@ -102,8 +114,14 @@ private fun String.toPillarColumn(
         label = label,
         pillar = cycle.name,
         stemTenGod = dayMaster.getTenStar(cycle.heavenStem).name,
-        hiddenTenGods = cycle.earthBranch.hideHeavenStems.map {
-            dayMaster.getTenStar(it.heavenStem).name
+        heavenStemElement = cycle.heavenStem.element.name,
+        earthBranchElement = cycle.earthBranch.element.name,
+        hiddenStems = cycle.earthBranch.hideHeavenStems.map {
+            ProfessionalHiddenStem(
+                heavenStem = it.heavenStem.name,
+                element = it.heavenStem.element.name,
+                tenGod = dayMaster.getTenStar(it.heavenStem).name,
+            )
         },
     )
 }
@@ -125,9 +143,24 @@ private fun buildTimelineItem(
         observedAt = observedAt,
         pillar = detail.pillar,
         stemTenGod = detail.stemTenGod,
-        hiddenTenGods = detail.hiddenTenGods,
+        heavenStemElement = detail.heavenStemElement,
+        earthBranchElement = detail.earthBranchElement,
+        primaryHiddenStem = detail.hiddenStems.firstOrNull(),
         selected = selected,
     )
+}
+
+private fun CalculationResult.completedAgeAt(observedAt: CivilDateTime): Int {
+    val birth = calendarConversion?.solarDateTime
+        ?: (normalizedInput.calendarInput as? com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)
+            ?.dateTime
+        ?: return 0
+    val birthDate = LocalDate.of(birth.year, birth.month, birth.day)
+    val observedDate = LocalDate.of(observedAt.year, observedAt.month, observedAt.day)
+    if (observedDate < birthDate) return 0
+    val roughYears = observedDate.year - birthDate.year
+    return (roughYears - if (observedDate < birthDate.plusYears(roughYears.toLong())) 1 else 0)
+        .coerceAtLeast(0)
 }
 
 private fun buildDecadeTimeline(
@@ -135,11 +168,14 @@ private fun buildDecadeTimeline(
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> = result.decadeFortunes.mapIndexed { index, decade ->
+    val startAt = decade.startAt ?: CivilDateTime(decade.startYear, 7, 1, 12, 0, 0)
+    val finalMoment = decade.endAtExclusive?.minusOneSecond()
+        ?: CivilDateTime(decade.endYear, 12, 31, 23, 59, 59)
     buildTimelineItem(
         key = "decade_$index",
         label = decade.startYear.toString(),
-        subtitle = "${decade.startAge}–${decade.endAge}岁",
-        observedAt = decade.startAt ?: CivilDateTime(decade.startYear, 7, 1, 12, 0, 0),
+        subtitle = "${result.completedAgeAt(startAt)}–${result.completedAgeAt(finalMoment)}周岁",
+        observedAt = startAt,
         pillar = decade.name,
         selected = position.decadeFortune?.name == decade.name,
         dayMaster = dayMaster,
@@ -169,13 +205,25 @@ private fun buildAnnualTimeline(
         buildTimelineItem(
             key = "annual_${annual.calendarYear}",
             label = annual.calendarYear.toString(),
-            subtitle = "虚${annual.nominalAge}",
+            subtitle = "${result.completedAgeAt(at)}周岁",
             observedAt = at,
             pillar = annual.name,
             selected = annual.calendarYear == position.annualFortune.calendarYear,
             dayMaster = dayMaster,
         )
     }
+}
+
+private fun CivilDateTime.minusOneSecond(): CivilDateTime {
+    val value = LocalDateTime.of(year, month, day, hour, minute, second).minusSeconds(1)
+    return CivilDateTime(
+        year = value.year,
+        month = value.monthValue,
+        day = value.dayOfMonth,
+        hour = value.hour,
+        minute = value.minute,
+        second = value.second,
+    )
 }
 
 private fun buildMonthlyTimeline(

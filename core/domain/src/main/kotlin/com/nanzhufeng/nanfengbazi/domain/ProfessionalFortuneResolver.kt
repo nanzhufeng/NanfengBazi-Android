@@ -17,6 +17,8 @@ data class ProfessionalFortunePosition(
     val hourlyTimeline: List<ProfessionalTimelineItem> = emptyList(),
     val interactionGroups: List<ProfessionalTextGroup> = emptyList(),
     val shenShaGroups: List<ProfessionalTextGroup> = emptyList(),
+    /** 观察日已经完整度过的生日数量；不是虚岁，也不是公历年份直接相减。 */
+    val completedAge: Int = 0,
     val selectedDateDetail: String = "",
     val previousSolarTerm: SolarTermPoint,
     val nextSolarTerm: SolarTermPoint,
@@ -31,7 +33,15 @@ data class ProfessionalPillarColumn(
     val label: String,
     val pillar: String,
     val stemTenGod: String,
-    val hiddenTenGods: List<String>,
+    val heavenStemElement: String,
+    val earthBranchElement: String,
+    val hiddenStems: List<ProfessionalHiddenStem>,
+)
+
+data class ProfessionalHiddenStem(
+    val heavenStem: String,
+    val element: String,
+    val tenGod: String,
 )
 
 data class ProfessionalTimelineItem(
@@ -41,7 +51,10 @@ data class ProfessionalTimelineItem(
     val observedAt: CivilDateTime,
     val pillar: String,
     val stemTenGod: String,
-    val hiddenTenGods: List<String>,
+    val heavenStemElement: String,
+    val earthBranchElement: String,
+    /** 时间轴密集项只展示地支的主藏干；完整藏干仍保留在九列总览。 */
+    val primaryHiddenStem: ProfessionalHiddenStem?,
     val selected: Boolean,
 )
 

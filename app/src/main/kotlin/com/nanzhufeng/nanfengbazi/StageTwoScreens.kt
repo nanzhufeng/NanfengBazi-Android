@@ -7800,12 +7800,27 @@ private fun FortuneDetailsView(
     onToday: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(NanfengPageBackground, RoundedCornerShape(18.dp))
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+    ) {
         if (professionalFortunePosition == null) {
             ReferenceEmptyText(fortunePositionError ?: "正在定位专业岁运…")
             return@Column
         }
         ProfessionalPillarMatrix(professionalFortunePosition.pillarColumns)
+        ProfessionalSelectedDateBar(
+            calculation = calculation,
+            completedAge = professionalFortunePosition.completedAge,
+            date = fortuneObservationDate,
+            time = fortuneObservationTime,
+            detail = professionalFortunePosition.selectedDateDetail,
+            error = fortunePositionError,
+            onOpenPicker = onOpenObservationPicker,
+            onToday = onToday,
+        )
         ProfessionalTimelineRow(
             title = "大运",
             items = professionalFortunePosition.decadeTimeline,
@@ -7835,14 +7850,6 @@ private fun FortuneDetailsView(
             items = professionalFortunePosition.hourlyTimeline,
             tag = "hourly_fortune_details",
             onSelect = onObservationSelect,
-        )
-        ProfessionalSelectedDateBar(
-            date = fortuneObservationDate,
-            time = fortuneObservationTime,
-            detail = professionalFortunePosition.selectedDateDetail,
-            error = fortunePositionError,
-            onOpenPicker = onOpenObservationPicker,
-            onToday = onToday,
         )
         ProfessionalTextSections(
             title = "合冲刑害",
@@ -7887,18 +7894,31 @@ private fun DetailRow(
 
 @Composable
 private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 2.dp)
+            .padding(bottom = 10.dp)
             .testTag("professional_fortune_position"),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f),
+        ),
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            columns.forEach { column ->
-                ProfessionalPillarCell(column, Modifier.weight(1f))
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Text(
+                "八字排盘",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                columns.forEach { column ->
+                    ProfessionalPillarCell(column, Modifier.weight(1f))
+                }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -7913,35 +7933,104 @@ private fun ProfessionalPillarCell(
                 if (column.key.startsWith("flow_")) Modifier.testTag("${column.key}_pillar")
                 else Modifier,
             )
-            .padding(horizontal = 1.dp, vertical = 5.dp),
+            .height(184.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(column.label, fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(
-            column.stemTenGod,
-            modifier = Modifier.padding(top = 3.dp),
-            fontSize = 8.sp,
-            color = NanfengGold,
-            maxLines = 1,
-        )
-        column.pillar.take(2).forEach { character ->
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .background(NanfengControlSurface),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
-                character.toString(),
-                color = baziElementColor(character),
-                fontSize = 17.sp,
-                lineHeight = 18.sp,
+                column.label,
+                fontSize = 8.sp,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text(
-            column.hiddenTenGods.joinToString("/").ifBlank { "—" },
-            modifier = Modifier.padding(top = 2.dp),
-            textAlign = TextAlign.Center,
-            fontSize = 7.sp,
-            lineHeight = 8.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-        )
+        val stem = column.pillar.getOrNull(0)
+        val branch = column.pillar.getOrNull(1)
+        if (stem == null || branch == null) {
+            Text("—", modifier = Modifier.padding(top = 28.dp))
+        } else {
+            Text(
+                stem.toString(),
+                modifier = Modifier.padding(top = 7.dp),
+                color = baziElementColor(stem),
+                fontSize = 17.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ProfessionalElementAndTenGod(
+                element = column.heavenStemElement,
+                tenGod = column.stemTenGod,
+            )
+            Text(
+                branch.toString(),
+                modifier = Modifier.padding(top = 5.dp),
+                color = baziElementColor(branch),
+                fontSize = 17.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ProfessionalElementAndTenGod(element = column.earthBranchElement)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(73.dp)
+                .padding(top = 6.dp)
+                .background(NanfengControlSurface)
+                .padding(horizontal = 1.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (column.hiddenStems.isEmpty()) {
+                Text("—", fontSize = 7.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                column.hiddenStems.forEach { hidden ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                    ) {
+                        Text(
+                            hidden.heavenStem,
+                            color = hidden.heavenStem.firstOrNull()?.let(::baziElementColor) ?: NanfengInk,
+                            fontSize = 7.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(hidden.element, fontSize = 7.sp, color = baziElementColor(hidden.element))
+                        Text(
+                            tenGodAbbreviation(hidden.tenGod),
+                            fontSize = 7.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfessionalElementAndTenGod(
+    element: String,
+    tenGod: String? = null,
+) {
+    Row(
+        modifier = Modifier.height(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(element, fontSize = 7.sp, color = baziElementColor(element))
+        tenGod?.let {
+            Text(
+                tenGodAbbreviation(it),
+                fontSize = 7.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -7953,21 +8042,30 @@ private fun ProfessionalTimelineRow(
     onSelect: (CivilDateTime) -> Unit,
 ) {
     if (items.isEmpty()) return
-    Column(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 3.dp)
+            .padding(top = 8.dp)
             .testTag(tag),
+        colors = CardDefaults.cardColors(containerColor = professionalTimelineCardColor(title)),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+        ),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
             Text(
                 title,
-                modifier = Modifier.width(28.dp),
-                fontSize = 9.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(NanfengControlSurface.copy(alpha = 0.82f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(modifier = Modifier.weight(1f)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
                 items.forEach { item ->
                     ProfessionalTimelineCell(
                         item = item,
@@ -7977,8 +8075,16 @@ private fun ProfessionalTimelineRow(
                 }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f))
     }
+}
+
+private fun professionalTimelineCardColor(title: String): Color = when (title) {
+    "大运" -> Color(0xFFFFFBF3)
+    "流年" -> Color(0xFFF6F9F3)
+    "流月" -> Color(0xFFF7F5F9)
+    "流日" -> Color(0xFFF3F8F8)
+    "流时" -> Color(0xFFF9F5F2)
+    else -> Color.White
 }
 
 @Composable
@@ -7992,10 +8098,11 @@ private fun ProfessionalTimelineCell(
             .clickable(onClick = onClick)
             .testTag("timeline_${item.key}")
             .then(if (item.selected) Modifier.testTag("selected_${item.key}") else Modifier),
-        color = if (item.selected) NanfengGold.copy(alpha = 0.10f) else Color.Transparent,
+        color = if (item.selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
+        shape = RoundedCornerShape(8.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 0.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = 0.dp, vertical = 5.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -8005,24 +8112,32 @@ private fun ProfessionalTimelineCell(
                 color = if (item.selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
-            Text(
-                item.stemTenGod,
-                fontSize = 7.sp,
-                lineHeight = 8.sp,
-                color = NanfengGold,
-                maxLines = 1,
-            )
-            item.pillar.take(2).forEach { character ->
+            val stem = item.pillar.getOrNull(0)
+            val branch = item.pillar.getOrNull(1)
+            if (stem != null) {
                 Text(
-                    character.toString(),
-                    color = baziElementColor(character),
+                    stem.toString(),
+                    color = baziElementColor(stem),
                     fontSize = 13.sp,
                     lineHeight = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
+                ProfessionalElementAndTenGod(item.heavenStemElement, item.stemTenGod)
+            }
+            if (branch != null) {
+                Text(
+                    branch.toString(),
+                    modifier = Modifier.padding(top = 2.dp),
+                    color = baziElementColor(branch),
+                    fontSize = 13.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                ProfessionalTimelineBranchDetail(item)
             }
             Text(
                 item.subtitle,
+                modifier = Modifier.padding(top = 2.dp),
                 textAlign = TextAlign.Center,
                 fontSize = 7.sp,
                 lineHeight = 8.sp,
@@ -8034,7 +8149,33 @@ private fun ProfessionalTimelineCell(
 }
 
 @Composable
+private fun ProfessionalTimelineBranchDetail(item: ProfessionalTimelineItem) {
+    val hidden = item.primaryHiddenStem
+    Row(
+        modifier = Modifier.height(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(item.earthBranchElement, fontSize = 7.sp, color = baziElementColor(item.earthBranchElement))
+        hidden?.let {
+            Text(
+                it.heavenStem,
+                fontSize = 7.sp,
+                color = it.heavenStem.firstOrNull()?.let(::baziElementColor) ?: NanfengInk,
+            )
+            Text(
+                tenGodAbbreviation(it.tenGod),
+                fontSize = 7.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ProfessionalSelectedDateBar(
+    calculation: CalculationResult,
+    completedAge: Int,
     date: String,
     time: String,
     detail: String,
@@ -8042,42 +8183,86 @@ private fun ProfessionalSelectedDateBar(
     onOpenPicker: () -> Unit,
     onToday: () -> Unit,
 ) {
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(NanfengGold.copy(alpha = 0.10f))
+            .padding(bottom = 2.dp)
             .testTag("fortune_selected_datetime"),
-        verticalAlignment = Alignment.CenterVertically,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f),
+        ),
     ) {
         Column(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = onOpenPicker)
-                .testTag("fortune_observation_picker")
-                .padding(horizontal = 10.dp, vertical = 7.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "起运  ${calculation.fortuneStart.direction.displayName()} · " +
+                            calculation.fortuneStart.ageDurationDisplay(),
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "交运  ${calculation.fortuneStart.endAt.display()}  ·  周岁 $completedAge 岁",
+                        modifier = Modifier.padding(top = 3.dp),
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clickable(onClick = onToday)
+                        .testTag("fortune_today")
+                        .semantics { contentDescription = "定位今天" },
+                    color = NanfengGold.copy(alpha = 0.12f),
+                    shape = CircleShape,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_today),
+                            contentDescription = null,
+                            tint = NanfengGold,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 7.dp))
             Text(
-                "已选日期  $date  $time",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
+                "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenPicker)
+                    .testTag("fortune_observation_picker")
+                    .padding(vertical = 2.dp),
+                fontSize = 9.sp,
+                lineHeight = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            if (detail.isNotBlank()) {
+            error?.let {
                 Text(
-                    detail,
-                    modifier = Modifier.padding(top = 2.dp),
-                    fontSize = 9.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    it,
+                    modifier = Modifier.padding(top = 3.dp),
+                    fontSize = 8.sp,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
-            error?.let {
-                Text(it, fontSize = 8.sp, color = MaterialTheme.colorScheme.error)
-            }
-        }
-        TextButton(onClick = onToday, modifier = Modifier.testTag("fortune_today")) {
-            Text("今天", color = NanfengGold, fontWeight = FontWeight.SemiBold)
         }
     }
 }
+
+private fun com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection.displayName(): String =
+    if (this == com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection.FORWARD) "顺排" else "逆排"
+
+private fun com.nanzhufeng.nanfengbazi.domain.model.FortuneStart.ageDurationDisplay(): String =
+    "${years}年${months}月${days}日${hours}时${minutes}分"
 
 @Composable
 private fun ProfessionalTextSections(

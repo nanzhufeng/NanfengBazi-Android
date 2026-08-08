@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -123,17 +124,22 @@ class CaseDetailReferenceLayoutTest {
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
+        composeRule.onNodeWithText("八字排盘").assertIsDisplayed()
+        composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
+        composeRule.onAllNodesWithText("周岁", substring = true)[0].assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_today").assertIsDisplayed()
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_annual_2017").performClick()
-        composeRule.onNodeWithText("已选日期  2017-", substring = true)
+        composeRule.onNodeWithText("阳历 2017-", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("monthly_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("hourly_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_selected_datetime").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("fortune_today").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("定位今天").assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_interactions").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_shensha").performScrollTo().assertIsDisplayed()
 

@@ -90,7 +90,13 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals(FortunePositionStatus.WITHIN_DECADE, position.position.status)
         assertEquals(9, position.pillarColumns.size)
         assertTrue(position.pillarColumns.all { it.stemTenGod.isNotBlank() })
+        assertTrue(position.pillarColumns.all { it.heavenStemElement in setOf("木", "火", "土", "金", "水") })
+        assertTrue(position.pillarColumns.all { it.earthBranchElement in setOf("木", "火", "土", "金", "水") })
+        assertTrue(position.pillarColumns.all { it.hiddenStems.isNotEmpty() })
+        assertTrue(position.pillarColumns.flatMap { it.hiddenStems }.all { it.tenGod.isNotBlank() })
         assertEquals(8, position.decadeTimeline.size)
+        assertEquals("4–14周岁", position.decadeTimeline.first().subtitle)
+        assertTrue(position.annualTimeline.none { it.subtitle.startsWith("虚") })
         assertEquals(12, position.monthlyTimeline.size)
         assertEquals(10, position.dailyTimeline.size)
         assertEquals(12, position.hourlyTimeline.size)
@@ -98,12 +104,28 @@ class TymeProfessionalFortuneResolverTest {
         assertTrue(position.monthlyTimeline.any { it.selected })
         assertTrue(position.dailyTimeline.single { it.selected }.subtitle == "已选")
         assertTrue(position.hourlyTimeline.any { it.selected })
+        assertTrue(position.hourlyTimeline.all { it.primaryHiddenStem != null })
+        assertEquals(33, position.completedAge)
         assertEquals(
             listOf("岁运天干", "岁运地支", "原局天干", "原局地支"),
             position.interactionGroups.map { it.title },
         )
         assertEquals(listOf("原局神煞", "岁运神煞"), position.shenShaGroups.map { it.title })
         assertEquals("professional-detail-relations-shensha-v1", position.detailRuleVersion)
+    }
+
+    @Test
+    fun `周岁按完整生日计算而不是虚岁或年份差`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+
+        assertEquals(
+            33,
+            resolver.locate(result, CivilDateTime(2026, 8, 23, 23, 59, 0)).completedAge,
+        )
+        assertEquals(
+            34,
+            resolver.locate(result, CivilDateTime(2026, 8, 24, 0, 0, 0)).completedAge,
+        )
     }
 
     @Test
