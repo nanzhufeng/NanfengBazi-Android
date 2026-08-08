@@ -549,6 +549,8 @@ class StageTwoViewModel(
     private var comparisonJob: Job? = null
     private var fourPillarsLookupJob: Job? = null
     private var almanacJob: Job? = null
+    private var almanacRequestId: Long = 0
+    private var pendingAlmanacQuery: AlmanacMonthQuery? = null
     private var birthPickerTodayJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
@@ -2735,71 +2737,98 @@ class StageTwoViewModel(
     fun moveAlmanacMonth(offset: Int) {
         if (offset == 0) return
         val state = mutableState.value
-        val target = YearMonth.of(state.almanacYear, state.almanacMonth).plusMonths(offset.toLong())
+        val baseQuery = pendingAlmanacQuery ?: state.almanacView?.query ?: AlmanacMonthQuery(
+            year = state.almanacYear,
+            month = state.almanacMonth,
+            selectedDay = state.almanacSelectedDay,
+            selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
+            ratHourRule = state.defaultRatHourRule,
+        )
+        val target = YearMonth.of(baseQuery.year, baseQuery.month).plusMonths(offset.toLong())
         if (target.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR) return
-        mutableState.update {
-            it.copy(
-                almanacYear = target.year,
-                almanacMonth = target.monthValue,
-                almanacSelectedDay = it.almanacSelectedDay.coerceAtMost(target.lengthOfMonth()),
-                almanacView = null,
-                almanacError = null,
-            )
-        }
-        loadAlmanac()
+        loadAlmanac(
+            AlmanacMonthQuery(
+                year = target.year,
+                month = target.monthValue,
+                selectedDay = baseQuery.selectedDay.coerceAtMost(target.lengthOfMonth()),
+                selectedDoubleHourIndex = baseQuery.selectedDoubleHourIndex,
+                ratHourRule = baseQuery.ratHourRule,
+            ),
+            preserveVisibleContent = true,
+        )
     }
 
     fun showTodayInAlmanac() {
         val today = LocalDate.now(observationClock)
-        mutableState.update {
-            it.copy(
-                almanacYear = today.year,
-                almanacMonth = today.monthValue,
-                almanacSelectedDay = today.dayOfMonth,
-                almanacView = null,
-                almanacError = null,
-            )
-        }
-        loadAlmanac()
+        val state = mutableState.value
+        val baseQuery = pendingAlmanacQuery ?: state.almanacView?.query
+        loadAlmanac(
+            AlmanacMonthQuery(
+                year = today.year,
+                month = today.monthValue,
+                selectedDay = today.dayOfMonth,
+                selectedDoubleHourIndex = baseQuery?.selectedDoubleHourIndex
+                    ?: state.almanacSelectedDoubleHourIndex,
+                ratHourRule = state.defaultRatHourRule,
+            ),
+            preserveVisibleContent = true,
+        )
     }
 
     fun selectAlmanacDate(date: AlmanacDate) {
         if (date.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR) return
-        mutableState.update {
-            it.copy(
-                almanacYear = date.year,
-                almanacMonth = date.month,
-                almanacSelectedDay = date.day,
-                almanacError = null,
-            )
-        }
-        loadAlmanac(preserveVisibleContent = true)
+        val state = mutableState.value
+        val baseQuery = pendingAlmanacQuery ?: state.almanacView?.query
+        loadAlmanac(
+            AlmanacMonthQuery(
+                year = date.year,
+                month = date.month,
+                selectedDay = date.day,
+                selectedDoubleHourIndex = baseQuery?.selectedDoubleHourIndex
+                    ?: state.almanacSelectedDoubleHourIndex,
+                ratHourRule = state.defaultRatHourRule,
+            ),
+            preserveVisibleContent = true,
+        )
     }
 
     /** 快捷跳转一次性更新日期与民用时间对应的时辰，避免界面重复刷新。 */
     fun selectAlmanacDateTime(date: AlmanacDate, civilHour: Int) {
         if (date.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR || civilHour !in 0..23) return
-        mutableState.update {
-            it.copy(
-                almanacYear = date.year,
-                almanacMonth = date.month,
-                almanacSelectedDay = date.day,
-                almanacSelectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(civilHour),
-                almanacError = null,
-            )
-        }
-        loadAlmanac(preserveVisibleContent = true)
+        val state = mutableState.value
+        loadAlmanac(
+            AlmanacMonthQuery(
+                year = date.year,
+                month = date.month,
+                selectedDay = date.day,
+                selectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(civilHour),
+                ratHourRule = state.defaultRatHourRule,
+            ),
+            preserveVisibleContent = true,
+        )
     }
 
     fun selectAlmanacDoubleHour(index: Int) {
-        if (index !in 0..11 || index == mutableState.value.almanacSelectedDoubleHourIndex) return
-        mutableState.update {
-            it.copy(
-                almanacSelectedDoubleHourIndex = index,
-                almanacError = null,
-            )
-        }
-        loadAlmanac(preserveVisibleContent = true)
+        if (index !in 0..11) return
+        val state = mutableState.value
+        val baseQuery = pendingAlmanacQuery ?: state.almanacView?.query ?: AlmanacMonthQuery(
+            year = state.almanacYear,
+            month = state.almanacMonth,
+            selectedDay = state.almanacSelectedDay,
+            selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
+            ratHourRule = state.defaultRatHourRule,
+        )
+        if (index == baseQuery.selectedDoubleHourIndex) return
+        loadAlmanac(
+            AlmanacMonthQuery(
+                year = baseQuery.year,
+                month = baseQuery.month,
+                selectedDay = baseQuery.selectedDay,
+                selectedDoubleHourIndex = index,
+                ratHourRule = baseQuery.ratHourRule,
+            ),
+            preserveVisibleContent = true,
+        )
     }
 
     fun useAlmanacDateForChart() {
@@ -2827,7 +2856,18 @@ class StageTwoViewModel(
         }
     }
 
-    private fun loadAlmanac(preserveVisibleContent: Boolean = false) {
+    private fun loadAlmanac(
+        query: AlmanacMonthQuery = mutableState.value.let { state ->
+            AlmanacMonthQuery(
+                year = state.almanacYear,
+                month = state.almanacMonth,
+                selectedDay = state.almanacSelectedDay,
+                selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
+                ratHourRule = state.defaultRatHourRule,
+            )
+        },
+        preserveVisibleContent: Boolean = false,
+    ) {
         val reader = almanacReader
         if (reader == null) {
             mutableState.update {
@@ -2839,20 +2879,16 @@ class StageTwoViewModel(
             }
             return
         }
-        val state = mutableState.value
-        val query = AlmanacMonthQuery(
-            year = state.almanacYear,
-            month = state.almanacMonth,
-            selectedDay = state.almanacSelectedDay,
-            selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
-            ratHourRule = state.defaultRatHourRule,
-        )
+        if (mutableState.value.almanacView?.query == query || pendingAlmanacQuery == query) return
         almanacJob?.cancel()
+        val requestId = ++almanacRequestId
+        pendingAlmanacQuery = query
         almanacJob = viewModelScope.launch {
+            val keepCurrentFrame = preserveVisibleContent && mutableState.value.almanacView != null
             mutableState.update {
                 it.copy(
-                    almanacLoading = !preserveVisibleContent,
-                    almanacRefreshingSelection = preserveVisibleContent,
+                    almanacLoading = !keepCurrentFrame,
+                    almanacRefreshingSelection = keepCurrentFrame,
                     almanacError = null,
                 )
             }
@@ -2863,16 +2899,15 @@ class StageTwoViewModel(
             } catch (_: Exception) {
                 AlmanacResult.Failed(AlmanacError.EngineUnavailable)
             }
-            if (
-                mutableState.value.almanacYear != query.year ||
-                mutableState.value.almanacMonth != query.month ||
-                mutableState.value.almanacSelectedDay != query.selectedDay ||
-                mutableState.value.almanacSelectedDoubleHourIndex != query.selectedDoubleHourIndex ||
-                mutableState.value.defaultRatHourRule != query.ratHourRule
-            ) return@launch
+            if (requestId != almanacRequestId) return@launch
+            pendingAlmanacQuery = null
             mutableState.update {
                 when (result) {
                     is AlmanacResult.Completed -> it.copy(
+                        almanacYear = query.year,
+                        almanacMonth = query.month,
+                        almanacSelectedDay = query.selectedDay,
+                        almanacSelectedDoubleHourIndex = query.selectedDoubleHourIndex,
                         almanacView = result.month,
                         almanacLoading = false,
                         almanacRefreshingSelection = false,

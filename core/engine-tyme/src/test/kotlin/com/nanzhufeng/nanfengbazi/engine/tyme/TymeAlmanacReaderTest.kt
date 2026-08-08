@@ -46,6 +46,9 @@ class TymeAlmanacReaderTest {
         assertEquals(4, child.month.selected.pillars.size)
         assertEquals("子", child.month.selected.selectedDoubleHour.branch)
         assertTrue(child.month.selected.pillars.all { it.hiddenStems.isNotEmpty() })
+        assertTrue(child.month.selected.pillars.all { it.tenGod.isNotBlank() })
+        assertTrue(child.month.selected.pillars.flatMap { it.hiddenStems }.all { it.tenGod.isNotBlank() })
+        assertTrue(child.month.selected.pillars.flatMap { it.shenSha }.isNotEmpty())
         assertTrue(child.month.selected.hourPillar != noon.month.selected.hourPillar)
         assertTrue(child.month.selected.folkBoneWeight != null)
     }

@@ -22,6 +22,34 @@ final result: passed
 
 ---
 
+# 万年历稳定详情 Design QA
+
+- 参考：`codex-clipboard-9e025e55-00f5-44e0-8d2c-b5ad933dde79.jpg`
+- 实现：`/tmp/nanfeng-almanac-festival.png`、`/tmp/nanfeng-almanac-chart.png`
+- 同视口对比：`/tmp/nanfeng-almanac-comparison.png`
+- 视口：Android API 35 `emulator-5554`，1080 × 2400
+- 状态：2026 年 8 月 27 日中元节、子时
+
+## 阻断项
+
+- P0：无。
+- P1：无。“中元节”已并入“农历七月十五”同行，不再新增独立行；八字矩阵包含十神、上下天干地支、藏干十神和年月日时神煞；干支关系独立保留固定两行；称骨总重层级明确。
+- P2：无。标题区、时辰、八字、关系和称骨保持连续纵向节奏；总重明显强于四项分重，旧“称骨 · 民俗断语”和“四项合计”说明已消失。
+
+## 交互稳定性
+
+- ViewModel 契约证明“今天”刷新悬停期间月历与详情不置空，结果完成后原子替换；同日期重复点击“今天”不启动无意义刷新。
+- API 35 万年历入口、滚轮确认、详情语义与日期带回排盘流程通过。
+
+## 可接受差异
+
+- 用户截图来自不同设备和系统密度；当前实现保留南枫八字既有字体、卡片、五行色和本地民俗证据边界，不复制第三方品牌素材。
+- 神煞只显示 `BasicShenShaRules` 的限定基础集合，不冒充完整流派全集。
+
+final result: passed
+
+---
+
 # 基本信息／基本排盘 Design QA
 
 - 参考：`codex-clipboard-bb8475ac-d47f-48d9-bcb5-3487bae2bae7.png`、`codex-clipboard-069a9161-3cc5-44ed-b9ad-9310fede0d6d.png`

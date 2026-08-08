@@ -47,7 +47,9 @@ import java.time.Instant
 import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthQuery
 import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
+import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -81,6 +83,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeAlmanacReader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -200,6 +203,47 @@ class StageTwoViewModelTest {
         assertEquals(7, viewModel.state.value.almanacSelectedDay)
         assertEquals(8, viewModel.state.value.almanacSelectedDoubleHourIndex)
         assertEquals("申", viewModel.state.value.almanacView?.selected?.selectedDoubleHour?.branch)
+    }
+
+    @Test
+    fun `万年历今天刷新期间保持完整旧画面并在完成后原子替换`() = runTest {
+        val reader = GateableAlmanacReader()
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            almanacReader = reader,
+        )
+
+        viewModel.openAlmanac()
+        reader.gate = CompletableDeferred()
+        viewModel.moveAlmanacMonth(1)
+        viewModel.moveAlmanacMonth(1)
+        assertEquals(7, viewModel.state.value.almanacMonth)
+        reader.gate?.complete(Unit)
+        assertEquals(9, viewModel.state.value.almanacMonth)
+        viewModel.moveAlmanacMonth(-1)
+        assertEquals(8, viewModel.state.value.almanacMonth)
+        val visibleBeforeToday = requireNotNull(viewModel.state.value.almanacView)
+
+        reader.gate = CompletableDeferred()
+        viewModel.showTodayInAlmanac()
+
+        assertEquals(8, viewModel.state.value.almanacMonth)
+        assertEquals(visibleBeforeToday, viewModel.state.value.almanacView)
+        assertFalse(viewModel.state.value.almanacLoading)
+        assertTrue(viewModel.state.value.almanacRefreshingSelection)
+
+        reader.gate?.complete(Unit)
+
+        assertEquals(2026, viewModel.state.value.almanacYear)
+        assertEquals(7, viewModel.state.value.almanacMonth)
+        assertEquals(30, viewModel.state.value.almanacSelectedDay)
+        assertEquals(7, viewModel.state.value.almanacView?.query?.month)
+        assertEquals(30, viewModel.state.value.almanacView?.selected?.date?.day)
+        assertFalse(viewModel.state.value.almanacRefreshingSelection)
+
+        reader.gate = CompletableDeferred()
+        viewModel.showTodayInAlmanac()
+        assertFalse(viewModel.state.value.almanacRefreshingSelection)
     }
 
     @Test
@@ -1684,6 +1728,17 @@ class StageTwoViewModelTest {
         createdAt = FixedInstant,
         updatedAt = FixedInstant,
     )
+
+    private class GateableAlmanacReader(
+        private val delegate: AlmanacReader = TymeAlmanacReader(),
+    ) : AlmanacReader {
+        var gate: CompletableDeferred<Unit>? = null
+
+        override suspend fun loadMonth(query: AlmanacMonthQuery): AlmanacResult {
+            gate?.await()
+            return delegate.loadMonth(query)
+        }
+    }
 
     private fun ownerFeedback() = CaseTextRecord(
         id = "feedback-1",

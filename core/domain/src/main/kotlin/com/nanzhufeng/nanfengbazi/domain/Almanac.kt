@@ -88,14 +88,17 @@ data class AlmanacPillarDetail(
     val value: String,
     val heavenStem: String,
     val heavenStemElement: String,
+    val tenGod: String,
     val earthBranch: String,
     val earthBranchElement: String,
     val hiddenStems: List<AlmanacHiddenStem> = emptyList(),
+    val shenSha: List<String> = emptyList(),
 )
 
 data class AlmanacHiddenStem(
     val heavenStem: String,
     val element: String,
+    val tenGod: String,
 )
 
 data class AlmanacPillarRelation(

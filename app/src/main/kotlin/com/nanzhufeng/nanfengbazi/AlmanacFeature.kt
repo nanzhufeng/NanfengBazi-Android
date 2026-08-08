@@ -59,6 +59,7 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacDaySummary
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
 import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarDetail
+import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarRelation
 import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeight
 import java.time.LocalDate
 import java.time.LocalTime
@@ -488,6 +489,10 @@ private fun AlmanacDetailsCard(
             return@Card
         }
         Column(modifier = Modifier.padding(18.dp)) {
+            val markers = buildList {
+                details.solarTerm?.let(::add)
+                addAll(details.festivalNames)
+            }.distinct().joinToString(" · ")
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     "${details.date.day}",
@@ -495,32 +500,39 @@ private fun AlmanacDetailsCard(
                     fontWeight = FontWeight.Bold,
                     color = NanfengInk,
                 )
-                Column(modifier = Modifier.padding(start = 10.dp, bottom = 3.dp)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp, bottom = 3.dp),
+                ) {
                     Text(
                         "${details.date.year} 年 ${details.date.month} 月 · 星期${details.weekName}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        "农历 ${details.lunarDateText}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = NanfengGold,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "农历 ${details.lunarDateText}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NanfengGold,
+                            maxLines = 1,
+                        )
+                        Text(
+                            markers,
+                            modifier = Modifier.padding(start = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NanfengGreen,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-            }
-            val markers = buildList {
-                details.solarTerm?.let(::add)
-                addAll(details.festivalNames)
-            }
-            if (markers.isNotEmpty()) {
-                Text(
-                    markers.joinToString(" · "),
-                    modifier = Modifier.padding(top = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = NanfengGreen,
-                    fontWeight = FontWeight.Medium,
-                )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
             Text(
@@ -551,14 +563,10 @@ private fun AlmanacDetailsCard(
                 pillars = details.pillars,
                 modifier = Modifier.padding(top = 10.dp),
             )
-            if (details.relations.isNotEmpty()) {
-                Text(
-                    details.relations.joinToString(" · ") { "${it.category}：${it.pillars}" },
-                    modifier = Modifier.padding(top = 10.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            AlmanacRelationAttentionSection(
+                relations = details.relations,
+                modifier = Modifier.padding(top = 12.dp),
+            )
             details.folkBoneWeight?.let { bone ->
                 FolkBoneWeightSection(
                     bone = bone,
@@ -647,7 +655,9 @@ private fun AlmanacEightCharacterTable(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("almanac_eight_character_table"),
         shape = RoundedCornerShape(16.dp),
         color = NanfengPageBackground,
     ) {
@@ -658,6 +668,15 @@ private fun AlmanacEightCharacterTable(
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AlmanacPillarRow("十神", pillars) { pillar ->
+                Text(
+                    pillar.tenGod,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = NanfengInk,
                 )
             }
             AlmanacPillarRow("天干", pillars) { pillar ->
@@ -681,16 +700,104 @@ private fun AlmanacEightCharacterTable(
             AlmanacPillarRow("藏干", pillars, topAligned = true) { pillar ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     pillar.hiddenStems.forEach { hidden ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                hidden.heavenStem,
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = baziElementColor(hidden.element),
+                            )
+                            Text(
+                                hidden.tenGod,
+                                modifier = Modifier.padding(start = 3.dp),
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            AlmanacPillarRow("神煞", pillars, topAligned = true) { pillar ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val shenSha = pillar.shenSha.ifEmpty { listOf("—") }
+                    shenSha.forEach { name ->
                         Text(
-                            hidden.heavenStem,
+                            name,
                             textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = baziElementColor(hidden.element),
+                            style = MaterialTheme.typography.labelSmall,
+                            lineHeight = 16.sp,
+                            color = if (name == "—") {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                            } else {
+                                NanfengGold
+                            },
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AlmanacRelationAttentionSection(
+    relations: List<AlmanacPillarRelation>,
+    modifier: Modifier = Modifier,
+) {
+    val stemText = relations
+        .filter { it.category.startsWith("天干") }
+        .joinToString(" · ") { "${it.pillars}${it.category.removePrefix("天干")}" }
+    val branchText = relations
+        .filter { it.category.startsWith("地支") }
+        .joinToString(" · ") { "${it.pillars}${it.category.removePrefix("地支")}" }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("almanac_relation_attention"),
+        shape = RoundedCornerShape(16.dp),
+        color = NanfengPageBackground,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                "干支关系",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengInk,
+            )
+            RelationAttentionRow("天干留意", stemText, Modifier.padding(top = 7.dp))
+            RelationAttentionRow("地支留意", branchText, Modifier.padding(top = 3.dp))
+        }
+    }
+}
+
+@Composable
+private fun RelationAttentionRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 26.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.width(72.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = NanfengGold,
+        )
+        Text(
+            value,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = NanfengInk,
+        )
     }
 }
 
@@ -743,22 +850,24 @@ private fun FolkBoneWeightSection(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "称骨 · 民俗断语",
+                        "称骨算命",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
+                }
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "农历年、月、日、时辰四项合计",
-                        style = MaterialTheme.typography.bodySmall,
+                        "总重",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Text(
+                        formatQian(bone.totalQian),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = NanfengGold,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
-                Text(
-                    formatQian(bone.totalQian),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = NanfengGold,
-                    fontWeight = FontWeight.Bold,
-                )
             }
             Row(
                 modifier = Modifier
@@ -784,8 +893,8 @@ private fun FolkBoneWeightSection(
                             Text(label, style = MaterialTheme.typography.labelSmall)
                             Text(
                                 formatQian(qian),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }

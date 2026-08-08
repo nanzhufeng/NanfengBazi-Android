@@ -13,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarDetail
 import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarRelation
 import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
+import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightRulesV1
 import com.tyme.solar.SolarDay
 import com.tyme.solar.SolarMonth
@@ -79,6 +80,11 @@ private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
     )
     val eightChar = solarTime.lunarHour.resolveEightChar(query.ratHourRule)
     val pillarCycles = listOf(eightChar.year, eightChar.month, eightChar.day, eightChar.hour)
+    val dayMaster = eightChar.day.heavenStem
+    val shenShaRoots = listOf(
+        eightChar.year.earthBranch.name.single(),
+        eightChar.day.earthBranch.name.single(),
+    )
     val termName = termDay.takeIf { it.dayIndex == 0 }?.solarTerm?.name
     val festivals = listOfNotNull(
         festival?.name,
@@ -101,6 +107,13 @@ private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
         pillars = pillarCycles.mapIndexed { index, cycle ->
             cycle.toAlmanacPillar(
                 label = listOf("年柱", "月柱", "日柱", "时柱")[index],
+                tenGod = if (index == 2) "日元" else dayMaster.getTenStar(cycle.heavenStem).name,
+                hiddenStemTenGod = { hidden -> dayMaster.getTenStar(hidden).name },
+                shenSha = BasicShenShaRules.resolveNames(
+                    pillar = cycle.name,
+                    dayStem = dayMaster.name.single(),
+                    roots = shenShaRoots,
+                ),
             )
         },
         relations = pillarCycles.toAlmanacRelations(),
@@ -121,19 +134,25 @@ private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
 
 private fun SixtyCycle.toAlmanacPillar(
     label: String,
+    tenGod: String,
+    hiddenStemTenGod: (com.tyme.sixtycycle.HeavenStem) -> String,
+    shenSha: List<String>,
 ): AlmanacPillarDetail = AlmanacPillarDetail(
     label = label,
     value = name,
     heavenStem = heavenStem.name,
     heavenStemElement = heavenStem.element.name,
+    tenGod = tenGod,
     earthBranch = earthBranch.name,
     earthBranchElement = earthBranch.element.name,
     hiddenStems = earthBranch.hideHeavenStems.map { hidden ->
         AlmanacHiddenStem(
             heavenStem = hidden.heavenStem.name,
             element = hidden.heavenStem.element.name,
+            tenGod = hiddenStemTenGod(hidden.heavenStem),
         )
     },
+    shenSha = shenSha,
 )
 
 private fun List<SixtyCycle>.toAlmanacRelations(): List<AlmanacPillarRelation> = buildList {
