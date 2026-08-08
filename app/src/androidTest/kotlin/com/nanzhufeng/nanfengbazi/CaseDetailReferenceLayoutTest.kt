@@ -146,5 +146,8 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithTag("detail_tab_records").performClick()
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()
         composeRule.onNodeWithText("工作方向发生明显调整。").performScrollTo().assertIsDisplayed()
+
+        composeRule.onNodeWithTag("detail_tab_fortune").performClick()
+        composeRule.onNodeWithTag("professional_fortune_position").assertIsDisplayed()
     }
 }

@@ -330,28 +330,18 @@ private fun java.time.DayOfWeek.chineseShortName(): String = when (this) {
 private fun buildInteractionGroups(
     columns: List<ProfessionalPillarColumn>,
 ): List<ProfessionalTextGroup> {
-    val natal = columns.filter { it.key.startsWith("natal_") }
-    val transit = columns.filterNot { it.key.startsWith("natal_") }
-        .filter { it.pillar.length >= 2 }
+    val allColumns = columns.filter { it.pillar.length >= 2 }
     return listOf(
         ProfessionalTextGroup(
-            "岁运天干",
-            pairRelations(transit, natal, useStem = true),
+            "天干",
+            pairRelations(allColumns, allColumns, useStem = true, withinSameList = true),
         ),
         ProfessionalTextGroup(
-            "岁运地支",
-            pairRelations(transit, natal, useStem = false) + tripleBranchRelations(transit + natal),
+            "地支",
+            pairRelations(allColumns, allColumns, useStem = false, withinSameList = true) +
+                tripleBranchRelations(allColumns),
         ),
-        ProfessionalTextGroup(
-            "原局天干",
-            pairRelations(natal, natal, useStem = true, withinSameList = true),
-        ),
-        ProfessionalTextGroup(
-            "原局地支",
-            pairRelations(natal, natal, useStem = false, withinSameList = true) +
-                tripleBranchRelations(natal),
-        ),
-    )
+    ).map { group -> group.copy(lines = group.lines.distinct()) }
 }
 
 private fun pairRelations(
@@ -367,9 +357,7 @@ private fun pairRelations(
             val first = a.pillar[if (useStem) 0 else 1]
             val second = b.pillar[if (useStem) 0 else 1]
             val relations = if (useStem) stemRelations(first, second) else branchRelations(first, second)
-            relations.forEach { relation ->
-                output += "${a.label}$first·${b.label}$second $relation"
-            }
+            output += relations
         }
     }
     return output.distinct()
@@ -377,16 +365,17 @@ private fun pairRelations(
 
 private fun stemRelations(a: Char, b: Char): List<String> = buildList {
     val pair = setOf(a, b)
-    if (pair in STEM_COMBINES) add("合")
-    if (pair in STEM_CLASHES) add("冲")
+    STEM_COMBINES[pair]?.let(::add)
+    STEM_CLASHES[pair]?.let(::add)
 }
 
 private fun branchRelations(a: Char, b: Char): List<String> = buildList {
     val pair = setOf(a, b)
-    if (pair in BRANCH_COMBINES) add("六合")
-    if (pair in BRANCH_CLASHES) add("六冲")
-    if (pair in BRANCH_HARMS) add("相害")
-    if ((a == b && a in SELF_PUNISH) || pair in BRANCH_PUNISH_PAIRS) add("相刑")
+    BRANCH_COMBINES[pair]?.let(::add)
+    BRANCH_CLASHES[pair]?.let(::add)
+    BRANCH_HARMS[pair]?.let(::add)
+    if (a == b && a in SELF_PUNISH) add("$a${a}自刑")
+    BRANCH_PUNISH_PAIRS[pair]?.let(::add)
 }
 
 private fun tripleBranchRelations(columns: List<ProfessionalPillarColumn>): List<String> {
@@ -400,32 +389,55 @@ private fun buildShenShaGroups(
     columns: List<ProfessionalPillarColumn>,
 ): List<ProfessionalTextGroup> {
     val natal = columns.filter { it.key.startsWith("natal_") }
-    val dayStem = natal.first { it.key == "natal_day" }.pillar[0]
-    val roots = listOf(
-        natal.first { it.key == "natal_year" }.pillar[1],
-        natal.first { it.key == "natal_day" }.pillar[1],
+    val context = BasicShenShaRules.context(
+        dayStem = natal.first { it.key == "natal_day" }.pillar[0],
+        roots = listOf(
+            natal.first { it.key == "natal_year" }.pillar[1],
+            natal.first { it.key == "natal_day" }.pillar[1],
+        ),
+        monthBranch = natal.first { it.key == "natal_month" }.pillar[1],
+        yearBranch = natal.first { it.key == "natal_year" }.pillar[1],
     )
-    fun line(column: ProfessionalPillarColumn): String {
-        val stars = BasicShenShaRules.resolveNames(column.pillar, dayStem, roots)
-        val displayedStars = stars.ifEmpty { listOf("—") }.joinToString("、")
-        return "${column.label}：$displayedStars"
+    fun line(column: ProfessionalPillarColumn): String? {
+        val stars = BasicShenShaRules.resolveNames(column.pillar, context)
+        return stars.takeIf(List<String>::isNotEmpty)
+            ?.joinToString("、")
+            ?.let { "${column.label}：$it" }
     }
     val transitKeys = listOf("decade", "flow_year", "flow_month", "flow_day", "flow_hour")
-    return listOf(
-        ProfessionalTextGroup("原局神煞", natal.map(::line)),
+    return listOfNotNull(
+        ProfessionalTextGroup("原局神煞", natal.mapNotNull(::line)).takeIf { it.lines.isNotEmpty() },
         ProfessionalTextGroup(
             "岁运神煞",
             transitKeys.mapNotNull { key -> columns.firstOrNull { it.key == key }?.let(::line) },
-        ),
+        ).takeIf { it.lines.isNotEmpty() },
     )
 }
 
-private val STEM_COMBINES = setOf(setOf('甲', '己'), setOf('乙', '庚'), setOf('丙', '辛'), setOf('丁', '壬'), setOf('戊', '癸'))
-private val STEM_CLASHES = setOf(setOf('甲', '庚'), setOf('乙', '辛'), setOf('丙', '壬'), setOf('丁', '癸'))
-private val BRANCH_COMBINES = setOf(setOf('子', '丑'), setOf('寅', '亥'), setOf('卯', '戌'), setOf('辰', '酉'), setOf('巳', '申'), setOf('午', '未'))
-private val BRANCH_CLASHES = setOf(setOf('子', '午'), setOf('丑', '未'), setOf('寅', '申'), setOf('卯', '酉'), setOf('辰', '戌'), setOf('巳', '亥'))
-private val BRANCH_HARMS = setOf(setOf('子', '未'), setOf('丑', '午'), setOf('寅', '巳'), setOf('卯', '辰'), setOf('申', '亥'), setOf('酉', '戌'))
-private val BRANCH_PUNISH_PAIRS = setOf(setOf('子', '卯'), setOf('寅', '巳'), setOf('巳', '申'), setOf('申', '寅'), setOf('丑', '戌'), setOf('戌', '未'), setOf('未', '丑'))
+private val STEM_COMBINES = mapOf(
+    setOf('甲', '己') to "甲己合", setOf('乙', '庚') to "乙庚合",
+    setOf('丙', '辛') to "丙辛合", setOf('丁', '壬') to "丁壬合", setOf('戊', '癸') to "戊癸合",
+)
+private val STEM_CLASHES = mapOf(
+    setOf('甲', '庚') to "甲庚冲", setOf('乙', '辛') to "乙辛冲",
+    setOf('丙', '壬') to "丙壬冲", setOf('丁', '癸') to "丁癸冲",
+)
+private val BRANCH_COMBINES = mapOf(
+    setOf('子', '丑') to "子丑合", setOf('寅', '亥') to "寅亥合", setOf('卯', '戌') to "卯戌合",
+    setOf('辰', '酉') to "辰酉合", setOf('巳', '申') to "巳申合", setOf('午', '未') to "午未合",
+)
+private val BRANCH_CLASHES = mapOf(
+    setOf('子', '午') to "子午冲", setOf('丑', '未') to "丑未冲", setOf('寅', '申') to "寅申冲",
+    setOf('卯', '酉') to "卯酉冲", setOf('辰', '戌') to "辰戌冲", setOf('巳', '亥') to "巳亥冲",
+)
+private val BRANCH_HARMS = mapOf(
+    setOf('子', '未') to "子未相害", setOf('丑', '午') to "丑午相害", setOf('寅', '巳') to "寅巳相害",
+    setOf('卯', '辰') to "卯辰相害", setOf('申', '亥') to "申亥相害", setOf('酉', '戌') to "酉戌相害",
+)
+private val BRANCH_PUNISH_PAIRS = mapOf(
+    setOf('子', '卯') to "子卯相刑", setOf('寅', '巳') to "寅巳相刑", setOf('巳', '申') to "巳申相刑",
+    setOf('丑', '戌') to "丑戌相刑", setOf('戌', '未') to "戌未相刑", setOf('未', '丑') to "未丑相刑",
+)
 private val SELF_PUNISH = setOf('辰', '午', '酉', '亥')
 private val THREE_HARMONIES = listOf(
     setOf('申', '子', '辰') to "申子辰三合水局",
@@ -439,7 +451,7 @@ private val THREE_MEETINGS = listOf(
     setOf('申', '酉', '戌') to "申酉戌三会金局",
     setOf('亥', '子', '丑') to "亥子丑三会水局",
 )
-private const val DETAIL_RULE_VERSION = "professional-detail-relations-shensha-v1"
+private const val DETAIL_RULE_VERSION = "professional-detail-relations-shensha-v2"
 private val SUPPORTED_CALENDAR_START: LocalDate = LocalDate.of(1800, 1, 1)
 private val SUPPORTED_CALENDAR_END: LocalDate = LocalDate.of(2200, 12, 31)
 

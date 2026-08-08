@@ -106,12 +106,11 @@ class TymeProfessionalFortuneResolverTest {
         assertTrue(position.hourlyTimeline.any { it.selected })
         assertTrue(position.hourlyTimeline.all { it.hiddenStems.isNotEmpty() })
         assertEquals(33, position.completedAge)
-        assertEquals(
-            listOf("岁运天干", "岁运地支", "原局天干", "原局地支"),
-            position.interactionGroups.map { it.title },
-        )
-        assertEquals(listOf("原局神煞", "岁运神煞"), position.shenShaGroups.map { it.title })
-        assertEquals("professional-detail-relations-shensha-v1", position.detailRuleVersion)
+        assertEquals(listOf("天干", "地支"), position.interactionGroups.map { it.title })
+        assertTrue(position.interactionGroups.flatMap { it.lines }.none { "流年" in it || "流月" in it })
+        assertTrue(position.shenShaGroups.isNotEmpty())
+        assertTrue(position.shenShaGroups.flatMap { it.lines }.all { "：—" !in it })
+        assertEquals("professional-detail-relations-shensha-v2", position.detailRuleVersion)
     }
 
     @Test
