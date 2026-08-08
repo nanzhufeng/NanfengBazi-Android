@@ -191,6 +191,26 @@ class CaseDetailReferenceLayoutTest {
         (0 until 9).forEach { index ->
             composeRule.onNodeWithTag("timeline_decade_$index").assertIsDisplayed()
         }
+        val timelineStem = composeRule.onNodeWithTag(
+            "timeline_decade_0_stem",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val timelineStemDetail = composeRule.onNodeWithTag(
+            "timeline_decade_0_stem_detail",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val timelineBranch = composeRule.onNodeWithTag(
+            "timeline_decade_0_branch",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val timelineBranchDetail = composeRule.onNodeWithTag(
+            "timeline_decade_0_branch_detail",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val stemDetailGap = timelineStemDetail.top - timelineStem.bottom
+        val branchDetailGap = timelineBranchDetail.top - timelineBranch.bottom
+        assertTrue(branchDetailGap >= -1f)
+        assertTrue(branchDetailGap <= stemDetailGap + 2f)
         decadeList.performScrollToNode(hasTestTag("timeline_decade_11"))
         composeRule.onNodeWithTag("timeline_decade_11").assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()

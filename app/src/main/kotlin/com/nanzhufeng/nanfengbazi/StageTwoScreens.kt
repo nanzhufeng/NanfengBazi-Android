@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -8264,17 +8265,23 @@ private fun ProfessionalTimelineCell(
             } else if (stem != null) {
                 Text(
                     stem.toString(),
+                    modifier = Modifier.testTag("timeline_${item.key}_stem"),
                     color = baziElementColor(stem),
                     fontSize = if (compact) 13.sp else 14.sp,
                     lineHeight = if (compact) 14.sp else 16.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                ProfessionalTenGodLabel(item.stemTenGod, compact)
+                Box(modifier = Modifier.testTag("timeline_${item.key}_stem_detail")) {
+                    ProfessionalTenGodLabel(item.stemTenGod, compact)
+                }
             }
             if (stageLabel == null && branch != null) {
                 Text(
                     branch.toString(),
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .offset(y = 1.dp)
+                        .testTag("timeline_${item.key}_branch"),
                     color = baziElementColor(branch),
                     fontSize = if (compact) 13.sp else 14.sp,
                     lineHeight = if (compact) 14.sp else 16.sp,
@@ -8302,7 +8309,9 @@ private fun ProfessionalTimelineBranchDetail(
 ) {
     Text(
         item.hiddenStems.joinToString(separator = "") { tenGodAbbreviation(it.tenGod) },
-        modifier = Modifier.padding(vertical = 1.dp),
+        modifier = Modifier
+            .padding(vertical = 1.dp)
+            .testTag("timeline_${item.key}_branch_detail"),
         fontSize = if (compact) 7.sp else 8.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
