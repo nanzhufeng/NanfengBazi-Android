@@ -8012,8 +8012,8 @@ private fun ProfessionalPillarCell(
                     stem.toString(),
                     modifier = Modifier.testTag("${column.key}_stem_text"),
                     color = baziElementColor(stem),
-                    fontSize = 17.sp,
-                    lineHeight = 19.sp,
+                    fontSize = 19.sp,
+                    lineHeight = 21.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
@@ -8022,8 +8022,8 @@ private fun ProfessionalPillarCell(
                 branch.toString(),
                 modifier = Modifier.padding(top = 5.dp),
                 color = baziElementColor(branch),
-                fontSize = 17.sp,
-                lineHeight = 19.sp,
+                fontSize = 19.sp,
+                lineHeight = 21.sp,
                 fontWeight = FontWeight.SemiBold,
             )
         }
@@ -8060,13 +8060,14 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                                     hidden.heavenStem,
                                     color = hidden.heavenStem.firstOrNull()
                                         ?.let(::baziElementColor) ?: NanfengInk,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
                                     hidden.tenGod,
-                                    fontSize = 9.sp,
-                                    lineHeight = 12.sp,
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -8094,7 +8095,16 @@ private fun ProfessionalTenGodLabel(
         } else {
             Modifier.padding(vertical = if (compact) 0.dp else 1.dp)
         },
-        fontSize = if (compact) 7.sp else 9.sp,
+        fontSize = when {
+            segmented -> 10.sp
+            compact -> 7.sp
+            else -> 9.sp
+        },
+        lineHeight = when {
+            segmented -> 14.sp
+            compact -> 8.sp
+            else -> 12.sp
+        },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
