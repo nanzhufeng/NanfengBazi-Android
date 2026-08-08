@@ -8043,7 +8043,8 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(ProfessionalPillarGridSurface)
-                    .padding(vertical = 3.dp),
+                    .testTag("professional_hidden_stem_row_$rowIndex")
+                    .padding(vertical = 1.5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 columns.forEach { column ->
@@ -8058,6 +8059,9 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                             ) {
                                 Text(
                                     hidden.heavenStem,
+                                    modifier = Modifier.testTag(
+                                        "${column.key}_hidden_stem_$rowIndex",
+                                    ),
                                     color = hidden.heavenStem.firstOrNull()
                                         ?.let(::baziElementColor) ?: NanfengInk,
                                     fontSize = 11.sp,
@@ -8066,6 +8070,9 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                                 )
                                 Text(
                                     hidden.tenGod,
+                                    modifier = Modifier.testTag(
+                                        "${column.key}_hidden_ten_god_$rowIndex",
+                                    ),
                                     fontSize = 10.sp,
                                     lineHeight = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

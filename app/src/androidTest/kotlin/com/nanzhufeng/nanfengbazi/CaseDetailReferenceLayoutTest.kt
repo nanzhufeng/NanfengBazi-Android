@@ -139,6 +139,16 @@ class CaseDetailReferenceLayoutTest {
             stemSurface.bottom - stemText.bottom,
             1f,
         )
+        val hiddenStemRow = composeRule.onNodeWithTag("professional_hidden_stem_row_0")
+            .fetchSemanticsNode().boundsInRoot
+        val hiddenStemText = composeRule.onNodeWithTag("flow_hour_hidden_stem_0")
+            .fetchSemanticsNode().boundsInRoot
+        val hiddenTenGodText = composeRule.onNodeWithTag("flow_hour_hidden_ten_god_0")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(hiddenStemText.top >= hiddenStemRow.top)
+        assertTrue(hiddenStemText.bottom <= hiddenStemRow.bottom)
+        assertTrue(hiddenTenGodText.top >= hiddenStemRow.top)
+        assertTrue(hiddenTenGodText.bottom <= hiddenStemRow.bottom)
         composeRule.onNodeWithText("八字排盘").assertIsDisplayed()
         composeRule.onNodeWithTag("professional_transit_natal_divider").assertIsDisplayed()
         composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
