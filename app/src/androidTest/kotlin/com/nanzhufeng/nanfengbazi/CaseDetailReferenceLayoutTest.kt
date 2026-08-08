@@ -156,13 +156,27 @@ class CaseDetailReferenceLayoutTest {
         assertTrue(hiddenStemText.bottom <= hiddenStemRow.bottom)
         assertTrue(hiddenTenGodText.top >= hiddenStemRow.top)
         assertTrue(hiddenTenGodText.bottom <= hiddenStemRow.bottom)
+        val finalHiddenStemRow = composeRule.onNodeWithTag("professional_hidden_stem_row_2")
+            .fetchSemanticsNode().boundsInRoot
+        val professionalMatrix = composeRule
+            .onNodeWithTag("professional_fortune_position")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(professionalMatrix.bottom > finalHiddenStemRow.bottom)
         composeRule.onNodeWithText("八字排盘").assertIsDisplayed()
         composeRule.onNodeWithTag("professional_transit_natal_divider").assertIsDisplayed()
         composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
-        composeRule.onAllNodesWithText("周岁", substring = true)[0].assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_completed_age").assertIsDisplayed()
+        composeRule.onNodeWithText("今").assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_today").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("daily_fortune_details")
+        composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("annual_fortune_details")
+        composeRule.onNodeWithTag("monthly_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("monthly_fortune_details")
+        composeRule.onNodeWithTag("hourly_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("hourly_fortune_details")
         val today = LocalDate.now()
         val dailyList = composeRule.onNodeWithTag("daily_fortune_details_list")
         dailyList.performScrollToNode(hasTestTag("timeline_day_${today.withDayOfMonth(1)}"))
@@ -182,6 +196,7 @@ class CaseDetailReferenceLayoutTest {
         assertEquals(dayLeftBeforeClick, dayLeftAfterClick, 1f)
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
         val decadeList = composeRule.onNodeWithTag("decade_fortune_details_list")
+        assertTenColumnTimelineGrid("decade_fortune_details")
         decadeList.performScrollToNode(hasTestTag("timeline_minor_stage"))
         composeRule.onNodeWithTag("timeline_minor_stage").assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_minor_stage_upper", useUnmergedTree = true)
@@ -243,5 +258,19 @@ class CaseDetailReferenceLayoutTest {
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("professional_fortune_position").assertIsDisplayed()
+    }
+
+    private fun assertTenColumnTimelineGrid(tag: String) {
+        val listBounds = composeRule.onNodeWithTag("${tag}_list")
+            .fetchSemanticsNode().boundsInRoot
+        val columnBounds = composeRule.onAllNodesWithTag(
+            "${tag}_column",
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes().map { it.boundsInRoot }
+        assertTrue(columnBounds.size >= 10)
+        val expectedWidth = listBounds.width / 10f
+        columnBounds.take(10).forEach { bounds ->
+            assertEquals(expectedWidth, bounds.width, 1f)
+        }
     }
 }

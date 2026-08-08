@@ -273,7 +273,7 @@ private fun buildMinorTimeline(
                 buildTimelineItem(
                     key = "minor_$index",
                     label = periodStart.year.toString(),
-                    subtitle = "${result.completedAgeAt(observedAt)}周岁$endHint",
+                    subtitle = "${result.completedAgeAt(observedAt)}岁$endHint",
                     observedAt = observedAt,
                     pillar = hourPillar.next(directionStep * (index + 1)).name,
                     selected = position.status == FortunePositionStatus.BEFORE_FIRST_DECADE &&
@@ -301,7 +301,7 @@ private fun buildDecadeTimeline(
             buildTimelineItem(
                 key = "decade_$index",
                 label = decade.startYear.toString(),
-                subtitle = "${result.completedAgeAt(startAt)}–${result.completedAgeAt(finalMoment)}周岁",
+                subtitle = "${result.completedAgeAt(startAt)}–${result.completedAgeAt(finalMoment)}岁",
                 observedAt = startAt.stableMinuteAfterBoundary(),
                 pillar = decade.name,
                 selected = position.decadeFortune?.name == decade.name,
@@ -325,7 +325,7 @@ private fun buildMinorStageItem(
         key = "minor_stage",
         label = "${firstMinor.observedAt.year}–$endYearShort",
         subtitle = "${result.completedAgeAt(firstMinor.observedAt)}–" +
-            "${result.completedAgeAt(finalMoment)}周岁",
+            "${result.completedAgeAt(finalMoment)}岁",
         observedAt = firstMinor.observedAt,
         pillar = "",
         stemTenGod = "",
@@ -386,7 +386,7 @@ private fun buildAnnualTimeline(
         buildTimelineItem(
             key = "annual_${annual.calendarYear}",
             label = annual.calendarYear.toString(),
-            subtitle = "${result.completedAgeAt(at)}周岁",
+            subtitle = "${result.completedAgeAt(at)}岁",
             observedAt = at,
             pillar = annual.name,
             selected = annual.calendarYear == position.annualFortune.calendarYear,

@@ -8084,6 +8084,11 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                 }
             }
         }
+        Spacer(
+            modifier = Modifier
+                .height(4.dp)
+                .testTag("professional_hidden_stem_bottom_inset"),
+        )
     }
 }
 
@@ -8161,44 +8166,37 @@ private fun ProfessionalTimelineRow(
                     )
                 }
             }
-            val usesTenColumnScroller = title == "大运" || title == "流日"
-            if (usesTenColumnScroller) {
-                BoxWithConstraints(modifier = Modifier.weight(1f)) {
-                    val scrollableCellWidth = maxWidth / 10f
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("${tag}_list"),
-                        contentPadding = PaddingValues(vertical = 5.dp),
-                        horizontalArrangement = Arrangement.Start,
-                    ) {
-                        items(items, key = ProfessionalTimelineItem::key) { item ->
+            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                val timelineColumnWidth = maxWidth / PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("${tag}_list"),
+                    contentPadding = PaddingValues(vertical = 5.dp),
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
+                        Box(
+                            modifier = Modifier
+                                .width(timelineColumnWidth)
+                                .testTag("${tag}_column"),
+                        ) {
                             ProfessionalTimelineCell(
                                 item = item,
-                                modifier = Modifier.width(scrollableCellWidth),
+                                modifier = Modifier.fillMaxWidth(),
                                 compact = true,
+                                showTrailingDivider = index < items.lastIndex,
                                 onClick = { onSelect(item.observedAt) },
                             )
                         }
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.weight(1f).padding(vertical = 5.dp),
-                ) {
-                    items.forEach { item ->
-                        ProfessionalTimelineCell(
-                            item = item,
-                            modifier = Modifier.weight(1f),
-                            compact = true,
-                            onClick = { onSelect(item.observedAt) },
-                        )
                     }
                 }
             }
         }
     }
 }
+
+private const val PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS = 10
 
 private val ProfessionalTimelinePrimarySurface = Color.White
 private val ProfessionalTimelineAlternateSurface = Color(0xFFFCFCFB)
@@ -8213,13 +8211,30 @@ private fun ProfessionalTimelineCell(
     item: ProfessionalTimelineItem,
     modifier: Modifier = Modifier,
     compact: Boolean,
+    showTrailingDivider: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val trailingDivider = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
     Surface(
         modifier = modifier
             .clickable(onClick = onClick)
             .testTag("timeline_${item.key}")
-            .then(if (item.selected) Modifier.testTag("selected_${item.key}") else Modifier),
+            .then(if (item.selected) Modifier.testTag("selected_${item.key}") else Modifier)
+            .then(
+                if (showTrailingDivider) {
+                    Modifier.drawBehind {
+                        val dividerX = size.width - 0.5.dp.toPx()
+                        drawLine(
+                            color = trailingDivider,
+                            start = Offset(dividerX, 0f),
+                            end = Offset(dividerX, size.height),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            ),
         color = if (item.selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
         shape = RoundedCornerShape(8.dp),
     ) {
@@ -8328,77 +8343,89 @@ private fun ProfessionalSelectedDateBar(
     onOpenPicker: () -> Unit,
     onToday: () -> Unit,
 ) {
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 2.dp)
             .testTag("fortune_selected_datetime"),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f),
-        ),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "起运  ${calculation.fortuneStart.direction.displayName()} · " +
-                            calculation.fortuneStart.ageDurationDisplay(),
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "交运  ${calculation.fortuneStart.endAt.display()}  ·  周岁 $completedAge 岁",
-                        modifier = Modifier.padding(top = 3.dp),
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Surface(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clickable(onClick = onToday)
-                        .testTag("fortune_today")
-                        .semantics { contentDescription = "定位今天" },
-                    color = NanfengGold.copy(alpha = 0.12f),
-                    shape = CircleShape,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_today),
-                            contentDescription = null,
-                            tint = NanfengGold,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 7.dp))
-            Text(
-                "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenPicker)
-                    .testTag("fortune_observation_picker")
-                    .padding(vertical = 2.dp),
-                fontSize = 9.sp,
-                lineHeight = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            error?.let {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    it,
-                    modifier = Modifier.padding(top = 3.dp),
-                    fontSize = 8.sp,
-                    color = MaterialTheme.colorScheme.error,
+                    "起运  ${calculation.fortuneStart.direction.displayName()} · " +
+                        calculation.fortuneStart.ageDurationDisplay(),
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "交运  ${calculation.fortuneStart.endAt.display()}",
+                    modifier = Modifier.padding(top = 1.dp),
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Text(
+                "$completedAge 岁",
+                modifier = Modifier.testTag("fortune_completed_age"),
+                fontSize = 14.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengGold,
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Surface(
+                modifier = Modifier
+                    .height(32.dp)
+                    .clickable(onClick = onToday)
+                    .testTag("fortune_today")
+                    .semantics { contentDescription = "定位今天" },
+                color = NanfengGold.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_today),
+                        contentDescription = null,
+                        tint = NanfengGold,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Text(
+                        "今",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NanfengGold,
+                    )
+                }
+            }
+        }
+        Text(
+            "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenPicker)
+                .testTag("fortune_observation_picker")
+                .padding(top = 3.dp, bottom = 2.dp),
+            fontSize = 9.sp,
+            lineHeight = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        error?.let {
+            Text(
+                it,
+                modifier = Modifier.padding(top = 2.dp),
+                fontSize = 8.sp,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }
