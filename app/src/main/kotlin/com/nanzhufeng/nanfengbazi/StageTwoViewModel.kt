@@ -112,6 +112,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -4287,6 +4288,37 @@ class StageTwoViewModel(
             )
         }
         resolveFortunePosition()
+    }
+
+    fun selectFortuneObservation(value: CivilDateTime) {
+        mutableState.update {
+            it.copy(
+                fortuneObservationDate = "%04d-%02d-%02d".format(
+                    value.year,
+                    value.month,
+                    value.day,
+                ),
+                fortuneObservationTime = "%02d:%02d".format(value.hour, value.minute),
+                fortunePosition = null,
+                professionalFortunePosition = null,
+                fortunePositionError = null,
+            )
+        }
+        resolveFortunePosition()
+    }
+
+    fun locateFortuneToday() {
+        val now = LocalDateTime.now(observationClock)
+        selectFortuneObservation(
+            CivilDateTime(
+                now.year,
+                now.monthValue,
+                now.dayOfMonth,
+                now.hour,
+                now.minute,
+                0,
+            ),
+        )
     }
 
     private fun resolveFortunePosition() {

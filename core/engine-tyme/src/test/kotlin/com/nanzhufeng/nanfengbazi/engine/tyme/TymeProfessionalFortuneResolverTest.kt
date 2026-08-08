@@ -88,6 +88,22 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals(2026, position.position.annualFortune.calendarYear)
         assertNotNull(position.position.decadeFortune)
         assertEquals(FortunePositionStatus.WITHIN_DECADE, position.position.status)
+        assertEquals(9, position.pillarColumns.size)
+        assertTrue(position.pillarColumns.all { it.stemTenGod.isNotBlank() })
+        assertEquals(8, position.decadeTimeline.size)
+        assertEquals(12, position.monthlyTimeline.size)
+        assertEquals(10, position.dailyTimeline.size)
+        assertEquals(12, position.hourlyTimeline.size)
+        assertTrue(position.annualTimeline.any { it.selected })
+        assertTrue(position.monthlyTimeline.any { it.selected })
+        assertTrue(position.dailyTimeline.single { it.selected }.subtitle == "已选")
+        assertTrue(position.hourlyTimeline.any { it.selected })
+        assertEquals(
+            listOf("岁运天干", "岁运地支", "原局天干", "原局地支"),
+            position.interactionGroups.map { it.title },
+        )
+        assertEquals(listOf("原局神煞", "岁运神煞"), position.shenShaGroups.map { it.title })
+        assertEquals("professional-detail-relations-shensha-v1", position.detailRuleVersion)
     }
 
     @Test
@@ -121,6 +137,30 @@ class TymeProfessionalFortuneResolverTest {
             lateAtRatHour.profileId,
         )
         assertEquals("stage7b-rat-hour-v1", lateAtRatHour.ruleVersion)
+    }
+
+    @Test
+    fun `点击大运首年仍定位到所选大运和流年`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(2026, 8, 8, 12, 0, 0))
+        val selected = requireNotNull(current.annualTimeline.firstOrNull { it.label == "2017" })
+        val relocated = resolver.locate(result, selected.observedAt)
+
+        assertEquals(2017, relocated.position.annualFortune.calendarYear)
+        assertEquals("2017", relocated.annualTimeline.single { it.selected }.label)
+        assertEquals(current.position.decadeFortune?.name, relocated.position.decadeFortune?.name)
+    }
+
+    @Test
+    fun `专业时间轴候选不越过统一支持的二二零零年边界`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val end = resolver.locate(result, CivilDateTime(2200, 12, 31, 21, 0, 0))
+
+        assertTrue(end.monthlyTimeline.all { it.observedAt.year <= 2200 })
+        assertEquals(10, end.dailyTimeline.size)
+        assertTrue(end.dailyTimeline.all { it.observedAt.year <= 2200 })
+        assertTrue(end.hourlyTimeline.all { it.observedAt.year <= 2200 })
+        assertTrue(end.dailyTimeline.any { it.selected })
     }
 
     private fun sampleInput(): BirthInput = BirthInput(

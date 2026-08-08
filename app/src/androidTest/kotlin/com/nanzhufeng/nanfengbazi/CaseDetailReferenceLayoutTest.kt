@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,7 +29,7 @@ class CaseDetailReferenceLayoutTest {
     private val alias = "命例详情验收-${System.currentTimeMillis()}"
 
     @Before
-    fun seedReferenceCase() = runBlocking {
+    fun seedReferenceCase(): Unit = runBlocking {
         val application = InstrumentationRegistry.getInstrumentation()
             .targetContext.applicationContext as NanfengBaziApplication
         val createCase = CreateCaseUseCase(
@@ -87,12 +88,19 @@ class CaseDetailReferenceLayoutTest {
             )
             check(write is CaseWriteResult.Updated) { "测试笔记写入失败：$write" }
         }
+        composeRule.activityRule.scenario.recreate()
+        Unit
     }
 
     @Test
     fun fourReferencePanelsKeepSharedHeaderAndDirectContent() {
         composeRule.onNodeWithTag("nav_records").performClick()
         composeRule.onNodeWithTag("case_search").performTextReplacement(alias)
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("别名：$alias")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
         composeRule.onNodeWithText("别名：$alias").performClick()
         composeRule.onNodeWithTag("case_identity_header").assertIsDisplayed()
         composeRule.onNodeWithText("出生地区").assertIsDisplayed()
@@ -102,8 +110,20 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithText("藏干").assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
+        composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("timeline_annual_2017").performClick()
+        composeRule.onNodeWithText("已选日期  2017-", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("monthly_fortune_details").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("hourly_fortune_details").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_selected_datetime").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_today").assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_interactions").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("fortune_shensha").performScrollTo().assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_records").performClick()
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()

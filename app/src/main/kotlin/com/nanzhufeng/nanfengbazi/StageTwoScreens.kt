@@ -124,6 +124,9 @@ import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalPillarColumn
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalTextGroup
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalTimelineItem
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -416,6 +419,9 @@ fun NanfengBaziApp(
                                     viewModel::updateFortuneObservationDate,
                                 onFortuneObservationTimeChange =
                                     viewModel::updateFortuneObservationTime,
+                                onFortuneObservationSelect =
+                                    viewModel::selectFortuneObservation,
+                                onFortuneToday = viewModel::locateFortuneToday,
                                 modifier = modifier,
                             )
                         }
@@ -5901,6 +5907,8 @@ private fun CaseDetailScreen(
     onSelectSection: (CaseDetailSection) -> Unit,
     onFortuneObservationDateChange: (String) -> Unit,
     onFortuneObservationTimeChange: (String) -> Unit,
+    onFortuneObservationSelect: (com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime) -> Unit,
+    onFortuneToday: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var managementMenuExpanded by rememberSaveable { mutableStateOf(false) }
@@ -6040,6 +6048,8 @@ private fun CaseDetailScreen(
                     fortunePositionError = state.fortunePositionError,
                     onFortuneObservationDateChange = onFortuneObservationDateChange,
                     onFortuneObservationTimeChange = onFortuneObservationTimeChange,
+                    onFortuneObservationSelect = onFortuneObservationSelect,
+                    onFortuneToday = onFortuneToday,
                 )
             }
         }
@@ -6259,6 +6269,8 @@ private fun ReferenceCaseDetailContent(
     fortunePositionError: String?,
     onFortuneObservationDateChange: (String) -> Unit,
     onFortuneObservationTimeChange: (String) -> Unit,
+    onFortuneObservationSelect: (com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime) -> Unit,
+    onFortuneToday: () -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     var showObservationPicker by rememberSaveable(case.id) { mutableStateOf(false) }
@@ -6339,6 +6351,8 @@ private fun ReferenceCaseDetailContent(
                         professionalFortunePosition = professionalFortunePosition,
                         fortunePositionError = fortunePositionError,
                         onOpenObservationPicker = { showObservationPicker = true },
+                        onObservationSelect = onFortuneObservationSelect,
+                        onToday = onFortuneToday,
                     )
                 }
             }
@@ -7756,97 +7770,64 @@ private fun FortuneDetailsView(
     professionalFortunePosition: ProfessionalFortunePosition?,
     fortunePositionError: String?,
     onOpenObservationPicker: () -> Unit,
+    onObservationSelect: (CivilDateTime) -> Unit = {},
+    onToday: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        FortuneOverviewPane(
-            calculation = calculation,
-            fortuneObservationDate = fortuneObservationDate,
-            fortuneObservationTime = fortuneObservationTime,
-            fortunePosition = fortunePosition,
-            professionalFortunePosition = professionalFortunePosition,
-            fortunePositionError = fortunePositionError,
-            onOpenObservationPicker = onOpenObservationPicker,
-        )
-        DecadeFortuneDetailsView(calculation.decadeFortunes)
-        AnnualFortuneDetailsView(
-            annuals = calculation.annualFortunes,
-            current = fortunePosition,
-        )
-    }
-}
-
-@Composable
-private fun FortuneOverviewPane(
-    calculation: CalculationResult,
-    fortuneObservationDate: String,
-    fortuneObservationTime: String,
-    fortunePosition: FortunePosition?,
-    professionalFortunePosition: ProfessionalFortunePosition?,
-    fortunePositionError: String?,
-    onOpenObservationPicker: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier) {
-        professionalFortunePosition?.let { position ->
-            ProfessionalFortunePositionView(position, calculation)
+        if (professionalFortunePosition == null) {
+            ReferenceEmptyText(fortunePositionError ?: "正在定位专业岁运…")
+            return@Column
         }
-        WenzhenSectionHeader(
-            "岁运定位",
-            modifier = Modifier.padding(top = 6.dp),
+        ProfessionalPillarMatrix(professionalFortunePosition.pillarColumns)
+        ProfessionalTimelineRow(
+            title = "大运",
+            items = professionalFortunePosition.decadeTimeline,
+            tag = "decade_fortune_details",
+            onSelect = onObservationSelect,
         )
-        WenzhenDualFactRow(
-            "起运方向",
-            if (calculation.fortuneStart.direction.name == "FORWARD") "顺排" else "逆排",
-            "起运年龄",
-            "${calculation.fortuneStart.years}年${calculation.fortuneStart.months}月" +
-                "${calculation.fortuneStart.days}日",
-            alternate = true,
+        ProfessionalTimelineRow(
+            title = "流年",
+            items = professionalFortunePosition.annualTimeline,
+            tag = "annual_fortune_details",
+            onSelect = onObservationSelect,
         )
-        WenzhenFactRow(
-            "交运时间",
-            calculation.fortuneStart.endAt.display(),
-            alternate = false,
+        ProfessionalTimelineRow(
+            title = "流月",
+            items = professionalFortunePosition.monthlyTimeline,
+            tag = "monthly_fortune_details",
+            onSelect = onObservationSelect,
         )
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenObservationPicker)
-                .testTag("fortune_observation_picker"),
-            color = NanfengControlSurface,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "观察时刻",
-                    modifier = Modifier.width(78.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "$fortuneObservationDate  $fortuneObservationTime",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    fortunePositionError?.let { message ->
-                        Text(
-                            message,
-                            modifier = Modifier.padding(top = 2.dp),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                Icon(
-                    imageVector = Icons.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = NanfengGold,
-                )
-            }
-        }
-        fortunePosition?.let { position -> CurrentFortunePositionView(position) }
+        ProfessionalTimelineRow(
+            title = "流日",
+            items = professionalFortunePosition.dailyTimeline,
+            tag = "daily_fortune_details",
+            onSelect = onObservationSelect,
+        )
+        ProfessionalTimelineRow(
+            title = "流时",
+            items = professionalFortunePosition.hourlyTimeline,
+            tag = "hourly_fortune_details",
+            onSelect = onObservationSelect,
+        )
+        ProfessionalSelectedDateBar(
+            date = fortuneObservationDate,
+            time = fortuneObservationTime,
+            detail = professionalFortunePosition.selectedDateDetail,
+            error = fortunePositionError,
+            onOpenPicker = onOpenObservationPicker,
+            onToday = onToday,
+        )
+        ProfessionalTextSections(
+            title = "合冲刑害",
+            groups = professionalFortunePosition.interactionGroups,
+            tag = "fortune_interactions",
+        )
+        ProfessionalTextSections(
+            title = "神煞",
+            groups = professionalFortunePosition.shenShaGroups,
+            tag = "fortune_shensha",
+        )
     }
 }
 
@@ -7879,248 +7860,245 @@ private fun DetailRow(
 }
 
 @Composable
-private fun DecadeFortuneDetailsView(
-    decades: List<DecadeFortune>,
-) {
+private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp)
-            .testTag("decade_fortune_details"),
-    ) {
-        WenzhenSectionHeader("大运")
-        Row(modifier = Modifier.fillMaxWidth()) {
-            decades.take(8).forEachIndexed { index, decade ->
-                DenseFortuneTimelineCell(
-                    title = "${index + 1}运",
-                    pillar = decade.name,
-                    subtitle = "${decade.startAge}–${decade.endAge}岁\n${decade.startYear}",
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CurrentFortunePositionView(
-    position: FortunePosition,
-) {
-    val decadeText = when (position.status) {
-        FortunePositionStatus.BEFORE_FIRST_DECADE -> "尚未交入第一步大运"
-        FortunePositionStatus.WITHIN_DECADE ->
-            position.decadeFortune?.name ?: "当前大运未定位"
-        FortunePositionStatus.AFTER_TIMELINE -> "已超出前八步大运范围"
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .testTag("current_fortune_position"),
-    ) {
-        WenzhenDualFactRow(
-            "当前流年",
-            "${position.annualFortune.calendarYear} ${position.annualFortune.name}",
-            "当前大运",
-            decadeText,
-            alternate = false,
-        )
-    }
-}
-
-@Composable
-private fun ProfessionalFortunePositionView(
-    position: ProfessionalFortunePosition,
-    calculation: CalculationResult,
-) {
-    val context = LocalContext.current
-    var copied by remember(position) { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
+            .padding(bottom = 2.dp)
             .testTag("professional_fortune_position"),
     ) {
-        WenzhenSectionHeader(
-            title = "当前流运",
-            actionLabel = if (copied) "已复制" else "复制诊断",
-            actionTag = "copy_fortune_diagnostics",
-            onAction = {
-                val clipboard = context.getSystemService(ClipboardManager::class.java)
-                clipboard?.setPrimaryClip(
-                    ClipData.newPlainText(
-                        "南枫八字专业流运诊断",
-                        position.toDiagnosticText(),
-                    ),
-                )
-                copied = true
-            },
-        )
         Row(modifier = Modifier.fillMaxWidth()) {
-            listOf(
-                "流时" to position.flowPillars.hour,
-                "流日" to position.flowPillars.day,
-                "流月" to position.flowPillars.month,
-                "流年" to position.flowPillars.year,
-                "大运" to (position.position.decadeFortune?.name ?: "—"),
-                "年柱" to calculation.fourPillars.year,
-                "月柱" to calculation.fourPillars.month,
-                "日柱" to calculation.fourPillars.day,
-                "时柱" to calculation.fourPillars.hour,
-            ).forEach { (label, pillar) ->
-                FortunePillarCell(label, pillar, Modifier.weight(1f))
+            columns.forEach { column ->
+                ProfessionalPillarCell(column, Modifier.weight(1f))
             }
         }
-        WenzhenFactRow(
-            "节气区间",
-            "${position.previousSolarTerm.name} ${position.previousSolarTerm.at.display()}　" +
-                "${position.nextSolarTerm.name} ${position.nextSolarTerm.at.display()}",
-            alternate = true,
-        )
-    }
-}
-
-private fun com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.displayName(): String =
-    when (this) {
-        com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.JIE -> "节"
-        com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.QI -> "气"
-    }
-
-private fun ProfessionalFortunePosition.toDiagnosticText(): String = buildString {
-    appendLine("观察时刻：${position.observedAt.display()}")
-    appendLine(
-        "当前流年：${position.annualFortune.calendarYear} " +
-            "${position.annualFortune.name}（虚岁 ${position.annualFortune.nominalAge}）",
-    )
-    appendLine("当前大运：${position.decadeFortune?.name ?: position.status.name}")
-    appendLine(
-        "流柱：年 ${flowPillars.year} 月 ${flowPillars.month} " +
-            "日 ${flowPillars.day} 时 ${flowPillars.hour}",
-    )
-    appendLine(
-        "前一节气：${previousSolarTerm.name}（${previousSolarTerm.type.displayName()}）" +
-            " ${previousSolarTerm.at.display()}",
-    )
-    appendLine(
-        "后一节气：${nextSolarTerm.name}（${nextSolarTerm.type.displayName()}）" +
-            " ${nextSolarTerm.at.display()}",
-    )
-    appendLine("计算档案：$profileId")
-    appendLine("观察时刻口径：民用时（不额外校正观察地点真太阳时）")
-    append("规则版本：$ruleVersion")
-}
-
-@Composable
-private fun AnnualFortuneDetailsView(
-    annuals: List<AnnualFortune>,
-    current: FortunePosition?,
-) {
-    if (annuals.isEmpty()) return
-    val currentIndex = annuals.indexOfFirst {
-        it.calendarYear == current?.annualFortune?.calendarYear
-    }.coerceAtLeast(0)
-    val visibleAnnuals = annuals.drop((currentIndex / 10) * 10).take(10)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 4.dp)
-            .testTag("annual_fortune_details"),
-    ) {
-        WenzhenSectionHeader("流年")
-        Row(modifier = Modifier.fillMaxWidth()) {
-            visibleAnnuals.forEach { annual ->
-                val isCurrent = current?.annualFortune?.calendarYear == annual.calendarYear
-                DenseFortuneTimelineCell(
-                    title = annual.calendarYear.toString(),
-                    pillar = annual.name,
-                    subtitle = "虚${annual.nominalAge}",
-                    selected = isCurrent,
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (isCurrent) Modifier.testTag("current_annual_fortune_row") else Modifier,
-                        ),
-                )
-            }
-        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
 @Composable
-private fun DenseFortuneTimelineCell(
-    title: String,
-    pillar: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-    selected: Boolean = false,
-) {
-    Surface(
-        modifier = modifier,
-        color = if (selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 1.dp, vertical = 7.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                title,
-                fontSize = 9.sp,
-                color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                pillar.take(2).forEach { character ->
-                    Text(
-                        character.toString(),
-                        color = baziElementColor(character),
-                        fontSize = 17.sp,
-                        lineHeight = 19.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-            Text(
-                subtitle,
-                textAlign = TextAlign.Center,
-                fontSize = 9.sp,
-                lineHeight = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun FortunePillarCell(
-    label: String,
-    pillar: String,
+private fun ProfessionalPillarCell(
+    column: ProfessionalPillarColumn,
     modifier: Modifier = Modifier,
 ) {
-    val pillarTag: String? = when (label) {
-        "流年" -> "flow_year_pillar"
-        "流月" -> "flow_month_pillar"
-        "流日" -> "flow_day_pillar"
-        "流时" -> "flow_hour_pillar"
-        else -> null
-    }
     Column(
         modifier = modifier
-            .then(if (pillarTag == null) Modifier else Modifier.testTag(pillarTag))
-            .padding(vertical = 7.dp),
+            .then(
+                if (column.key.startsWith("flow_")) Modifier.testTag("${column.key}_pillar")
+                else Modifier,
+            )
+            .padding(horizontal = 1.dp, vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Text(column.label, fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            label,
-            fontSize = 9.sp,
-            lineHeight = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            column.stemTenGod,
+            modifier = Modifier.padding(top = 3.dp),
+            fontSize = 8.sp,
+            color = NanfengGold,
+            maxLines = 1,
         )
-        pillar.take(2).forEach { character ->
+        column.pillar.take(2).forEach { character ->
             Text(
                 character.toString(),
                 color = baziElementColor(character),
-                fontSize = 18.sp,
-                lineHeight = 20.sp,
+                fontSize = 17.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Text(
+            column.hiddenTenGods.joinToString("/").ifBlank { "—" },
+            modifier = Modifier.padding(top = 2.dp),
+            textAlign = TextAlign.Center,
+            fontSize = 7.sp,
+            lineHeight = 8.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun ProfessionalTimelineRow(
+    title: String,
+    items: List<ProfessionalTimelineItem>,
+    tag: String,
+    onSelect: (CivilDateTime) -> Unit,
+) {
+    if (items.isEmpty()) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 3.dp)
+            .testTag(tag),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                modifier = Modifier.width(28.dp),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(modifier = Modifier.weight(1f)) {
+                items.forEach { item ->
+                    ProfessionalTimelineCell(
+                        item = item,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSelect(item.observedAt) },
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f))
+    }
+}
+
+@Composable
+private fun ProfessionalTimelineCell(
+    item: ProfessionalTimelineItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .testTag("timeline_${item.key}")
+            .then(if (item.selected) Modifier.testTag("selected_${item.key}") else Modifier),
+        color = if (item.selected) NanfengGold.copy(alpha = 0.10f) else Color.Transparent,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 0.dp, vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                item.label,
+                fontSize = 7.sp,
+                lineHeight = 8.sp,
+                color = if (item.selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Text(
+                item.stemTenGod,
+                fontSize = 7.sp,
+                lineHeight = 8.sp,
+                color = NanfengGold,
+                maxLines = 1,
+            )
+            item.pillar.take(2).forEach { character ->
+                Text(
+                    character.toString(),
+                    color = baziElementColor(character),
+                    fontSize = 13.sp,
+                    lineHeight = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                item.subtitle,
+                textAlign = TextAlign.Center,
+                fontSize = 7.sp,
+                lineHeight = 8.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfessionalSelectedDateBar(
+    date: String,
+    time: String,
+    detail: String,
+    error: String?,
+    onOpenPicker: () -> Unit,
+    onToday: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NanfengGold.copy(alpha = 0.10f))
+            .testTag("fortune_selected_datetime"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onOpenPicker)
+                .testTag("fortune_observation_picker")
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        ) {
+            Text(
+                "已选日期  $date  $time",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (detail.isNotBlank()) {
+                Text(
+                    detail,
+                    modifier = Modifier.padding(top = 2.dp),
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            error?.let {
+                Text(it, fontSize = 8.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
+        TextButton(onClick = onToday, modifier = Modifier.testTag("fortune_today")) {
+            Text("今天", color = NanfengGold, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun ProfessionalTextSections(
+    title: String,
+    groups: List<ProfessionalTextGroup>,
+    tag: String,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(tag)) {
+        Text(
+            title,
+            modifier = Modifier.fillMaxWidth().background(NanfengControlSurface)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        groups.forEach { group ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    group.title,
+                    modifier = Modifier.width(66.dp),
+                    fontSize = 10.sp,
+                    color = NanfengGold,
+                )
+                Text(
+                    group.lines.ifEmpty { listOf("无") }.joinToString("；"),
+                    modifier = Modifier.weight(1f),
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        }
+    }
+}
+
+@Composable
+private fun DecadeFortuneDetailsView(decades: List<DecadeFortune>) {
+    Column(modifier = Modifier.fillMaxWidth().testTag("decade_fortune_details")) {
+        decades.take(8).forEachIndexed { index, decade ->
+            DetailRow(
+                "第${index + 1}运",
+                "${decade.name}　${decade.startAge}–${decade.endAge}岁　" +
+                    "${decade.startYear}–${decade.endYear}",
             )
         }
     }
