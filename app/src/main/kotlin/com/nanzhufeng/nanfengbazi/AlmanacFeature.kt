@@ -59,7 +59,6 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacDaySummary
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
 import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarDetail
-import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarRelation
 import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeight
 import java.time.LocalDate
 import java.time.LocalTime
@@ -563,10 +562,6 @@ private fun AlmanacDetailsCard(
                 pillars = details.pillars,
                 modifier = Modifier.padding(top = 10.dp),
             )
-            AlmanacRelationAttentionSection(
-                relations = details.relations,
-                modifier = Modifier.padding(top = 12.dp),
-            )
             details.folkBoneWeight?.let { bone ->
                 FolkBoneWeightSection(
                     bone = bone,
@@ -742,66 +737,6 @@ private fun AlmanacEightCharacterTable(
 }
 
 @Composable
-private fun AlmanacRelationAttentionSection(
-    relations: List<AlmanacPillarRelation>,
-    modifier: Modifier = Modifier,
-) {
-    val stemText = relations
-        .filter { it.category.startsWith("天干") }
-        .joinToString(" · ") { "${it.pillars}${it.category.removePrefix("天干")}" }
-    val branchText = relations
-        .filter { it.category.startsWith("地支") }
-        .joinToString(" · ") { "${it.pillars}${it.category.removePrefix("地支")}" }
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("almanac_relation_attention"),
-        shape = RoundedCornerShape(16.dp),
-        color = NanfengPageBackground,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Text(
-                "干支关系",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = NanfengInk,
-            )
-            RelationAttentionRow("天干留意", stemText, Modifier.padding(top = 7.dp))
-            RelationAttentionRow("地支留意", branchText, Modifier.padding(top = 3.dp))
-        }
-    }
-}
-
-@Composable
-private fun RelationAttentionRow(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 26.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            modifier = Modifier.width(72.dp),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = NanfengGold,
-        )
-        Text(
-            value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = NanfengInk,
-        )
-    }
-}
-
-@Composable
 private fun AlmanacPillarRow(
     label: String,
     pillars: List<AlmanacPillarDetail>,
@@ -848,59 +783,32 @@ private fun FolkBoneWeightSection(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "称骨算命",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        "总重",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        formatQian(bone.totalQian),
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = NanfengGold,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                Text(
+                    "称骨算命",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    formatQian(bone.totalQian),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = NanfengGold,
+                    fontWeight = FontWeight.Bold,
+                )
             }
-            Row(
+            Text(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                listOf(
-                    "年" to bone.yearQian,
-                    "月" to bone.monthQian,
-                    "日" to bone.dayQian,
-                    "时" to bone.hourQian,
-                ).forEach { (label, qian) ->
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                        shape = RoundedCornerShape(10.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 7.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelSmall)
-                            Text(
-                                formatQian(qian),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-            FolkBoneVerdict("男命断语", bone.maleVerdict, Modifier.padding(top = 16.dp))
+                    .padding(top = 7.dp)
+                    .testTag("folk_bone_weight_components"),
+                text = "年 ${formatQian(bone.yearQian)} · 月 ${formatQian(bone.monthQian)} · " +
+                    "日 ${formatQian(bone.dayQian)} · 时 ${formatQian(bone.hourQian)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            FolkBoneVerdict("男命断语", bone.maleVerdict, Modifier.padding(top = 14.dp))
             FolkBoneVerdict("女命断语", bone.femaleVerdict, Modifier.padding(top = 14.dp))
         }
     }
