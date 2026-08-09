@@ -485,11 +485,10 @@ OPPO 真机安装、进程重启后的持久读取及真实问真迁移仍需独
 4. 批量后台识别、真实样本、OPPO、正式签名和发布各自独立记录；任一项未通过不得被
    单图审阅或布局测试覆盖掉。
 
-## alpha77 启动图标门禁
+## 启动图标门禁
 
-1. 当前母版只能是 `design/assets/app-icon-master.jpg`；`app_icon_source`、所有 `mipmap-*`
-   与 `roundIcon` 位图只能从该母版及其规范化两层资源导出，不得以旧导出图二次缩放。legacy
-   `mipmap-*` 必须扁平化同一材质背景和实际前景比例，不能直接保留母版白画布。
+1. 当前母版只能是 `design/assets/app-icon-master.png`；`app_icon_source`、所有 `mipmap-*`
+   与 `roundIcon` 位图只能通过 `scripts/build_android_launcher_icon.py` 从该母版及其规范化两层资源导出，不得以旧导出图二次缩放。legacy `mipmap-*` 必须扁平化同一深蓝材质背景和原坐标前景，不能保留母版白画布。
 2. Manifest 的 `android:icon` 与 `android:roundIcon` 必须继续指向 `ic_launcher` 和
    `ic_launcher_round`，API 26+ 自适应前景不得引入额外底板、裁切或重绘。
 3. API 35 至少核对系统应用信息页和 Pixel Launcher；OPPO/ColorOS 的真实启动器蒙版只在
