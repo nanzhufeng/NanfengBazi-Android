@@ -1,7 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
 import android.os.Bundle
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -120,10 +119,10 @@ private fun YearRangeBoundary.displayName(): String = when (this) {
 @Composable
 private fun FourPillarsSelectionCard(pillars: List<String>, onClick: () -> Unit) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .clickable(onClick = onClick)
             .testTag("open_four_pillars_wheel_picker"),
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(20.dp),
@@ -279,10 +278,10 @@ internal fun FourPillarsLookupScreen(
                     key = { "${it.instant}-${it.resolvedUtcOffsetSeconds}" },
                 ) { candidate ->
                     Card(
+                        onClick = { onUseCandidate(candidate) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
-                            .clickable { onUseCandidate(candidate) }
                             .testTag("lookup_candidate"),
                     ) {
                         Column(

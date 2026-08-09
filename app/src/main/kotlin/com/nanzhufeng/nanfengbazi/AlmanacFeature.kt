@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -69,9 +70,9 @@ internal fun AlmanacHomeEntry(
     modifier: Modifier = Modifier,
 ) {
     Card(
+        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .semantics { contentDescription = "打开万年历" }
             .testTag("open_almanac"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -289,6 +290,7 @@ private fun AlmanacCalendarCard(
                     "$year 年 $month 月",
                     modifier = Modifier
                         .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable(onClick = onOpenDateTimePicker)
                         .semantics { contentDescription = "选择年月与时间" }
                         .testTag("open_almanac_date_time_picker"),
@@ -405,9 +407,9 @@ private fun AlmanacDayCell(
         else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
     }
     Surface(
+        onClick = onClick,
         modifier = modifier
             .height(if (expanded) 80.dp else 62.dp)
-            .clickable(onClick = onClick)
             .semantics {
                 contentDescription = buildString {
                     append("${day.date.year}年${day.date.month}月${day.date.day}日，${day.lunarDayText}，${day.dayPillar}日")
@@ -623,9 +625,9 @@ private fun AlmanacDoubleHourRail(
         AlmanacDoubleHours.all.forEach { hour ->
             val selected = hour.index == selectedIndex
             Surface(
+                onClick = { onSelect(hour.index) },
                 modifier = Modifier
                     .size(width = 42.dp, height = 46.dp)
-                    .clickable { onSelect(hour.index) }
                     .testTag("almanac_double_hour_${hour.branch}"),
                 shape = RoundedCornerShape(13.dp),
                 color = if (selected) NanfengNavigation else NanfengPageBackground,

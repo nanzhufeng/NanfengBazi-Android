@@ -701,9 +701,9 @@ private fun FourPillarsPickerContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Surface(
+                    onClick = { showYearRangePicker = true },
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { showYearRangePicker = true }
                         .semantics { contentDescription = "修改年份范围" }
                         .testTag("lookup_year_range_inline"),
                     color = NanfengWarmTint,
@@ -852,10 +852,10 @@ private fun BaziCharacterChoiceGrid(
                     val character = value.first()
                     val isSelected = value == selected
                     Surface(
+                        onClick = { onSelect(value) },
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp)
-                            .clickable { onSelect(value) }
                             .testTag("${tagPrefix}_$value"),
                         shape = RoundedCornerShape(13.dp),
                         color = if (isSelected && editorActive) {
@@ -1018,19 +1018,19 @@ private fun <T> PickerSegmentedControl(
             values.forEach { value ->
                 val isSelected = value == selected
                 Surface(
+                    onClick = {
+                        if (!isSelected) {
+                            haptic.perform(AppHapticEvent.SELECTION)
+                            onSelected(value)
+                        }
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp)
-                        .clip(RoundedCornerShape(21.dp))
                         .then(
                             itemTag?.let { tag -> Modifier.testTag(tag(value)) } ?: Modifier,
-                        )
-                        .clickable {
-                            if (!isSelected) {
-                                haptic.perform(AppHapticEvent.SELECTION)
-                                onSelected(value)
-                            }
-                        },
+                        ),
+                    shape = RoundedCornerShape(21.dp),
                     color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
                     shadowElevation = if (isSelected) 1.dp else 0.dp,
                 ) {
@@ -1050,10 +1050,10 @@ private fun <T> PickerSegmentedControl(
 @Composable
 private fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
-            .height(36.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick),
+            .height(36.dp),
+        shape = RoundedCornerShape(18.dp),
         color = if (selected) NanfengGold.copy(alpha = 0.16f) else NanfengControlSurface,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,

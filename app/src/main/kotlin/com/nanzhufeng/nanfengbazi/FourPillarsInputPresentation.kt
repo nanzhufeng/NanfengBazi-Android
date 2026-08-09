@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -142,6 +143,7 @@ private fun BaziCharacterSlot(
         .then(
             if (onClick != null) {
                 Modifier
+                    .clip(CircleShape)
                     .clickable(onClick = onClick)
                     .semantics {
                         contentDescription = label

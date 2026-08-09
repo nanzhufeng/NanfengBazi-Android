@@ -2059,6 +2059,7 @@ private fun ExpandedCaseIndexPane(
             ) {
                 items(cases, key = CaseSummary::id) { summary ->
                     Card(
+                        onClick = { onOpenCase(summary.id) },
                         colors = if (summary.id == selectedCaseId) {
                             CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -2068,7 +2069,6 @@ private fun ExpandedCaseIndexPane(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onOpenCase(summary.id) }
                             .testTag("expanded_case_${summary.id}"),
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
@@ -2152,9 +2152,9 @@ private fun RecordHubScreen(
 @Composable
 private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .testTag("record_case_${summary.id}"),
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(18.dp),
@@ -2509,9 +2509,9 @@ private fun CaseListScreen(
                 }
                 Box {
                     Surface(
+                        onClick = { moreExpanded = true },
                         modifier = Modifier
                             .size(52.dp)
-                            .clickable { moreExpanded = true }
                             .semantics { contentDescription = "更多命例操作" }
                             .testTag("record_more"),
                         shape = RoundedCornerShape(17.dp),
@@ -2610,9 +2610,9 @@ private fun CaseListScreen(
                 },
                 trailingIcon = {
                     Surface(
+                        onClick = { filtersExpanded = !filtersExpanded },
                         modifier = Modifier
                             .height(48.dp)
-                            .clickable { filtersExpanded = !filtersExpanded }
                             .semantics {
                                 contentDescription = if (filtersExpanded) "收起筛选" else "展开筛选"
                             }
@@ -2776,9 +2776,9 @@ private fun RecordTopTab(
     tag: String,
 ) {
     Surface(
+        onClick = onClick,
         modifier = modifier
             .height(48.dp)
-            .clickable(onClick = onClick)
             .testTag(tag),
         shape = RoundedCornerShape(15.dp),
         color = if (selected) Color.White else Color.Transparent,
@@ -2810,9 +2810,9 @@ private fun RecordCategoryTab(
     tag: String? = null,
 ) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .clickable(onClick = onClick)
             .then(if (tag == null) Modifier else Modifier.testTag(tag)),
         shape = RoundedCornerShape(15.dp),
         color = if (selected) NanfengGreen.copy(alpha = 0.10f) else Color.White,
@@ -2853,9 +2853,9 @@ private fun RecordSortChip(
     onClick: () -> Unit,
 ) {
     Surface(
+        onClick = onClick,
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .clickable(onClick = onClick)
             .semantics { contentDescription = "切换排序，当前$text" }
             .testTag("record_sort_control"),
         shape = RoundedCornerShape(15.dp),
@@ -4043,9 +4043,9 @@ private fun CaseSummaryCard(
     onClick: () -> Unit,
 ) {
     Card(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .semantics { contentDescription = "打开命例：${summary.alias}" }
             .testTag("case_${summary.id}"),
         colors = CardDefaults.cardColors(
@@ -4487,10 +4487,10 @@ private fun HomeChoiceGroup(
         Row {
             options.forEachIndexed { index, (label, selected) ->
                 Surface(
+                    onClick = { onSelect(label) },
                     modifier = Modifier
                         .height(38.dp)
                         .widthIn(min = 44.dp)
-                        .clickable { onSelect(label) }
                         .testTag(tags[index]),
                     shape = RoundedCornerShape(19.dp),
                     color = if (selected) NanfengGreen else Color.Transparent,
@@ -7679,9 +7679,9 @@ private fun NotesModeTab(
     modifier: Modifier = Modifier,
 ) {
     Surface(
+        onClick = onClick,
         modifier = modifier
-            .height(34.dp)
-            .clickable(onClick = onClick),
+            .height(34.dp),
         color = if (selected) NanfengGold else Color.Transparent,
         shape = RoundedCornerShape(11.dp),
     ) {
@@ -8316,13 +8316,12 @@ private fun CaseDetailContent(
             } else {
                 case.textRecords.forEach { record ->
                     Card(
+                        onClick = { onEditRecord(record.id) },
+                        enabled = case.deletedAt == null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
-                            .testTag("record_card")
-                            .clickable(enabled = case.deletedAt == null) {
-                                onEditRecord(record.id)
-                            },
+                            .testTag("record_card"),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                         ),
@@ -8402,12 +8401,11 @@ private fun CaseDetailContent(
             } else {
                 case.events.forEach { event ->
                     Card(
+                        onClick = { onEditEvent(event.id) },
+                        enabled = case.deletedAt == null,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp)
-                            .clickable(enabled = case.deletedAt == null) {
-                                onEditEvent(event.id)
-                            },
+                            .padding(top = 10.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                         ),
@@ -8980,8 +8978,8 @@ private fun ProfessionalTimelineCell(
 ) {
     val trailingDivider = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
     Surface(
+        onClick = onClick,
         modifier = modifier
-            .clickable(onClick = onClick)
             .testTag("timeline_${item.key}")
             .then(if (item.selected) Modifier.testTag("selected_${item.key}") else Modifier)
             .then(
@@ -9117,8 +9115,8 @@ private fun ProfessionalSelectedDateBar(
             contentAlignment = Alignment.Center,
         ) {
             Surface(
+                onClick = onOpenPicker,
                 modifier = Modifier
-                    .clickable(onClick = onOpenPicker)
                     .testTag("fortune_observation_picker")
                     .semantics { contentDescription = "修改观察时间" },
                 color = Color.White.copy(alpha = 0.76f),
@@ -9190,9 +9188,9 @@ private fun ProfessionalSelectedDateBar(
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Surface(
+                    onClick = onToday,
                     modifier = Modifier
                         .height(34.dp)
-                        .clickable(onClick = onToday)
                         .testTag("fortune_today")
                         .semantics { contentDescription = "定位今天" },
                     color = NanfengGold.copy(alpha = 0.12f),
