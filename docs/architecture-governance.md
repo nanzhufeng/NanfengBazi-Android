@@ -183,7 +183,7 @@
 |---|---|---|
 | 日期时间滚轮 | `BirthDateTimePickerSheet` → `CaseFormState` | 固定底部弹窗在 API 35 目标画幅至少 560dp；滚轮独占纵向手势，弹窗不可随滚轮拖动。只选择公历/农历民用输入，合法日期、闰月、时区与排盘仍由领域/引擎验证 |
 | 地点三级联动 | `BirthplaceCatalog` → `BirthplacePickerSheet` → `CaseFormState` | 与出生时间共用 680dp 固定底部弹窗、外部空白点击关闭和滚轮独占纵向手势。离线目录提供地点名、IANA 时区及仅在可信时存在的城市中心参考坐标；缺少坐标不得用省会／猜值填充，真太阳时默认关闭 |
-| 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 四柱页直接选择柱位、天干及阴阳相合的地支，表示层只构造有效六十甲子和公开查询边界；查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
+| 四柱查询选择器 | `FourPillarsWheelPickerSheet` / `YearRangeWheelPickerSheet` / `IanaTimeZoneWheelPickerSheet` → `FourPillarsLookupFormState` | 四柱页以单一编辑焦点联动柱位、对应天干／地支圆槽及下方选区；天干选定后焦点进入同柱地支，也允许直接点击圆槽切换编辑位。焦点主强调只属于八字圆槽，下方选区使用不改变几何的弱状态；表示层只构造有效六十甲子和公开查询边界，查询、结构化错误及候选复算仍由 `FourPillarsLookup` |
 | 离散触觉反馈 | Compose `ValueWheel` → Android `performHapticFeedback(CLOCK_TICK)` | 只在中心刻度变化时反馈并尊重系统触觉开关；不申请振动权限，不用触觉表示计算正确 |
 | 启动图标 | `design/assets/app-icon-master.jpg` → `app_icon_source`、`mipmap-*` / adaptive icon | 用户提供 JPEG 是唯一当前母版；两层 adaptive 构建与启动器核对严格按 [启动图标保真构建规范](app-icon-fidelity-standard.md) 执行 |
 

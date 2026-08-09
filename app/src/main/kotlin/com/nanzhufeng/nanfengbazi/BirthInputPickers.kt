@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -612,6 +613,7 @@ private fun FourPillarsPickerContent(
     var stems by remember { mutableStateOf(initialPillars.map(PillarParts::stem)) }
     var branches by remember { mutableStateOf(initialPillars.map(PillarParts::branch)) }
     var selectedPillarIndex by remember { mutableIntStateOf(0) }
+    var activeEditPart by remember { mutableStateOf(PillarEditPart.STEM) }
     var selectedStartYear by remember { mutableIntStateOf(startYear.coerceIn(SupportedPickerYears)) }
     var selectedEndYear by remember { mutableIntStateOf(endYear.coerceIn(SupportedPickerYears)) }
     var showYearRangePicker by remember { mutableStateOf(false) }
@@ -634,6 +636,7 @@ private fun FourPillarsPickerContent(
             stems = parts.map(PillarParts::stem)
             branches = parts.map(PillarParts::branch)
             selectedPillarIndex = 0
+            activeEditPart = PillarEditPart.STEM
         }
     }
     Column(
@@ -726,7 +729,10 @@ private fun FourPillarsPickerContent(
                 values = PillarLabels.indices.toList(),
                 selected = selectedPillarIndex,
                 label = { PillarLabels[it] },
-                onSelected = { selectedPillarIndex = it },
+                onSelected = {
+                    selectedPillarIndex = it
+                    activeEditPart = PillarEditPart.STEM
+                },
                 itemTag = { "lookup_pillar_option_${PillarLabels[it]}" },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -735,43 +741,93 @@ private fun FourPillarsPickerContent(
             FourPillarsInputGrid(
                 pillars = stems.indices.map { index -> stems[index] + branches[index] },
                 selectedPillarIndex = selectedPillarIndex,
-            )
-            Text(
-                "天干",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            BaziCharacterChoiceGrid(
-                values = HeavenlyStems,
-                selected = selectedStem,
-                onSelect = { stem ->
+                activeEditPart = activeEditPart,
+                onEditPartSelected = { pillarIndex, editPart ->
                     haptic.perform(AppHapticEvent.SELECTION)
-                    stems = stems.replacing(selectedPillarIndex, stem)
-                    val branchesForStem = compatibleBranchesFor(stem)
-                    if (branches[selectedPillarIndex] !in branchesForStem) {
-                        branches = branches.replacing(selectedPillarIndex, branchesForStem.first())
-                    }
+                    selectedPillarIndex = pillarIndex
+                    activeEditPart = editPart
                 },
-                tagPrefix = "lookup_pillar_stem",
-                modifier = Modifier.testTag("lookup_pillar_stem_grid"),
             )
-            Text(
-                "地支（仅显示可组成六十甲子的地支）",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            BaziCharacterChoiceGrid(
-                values = compatibleBranches,
-                selected = selectedBranch.takeIf { it in compatibleBranches } ?: compatibleBranches.first(),
-                onSelect = { branch ->
-                    haptic.perform(AppHapticEvent.SELECTION)
-                    branches = branches.replacing(selectedPillarIndex, branch)
-                },
-                tagPrefix = "lookup_pillar_branch",
-                modifier = Modifier.testTag("lookup_pillar_branch_grid"),
-            )
+            PillarCharacterEditor(
+                title = "天干",
+                active = activeEditPart == PillarEditPart.STEM,
+                tag = "lookup_pillar_stem_editor",
+            ) {
+                BaziCharacterChoiceGrid(
+                    values = HeavenlyStems,
+                    selected = selectedStem,
+                    editorActive = activeEditPart == PillarEditPart.STEM,
+                    onSelect = { stem ->
+                        haptic.perform(AppHapticEvent.SELECTION)
+                        stems = stems.replacing(selectedPillarIndex, stem)
+                        val branchesForStem = compatibleBranchesFor(stem)
+                        if (branches[selectedPillarIndex] !in branchesForStem) {
+                            branches = branches.replacing(selectedPillarIndex, branchesForStem.first())
+                        }
+                        activeEditPart = PillarEditPart.BRANCH
+                    },
+                    tagPrefix = "lookup_pillar_stem",
+                    modifier = Modifier.testTag("lookup_pillar_stem_grid"),
+                )
+            }
+            PillarCharacterEditor(
+                title = "地支（仅显示可组成六十甲子的地支）",
+                active = activeEditPart == PillarEditPart.BRANCH,
+                tag = "lookup_pillar_branch_editor",
+            ) {
+                BaziCharacterChoiceGrid(
+                    values = compatibleBranches,
+                    selected = selectedBranch.takeIf { it in compatibleBranches } ?: compatibleBranches.first(),
+                    editorActive = activeEditPart == PillarEditPart.BRANCH,
+                    onSelect = { branch ->
+                        haptic.perform(AppHapticEvent.SELECTION)
+                        branches = branches.replacing(selectedPillarIndex, branch)
+                    },
+                    tagPrefix = "lookup_pillar_branch",
+                    modifier = Modifier.testTag("lookup_pillar_branch_grid"),
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun PillarCharacterEditor(
+    title: String,
+    active: Boolean,
+    tag: String,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { stateDescription = if (active) "正在编辑" else "等待编辑" }
+            .testTag(tag)
+            .graphicsLayer(alpha = if (active) 1f else 0.84f),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(
+                        if (active) NanfengGreen else Color.Transparent,
+                        CircleShape,
+                    ),
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (active) NanfengGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        content()
     }
 }
 
@@ -779,12 +835,15 @@ private fun FourPillarsPickerContent(
 private fun BaziCharacterChoiceGrid(
     values: List<String>,
     selected: String,
+    editorActive: Boolean,
     onSelect: (String) -> Unit,
     tagPrefix: String,
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer(alpha = if (editorActive) 1f else 0.92f),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         values.chunked(5).forEach { row ->
@@ -799,11 +858,12 @@ private fun BaziCharacterChoiceGrid(
                             .clickable { onSelect(value) }
                             .testTag("${tagPrefix}_$value"),
                         shape = RoundedCornerShape(13.dp),
-                        color = if (isSelected) {
+                        color = if (isSelected && editorActive) {
                             baziElementSelectedContainerColor(character)
                         } else {
                             baziElementContainerColor(character)
                         },
+                        shadowElevation = if (isSelected && editorActive) 1.dp else 0.dp,
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(

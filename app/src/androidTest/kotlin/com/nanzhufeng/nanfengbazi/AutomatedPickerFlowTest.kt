@@ -3,6 +3,7 @@ package com.nanzhufeng.nanfengbazi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -14,7 +15,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -94,6 +98,29 @@ class AutomatedPickerFlowTest {
         composeRule.onNodeWithTag("lookup_pillar_branch_grid").assertIsDisplayed()
         composeRule.onNodeWithTag("lookup_year_range_inline").assertIsDisplayed()
         composeRule.onAllNodesWithTag("lookup_time_zone_inline").assertCountEquals(0)
+        composeRule.onNodeWithTag("lookup_pillar_option_月柱").performClick()
+        composeRule.onNodeWithTag("lookup_pillar_月柱_stem_slot")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "正在编辑"))
+        composeRule.onNodeWithTag("lookup_pillar_stem_editor")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "正在编辑"))
+        val stemEditorBoundsBefore = composeRule.onNodeWithTag("lookup_pillar_stem_editor")
+            .fetchSemanticsNode().boundsInRoot
+        val branchEditorBoundsBefore = composeRule.onNodeWithTag("lookup_pillar_branch_editor")
+            .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("lookup_pillar_stem_辛").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("lookup_pillar_月柱_branch_slot")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "正在编辑"))
+        composeRule.onNodeWithTag("lookup_pillar_branch_editor")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "正在编辑"))
+        assertEquals(
+            stemEditorBoundsBefore,
+            composeRule.onNodeWithTag("lookup_pillar_stem_editor").fetchSemanticsNode().boundsInRoot,
+        )
+        assertEquals(
+            branchEditorBoundsBefore,
+            composeRule.onNodeWithTag("lookup_pillar_branch_editor").fetchSemanticsNode().boundsInRoot,
+        )
         composeRule.onNodeWithTag("lookup_year_range_inline").performClick()
         composeRule.onNodeWithTag("lookup_year_range_sheet").assertIsDisplayed()
         composeRule.onNodeWithTag("lookup_start_year_wheel").assertIsDisplayed()
@@ -102,7 +129,6 @@ class AutomatedPickerFlowTest {
         composeRule.onNodeWithTag("lookup_end_year_wheel").performScrollToIndex(400)
         composeRule.onNodeWithTag("confirm_lookup_year_range").performClick()
         composeRule.onNodeWithText("1900–2200").assertIsDisplayed()
-        composeRule.onNodeWithTag("lookup_pillar_stem_辛").performClick()
         composeRule.onNodeWithTag("lookup_pillar_branch_酉").performClick()
         composeRule.onNodeWithTag("confirm_four_pillars_wheels").performClick()
         composeRule.onNodeWithTag("four_pillars_lookup_screen").assertIsDisplayed()
