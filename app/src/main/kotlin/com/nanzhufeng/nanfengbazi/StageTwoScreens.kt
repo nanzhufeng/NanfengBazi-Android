@@ -69,6 +69,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
@@ -2457,30 +2458,39 @@ private fun CaseListScreen(
     modifier: Modifier = Modifier,
 ) {
     var moreExpanded by rememberSaveable { mutableStateOf(false) }
+    var filtersExpanded by rememberSaveable { mutableStateOf(true) }
+    val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size
     Column(
         modifier = modifier
             .fillMaxSize()
             .testTag("case_list_screen"),
     ) {
-        Surface(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            color = MaterialTheme.colorScheme.surface,
+                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 8.dp)
+                .testTag("record_toolbar"),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 52.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(28.dp),
-                    color = NanfengPageBackground,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("record_visibility_switcher"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = NanfengControlSurface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
+                    ),
                 ) {
-                    Row {
+                    Row(modifier = Modifier.padding(3.dp)) {
                         RecordTopTab(
                             text = "用户列表",
                             selected = state.visibility != CaseVisibility.TRASHED,
@@ -2498,14 +2508,28 @@ private fun CaseListScreen(
                     }
                 }
                 Box {
-                    TextButton(
-                        onClick = { moreExpanded = true },
+                    Surface(
                         modifier = Modifier
-                            .width(52.dp)
-                            .heightIn(min = 48.dp)
+                            .size(52.dp)
+                            .clickable { moreExpanded = true }
+                            .semantics { contentDescription = "更多命例操作" }
                             .testTag("record_more"),
+                        shape = RoundedCornerShape(17.dp),
+                        color = Color.White,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f),
+                        ),
+                        shadowElevation = 1.dp,
                     ) {
-                        Text("•••", style = MaterialTheme.typography.titleMedium)
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = NanfengGreen,
+                            )
+                        }
                     }
                     DropdownMenu(
                         expanded = moreExpanded,
@@ -2564,71 +2588,143 @@ private fun CaseListScreen(
                     }
                 }
             }
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("case_search"),
+                placeholder = {
+                    Text(
+                        "搜索姓名、别名或四柱",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailingIcon = {
+                    Surface(
+                        modifier = Modifier
+                            .height(48.dp)
+                            .clickable { filtersExpanded = !filtersExpanded }
+                            .semantics {
+                                contentDescription = if (filtersExpanded) "收起筛选" else "展开筛选"
+                            }
+                            .testTag("record_filter_toggle"),
+                        shape = RoundedCornerShape(13.dp),
+                        color = if (filtersExpanded || activeFilterCount > 0) {
+                            NanfengGreen.copy(alpha = 0.10f)
+                        } else {
+                            NanfengControlSurface
+                        },
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (filtersExpanded || activeFilterCount > 0) {
+                                NanfengGreen.copy(alpha = 0.28f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
+                            },
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.List,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (filtersExpanded || activeFilterCount > 0) {
+                                    NanfengGreen
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                            Text(
+                                if (activeFilterCount > 0) "筛选 $activeFilterCount" else "筛选",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (filtersExpanded || activeFilterCount > 0) {
+                                    NanfengGreen
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                shape = RoundedCornerShape(17.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedBorderColor = NanfengGreen.copy(alpha = 0.48f),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f),
+                    cursorColor = NanfengGreen,
+                ),
+            )
         }
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .testTag("case_search"),
-            placeholder = { Text("请输入姓名、别名或四柱") },
-            trailingIcon = {
-                Text(
-                    "筛选",
-                    modifier = Modifier
-                        .padding(end = 4.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-        )
         ScreenshotImportSummary(
             state = screenshotImportState,
             onRetry = onRetryScreenshotImport,
             onDelete = onDeleteScreenshotImport,
             onReview = onReviewScreenshotImport,
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RecordCategoryTab(
-                text = "全部",
-                selected = state.selectedGroupId == null && state.selectedTagId == null,
-                onClick = { onSelectGroup(null); onSelectTag(null) },
-            )
-            state.availableGroups.take(5).forEach { group ->
+        if (filtersExpanded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .testTag("record_filter_strip"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 RecordCategoryTab(
-                    text = group.name,
-                    selected = state.selectedGroupId == group.id,
-                    onClick = { onSelectGroup(group.id) },
+                    text = "全部",
+                    selected = state.selectedGroupId == null && state.selectedTagId == null,
+                    onClick = { onSelectGroup(null); onSelectTag(null) },
+                    tag = "record_filter_all",
+                )
+                state.availableGroups.take(5).forEach { group ->
+                    RecordCategoryTab(
+                        text = group.name,
+                        selected = state.selectedGroupId == group.id,
+                        onClick = { onSelectGroup(group.id) },
+                        tag = "record_group_${group.id}",
+                    )
+                }
+                state.availableTags.take(3).forEach { tag ->
+                    RecordCategoryTab(
+                        text = tag.name,
+                        selected = state.selectedTagId == tag.id,
+                        onClick = { onSelectTag(tag.id) },
+                        tag = "record_tag_${tag.id}",
+                    )
+                }
+                RecordSortChip(
+                    text = state.sortOrder.displayName(),
+                    onClick = {
+                        val next = CaseSortOrder.entries[
+                            (CaseSortOrder.entries.indexOf(state.sortOrder) + 1) %
+                                CaseSortOrder.entries.size
+                        ]
+                        onSelectSort(next)
+                    },
                 )
             }
-            state.availableTags.take(3).forEach { tag ->
-                RecordCategoryTab(
-                    text = tag.name,
-                    selected = state.selectedTagId == tag.id,
-                    onClick = { onSelectTag(tag.id) },
-                )
-            }
-            TextButton(
-                onClick = {
-                    val next = CaseSortOrder.entries[
-                        (CaseSortOrder.entries.indexOf(state.sortOrder) + 1) %
-                            CaseSortOrder.entries.size
-                    ]
-                    onSelectSort(next)
-                },
-                modifier = Modifier.heightIn(min = 48.dp),
-            ) { Text("排序") }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
+        )
         when {
             state.listLoading -> LoadingBox("正在读取命例…")
             state.listError != null -> ErrorBox(
@@ -2681,19 +2777,23 @@ private fun RecordTopTab(
 ) {
     Surface(
         modifier = modifier
-            .heightIn(min = 48.dp)
+            .height(48.dp)
             .clickable(onClick = onClick)
             .testTag(tag),
-        shape = RoundedCornerShape(26.dp),
-        color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+        shape = RoundedCornerShape(15.dp),
+        color = if (selected) Color.White else Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) NanfengGreen.copy(alpha = 0.22f) else Color.Transparent,
+        ),
         shadowElevation = if (selected) 1.dp else 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) {
-                    MaterialTheme.colorScheme.onSurface
+                    NanfengGreen
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
@@ -2707,16 +2807,82 @@ private fun RecordCategoryTab(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
+    tag: String? = null,
 ) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.heightIn(min = 48.dp),
+    Surface(
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick)
+            .then(if (tag == null) Modifier else Modifier.testTag(tag)),
+        shape = RoundedCornerShape(15.dp),
+        color = if (selected) NanfengGreen.copy(alpha = 0.10f) else Color.White,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) {
+                NanfengGreen.copy(alpha = 0.30f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
+            },
+        ),
     ) {
-        Text(
-            text,
-            color = if (selected) NanfengGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(NanfengGreen, CircleShape),
+                )
+            }
+            Text(
+                text,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) NanfengGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecordSortChip(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "切换排序，当前$text" }
+            .testTag("record_sort_control"),
+        shape = RoundedCornerShape(15.dp),
+        color = NanfengGold.copy(alpha = 0.08f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            NanfengGold.copy(alpha = 0.26f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = NanfengGold,
+            )
+            Text(
+                text,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
