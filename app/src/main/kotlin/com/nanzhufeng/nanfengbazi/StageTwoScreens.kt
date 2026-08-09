@@ -105,11 +105,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -8461,41 +8464,48 @@ private fun ProfessionalSelectedDateBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                "$completedAge 岁",
-                modifier = Modifier.testTag("fortune_completed_age"),
-                fontSize = 14.sp,
-                lineHeight = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = NanfengGold,
-            )
-            Spacer(modifier = Modifier.width(7.dp))
-            Surface(
+            Row(
                 modifier = Modifier
-                    .height(32.dp)
-                    .clickable(onClick = onToday)
-                    .testTag("fortune_today")
-                    .semantics { contentDescription = "定位今天" },
-                color = NanfengGold.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(16.dp),
+                    .padding(end = 12.dp)
+                    .testTag("fortune_age_today_group"),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                Text(
+                    "$completedAge 岁",
+                    modifier = Modifier.testTag("fortune_completed_age"),
+                    fontSize = 14.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NanfengInk,
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+                Surface(
+                    modifier = Modifier
+                        .height(32.dp)
+                        .clickable(onClick = onToday)
+                        .testTag("fortune_today")
+                        .semantics { contentDescription = "定位今天" },
+                    color = NanfengGold.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(16.dp),
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_today),
-                        contentDescription = null,
-                        tint = NanfengGold,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Text(
-                        "今",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = NanfengGold,
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_today),
+                            contentDescription = null,
+                            tint = NanfengGold,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Text(
+                            "今",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NanfengGold,
+                        )
+                    }
                 }
             }
         }
@@ -8545,7 +8555,7 @@ private fun ProfessionalTextSections(
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        groups.forEach { group ->
+        groups.forEachIndexed { groupIndex, group ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.Top,
@@ -8556,14 +8566,37 @@ private fun ProfessionalTextSections(
                     fontSize = 10.sp,
                     color = NanfengGold,
                 )
-                Text(
-                    group.lines.ifEmpty { listOf("无") }
-                        .joinToString(if (stackLines) "\n" else "；"),
-                    modifier = Modifier.weight(1f),
-                    fontSize = 10.sp,
-                    lineHeight = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                if (stackLines) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        group.lines.ifEmpty { listOf("无") }.forEachIndexed { lineIndex, line ->
+                            Text(
+                                buildAnnotatedString {
+                                    line.take(2).forEach { character ->
+                                        withStyle(SpanStyle(color = baziElementColor(character))) {
+                                            append(character)
+                                        }
+                                    }
+                                    append(line.drop(2))
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("${tag}_line_${groupIndex}_$lineIndex")
+                                    .padding(bottom = if (lineIndex == group.lines.lastIndex) 0.dp else 3.dp),
+                                fontSize = 10.sp,
+                                lineHeight = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        group.lines.ifEmpty { listOf("无") }.joinToString("；"),
+                        modifier = Modifier.weight(1f),
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
         }

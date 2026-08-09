@@ -610,18 +610,20 @@ private fun buildShenShaGroups(
         monthBranch = natal.first { it.key == "natal_month" }.pillar[1],
         yearBranch = natal.first { it.key == "natal_year" }.pillar[1],
     )
-    fun lines(column: ProfessionalPillarColumn): List<String> =
-        BasicShenShaRules.resolveNames(column.pillar, context)
+    fun line(column: ProfessionalPillarColumn): String? {
+        val names = BasicShenShaRules.resolveNames(column.pillar, context)
             .take(DETAIL_SHEN_SHA_LIMIT)
-            .map { star -> "${column.label}：$star" }
+        return names.takeIf { it.isNotEmpty() }
+            ?.let { "${column.pillar}　${it.joinToString(" · ")}" }
+    }
 
     val transitKeys = listOf("decade", "flow_year", "flow_month", "flow_day", "flow_hour")
     return listOfNotNull(
-        ProfessionalTextGroup("原局神煞", natal.flatMap(::lines))
+        ProfessionalTextGroup("原局", natal.mapNotNull(::line))
             .takeIf { it.lines.isNotEmpty() },
         ProfessionalTextGroup(
-            "岁运神煞",
-            transitKeys.flatMap { key -> columns.firstOrNull { it.key == key }?.let(::lines).orEmpty() },
+            "岁运",
+            transitKeys.mapNotNull { key -> columns.firstOrNull { it.key == key }?.let(::line) },
         ).takeIf { it.lines.isNotEmpty() },
     )
 }
@@ -663,7 +665,7 @@ private val THREE_MEETINGS = listOf(
     setOf('申', '酉', '戌') to "申酉戌三会金局",
     setOf('亥', '子', '丑') to "亥子丑三会水局",
 )
-private const val DETAIL_RULE_VERSION = "professional-detail-relations-shensha-v3"
+private const val DETAIL_RULE_VERSION = "professional-detail-relations-shensha-v4"
 private const val DETAIL_SHEN_SHA_LIMIT = 5
 private const val MINOR_FORTUNE_RULE_VERSION = "professional-minor-fortune-v1"
 private val SUPPORTED_CALENDAR_START: LocalDate = LocalDate.of(1800, 1, 1)

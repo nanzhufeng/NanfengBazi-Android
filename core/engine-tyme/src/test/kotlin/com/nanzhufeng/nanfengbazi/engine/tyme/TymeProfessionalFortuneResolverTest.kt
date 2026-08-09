@@ -117,9 +117,15 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals(listOf("天干", "地支"), position.interactionGroups.map { it.title })
         assertTrue(position.interactionGroups.flatMap { it.lines }.none { "流年" in it || "流月" in it })
         assertTrue(position.shenShaGroups.isNotEmpty())
-        assertTrue(position.shenShaGroups.flatMap { it.lines }.all { "：—" !in it })
-        assertTrue(position.shenShaGroups.flatMap { it.lines }.all { "、" !in it })
-        assertEquals("professional-detail-relations-shensha-v3", position.detailRuleVersion)
+        assertEquals(listOf("原局", "岁运"), position.shenShaGroups.map { it.title })
+        val shenShaLines = position.shenShaGroups.flatMap { it.lines }
+        assertTrue(shenShaLines.all { it.take(2) in position.pillarColumns.map { column -> column.pillar } })
+        assertTrue(shenShaLines.all { line ->
+            listOf("年柱", "月柱", "日柱", "时柱", "大运", "流年", "流月", "流日", "流时")
+                .none(line::contains)
+        })
+        assertTrue(shenShaLines.all { "、" !in it && "\n" !in it })
+        assertEquals("professional-detail-relations-shensha-v4", position.detailRuleVersion)
     }
 
     @Test

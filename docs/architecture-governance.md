@@ -152,7 +152,7 @@
 | 流月/流日/流时 | `ProfessionalFortuneResolver.locate()` | 流月只在十二节切换；流日明确服从快照中的子时规则；观察时刻按民用时直接计算，不冒充已完成观察地点真太阳时校正 |
 | 子时口径 | `LunarHour.resolveEightChar()` | 正向计算按调用显式选择实例 provider，不读取或改写全局状态；仅四柱反查按 D-077 在适配器锁内临时切换并恢复 `LunarHour.provider` |
 | 页面消费 | `StageTwoViewModel` → 专业细盘 | 观察日期、时分进入 `SavedStateHandle`；九列四柱矩阵与五层时间轴共同消费 `ProfessionalFortuneResolver` 的十神、逐条藏干和生日整年周岁。九列使用完整十神；大运、流年、流月、流时维持同屏紧凑候选，只有整月流日横滑。时间轴地支只显示全部藏干对应的十神简称并同行排列；流时始终回填同一民用日期。UI 只排版，不计算年龄、藏干或月界 |
-| 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v3` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，按稳定优先级每柱最多展示 5 项且每项独占一行；UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
+| 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v4` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，按稳定优先级每柱最多展示 5 项，并以实际干支为行首逐时间柱输出；UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
 | 问真用户列表正式提交 | `ScreenshotImportCommitter` → `FourPillarsLookup` → `BaziEngine.calculate()` → `CaseRepository` | 只按同一公历日期保留两种子时口径下可复算的民用候选；全部标记 `DOUBLE_HOUR_ONLY`，无解显式拒绝，不按时支硬填整点、不推算真太阳时 |
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |

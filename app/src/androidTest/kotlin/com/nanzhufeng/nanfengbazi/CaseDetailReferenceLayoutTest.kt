@@ -216,6 +216,11 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_completed_age").assertIsDisplayed()
         composeRule.onNodeWithText("今").assertIsDisplayed()
+        val selectedDateBar = composeRule.onNodeWithTag("fortune_selected_datetime")
+            .fetchSemanticsNode().boundsInRoot
+        val ageTodayGroup = composeRule.onNodeWithTag("fortune_age_today_group")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(ageTodayGroup.right < selectedDateBar.right)
         composeRule.onNodeWithTag("fortune_today").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
         assertTenColumnTimelineGrid("daily_fortune_details")
@@ -288,6 +293,20 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithContentDescription("定位今天").assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_interactions").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_shensha").performScrollTo().assertIsDisplayed()
+        val natalShenShaLine = composeRule.onNodeWithTag("fortune_shensha_line_0_0")
+            .fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
+        val transitShenShaLine = composeRule.onNodeWithTag("fortune_shensha_line_1_0")
+            .fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
+        assertTrue(natalShenShaLine.startsWith("壬申"))
+        assertTrue(transitShenShaLine.take(2).all {
+            it in "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥"
+        })
+        listOf("年柱", "月柱", "大运", "流年").forEach { label ->
+            assertTrue(label !in natalShenShaLine)
+            assertTrue(label !in transitShenShaLine)
+        }
         composeRule.onNodeWithTag("decade_fortune_details").performScrollTo().assertIsDisplayed()
         decadeList.performScrollToNode(hasTestTag("timeline_minor_stage"))
         composeRule.onNodeWithTag("timeline_minor_stage").performClick()
