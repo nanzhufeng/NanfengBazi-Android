@@ -8010,25 +8010,21 @@ private fun DetailRow(
 
 @Composable
 private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
             .testTag("professional_fortune_position"),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        color = Color.White,
         shape = RoundedCornerShape(16.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f),
         ),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        Column(modifier = Modifier.padding(top = 8.dp)) {
-            Text(
-                "八字排盘",
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+        Column(modifier = Modifier.background(Color.White)) {
             val groupDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
             Column(
                 modifier = Modifier
@@ -8044,7 +8040,12 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
                         )
                     },
             ) {
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White)
+                        .testTag("professional_time_row"),
+                ) {
                     columns.forEach { column ->
                         ProfessionalPillarCell(column, Modifier.weight(1f))
                     }
@@ -8072,7 +8073,8 @@ private fun ProfessionalPillarCell(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .background(ProfessionalPillarGridSurface),
+                .background(Color.White)
+                .testTag("${column.key}_time_label"),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -8087,9 +8089,15 @@ private fun ProfessionalPillarCell(
         if (stem == null || branch == null) {
             Text("—", modifier = Modifier.padding(top = 28.dp))
         } else {
+            ProfessionalTenGodLabel(
+                tenGod = column.stemTenGod,
+                segmented = true,
+                tag = "${column.key}_stem_ten_god",
+            )
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(Color.White)
                     .testTag("${column.key}_stem_surface")
                     .padding(vertical = 7.dp),
                 contentAlignment = Alignment.Center,
@@ -8103,10 +8111,12 @@ private fun ProfessionalPillarCell(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            ProfessionalTenGodLabel(column.stemTenGod, segmented = true)
             Text(
                 branch.toString(),
-                modifier = Modifier.padding(top = 5.dp),
+                modifier = Modifier
+                    .background(Color.White)
+                    .padding(top = 5.dp)
+                    .testTag("${column.key}_branch_text"),
                 color = baziElementColor(branch),
                 fontSize = 19.sp,
                 lineHeight = 21.sp,
@@ -8122,7 +8132,9 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp),
+            .background(ProfessionalPillarGridSurface)
+            .testTag("professional_hidden_stem_surface")
+            .padding(top = 6.dp, bottom = 4.dp),
     ) {
         repeat(rowCount) { rowIndex ->
             Row(
@@ -8169,11 +8181,6 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                 }
             }
         }
-        Spacer(
-            modifier = Modifier
-                .height(4.dp)
-                .testTag("professional_hidden_stem_bottom_inset"),
-        )
     }
 }
 
@@ -8182,17 +8189,18 @@ private fun ProfessionalTenGodLabel(
     tenGod: String,
     compact: Boolean = false,
     segmented: Boolean = false,
+    tag: String? = null,
 ) {
     Text(
         tenGod,
-        modifier = if (segmented) {
+        modifier = (if (segmented) {
             Modifier
                 .fillMaxWidth()
                 .background(ProfessionalPillarGridSurface)
                 .padding(vertical = 1.dp)
         } else {
             Modifier.padding(vertical = if (compact) 0.dp else 1.dp)
-        },
+        }).then(if (tag == null) Modifier else Modifier.testTag(tag)),
         fontSize = when {
             segmented -> 10.sp
             compact -> 7.sp

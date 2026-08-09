@@ -171,10 +171,20 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithTag("shared_identity_lunar_time").assertIsDisplayed()
         composeRule.onNodeWithTag("shared_identity_chart_type").assertIsDisplayed()
         composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
+        composeRule.onNodeWithText("八字排盘").assertDoesNotExist()
+        val timeRow = composeRule.onNodeWithTag("flow_hour_time_label")
+            .fetchSemanticsNode().boundsInRoot
+        val stemTenGod = composeRule.onNodeWithTag("flow_hour_stem_ten_god")
+            .fetchSemanticsNode().boundsInRoot
         val stemSurface = composeRule.onNodeWithTag("flow_hour_stem_surface")
             .fetchSemanticsNode().boundsInRoot
         val stemText = composeRule.onNodeWithTag("flow_hour_stem_text")
             .fetchSemanticsNode().boundsInRoot
+        val branchText = composeRule.onNodeWithTag("flow_hour_branch_text")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(timeRow.bottom <= stemTenGod.top)
+        assertTrue(stemTenGod.bottom <= stemSurface.top)
+        assertTrue(stemText.bottom <= branchText.top)
         assertTrue(stemSurface.height > stemText.height)
         assertEquals(
             stemText.top - stemSurface.top,
@@ -196,8 +206,11 @@ class CaseDetailReferenceLayoutTest {
         val professionalMatrix = composeRule
             .onNodeWithTag("professional_fortune_position")
             .fetchSemanticsNode().boundsInRoot
+        val hiddenStemSurface = composeRule
+            .onNodeWithTag("professional_hidden_stem_surface")
+            .fetchSemanticsNode().boundsInRoot
         assertTrue(professionalMatrix.bottom > finalHiddenStemRow.bottom)
-        composeRule.onNodeWithText("八字排盘").assertIsDisplayed()
+        assertEquals(professionalMatrix.bottom, hiddenStemSurface.bottom, 2f)
         composeRule.onNodeWithTag("professional_transit_natal_divider").assertIsDisplayed()
         composeRule.onNodeWithText("起运", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("交运", substring = true).assertIsDisplayed()
