@@ -172,6 +172,13 @@ enum class CaseEventCategory {
 }
 
 @Serializable
+enum class CaseEventTimelineLevel {
+    LEGACY,
+    DECADE,
+    ANNUAL,
+}
+
+@Serializable
 data class CaseEvent(
     val id: String,
     val title: String? = null,
@@ -181,6 +188,7 @@ data class CaseEvent(
     val day: Int? = null,
     val datePrecision: EventDatePrecision = EventDatePrecision.UNKNOWN,
     val stemBranch: String? = null,
+    val timelineLevel: CaseEventTimelineLevel = CaseEventTimelineLevel.LEGACY,
     val status: String? = null,
     val rawText: String,
     val normalizedText: ExplicitText = ExplicitText.absent(),
@@ -191,7 +199,9 @@ data class CaseEvent(
     init {
         require(id.isNotBlank()) { "事件 id 不能为空" }
         require(title == null || title.isNotBlank()) { "事件标题不能为空白文本" }
-        require(rawText.isNotBlank()) { "事件原文不能为空" }
+        require(rawText.isNotBlank() || timelineLevel != CaseEventTimelineLevel.LEGACY) {
+            "旧版事件原文不能为空"
+        }
         month?.let { require(it in 1..12) { "事件月份超出范围" } }
         day?.let { require(it in 1..31) { "事件日期超出范围" } }
     }

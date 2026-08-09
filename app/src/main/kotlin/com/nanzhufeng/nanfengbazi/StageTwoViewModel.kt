@@ -115,6 +115,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
@@ -139,6 +140,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -433,6 +435,11 @@ data class StageTwoUiState(
     val metadataDraft: CaseMetadataDraft = CaseMetadataDraft(),
     val recordDraft: TextRecordDraft = TextRecordDraft(),
     val eventDraft: EventDraft = EventDraft(),
+    val caseNotesDraft: CaseNotesDraft = CaseNotesDraft(),
+    val caseNotesSavedDraft: CaseNotesDraft = CaseNotesDraft(),
+    val caseNotesSaving: Boolean = false,
+    val caseNotesSaveError: String? = null,
+    val caseNotesLastSavedAt: java.time.Instant? = null,
     val mutationSaving: Boolean = false,
     val mutationError: String? = null,
     val deleteConfirmationVisible: Boolean = false,
@@ -506,6 +513,7 @@ class StageTwoViewModel(
     private val caseMetadata: CaseMetadataUseCase = CaseMetadataUseCase(caseRepository),
     private val textRecords: TextRecordUseCase,
     private val caseEvents: CaseEventUseCase,
+    private val caseNotesEditor: CaseNotesEditorUseCase = CaseNotesEditorUseCase(caseRepository),
     private val caseLifecycle: CaseLifecycleUseCase = CaseLifecycleUseCase(caseRepository),
     private val navigator: StageTwoNavigator = StageTwoNavigator(),
     private val clock: Clock = Clock.systemUTC(),
@@ -553,6 +561,7 @@ class StageTwoViewModel(
     private var almanacRequestId: Long = 0
     private var pendingAlmanacQuery: AlmanacMonthQuery? = null
     private var birthPickerTodayJob: Job? = null
+    private var caseNotesAutoSaveJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
@@ -3463,9 +3472,14 @@ class StageTwoViewModel(
                             detailError = "未找到该命例，记录可能已被移除。",
                         )
                     } else {
+                        val notesDraft = detail.toCaseNotesDraft()
                         it.copy(
                             detail = detail,
                             detailLoading = false,
+                            caseNotesDraft = notesDraft,
+                            caseNotesSavedDraft = notesDraft,
+                            caseNotesSaving = false,
+                            caseNotesSaveError = null,
                             message = viewWarning,
                         )
                     }
@@ -4712,6 +4726,147 @@ class StageTwoViewModel(
         }
     }
 
+    fun updateOwnerFeedback(value: String) {
+        updateCaseNotesDraft { it.copy(ownerFeedback = value) }
+    }
+
+    fun updateMasterCommentary(value: String) {
+        updateCaseNotesDraft { it.copy(masterCommentary = value) }
+    }
+
+    fun addCaseNotesTimeline(
+        level: CaseEventTimelineLevel,
+        year: Int,
+        stemBranch: String,
+    ) {
+        if (level == CaseEventTimelineLevel.LEGACY || stemBranch.isBlank()) return
+        updateCaseNotesDraft { draft ->
+            if (draft.timeline.any { it.level == level && it.year == year }) {
+                draft
+            } else {
+                draft.copy(
+                    timeline = draft.timeline + CaseNotesTimelineDraft(
+                        id = java.util.UUID.randomUUID().toString(),
+                        level = level,
+                        year = year,
+                        stemBranch = stemBranch,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun updateCaseNotesTimelineContent(eventId: String, value: String) {
+        updateCaseNotesDraft { draft ->
+            draft.copy(
+                timeline = draft.timeline.map { item ->
+                    if (item.id == eventId) item.copy(content = value) else item
+                },
+            )
+        }
+    }
+
+    fun saveCaseNotes() {
+        caseNotesAutoSaveJob?.cancel()
+        persistCaseNotes(manual = true)
+    }
+
+    private fun updateCaseNotesDraft(transform: (CaseNotesDraft) -> CaseNotesDraft) {
+        if (mutableState.value.detail?.deletedAt != null) return
+        mutableState.update {
+            it.copy(
+                caseNotesDraft = transform(it.caseNotesDraft),
+                caseNotesSaveError = null,
+            )
+        }
+        scheduleCaseNotesAutoSave()
+    }
+
+    private fun scheduleCaseNotesAutoSave() {
+        caseNotesAutoSaveJob?.cancel()
+        if (mutableState.value.caseNotesDraft == mutableState.value.caseNotesSavedDraft) return
+        caseNotesAutoSaveJob = viewModelScope.launch {
+            delay(CASE_NOTES_AUTO_SAVE_DELAY_MILLIS)
+            persistCaseNotes(manual = false)
+        }
+    }
+
+    private fun persistCaseNotes(manual: Boolean) {
+        val detail = mutableState.value.detail ?: return
+        if (mutableState.value.caseNotesSaving) return
+        val submitted = mutableState.value.caseNotesDraft
+        if (!manual && submitted == mutableState.value.caseNotesSavedDraft) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(caseNotesSaving = true, caseNotesSaveError = null)
+            }
+            val result = caseNotesEditor.save(detail.id, detail.revision, submitted)
+            when (result) {
+                is CaseMutationResult.Saved -> {
+                    val refreshed = try {
+                        caseRepository.findById(detail.id)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (refreshed == null) {
+                        mutableState.update {
+                            it.copy(
+                                caseNotesSaving = false,
+                                caseNotesSaveError = "内容已写入，但详情刷新失败。",
+                            )
+                        }
+                    } else {
+                        val stillCurrent = mutableState.value.caseNotesDraft == submitted
+                        val refreshedDraft = refreshed.toCaseNotesDraft()
+                        mutableState.update {
+                            it.copy(
+                                detail = refreshed,
+                                caseNotesDraft = if (stillCurrent) refreshedDraft else it.caseNotesDraft,
+                                caseNotesSavedDraft = if (stillCurrent) refreshedDraft else submitted,
+                                caseNotesSaving = false,
+                                caseNotesSaveError = null,
+                                caseNotesLastSavedAt = clock.instant(),
+                                message = if (manual) "断事笔记已保存。" else it.message,
+                            )
+                        }
+                        refreshCases()
+                        if (!stillCurrent) scheduleCaseNotesAutoSave()
+                    }
+                }
+                is CaseMutationResult.ValidationFailed -> mutableState.update {
+                    it.copy(caseNotesSaving = false, caseNotesSaveError = result.message)
+                }
+                is CaseMutationResult.RevisionConflict -> {
+                    val refreshed = try {
+                        caseRepository.findById(detail.id)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    mutableState.update {
+                        it.copy(
+                            detail = refreshed ?: it.detail,
+                            caseNotesSaving = false,
+                            caseNotesSaveError = "命例已在别处更新，当前输入仍保留，请再次保存。",
+                        )
+                    }
+                }
+                CaseMutationResult.NotFound -> mutableState.update {
+                    it.copy(caseNotesSaving = false, caseNotesSaveError = "命例已不存在。")
+                }
+                is CaseMutationResult.StorageFailed -> mutableState.update {
+                    it.copy(caseNotesSaving = false, caseNotesSaveError = result.message)
+                }
+                else -> mutableState.update {
+                    it.copy(caseNotesSaving = false, caseNotesSaveError = "断事笔记保存失败，请重试。")
+                }
+            }
+        }
+    }
+
     fun saveEvent(eventId: String?) {
         val detail = mutableState.value.detail ?: return
         if (mutableState.value.mutationSaving) return
@@ -4871,6 +5026,7 @@ class StageTwoViewModel(
     }
 
     fun backToList() {
+        caseNotesAutoSaveJob?.cancel()
         mutableState.update {
             it.copy(
                 destination = navigator.backToList(),
@@ -5114,6 +5270,7 @@ class StageTwoViewModel(
         const val MIN_EXPORT_PASSWORD_LENGTH = 8
         const val MAX_EXPORT_PASSWORD_LENGTH = 256
         const val SINGLE_CASE_FORMAT_PROBE_BYTES = 64
+        const val CASE_NOTES_AUTO_SAVE_DELAY_MILLIS = 2_000L
     }
 
     private fun validateExportPassword(
@@ -5127,6 +5284,43 @@ class StageTwoViewModel(
         !password.contentEquals(confirmation) -> "两次输入的密码不一致。"
         else -> null
     }
+}
+
+private fun BaziCase.toCaseNotesDraft(): CaseNotesDraft {
+    val adopted = calculationSnapshots.asReversed().firstOrNull { it.adopted }?.result
+    fun recordBody(type: CaseTextRecordType): String = textRecords
+        .filter { it.type == type }
+        .joinToString("\n\n") { it.content }
+    val timeline = events.mapNotNull { event ->
+        val year = event.year ?: return@mapNotNull null
+        val level = when (event.timelineLevel) {
+            CaseEventTimelineLevel.LEGACY -> CaseEventTimelineLevel.ANNUAL
+            else -> event.timelineLevel
+        }
+        val stemBranch = event.stemBranch
+            ?: when (level) {
+                CaseEventTimelineLevel.DECADE -> adopted?.decadeFortunes
+                    ?.firstOrNull { year in it.startYear..it.endYear }
+                    ?.name
+                CaseEventTimelineLevel.ANNUAL -> adopted?.annualFortunes
+                    ?.firstOrNull { it.calendarYear == year }
+                    ?.name
+                CaseEventTimelineLevel.LEGACY -> null
+            }
+            ?: "时间"
+        CaseNotesTimelineDraft(
+            id = event.id,
+            level = level,
+            year = year,
+            stemBranch = stemBranch,
+            content = event.rawText,
+        )
+    }
+    return CaseNotesDraft(
+        ownerFeedback = recordBody(CaseTextRecordType.OWNER_FEEDBACK),
+        masterCommentary = recordBody(CaseTextRecordType.MASTER_COMMENTARY),
+        timeline = timeline,
+    )
 }
 
 private fun AppDestination.caseIdOrNull(): String? = when (this) {

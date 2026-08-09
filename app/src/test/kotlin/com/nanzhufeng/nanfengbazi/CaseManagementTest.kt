@@ -20,6 +20,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
@@ -579,6 +580,89 @@ class CaseManagementTest {
         assertEquals(
             listOf("旧版事件原文", "新版事件原文", "新版事件原文"),
             stored.eventRevisions.map { it.snapshot.rawText },
+        )
+    }
+
+    @Test
+    fun `断事笔记一次保存反馈点评和大运包含的流年时间线`() = runTest {
+        val ownerOne = CaseTextRecord(
+            id = "owner-one",
+            type = CaseTextRecordType.OWNER_FEEDBACK,
+            content = "第一段旧反馈",
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
+        val ownerTwo = ownerOne.copy(id = "owner-two", content = "第二段旧反馈")
+        val legacyAnnual = CaseEvent(
+            id = "annual-2024",
+            year = 2024,
+            datePrecision = EventDatePrecision.YEAR,
+            stemBranch = "甲辰",
+            rawText = "旧流年记录",
+            createdAt = FixedInstant,
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-notes"] = sampleStoredCase("case-notes").copy(
+                textRecords = listOf(ownerOne, ownerTwo),
+                events = listOf(legacyAnnual),
+            )
+        }
+        val useCase = CaseNotesEditorUseCase(
+            caseRepository = repository,
+            clock = fixedClock,
+            idGenerator = IdGenerator { "commentary-record" },
+        )
+
+        val result = useCase.save(
+            caseId = "case-notes",
+            expectedRevision = 1,
+            draft = CaseNotesDraft(
+                ownerFeedback = "合并后的命主反馈",
+                masterCommentary = "师傅统一点评",
+                timeline = listOf(
+                    CaseNotesTimelineDraft(
+                        id = "decade-2020",
+                        level = CaseEventTimelineLevel.DECADE,
+                        year = 2020,
+                        stemBranch = "庚子",
+                    ),
+                    CaseNotesTimelineDraft(
+                        id = legacyAnnual.id,
+                        level = CaseEventTimelineLevel.ANNUAL,
+                        year = 2024,
+                        stemBranch = "甲辰",
+                        content = "更新后的流年记录",
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(CaseMutationResult.Saved("case-notes", 2), result)
+        val stored = repository.stored.getValue("case-notes")
+        assertEquals(1, stored.revision - 1)
+        assertEquals(
+            listOf("合并后的命主反馈", "师傅统一点评"),
+            stored.textRecords.map { it.content }.sorted(),
+        )
+        assertEquals(2, stored.events.size)
+        assertEquals(
+            CaseEventTimelineLevel.DECADE,
+            stored.events.first { it.id == "decade-2020" }.timelineLevel,
+        )
+        assertEquals("", stored.events.first { it.id == "decade-2020" }.rawText)
+        assertEquals(
+            CaseEventTimelineLevel.ANNUAL,
+            stored.events.first { it.id == legacyAnnual.id }.timelineLevel,
+        )
+        assertTrue(
+            stored.textRecordRevisions.any {
+                it.recordId == ownerTwo.id && it.changeType == RecordChangeType.DELETED
+            },
+        )
+        assertTrue(
+            stored.eventRevisions.any {
+                it.eventId == legacyAnnual.id && it.changeType == RecordChangeType.UPDATED
+            },
         )
     }
 

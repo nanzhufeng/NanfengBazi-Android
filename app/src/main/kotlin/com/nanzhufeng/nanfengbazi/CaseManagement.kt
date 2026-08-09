@@ -24,6 +24,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
@@ -980,6 +981,148 @@ data class EventDraft(
     val title: String = "",
     val category: CaseEventCategory = CaseEventCategory.GENERAL,
 )
+
+data class CaseNotesTimelineDraft(
+    val id: String,
+    val level: CaseEventTimelineLevel,
+    val year: Int,
+    val stemBranch: String,
+    val content: String = "",
+)
+
+data class CaseNotesDraft(
+    val ownerFeedback: String = "",
+    val masterCommentary: String = "",
+    val timeline: List<CaseNotesTimelineDraft> = emptyList(),
+)
+
+class CaseNotesEditorUseCase(
+    private val caseRepository: CaseRepository,
+    private val clock: Clock = Clock.systemUTC(),
+    private val idGenerator: IdGenerator = UuidGenerator(),
+) {
+    suspend fun save(
+        caseId: String,
+        expectedRevision: Long,
+        draft: CaseNotesDraft,
+    ): CaseMutationResult {
+        val existing = when (val loaded = loadCase(caseRepository, caseId)) {
+            is CaseLoadResult.Found -> loaded.case
+            CaseLoadResult.NotFound -> return CaseMutationResult.NotFound
+            CaseLoadResult.Failed -> return caseReadFailure()
+        }
+        if (existing.revision != expectedRevision) {
+            return CaseMutationResult.RevisionConflict(existing.revision)
+        }
+        if (draft.timeline.any {
+                it.level == CaseEventTimelineLevel.LEGACY ||
+                    it.year !in 1..9999 || it.stemBranch.isBlank()
+            }
+        ) {
+            return CaseMutationResult.ValidationFailed("时间线信息无效，请重新选择。")
+        }
+
+        val now = clock.instant()
+        var records = existing.textRecords
+        var recordHistory = existing.textRecordRevisions
+        fun replaceRecordBody(type: CaseTextRecordType, body: String) {
+            val current = records.filter { it.type == type }
+            val trimmed = body.trim()
+            if (trimmed.isEmpty()) {
+                current.forEach { record ->
+                    recordHistory = recordHistory
+                        .ensureRecordBaseline(record)
+                        .appendRecordRevision(record, RecordChangeType.DELETED, now)
+                }
+                records = records.filterNot { it.type == type }
+                return
+            }
+            val canonical = current.firstOrNull()
+            val next = if (canonical == null) {
+                CaseTextRecord(
+                    id = idGenerator.nextId(),
+                    type = type,
+                    content = trimmed,
+                    sourceType = TextRecordSourceType.USER,
+                    createdAt = now,
+                    updatedAt = now,
+                )
+            } else {
+                canonical.copy(content = trimmed, updatedAt = now)
+            }
+            if (canonical == null || canonical.content != next.content) {
+                recordHistory = recordHistory
+                    .ensureRecordBaseline(canonical)
+                    .appendRecordRevision(
+                        next,
+                        if (canonical == null) RecordChangeType.CREATED else RecordChangeType.UPDATED,
+                        now,
+                    )
+            }
+            current.drop(1).forEach { record ->
+                recordHistory = recordHistory
+                    .ensureRecordBaseline(record)
+                    .appendRecordRevision(record, RecordChangeType.DELETED, now)
+            }
+            records = records.filterNot { it.type == type } + next
+        }
+
+        replaceRecordBody(CaseTextRecordType.OWNER_FEEDBACK, draft.ownerFeedback)
+        replaceRecordBody(CaseTextRecordType.MASTER_COMMENTARY, draft.masterCommentary)
+
+        val existingById = existing.events.associateBy { it.id }
+        var eventHistory = existing.eventRevisions
+        val timelineEvents = draft.timeline.map { item ->
+            val current = existingById[item.id]
+            val next = if (current == null) {
+                CaseEvent(
+                    id = item.id.ifBlank { idGenerator.nextId() },
+                    year = item.year,
+                    datePrecision = EventDatePrecision.YEAR,
+                    stemBranch = item.stemBranch.trim(),
+                    timelineLevel = item.level,
+                    rawText = item.content.trim(),
+                    createdAt = now,
+                )
+            } else {
+                current.copy(
+                    year = item.year,
+                    month = null,
+                    day = null,
+                    datePrecision = EventDatePrecision.YEAR,
+                    stemBranch = item.stemBranch.trim(),
+                    timelineLevel = item.level,
+                    rawText = item.content.trim(),
+                )
+            }
+            if (current == null || current != next) {
+                eventHistory = eventHistory
+                    .ensureEventBaseline(current)
+                    .appendEventRevision(
+                        next,
+                        if (current == null) RecordChangeType.CREATED else RecordChangeType.UPDATED,
+                        now,
+                    )
+            }
+            next
+        }
+        val draftIds = timelineEvents.mapTo(mutableSetOf()) { it.id }
+        val retainedLegacy = existing.events.filter {
+            it.timelineLevel == CaseEventTimelineLevel.LEGACY && it.id !in draftIds
+        }
+        val updated = existing.copy(
+            textRecords = records,
+            textRecordRevisions = recordHistory,
+            events = retainedLegacy + timelineEvents,
+            eventRevisions = eventHistory,
+            updatedAt = now,
+        )
+        if (updated.textRecords == existing.textRecords && updated.events == existing.events) {
+            return CaseMutationResult.Saved(existing.id, existing.revision)
+        }
+        return persistCase(caseRepository, updated, expectedRevision)
+    }
+}
 
 private data class ValidEventDraft(
     val title: String?,

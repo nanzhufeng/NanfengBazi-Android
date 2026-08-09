@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import org.junit.Rule
+import org.junit.Ignore
 import org.junit.Test
 
 class MasterCommentaryCandidateFlowTest {
@@ -21,6 +22,7 @@ class MasterCommentaryCandidateFlowTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
+    @Ignore("断事笔记已改为直接点评输入，不再从页面进入观点候选流程")
     fun createCommentaryReviewCandidatesAdoptRejectAndRestore() {
         val alias = "VX04API35-${System.currentTimeMillis()}"
         composeRule.onNodeWithTag("nav_chart").performClick()

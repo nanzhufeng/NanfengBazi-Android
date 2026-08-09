@@ -40,6 +40,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
@@ -58,6 +59,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -145,6 +147,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
+import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
@@ -408,6 +411,12 @@ fun NanfengBaziApp(
                                     viewModel::openFeedbackThemeCandidates,
                                 onAddEvent = { viewModel.openEvent() },
                                 onEditEvent = viewModel::openEvent,
+                                onOwnerFeedbackChange = viewModel::updateOwnerFeedback,
+                                onMasterCommentaryChange = viewModel::updateMasterCommentary,
+                                onAddNotesTimeline = viewModel::addCaseNotesTimeline,
+                                onNotesTimelineContentChange =
+                                    viewModel::updateCaseNotesTimelineContent,
+                                onSaveCaseNotes = viewModel::saveCaseNotes,
                                 onDuplicate = viewModel::duplicateCase,
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
                                 onOpenObjectiveSummary = viewModel::openObjectiveSummary,
@@ -5906,6 +5915,11 @@ private fun CaseDetailScreen(
     onOpenFeedbackThemeCandidates: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
+    onOwnerFeedbackChange: (String) -> Unit,
+    onMasterCommentaryChange: (String) -> Unit,
+    onAddNotesTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
+    onNotesTimelineContentChange: (String, String) -> Unit,
+    onSaveCaseNotes: () -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
     onOpenObjectiveSummary: () -> Unit,
@@ -6048,6 +6062,15 @@ private fun CaseDetailScreen(
                     onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
                     onAddEvent = onAddEvent,
                     onEditEvent = onEditEvent,
+                    caseNotesDraft = state.caseNotesDraft,
+                    caseNotesSaving = state.caseNotesSaving,
+                    caseNotesSaveError = state.caseNotesSaveError,
+                    caseNotesSaved = state.caseNotesDraft == state.caseNotesSavedDraft,
+                    onOwnerFeedbackChange = onOwnerFeedbackChange,
+                    onMasterCommentaryChange = onMasterCommentaryChange,
+                    onAddNotesTimeline = onAddNotesTimeline,
+                    onNotesTimelineContentChange = onNotesTimelineContentChange,
+                    onSaveCaseNotes = onSaveCaseNotes,
                     selectedSection = state.detailSection,
                     mutationSaving = state.mutationSaving,
                     mutationError = state.mutationError,
@@ -6366,6 +6389,15 @@ private fun ReferenceCaseDetailContent(
     onOpenFeedbackThemeCandidates: (String) -> Unit,
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
+    caseNotesDraft: CaseNotesDraft,
+    caseNotesSaving: Boolean,
+    caseNotesSaveError: String?,
+    caseNotesSaved: Boolean,
+    onOwnerFeedbackChange: (String) -> Unit,
+    onMasterCommentaryChange: (String) -> Unit,
+    onAddNotesTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
+    onNotesTimelineContentChange: (String, String) -> Unit,
+    onSaveCaseNotes: () -> Unit,
     selectedSection: CaseDetailSection,
     mutationSaving: Boolean,
     mutationError: String?,
@@ -6459,14 +6491,19 @@ private fun ReferenceCaseDetailContent(
 
             CaseDetailSection.RECORDS -> ReferenceCaseNotes(
                 case = case,
+                adopted = adopted,
                 mode = notesMode,
                 onModeChange = { notesMode = it },
-                onAddRecord = onAddRecord,
                 onEditRecord = onEditRecord,
-                onOpenCommentaryCandidates = onOpenCommentaryCandidates,
-                onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
-                onAddEvent = onAddEvent,
-                onEditEvent = onEditEvent,
+                draft = caseNotesDraft,
+                saving = caseNotesSaving,
+                saveError = caseNotesSaveError,
+                saved = caseNotesSaved,
+                onOwnerFeedbackChange = onOwnerFeedbackChange,
+                onMasterCommentaryChange = onMasterCommentaryChange,
+                onAddTimeline = onAddNotesTimeline,
+                onTimelineContentChange = onNotesTimelineContentChange,
+                onSave = onSaveCaseNotes,
             )
         }
         Spacer(Modifier.height(28.dp))
@@ -6820,18 +6857,25 @@ private fun ReferenceEmptyText(message: String) {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReferenceCaseNotes(
     case: BaziCase,
+    adopted: CaseCalculationSnapshot?,
     mode: CaseNotesMode,
     onModeChange: (CaseNotesMode) -> Unit,
-    onAddRecord: () -> Unit,
     onEditRecord: (String) -> Unit,
-    onOpenCommentaryCandidates: (String) -> Unit,
-    onOpenFeedbackThemeCandidates: (String) -> Unit,
-    onAddEvent: () -> Unit,
-    onEditEvent: (String) -> Unit,
+    draft: CaseNotesDraft,
+    saving: Boolean,
+    saveError: String?,
+    saved: Boolean,
+    onOwnerFeedbackChange: (String) -> Unit,
+    onMasterCommentaryChange: (String) -> Unit,
+    onAddTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
+    onTimelineContentChange: (String, String) -> Unit,
+    onSave: () -> Unit,
 ) {
+    var pickerVisible by rememberSaveable(case.id) { mutableStateOf(false) }
     BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
@@ -6870,96 +6914,450 @@ private fun ReferenceCaseNotes(
     }
     if (mode == CaseNotesMode.OWNER_FEEDBACK) {
         ReferenceOwnerProfileSheet(case)
-        val feedback = case.textRecords.filter { it.type == CaseTextRecordType.OWNER_FEEDBACK }
         WenzhenSectionHeader(
             title = "命主反馈",
-            actionLabel = if (feedback.isEmpty()) "添加" else "编辑",
-            actionTag = "add_record_button",
-            onAction = {
-                feedback.firstOrNull()?.let { onEditRecord(it.id) } ?: onAddRecord()
-            },
             modifier = Modifier.padding(top = 18.dp),
         )
-        if (feedback.isEmpty()) {
-            ReferenceEmptyText("暂无命主反馈。")
-        } else {
-            feedback.forEachIndexed { index, record ->
-                Text(
-                    record.content,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = case.deletedAt == null) { onEditRecord(record.id) }
-                        .padding(vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                if (index != feedback.lastIndex) HorizontalDivider()
-            }
-            if (case.deletedAt == null) {
-                TextButton(
-                    onClick = { onOpenFeedbackThemeCandidates(feedback.first().id) },
-                    modifier = Modifier.testTag("open_feedback_theme_candidates_button"),
-                ) { Text("整理主题标签") }
-            }
-        }
-        WenzhenSectionHeader(
-            title = "关键事件反馈记录",
-            actionLabel = "添加",
-            actionTag = "add_event_button",
-            onAction = onAddEvent,
-            modifier = Modifier.padding(top = 14.dp),
+        CaseNotesTextEditor(
+            value = draft.ownerFeedback,
+            onValueChange = onOwnerFeedbackChange,
+            placeholder = "直接记录命主的反馈信息",
+            enabled = case.deletedAt == null,
+            modifier = Modifier.testTag("owner_feedback_input"),
         )
-        if (case.events.isEmpty()) {
-            ReferenceEmptyText("暂无关键事件。")
-        } else {
-            case.events.sortedWith(compareBy<CaseEvent> { it.year ?: Int.MAX_VALUE }
-                .thenBy { it.month ?: 0 }
-                .thenBy { it.day ?: 0 })
-                .forEachIndexed { index, event ->
-                    ReferenceEventTimelineItem(
-                        event = event,
-                        last = index == case.events.lastIndex,
-                        enabled = case.deletedAt == null,
-                        onClick = { onEditEvent(event.id) },
-                    )
-                }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 18.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "关键事件反馈记录",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            androidx.compose.material3.IconButton(
+                onClick = { pickerVisible = true },
+                enabled = case.deletedAt == null && adopted != null,
+                modifier = Modifier
+                    .size(34.dp)
+                    .testTag("add_event_button"),
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "添加大运或流年",
+                    tint = NanfengGold,
+                )
+            }
         }
-        ReferenceOtherNotes(case = case, onEditRecord = onEditRecord)
+        CaseNotesTimeline(
+            draft = draft,
+            calculation = adopted?.result,
+            enabled = case.deletedAt == null,
+            onContentChange = onTimelineContentChange,
+        )
     } else {
-        val commentary = case.textRecords.filter {
-            it.type == CaseTextRecordType.MASTER_COMMENTARY
-        }
         WenzhenSectionHeader(
             title = "师傅点评",
-            actionLabel = if (commentary.isEmpty()) "添加" else "编辑",
-            actionTag = "add_record_button",
-            onAction = {
-                commentary.firstOrNull()?.let { onEditRecord(it.id) } ?: onAddRecord()
-            },
             modifier = Modifier.padding(top = 18.dp),
         )
-        if (commentary.isEmpty()) {
-            ReferenceEmptyText("暂无师傅点评。")
+        CaseNotesTextEditor(
+            value = draft.masterCommentary,
+            onValueChange = onMasterCommentaryChange,
+            placeholder = "直接记录师傅的判断与点评",
+            enabled = case.deletedAt == null,
+            minLines = 8,
+            modifier = Modifier.testTag("master_commentary_input"),
+        )
+    }
+
+    Spacer(Modifier.height(18.dp))
+    Text(
+        when {
+            saveError != null -> saveError
+            saving -> "正在保存…"
+            saved -> "已自动保存"
+            else -> "编辑中，将自动保存"
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        textAlign = TextAlign.Center,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (saveError != null) {
+            MaterialTheme.colorScheme.error
         } else {
-            commentary.forEachIndexed { index, record ->
-                Text(
-                    record.content,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = case.deletedAt == null) { onEditRecord(record.id) }
-                        .padding(vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                    lineHeight = MaterialTheme.typography.bodyLarge.lineHeight,
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+        },
+    )
+    Button(
+        onClick = onSave,
+        enabled = case.deletedAt == null && !saving,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .testTag("save_case_notes_button"),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+    ) {
+        Text(if (saving) "保存中" else "保存", fontWeight = FontWeight.SemiBold)
+    }
+
+    if (pickerVisible && adopted != null) {
+        CaseNotesTimePicker(
+            calculation = adopted.result,
+            onDismiss = { pickerVisible = false },
+            onConfirm = { level, year, stemBranch ->
+                onAddTimeline(level, year, stemBranch)
+                pickerVisible = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun CaseNotesTextEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    minLines: Int = 4,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp),
+        placeholder = {
+            Text(
+                placeholder,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            )
+        },
+        minLines = minLines,
+        shape = RoundedCornerShape(14.dp),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+    )
+}
+
+@Composable
+private fun CaseNotesTimeline(
+    draft: CaseNotesDraft,
+    calculation: CalculationResult?,
+    enabled: Boolean,
+    onContentChange: (String, String) -> Unit,
+) {
+    if (draft.timeline.isEmpty()) {
+        Text(
+            if (calculation == null) "暂无排盘时间信息。" else "点击右侧 + 添加大运或流年。",
+            modifier = Modifier.padding(vertical = 18.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        return
+    }
+    val decades = calculation?.decadeFortunes.orEmpty().sortedByDescending { it.startYear }
+    val displayedIds = mutableSetOf<String>()
+    decades.forEach { decade ->
+        val decadeEntry = draft.timeline.firstOrNull {
+            it.level == CaseEventTimelineLevel.DECADE && it.year == decade.startYear
+        }
+        val annualEntries = draft.timeline.filter {
+            it.level == CaseEventTimelineLevel.ANNUAL && it.year in decade.startYear..decade.endYear
+        }.sortedByDescending { it.year }
+        if (decadeEntry == null && annualEntries.isEmpty()) return@forEach
+        decadeEntry?.let { displayedIds += it.id }
+        displayedIds += annualEntries.map { it.id }
+        CaseNotesDecadeGroup(
+            decade = decade,
+            decadeEntry = decadeEntry,
+            annualEntries = annualEntries,
+            enabled = enabled,
+            onContentChange = onContentChange,
+        )
+    }
+    draft.timeline.filterNot { it.id in displayedIds }
+        .sortedByDescending { it.year }
+        .forEach { entry ->
+            CaseNotesStandaloneTimelineEntry(entry, enabled, onContentChange)
+        }
+}
+
+@Composable
+private fun CaseNotesDecadeGroup(
+    decade: DecadeFortune,
+    decadeEntry: CaseNotesTimelineDraft?,
+    annualEntries: List<CaseNotesTimelineDraft>,
+    enabled: Boolean,
+    onContentChange: (String, String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 14.dp)
+            .drawBehind {
+                val x = 7.dp.toPx()
+                drawLine(
+                    color = NanfengGold.copy(alpha = 0.25f),
+                    start = Offset(x, 12.dp.toPx()),
+                    end = Offset(x, size.height),
+                    strokeWidth = 1.dp.toPx(),
                 )
-                if (index != commentary.lastIndex) HorizontalDivider()
-            }
-            if (case.deletedAt == null) {
-                TextButton(
-                    onClick = { onOpenCommentaryCandidates(commentary.first().id) },
-                    modifier = Modifier.testTag("open_commentary_candidates_button"),
-                ) { Text("整理观点候选") }
+            },
+    ) {
+        CaseNotesTimelineLabel(
+            text = "${decade.startYear}年  ${decade.name}大运",
+            parent = true,
+        )
+        decadeEntry?.let { entry ->
+            CaseNotesTimelineInput(
+                entry = entry,
+                enabled = enabled,
+                onContentChange = onContentChange,
+                modifier = Modifier.padding(start = 24.dp, top = 7.dp),
+            )
+        }
+        annualEntries.forEach { entry ->
+            Column(modifier = Modifier.padding(start = 18.dp, top = 12.dp)) {
+                CaseNotesTimelineLabel(
+                    text = "${entry.year}年  ${entry.stemBranch}",
+                    parent = false,
+                )
+                CaseNotesTimelineInput(
+                    entry = entry,
+                    enabled = enabled,
+                    onContentChange = onContentChange,
+                    modifier = Modifier.padding(start = 18.dp, top = 6.dp),
+                )
             }
         }
-        ReferenceOtherNotes(case = case, onEditRecord = onEditRecord)
+    }
+}
+
+@Composable
+private fun CaseNotesStandaloneTimelineEntry(
+    entry: CaseNotesTimelineDraft,
+    enabled: Boolean,
+    onContentChange: (String, String) -> Unit,
+) {
+    Column(modifier = Modifier.padding(bottom = 14.dp)) {
+        CaseNotesTimelineLabel(
+            text = "${entry.year}年  ${entry.stemBranch}" +
+                if (entry.level == CaseEventTimelineLevel.DECADE) "大运" else "",
+            parent = entry.level == CaseEventTimelineLevel.DECADE,
+        )
+        CaseNotesTimelineInput(
+            entry = entry,
+            enabled = enabled,
+            onContentChange = onContentChange,
+            modifier = Modifier.padding(start = 24.dp, top = 6.dp),
+        )
+    }
+}
+
+@Composable
+private fun CaseNotesTimelineLabel(text: String, parent: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Surface(
+            modifier = Modifier.size(if (parent) 14.dp else 10.dp),
+            shape = CircleShape,
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(
+                if (parent) 4.dp else 3.dp,
+                NanfengGold.copy(alpha = if (parent) 0.72f else 0.48f),
+            ),
+        ) {}
+        Text(
+            text,
+            modifier = Modifier.padding(start = 9.dp),
+            color = if (parent) NanfengGold else MaterialTheme.colorScheme.onSurface,
+            style = if (parent) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            fontWeight = if (parent) FontWeight.SemiBold else FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun CaseNotesTimelineInput(
+    entry: CaseNotesTimelineDraft,
+    enabled: Boolean,
+    onContentChange: (String, String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedTextField(
+        value = entry.content,
+        onValueChange = { onContentChange(entry.id, it) },
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("timeline_event_input")
+            .semantics { contentDescription = "时间线事件输入 ${entry.id}" },
+        placeholder = { Text("输入这一阶段的关键事件") },
+        minLines = 2,
+        shape = RoundedCornerShape(12.dp),
+        textStyle = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CaseNotesTimePicker(
+    calculation: CalculationResult,
+    onDismiss: () -> Unit,
+    onConfirm: (CaseEventTimelineLevel, Int, String) -> Unit,
+) {
+    var level by rememberSaveable { mutableStateOf(CaseEventTimelineLevel.DECADE) }
+    val currentYear = java.time.LocalDate.now().year
+    val decades = buildList {
+        addAll(calculation.decadeFortunes.filter { currentYear in it.startYear..it.endYear })
+        addAll(
+            calculation.decadeFortunes.filter { it.endYear < currentYear }
+                .sortedByDescending { it.startYear },
+        )
+        addAll(
+            calculation.decadeFortunes.filter { it.startYear > currentYear }
+                .sortedBy { it.startYear },
+        )
+    }.distinctBy { it.startYear }
+    val annuals = buildList {
+        addAll(calculation.annualFortunes.filter { it.calendarYear == currentYear })
+        addAll(
+            calculation.annualFortunes.filter { it.calendarYear < currentYear }
+                .sortedByDescending { it.calendarYear },
+        )
+        addAll(
+            calculation.annualFortunes.filter { it.calendarYear > currentYear }
+                .sortedBy { it.calendarYear },
+        )
+    }.distinctBy { it.calendarYear }
+    var selectedYear by rememberSaveable(level) {
+        mutableStateOf(
+            if (level == CaseEventTimelineLevel.DECADE) {
+                decades.firstOrNull()?.startYear
+            } else {
+                annuals.firstOrNull()?.calendarYear
+            },
+        )
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag("notes_time_picker"),
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 4.dp),
+        ) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val width = minOf(maxWidth * 0.66f, 280.dp)
+                Surface(
+                    modifier = Modifier
+                        .width(width)
+                        .align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(15.dp),
+                ) {
+                    Row(modifier = Modifier.padding(3.dp)) {
+                        NotesModeTab(
+                            text = "大运",
+                            selected = level == CaseEventTimelineLevel.DECADE,
+                            onClick = { level = CaseEventTimelineLevel.DECADE },
+                            modifier = Modifier.weight(1f),
+                        )
+                        NotesModeTab(
+                            text = "流年",
+                            selected = level == CaseEventTimelineLevel.ANNUAL,
+                            onClick = { level = CaseEventTimelineLevel.ANNUAL },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+            Text(
+                if (level == CaseEventTimelineLevel.DECADE) {
+                    "选择大运（当前阶段在上）"
+                } else {
+                    "选择流年（最近时间在上）"
+                },
+                modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 230.dp),
+            ) {
+                if (level == CaseEventTimelineLevel.DECADE) {
+                    items(decades, key = { it.startYear }) { decade ->
+                        CaseNotesPickerRow(
+                            text = "${decade.startYear}年  ${decade.name}大运",
+                            selected = selectedYear == decade.startYear,
+                            onClick = { selectedYear = decade.startYear },
+                        )
+                    }
+                } else {
+                    items(annuals, key = { it.calendarYear }) { annual ->
+                        CaseNotesPickerRow(
+                            text = "${annual.calendarYear}年  ${annual.name}",
+                            selected = selectedYear == annual.calendarYear,
+                            onClick = { selectedYear = annual.calendarYear },
+                        )
+                    }
+                }
+            }
+            Button(
+                onClick = {
+                    val year = selectedYear ?: return@Button
+                    val name = if (level == CaseEventTimelineLevel.DECADE) {
+                        decades.firstOrNull { it.startYear == year }?.name
+                    } else {
+                        annuals.firstOrNull { it.calendarYear == year }?.name
+                    } ?: return@Button
+                    onConfirm(level, year, name)
+                },
+                enabled = selectedYear != null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp, bottom = 18.dp)
+                    .height(48.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+            ) {
+                Text("确定", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CaseNotesPickerRow(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clickable(onClick = onClick),
+        color = if (selected) NanfengGold.copy(alpha = 0.11f) else Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

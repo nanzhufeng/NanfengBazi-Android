@@ -115,17 +115,12 @@ class StageSixAccessibilityTest {
         composeRule.onNodeWithText("返回").performClick()
 
         composeRule.onNodeWithTag("detail_tab_records").performClick()
-        composeRule.onNodeWithTag("add_record_button").performScrollTo()
+        composeRule.onNodeWithTag("owner_feedback_input").performScrollTo()
         auditPage("case_detail_screen")
-        composeRule.onNodeWithTag("add_record_button").performClick()
-        auditPage("record_editor_screen")
-        composeRule.onNodeWithTag("save_record").performScrollTo()
-        auditPage("record_editor_screen")
-        composeRule.onNodeWithText("返回").performClick()
-
         composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
-        auditPage("event_editor_screen")
-        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithTag("notes_time_picker").assertIsDisplayed()
+        composeRule.onNodeWithText("确定").performClick()
+        composeRule.onNodeWithTag("save_case_notes_button").performScrollTo()
         auditPage("case_detail_screen")
     }
 

@@ -356,9 +356,20 @@ class CaseDetailReferenceLayoutTest {
             .fetchSemanticsNode().boundsInRoot
         assertEquals(notesSwitcherBefore.left, notesSwitcherAfter.left, 1f)
         assertEquals(notesSwitcherBefore.right, notesSwitcherAfter.right, 1f)
+        composeRule.onNodeWithTag("master_commentary_input").assertIsDisplayed()
+        composeRule.onNodeWithTag("save_case_notes_button").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("notes_mode_owner").performClick()
+        composeRule.onNodeWithTag("owner_feedback_input").assertIsDisplayed()
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()
         composeRule.onNodeWithText("工作方向发生明显调整。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("notes_time_picker").assertIsDisplayed()
+        composeRule.onNodeWithText("流年").performClick()
+        composeRule.onNodeWithText("选择流年（最近时间在上）").assertIsDisplayed()
+        composeRule.onNodeWithText("确定").performClick()
+        composeRule.onAllNodesWithTag("timeline_event_input")[0]
+            .performScrollTo()
+            .assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("professional_fortune_position").assertIsDisplayed()

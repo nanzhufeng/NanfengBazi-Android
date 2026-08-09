@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import org.junit.Rule
+import org.junit.Ignore
 import org.junit.Test
 
 class FeedbackThemeCandidateFlowTest {
@@ -21,6 +22,7 @@ class FeedbackThemeCandidateFlowTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
+    @Ignore("断事笔记已改为直接反馈输入，不再从页面进入主题候选流程")
     fun createFeedbackReviewThemesAdoptRejectAndRestore() {
         val alias = "VX05API35-${System.currentTimeMillis()}"
         composeRule.onNodeWithTag("nav_chart").performClick()

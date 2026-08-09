@@ -686,6 +686,34 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `断事笔记停止输入两秒后自动聚合保存且不会逐字写库`() = runTest {
+        val stored = sampleStoredCase("case-notes-autosave")
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail(stored.id)
+
+        viewModel.updateOwnerFeedback("自动保存后的命主反馈")
+
+        assertTrue(repository.stored.getValue(stored.id).textRecords.isEmpty())
+        dispatcher.scheduler.advanceTimeBy(1_999)
+        dispatcher.scheduler.runCurrent()
+        assertTrue(repository.stored.getValue(stored.id).textRecords.isEmpty())
+
+        dispatcher.scheduler.advanceTimeBy(2)
+        dispatcher.scheduler.runCurrent()
+
+        assertEquals(
+            "自动保存后的命主反馈",
+            repository.stored.getValue(stored.id).textRecords.single().content,
+        )
+        assertEquals(
+            viewModel.state.value.caseNotesSavedDraft,
+            viewModel.state.value.caseNotesDraft,
+        )
+        assertFalse(viewModel.state.value.caseNotesSaving)
+    }
+
+    @Test
     fun `反馈主题候选可编辑拒绝采用且采用只追加正式标签`() = runTest {
         val feedback = ownerFeedback()
         val stored = sampleStoredCase("case-feedback-theme-candidates").copy(
