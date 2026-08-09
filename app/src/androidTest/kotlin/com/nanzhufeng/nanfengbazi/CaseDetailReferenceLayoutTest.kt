@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.platform.app.InstrumentationRegistry
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
@@ -125,16 +126,50 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithText("出生地区").assertIsDisplayed()
         composeRule.onNodeWithText("前一节气").assertIsDisplayed()
         composeRule.onNodeWithText("后一节气").assertIsDisplayed()
+        val birthplace = composeRule.onNodeWithTag("basic_info_birthplace_row")
+            .fetchSemanticsNode().boundsInRoot
+        val previousTerm = composeRule.onNodeWithTag("basic_info_previous_term_row")
+            .fetchSemanticsNode().boundsInRoot
+        val nextTerm = composeRule.onNodeWithTag("basic_info_next_term_row")
+            .fetchSemanticsNode().boundsInRoot
+        val zodiacFact = composeRule.onNodeWithTag("basic_info_zodiac_fact")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(birthplace.bottom <= previousTerm.top)
+        assertTrue(previousTerm.bottom <= nextTerm.top)
+        assertTrue(nextTerm.bottom <= zodiacFact.top)
+        val alignedRightColumn = listOf(
+            composeRule.onNodeWithTag("basic_info_sex_fact").fetchSemanticsNode().boundsInRoot.left,
+            zodiacFact.left,
+            composeRule.onNodeWithTag("basic_info_fetal_breath_fact")
+                .fetchSemanticsNode().boundsInRoot.left,
+        )
+        alignedRightColumn.drop(1).forEach { left ->
+            assertEquals(alignedRightColumn.first(), left, 1f)
+        }
 
         composeRule.onNodeWithTag("detail_tab_basic_chart").performClick()
+        composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
+        composeRule.onNodeWithTag("shared_identity_lunar_time").assertIsDisplayed()
+        composeRule.onNodeWithTag("shared_identity_chart_type").assertIsDisplayed()
+        composeRule.onNodeWithText("乾造").assertIsDisplayed()
         composeRule.onNodeWithTag("basic_chart_details").assertIsDisplayed()
         composeRule.onNodeWithText("十神").assertIsDisplayed()
         composeRule.onNodeWithText("藏干").assertIsDisplayed()
         composeRule.onNodeWithTag("basic_chart_shensha").performScrollTo().assertIsDisplayed()
+        val shenShaText = composeRule.onNodeWithTag(
+            "basic_chart_shensha_value_0",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().config[SemanticsProperties.Text]
+            .joinToString("") { it.text }
+        assertTrue("神煞必须逐行显示", "、" !in shenShaText)
+        assertTrue("单柱最多显示 5 项", shenShaText.lines().size <= 5)
         composeRule.onNodeWithText("副星").assertDoesNotExist()
         composeRule.onNodeWithText("星运").assertDoesNotExist()
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
+        composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
+        composeRule.onNodeWithTag("shared_identity_lunar_time").assertIsDisplayed()
+        composeRule.onNodeWithTag("shared_identity_chart_type").assertIsDisplayed()
         composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
         val stemSurface = composeRule.onNodeWithTag("flow_hour_stem_surface")
             .fetchSemanticsNode().boundsInRoot
@@ -253,6 +288,12 @@ class CaseDetailReferenceLayoutTest {
             .assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_records").performClick()
+        composeRule.onNodeWithTag("notes_identity_header").assertIsDisplayed()
+        composeRule.onNodeWithTag("notes_identity_chart_type").assertIsDisplayed()
+        composeRule.onNodeWithTag("notes_identity_four_pillars").assertIsDisplayed()
+        (0 until 10).forEach { index ->
+            composeRule.onNodeWithTag("notes_decade_$index").assertIsDisplayed()
+        }
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()
         composeRule.onNodeWithText("工作方向发生明显调整。").performScrollTo().assertIsDisplayed()
 

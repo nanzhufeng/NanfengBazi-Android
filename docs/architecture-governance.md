@@ -152,7 +152,7 @@
 | 流月/流日/流时 | `ProfessionalFortuneResolver.locate()` | 流月只在十二节切换；流日明确服从快照中的子时规则；观察时刻按民用时直接计算，不冒充已完成观察地点真太阳时校正 |
 | 子时口径 | `LunarHour.resolveEightChar()` | 正向计算按调用显式选择实例 provider，不读取或改写全局状态；仅四柱反查按 D-077 在适配器锁内临时切换并恢复 `LunarHour.provider` |
 | 页面消费 | `StageTwoViewModel` → 专业细盘 | 观察日期、时分进入 `SavedStateHandle`；九列四柱矩阵与五层时间轴共同消费 `ProfessionalFortuneResolver` 的十神、逐条藏干和生日整年周岁。九列使用完整十神；大运、流年、流月、流时维持同屏紧凑候选，只有整月流日横滑。时间轴地支只显示全部藏干对应的十神简称并同行排列；流时始终回填同一民用日期。UI 只排版，不计算年龄、藏干或月界 |
-| 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v2` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
+| 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v3` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，按稳定优先级每柱最多展示 5 项且每项独占一行；UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
 | 问真用户列表正式提交 | `ScreenshotImportCommitter` → `FourPillarsLookup` → `BaziEngine.calculate()` → `CaseRepository` | 只按同一公历日期保留两种子时口径下可复算的民用候选；全部标记 `DOUBLE_HOUR_ONLY`，无解显式拒绝，不按时支硬填整点、不推算真太阳时 |
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
@@ -173,7 +173,7 @@
 | 三主界面导航 | `StageTwoNavigator` + `StageTwoViewModel` | 根级只保留排盘、记录、设置；导入、对比、备份等能力仍复用原有用例，只改变入口层级，不复制业务逻辑 |
 | 问真式视觉壳 | `NanfengBaziTheme` + Compose screen components | 参考信息层级、密度和交互位置，使用南枫本地绿/黑金皮肤；不复制第三方素材或形成页面算法 |
 | 记录密集摘要 | `CaseRepository.search()` → `CaseSummaryRow` | 只消费命例聚合和已采用快照；四柱着色、生肖和 A–Z 索引只是展示，不重算、不改写事实 |
-| 详情四标签 | `CaseDetailScreen` + `StageTwoUiState.detailSection` | 基本信息/基本排盘/专业细盘/断事笔记共用固定身份头和同一快照；低频管理动作统一进入右上角菜单，不改变用例所有权 |
+| 详情四标签 | `CaseDetailScreen` + `StageTwoUiState.detailSection` | 四页共用同一命例与已采用快照；基本信息使用居中身份区，基本排盘与专业细盘共用公历／农历／乾坤造摘要头，断事笔记独立显示乾坤造、四柱和前十步大运；低频管理动作统一进入右上角菜单 |
 | 记录来源类型 | `CaseTextRecord.sourceType` + `TextRecordSourceType` | Room v8 持久化 USER/RULE_TEMPLATE/EXTERNAL_AI/IMPORTED_IMAGE/历史未指定；历史缺省只按是否有来源附件归一，不根据文本猜测来源 |
 | App 图标主图 | 用户提供的原始附件 | 构建、分层、缩放与真机门禁以 [启动图标保真构建规范](app-icon-fidelity-standard.md) 为唯一正文；禁止近似重绘或额外托盘 |
 

@@ -72,13 +72,21 @@ object BasicShenShaRules {
         return buildList {
             if (branch in TIAN_YI.getValue(context.dayStem)) add("天乙贵人")
             if (branch == WEN_CHANG.getValue(context.dayStem)) add("文昌贵人")
+            if (branch in FU_XING.getValue(context.dayStem)) add("福星贵人")
+            if (branch == XUE_TANG.getValue(context.dayStem)) add("学堂")
             if (branch == LU_SHEN.getValue(context.dayStem)) add("禄神")
             if (branch == YANG_REN.getValue(context.dayStem)) add("羊刃")
             if (branch in TAI_JI.getValue(context.dayStem)) add("太极贵人")
             if (stem == TIAN_DE[context.monthBranch]) add("天德贵人")
             if (stem == YUE_DE[context.monthBranch]) add("月德贵人")
+            if (stem in DE_XIU[context.monthBranch].orEmpty()) add("德秀贵人")
+            if (branch == TIAN_YI_MEDICINE[context.monthBranch]) add("天医")
             if (branch == HONG_LUAN[context.yearBranch]) add("红鸾")
             if (branch == TIAN_XI[context.yearBranch]) add("天喜")
+            if (branch == GU_CHEN[context.yearBranch]) add("孤辰")
+            if (branch == GUA_SU[context.yearBranch]) add("寡宿")
+            if (branch == SANG_MEN[context.yearBranch]) add("丧门")
+            if (branch == DIAO_KE[context.yearBranch]) add("吊客")
             if (branch == JIN_YU[context.dayStem]) add("金舆")
             if (branch == GUO_YIN[context.dayStem]) add("国印贵人")
             context.roots.forEach { root ->
@@ -116,6 +124,16 @@ private val WEN_CHANG = mapOf(
     '甲' to '巳', '乙' to '午', '丙' to '申', '戊' to '申', '丁' to '酉',
     '己' to '酉', '庚' to '亥', '辛' to '子', '壬' to '寅', '癸' to '卯',
 )
+private val FU_XING = mapOf(
+    '甲' to setOf('寅', '子'), '丙' to setOf('寅', '子'),
+    '乙' to setOf('卯', '丑'), '癸' to setOf('卯', '丑'),
+    '戊' to setOf('申'), '己' to setOf('未'), '丁' to setOf('亥'),
+    '庚' to setOf('午'), '辛' to setOf('巳'), '壬' to setOf('辰'),
+)
+private val XUE_TANG = mapOf(
+    '甲' to '亥', '乙' to '午', '丙' to '寅', '丁' to '酉', '戊' to '寅',
+    '己' to '酉', '庚' to '巳', '辛' to '子', '壬' to '申', '癸' to '卯',
+)
 private val LU_SHEN = mapOf(
     '甲' to '寅', '乙' to '卯', '丙' to '巳', '戊' to '巳', '丁' to '午',
     '己' to '午', '庚' to '申', '辛' to '酉', '壬' to '亥', '癸' to '子',
@@ -142,6 +160,17 @@ private val YUE_DE = mapOf(
     '亥' to '甲', '卯' to '甲', '未' to '甲',
     '巳' to '庚', '酉' to '庚', '丑' to '庚',
 )
+private val DE_XIU = buildMap<Char, Set<Char>> {
+    listOf('寅', '午', '戌').forEach { put(it, setOf('丙', '丁', '戊', '癸')) }
+    listOf('申', '子', '辰').forEach { put(it, setOf('壬', '癸', '戊', '己', '丙', '辛', '甲')) }
+    listOf('巳', '酉', '丑').forEach { put(it, setOf('庚', '辛', '乙')) }
+    listOf('亥', '卯', '未').forEach { put(it, setOf('甲', '乙', '丁', '壬')) }
+}
+private val TIAN_YI_MEDICINE = mapOf(
+    '寅' to '丑', '卯' to '寅', '辰' to '卯', '巳' to '辰',
+    '午' to '巳', '未' to '午', '申' to '未', '酉' to '申',
+    '戌' to '酉', '亥' to '戌', '子' to '亥', '丑' to '子',
+)
 private val HONG_LUAN = mapOf(
     '子' to '卯', '丑' to '寅', '寅' to '丑', '卯' to '子',
     '辰' to '亥', '巳' to '戌', '午' to '酉', '未' to '申',
@@ -150,6 +179,25 @@ private val HONG_LUAN = mapOf(
 private val TIAN_XI = HONG_LUAN.mapValues { (_, branch) ->
     listOf('子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥')
         .let { branches -> branches[(branches.indexOf(branch) + 6) % branches.size] }
+}
+private val GU_CHEN = mapOf(
+    '亥' to '寅', '子' to '寅', '丑' to '寅',
+    '寅' to '巳', '卯' to '巳', '辰' to '巳',
+    '巳' to '申', '午' to '申', '未' to '申',
+    '申' to '亥', '酉' to '亥', '戌' to '亥',
+)
+private val GUA_SU = mapOf(
+    '亥' to '戌', '子' to '戌', '丑' to '戌',
+    '寅' to '丑', '卯' to '丑', '辰' to '丑',
+    '巳' to '辰', '午' to '辰', '未' to '辰',
+    '申' to '未', '酉' to '未', '戌' to '未',
+)
+private val EARTH_BRANCHES = listOf('子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥')
+private val SANG_MEN = EARTH_BRANCHES.associateWith { branch ->
+    EARTH_BRANCHES[(EARTH_BRANCHES.indexOf(branch) + 2) % EARTH_BRANCHES.size]
+}
+private val DIAO_KE = EARTH_BRANCHES.associateWith { branch ->
+    EARTH_BRANCHES[(EARTH_BRANCHES.indexOf(branch) + EARTH_BRANCHES.size - 2) % EARTH_BRANCHES.size]
 }
 private val JIN_YU = mapOf(
     '甲' to '辰', '乙' to '巳', '丙' to '未', '丁' to '申', '戊' to '未',

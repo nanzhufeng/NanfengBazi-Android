@@ -6021,7 +6021,7 @@ private fun CaseDetailScreen(
                 case = state.detail,
                 adopted = state.detail.calculationSnapshots.asReversed()
                     .firstOrNull { it.adopted },
-                expanded = state.detailSection == CaseDetailSection.BASIC_INFO,
+                section = state.detailSection,
             )
         }
         Box(modifier = Modifier.weight(1f)) {
@@ -6130,7 +6130,7 @@ private fun CaseDetailTabs(
 private fun WenzhenCaseIdentityHeader(
     case: BaziCase,
     adopted: CaseCalculationSnapshot?,
-    expanded: Boolean,
+    section: CaseDetailSection,
 ) {
     val result = adopted?.result
     val westernZodiac = result?.basicChartDetails?.westernZodiac
@@ -6142,64 +6142,161 @@ private fun WenzhenCaseIdentityHeader(
         color = NanfengNavigation,
         shape = RoundedCornerShape(0.dp),
     ) {
-        if (expanded) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                ZodiacIdentityBadge(
-                    westernZodiac = westernZodiac,
-                    iconRes = iconRes,
-                    size = 66.dp,
-                    iconSize = 25.dp,
-                )
-                Text(
-                    case.name.value ?: case.alias,
-                    modifier = Modifier.padding(top = 7.dp),
-                    color = NanfengGoldLight,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ZodiacIdentityBadge(
-                    westernZodiac = westernZodiac,
-                    iconRes = iconRes,
-                    size = 46.dp,
-                    iconSize = 17.dp,
-                )
-                Column(modifier = Modifier.weight(1f)) {
+        when (section) {
+            CaseDetailSection.BASIC_INFO -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, bottom = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    ZodiacIdentityBadge(
+                        westernZodiac = westernZodiac,
+                        iconRes = iconRes,
+                        size = 66.dp,
+                        iconSize = 25.dp,
+                    )
                     Text(
                         case.name.value ?: case.alias,
+                        modifier = Modifier.padding(top = 7.dp),
                         color = NanfengGoldLight,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                     )
-                    Text(
-                        "公历 ${case.birthInput.displayDateTime().removePrefix("公历 ")}",
-                        modifier = Modifier.padding(top = 2.dp),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
+                }
+            }
+
+            CaseDetailSection.BASIC_CHART,
+            CaseDetailSection.FORTUNE,
+            -> {
+                val solar = result?.calendarConversion?.solarDateTime
+                val lunar = result?.calendarConversion?.lunarDateTime
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ZodiacIdentityBadge(
+                        westernZodiac = westernZodiac,
+                        iconRes = iconRes,
+                        size = 46.dp,
+                        iconSize = 17.dp,
                     )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            case.name.value ?: case.alias,
+                            color = NanfengGoldLight,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            solar?.let {
+                                "公历 %04d年%02d月%02d日 %02d:%02d:%02d".format(
+                                    it.year,
+                                    it.month,
+                                    it.day,
+                                    it.hour,
+                                    it.minute,
+                                    it.second,
+                                )
+                            } ?: case.birthInput.displayDateTime(),
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .testTag("shared_identity_solar_time"),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Text(
+                            lunar?.let {
+                                "农历 %04d年%s%02d月%02d日 %02d:%02d:%02d".format(
+                                    it.year,
+                                    if (it.isLeapMonth) "闰" else "",
+                                    it.month,
+                                    it.day,
+                                    it.hour,
+                                    it.minute,
+                                    it.second,
+                                )
+                            } ?: "农历 暂无换算结果",
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .testTag("shared_identity_lunar_time"),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
                     Text(
-                        result?.fourPillars?.display() ?: "暂无已采用排盘",
-                        modifier = Modifier.padding(top = 2.dp),
+                        case.sexForFortuneDirection.chartTypeName(),
+                        modifier = Modifier
+                            .width(48.dp)
+                            .padding(end = 18.dp)
+                            .testTag("shared_identity_chart_type"),
                         color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelLarge,
+                        textAlign = TextAlign.Center,
                     )
                 }
-                Text(
-                    case.sexForFortuneDirection.displayName(),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                )
+            }
+
+            CaseDetailSection.RECORDS -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .testTag("notes_identity_header"),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            case.name.value ?: case.alias,
+                            modifier = Modifier.weight(1f),
+                            color = NanfengGoldLight,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            case.sexForFortuneDirection.chartTypeName(),
+                            modifier = Modifier.testTag("notes_identity_chart_type"),
+                            color = NanfengGoldLight,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(
+                        result?.fourPillars?.display() ?: "暂无已采用排盘",
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .testTag("notes_identity_four_pillars"),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(top = 8.dp, bottom = 7.dp),
+                        color = Color.White.copy(alpha = 0.12f),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "大运",
+                            modifier = Modifier.width(34.dp),
+                            color = NanfengGold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        result?.decadeFortunes?.take(10)?.forEachIndexed { index, decade ->
+                            Text(
+                                decade.name,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("notes_decade_$index"),
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                lineHeight = 13.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -6391,10 +6488,13 @@ private fun ReferenceBasicInfo(
         "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}${lunar.month}月${lunar.day}日 " +
             "%02d:%02d:%02d".format(lunar.hour, lunar.minute, lunar.second)
     } ?: "暂无换算结果"
-    WenzhenIdentityFactRow(
-        name = case.name.value ?: case.alias,
-        sex = case.sexForFortuneDirection.displayName(),
+    WenzhenDualFactRow(
+        leftLabel = "姓名",
+        leftValue = case.name.value ?: case.alias,
+        rightLabel = "性别",
+        rightValue = case.sexForFortuneDirection.displayName(),
         alternate = nextAlternate(),
+        rightTag = "basic_info_sex_fact",
     )
     WenzhenFactRow("农历", lunarText, alternate = nextAlternate())
     WenzhenFactRow("阳历", solarText.removePrefix("公历 "), alternate = nextAlternate())
@@ -6409,8 +6509,21 @@ private fun ReferenceBasicInfo(
         "出生地区",
         case.birthInput.locationName ?: "未提供",
         alternate = nextAlternate(),
+        tag = "basic_info_birthplace_row",
     )
     result?.basicChartDetails?.let { basic ->
+        WenzhenFactRow(
+            "前一节气",
+            "${basic.previousSolarTerm.name} ${basic.previousSolarTerm.at.display()}",
+            alternate = nextAlternate(),
+            tag = "basic_info_previous_term_row",
+        )
+        WenzhenFactRow(
+            "后一节气",
+            "${basic.nextSolarTerm.name} ${basic.nextSolarTerm.at.display()}",
+            alternate = nextAlternate(),
+            tag = "basic_info_next_term_row",
+        )
         WenzhenDualFactRow(
             leftLabel = "生肖",
             leftValue = basic.zodiac,
@@ -6421,16 +6534,7 @@ private fun ReferenceBasicInfo(
                 "${basic.westernZodiac}座"
             },
             alternate = nextAlternate(),
-        )
-        WenzhenFactRow(
-            "前一节气",
-            "${basic.previousSolarTerm.name} ${basic.previousSolarTerm.at.display()}",
-            alternate = nextAlternate(),
-        )
-        WenzhenFactRow(
-            "后一节气",
-            "${basic.nextSolarTerm.name} ${basic.nextSolarTerm.at.display()}",
-            alternate = nextAlternate(),
+            rightTag = "basic_info_zodiac_fact",
         )
     }
     if (result != null) {
@@ -6440,6 +6544,7 @@ private fun ReferenceBasicInfo(
             "胎息",
             result.fetalBreath,
             nextAlternate(),
+            rightTag = "basic_info_fetal_breath_fact",
         )
         WenzhenDualFactRow(
             "命宫",
@@ -6616,9 +6721,12 @@ private fun WenzhenFactRow(
     label: String,
     value: String,
     alternate: Boolean,
+    tag: String? = null,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (tag == null) Modifier else Modifier.testTag(tag)),
         color = if (alternate) NanfengControlSurface else Color.White,
     ) {
         Row(
@@ -6649,6 +6757,8 @@ private fun WenzhenDualFactRow(
     rightLabel: String,
     rightValue: String,
     alternate: Boolean,
+    leftTag: String? = null,
+    rightTag: String? = null,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -6660,48 +6770,19 @@ private fun WenzhenDualFactRow(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            WenzhenInlineFact(leftLabel, leftValue, Modifier.weight(1f))
+            WenzhenInlineFact(
+                leftLabel,
+                leftValue,
+                Modifier.weight(1f),
+                tag = leftTag,
+            )
             Spacer(Modifier.width(12.dp))
-            WenzhenInlineFact(rightLabel, rightValue, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun WenzhenIdentityFactRow(
-    name: String,
-    sex: String,
-    alternate: Boolean,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = if (alternate) NanfengControlSurface else Color.White,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "姓名：",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            WenzhenInlineFact(
+                rightLabel,
+                rightValue,
+                Modifier.weight(1f),
+                tag = rightTag,
             )
-            Text(
-                name,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "性别：",
-                modifier = Modifier.padding(start = 16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(sex, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -6711,8 +6792,11 @@ private fun WenzhenInlineFact(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
+    tag: String? = null,
 ) {
-    Row(modifier = modifier) {
+    Row(
+        modifier = modifier.then(if (tag == null) Modifier else Modifier.testTag(tag)),
+    ) {
         Text(
             "$label：",
             style = MaterialTheme.typography.bodyMedium,
@@ -7891,6 +7975,7 @@ private fun FortuneDetailsView(
             title = "神煞",
             groups = professionalFortunePosition.shenShaGroups,
             tag = "fortune_shensha",
+            stackLines = true,
         )
     }
 }
@@ -8441,6 +8526,7 @@ private fun ProfessionalTextSections(
     title: String,
     groups: List<ProfessionalTextGroup>,
     tag: String,
+    stackLines: Boolean = false,
 ) {
     if (groups.isEmpty()) return
     Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(tag)) {
@@ -8463,7 +8549,8 @@ private fun ProfessionalTextSections(
                     color = NanfengGold,
                 )
                 Text(
-                    group.lines.ifEmpty { listOf("无") }.joinToString("；"),
+                    group.lines.ifEmpty { listOf("无") }
+                        .joinToString(if (stackLines) "\n" else "；"),
                     modifier = Modifier.weight(1f),
                     fontSize = 10.sp,
                     lineHeight = 15.sp,
@@ -8587,7 +8674,7 @@ private fun BasicChartDetailsView(
     val pillars = details.pillars.associateBy { it.position }
     val ordered = PillarPosition.entries.map { requireNotNull(pillars[it]) }
     val natalShenSha = BasicShenShaRules.resolve(details.pillars).map { shenSha ->
-        shenSha.names.joinToString("、")
+        shenSha.names.take(BASIC_CHART_SHEN_SHA_LIMIT)
     }
 
     Column(
@@ -8642,9 +8729,13 @@ private fun BasicChartDetailsView(
         BasicChartTableRow(
             label = "神煞",
             values = List(PillarPosition.entries.size) { index ->
-                natalShenSha.getOrNull(index)?.ifBlank { "—" } ?: "—"
+                natalShenSha.getOrNull(index)
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.joinToString("\n")
+                    ?: "—"
             },
             tag = "basic_chart_shensha",
+            valueTagPrefix = "basic_chart_shensha_value",
             shaded = true,
         )
     }
@@ -8702,6 +8793,7 @@ private fun BasicChartTableRow(
     label: String,
     values: List<String>,
     tag: String? = null,
+    valueTagPrefix: String? = null,
     valueColors: List<Color> = emptyList(),
     emphasis: Boolean = false,
     shaded: Boolean = false,
@@ -8723,7 +8815,15 @@ private fun BasicChartTableRow(
         values.forEachIndexed { index, value ->
             Text(
                 value,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        if (valueTagPrefix == null) {
+                            Modifier
+                        } else {
+                            Modifier.testTag("${valueTagPrefix}_$index")
+                        },
+                    ),
                 textAlign = TextAlign.Center,
                 style = if (emphasis) {
                     MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold)
@@ -8740,6 +8840,8 @@ private fun BasicChartTableRow(
         }
     }
 }
+
+private const val BASIC_CHART_SHEN_SHA_LIMIT = 5
 
 @Composable
 private fun SectionHeading(title: String, description: String) {
@@ -8802,6 +8904,11 @@ private fun ErrorBox(
 private fun SexForFortuneDirection.displayName(): String = when (this) {
     SexForFortuneDirection.MAN -> "男"
     SexForFortuneDirection.WOMAN -> "女"
+}
+
+private fun SexForFortuneDirection.chartTypeName(): String = when (this) {
+    SexForFortuneDirection.MAN -> "乾造"
+    SexForFortuneDirection.WOMAN -> "坤造"
 }
 
 private fun TimePrecision.displayName(): String = when (this) {

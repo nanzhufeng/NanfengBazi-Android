@@ -118,7 +118,8 @@ class TymeProfessionalFortuneResolverTest {
         assertTrue(position.interactionGroups.flatMap { it.lines }.none { "流年" in it || "流月" in it })
         assertTrue(position.shenShaGroups.isNotEmpty())
         assertTrue(position.shenShaGroups.flatMap { it.lines }.all { "：—" !in it })
-        assertEquals("professional-detail-relations-shensha-v2", position.detailRuleVersion)
+        assertTrue(position.shenShaGroups.flatMap { it.lines }.all { "、" !in it })
+        assertEquals("professional-detail-relations-shensha-v3", position.detailRuleVersion)
     }
 
     @Test
