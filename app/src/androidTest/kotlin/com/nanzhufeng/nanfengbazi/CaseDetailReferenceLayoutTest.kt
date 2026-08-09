@@ -343,6 +343,20 @@ class CaseDetailReferenceLayoutTest {
         (0 until 10).forEach { index ->
             composeRule.onNodeWithTag("notes_decade_$index").assertIsDisplayed()
         }
+        val notesHeaderBounds = composeRule.onNodeWithTag("notes_identity_header")
+            .fetchSemanticsNode().boundsInRoot
+        val notesSwitcherBefore = composeRule.onNodeWithTag("notes_mode_switcher")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(notesSwitcherBefore.width < notesHeaderBounds.width * 0.6f)
+        assertEquals(notesHeaderBounds.center.x, notesSwitcherBefore.center.x, 2f)
+        composeRule.onNodeWithTag("notes_mode_master").performClick()
+        composeRule.waitForIdle()
+        val notesSwitcherAfter = composeRule.onNodeWithTag("notes_mode_switcher")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(notesSwitcherBefore.left, notesSwitcherAfter.left, 1f)
+        assertEquals(notesSwitcherBefore.right, notesSwitcherAfter.right, 1f)
+        composeRule.onNodeWithTag("notes_mode_owner").performClick()
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()
         composeRule.onNodeWithText("工作方向发生明显调整。").performScrollTo().assertIsDisplayed()
 

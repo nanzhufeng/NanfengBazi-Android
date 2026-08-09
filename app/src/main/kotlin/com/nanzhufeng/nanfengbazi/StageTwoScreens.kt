@@ -6832,25 +6832,40 @@ private fun ReferenceCaseNotes(
     onAddEvent: () -> Unit,
     onEditEvent: (String) -> Unit,
 ) {
-    Surface(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxWidth(),
-        color = Color.White,
-        shape = RoundedCornerShape(18.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, NanfengGold.copy(alpha = 0.75f)),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(modifier = Modifier.padding(3.dp)) {
-            NotesModeTab(
-                text = "命主反馈",
-                selected = mode == CaseNotesMode.OWNER_FEEDBACK,
-                onClick = { onModeChange(CaseNotesMode.OWNER_FEEDBACK) },
-                modifier = Modifier.weight(1f),
-            )
-            NotesModeTab(
-                text = "师傅点评",
-                selected = mode == CaseNotesMode.MASTER_COMMENTARY,
-                onClick = { onModeChange(CaseNotesMode.MASTER_COMMENTARY) },
-                modifier = Modifier.weight(1f),
-            )
+        val switcherWidth = minOf(maxWidth * 0.54f, 220.dp)
+        Surface(
+            modifier = Modifier
+                .width(switcherWidth)
+                .testTag("notes_mode_switcher"),
+            color = Color.White,
+            shape = RoundedCornerShape(13.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                NanfengGold.copy(alpha = 0.55f),
+            ),
+        ) {
+            Row(modifier = Modifier.padding(2.dp)) {
+                NotesModeTab(
+                    text = "命主反馈",
+                    selected = mode == CaseNotesMode.OWNER_FEEDBACK,
+                    onClick = { onModeChange(CaseNotesMode.OWNER_FEEDBACK) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("notes_mode_owner"),
+                )
+                NotesModeTab(
+                    text = "师傅点评",
+                    selected = mode == CaseNotesMode.MASTER_COMMENTARY,
+                    onClick = { onModeChange(CaseNotesMode.MASTER_COMMENTARY) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("notes_mode_master"),
+                )
+            }
         }
     }
     if (mode == CaseNotesMode.OWNER_FEEDBACK) {
@@ -7025,16 +7040,17 @@ private fun NotesModeTab(
 ) {
     Surface(
         modifier = modifier
-            .heightIn(min = 42.dp)
+            .height(34.dp)
             .clickable(onClick = onClick),
         color = if (selected) NanfengGold else Color.Transparent,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(11.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text,
                 color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                style = MaterialTheme.typography.labelLarge,
             )
         }
     }
