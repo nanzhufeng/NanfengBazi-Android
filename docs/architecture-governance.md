@@ -149,9 +149,9 @@
 | 当前流年 | `ProfessionalFortuneResolver.locate()` | 观察日期与时分由用户配置，默认当地中午；按配置中的精确立春切换，不按公历元旦切换 |
 | 当前大运 | `FortunePositionResolver.locate()` | 优先使用每步大运的 `[startAt, endAtExclusive)` 精确半开区间；旧快照无精确边界时才按年份降级 |
 | 起运前小运 | `ProfessionalFortuneResolver.locate()` | 从已采用时柱下一位按大运既有顺逆逐年生成，只覆盖出生至精确交运前的半开区间；返回年份、周岁、干支、十神与藏干。UI 仅合并为大运行最左一列，点击后复用流年行，不推算也不单独占行 |
-| 流月/流日/流时 | `ProfessionalFortuneResolver.locate()` | 流月只在十二节切换；流日明确服从快照中的子时规则；观察时刻按民用时直接计算，不冒充已完成观察地点真太阳时校正 |
+| 流月/流日/流时 | `ProfessionalFortuneResolver.locate()/select()` | `locate()` 按自由观察时刻定位全部层级；`select()` 消费带层级的选择命令并校验父层不变。流月只在十二节切换；流日按当前节令月与父区间交集生成；流时服从快照子时规则并保持流日父级；观察时刻按民用时直接计算 |
 | 子时口径 | `LunarHour.resolveEightChar()` | 正向计算按调用显式选择实例 provider，不读取或改写全局状态；仅四柱反查按 D-077 在适配器锁内临时切换并恢复 `LunarHour.provider` |
-| 页面消费 | `StageTwoViewModel` → 专业细盘 | 观察日期、时分进入 `SavedStateHandle`；九列四柱矩阵与五层时间轴共同消费 `ProfessionalFortuneResolver` 的十神、逐条藏干和生日整年周岁。九列使用完整十神；大运、流年、流月、流时维持同屏紧凑候选，只有整月流日横滑。时间轴地支只显示全部藏干对应的十神简称并同行排列；流时始终回填同一民用日期。UI 只排版，不计算年龄、藏干或月界 |
+| 页面消费 | `StageTwoViewModel` → 专业细盘 | 五层点击由 UI 传 `ProfessionalFortuneSelection(layer, observedAt)`，ViewModel 调用领域 `select()` 并在成功后原子替换观察时间和结果；校验失败保留原结果。自由日期与今天继续走 `locate()`。九列与时间轴只消费领域输出，UI 不计算年龄、藏干、月界或父层归属 |
 | 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v4` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，按稳定优先级每柱最多展示 5 项，并以实际干支为行首逐时间柱输出；UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
 | 问真用户列表正式提交 | `ScreenshotImportCommitter` → `FourPillarsLookup` → `BaziEngine.calculate()` → `CaseRepository` | 只按同一公历日期保留两种子时口径下可复算的民用候选；全部标记 `DOUBLE_HOUR_ONLY`，无解显式拒绝，不按时支硬填整点、不推算真太阳时 |

@@ -105,6 +105,7 @@ import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateFailure
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateSet
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.RenderedCaseImage
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
@@ -4326,6 +4327,17 @@ class StageTwoViewModel(
     }
 
     fun selectFortuneObservation(value: CivilDateTime) {
+        updateFortuneObservation(value)
+        resolveFortunePosition()
+    }
+
+    fun selectProfessionalFortuneObservation(
+        selection: ProfessionalFortuneSelection,
+    ) {
+        resolveFortunePosition(selection)
+    }
+
+    private fun updateFortuneObservation(value: CivilDateTime) {
         mutableState.update {
             it.copy(
                 fortuneObservationDate = "%04d-%02d-%02d".format(
@@ -4337,7 +4349,6 @@ class StageTwoViewModel(
                 fortunePositionError = null,
             )
         }
-        resolveFortunePosition()
     }
 
     fun locateFortuneToday() {
@@ -4354,7 +4365,9 @@ class StageTwoViewModel(
         )
     }
 
-    private fun resolveFortunePosition() {
+    private fun resolveFortunePosition(
+        selection: ProfessionalFortuneSelection? = null,
+    ) {
         val current = mutableState.value
         val result = current.detail
             ?.calculationSnapshots
@@ -4407,19 +4420,24 @@ class StageTwoViewModel(
             }
             return
         }
-        val observedAt = com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
-            year = date.year,
-            month = date.monthValue,
-            day = date.dayOfMonth,
-            hour = time.hour,
-            minute = time.minute,
-            second = 0,
-        )
-        val position = runCatching {
-            val professional = professionalFortuneResolver?.locate(
-                result = result,
-                observedAt = observedAt,
+        val observedAt = selection?.observedAt
+            ?: com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
+                year = date.year,
+                month = date.monthValue,
+                day = date.dayOfMonth,
+                hour = time.hour,
+                minute = time.minute,
+                second = 0,
             )
+        val position = runCatching {
+            val professional = professionalFortuneResolver?.let { resolver ->
+                val currentProfessional = current.professionalFortunePosition
+                if (selection != null && currentProfessional != null) {
+                    resolver.select(result, currentProfessional, selection)
+                } else {
+                    resolver.locate(result, observedAt)
+                }
+            }
             val basic = professional?.position
                 ?: requireNotNull(fortunePositionResolver) {
                     "当前运行环境未配置岁运定位器。"
@@ -4430,6 +4448,15 @@ class StageTwoViewModel(
             position.fold(
                 onSuccess = { (resolved, professional) ->
                     it.copy(
+                        fortuneObservationDate = "%04d-%02d-%02d".format(
+                            observedAt.year,
+                            observedAt.month,
+                            observedAt.day,
+                        ),
+                        fortuneObservationTime = "%02d:%02d".format(
+                            observedAt.hour,
+                            observedAt.minute,
+                        ),
                         fortunePosition = resolved,
                         professionalFortunePosition = professional,
                         fortunePositionError = null,
@@ -4437,8 +4464,9 @@ class StageTwoViewModel(
                 },
                 onFailure = { error ->
                     it.copy(
-                        fortunePosition = null,
-                        professionalFortunePosition = null,
+                        fortunePosition = if (selection == null) null else it.fortunePosition,
+                        professionalFortunePosition =
+                            if (selection == null) null else it.professionalFortunePosition,
                         fortunePositionError =
                             error.message ?: "岁运定位失败，请核对观察日期与时间。",
                     )

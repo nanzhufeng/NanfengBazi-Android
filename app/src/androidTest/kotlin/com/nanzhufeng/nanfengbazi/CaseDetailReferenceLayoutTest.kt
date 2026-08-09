@@ -232,18 +232,35 @@ class CaseDetailReferenceLayoutTest {
         assertTenColumnTimelineGrid("hourly_fortune_details")
         val today = LocalDate.now()
         val dailyList = composeRule.onNodeWithTag("daily_fortune_details_list")
-        dailyList.performScrollToNode(hasTestTag("timeline_day_${today.withDayOfMonth(1)}"))
-        (1..10).forEach { day ->
-            composeRule.onNodeWithTag("timeline_day_${today.withDayOfMonth(day)}")
-                .assertIsDisplayed()
+        val selectedDayTag = listOf(
+            today.minusDays(1),
+            today.plusDays(1),
+            today.minusDays(2),
+            today.plusDays(2),
+        ).firstNotNullOfOrNull { candidate ->
+            val tag = "timeline_day_$candidate"
+            runCatching {
+                dailyList.performScrollToNode(hasTestTag(tag))
+                tag
+            }.getOrNull()
+        } ?: error("当前节令月内没有可点击的相邻流日候选")
+        val parentPillarsBeforeClick = listOf("decade", "flow_year", "flow_month").flatMap { key ->
+            listOf("${key}_stem_text", "${key}_branch_text").map { tag ->
+                composeRule.onNodeWithTag(tag)
+                    .fetchSemanticsNode().config[SemanticsProperties.Text]
+            }
         }
-        val targetDay = if (today.dayOfMonth == 14) 15 else 14
-        val selectedDayTag = "timeline_day_${today.withDayOfMonth(targetDay)}"
-        dailyList.performScrollToNode(hasTestTag(selectedDayTag))
         val dayLeftBeforeClick = composeRule.onNodeWithTag(selectedDayTag)
             .fetchSemanticsNode().boundsInRoot.left
         composeRule.onNodeWithTag(selectedDayTag).performClick()
         composeRule.waitForIdle()
+        val parentPillarsAfterClick = listOf("decade", "flow_year", "flow_month").flatMap { key ->
+            listOf("${key}_stem_text", "${key}_branch_text").map { tag ->
+                composeRule.onNodeWithTag(tag)
+                    .fetchSemanticsNode().config[SemanticsProperties.Text]
+            }
+        }
+        assertEquals(parentPillarsBeforeClick, parentPillarsAfterClick)
         val dayLeftAfterClick = composeRule.onNodeWithTag(selectedDayTag)
             .fetchSemanticsNode().boundsInRoot.left
         assertEquals(dayLeftBeforeClick, dayLeftAfterClick, 1f)

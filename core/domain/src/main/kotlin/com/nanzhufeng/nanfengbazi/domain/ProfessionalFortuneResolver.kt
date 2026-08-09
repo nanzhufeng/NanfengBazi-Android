@@ -67,9 +67,28 @@ data class ProfessionalTextGroup(
     val lines: List<String>,
 )
 
+enum class ProfessionalFortuneLayer {
+    DECADE,
+    ANNUAL,
+    MONTHLY,
+    DAILY,
+    HOURLY,
+}
+
+data class ProfessionalFortuneSelection(
+    val layer: ProfessionalFortuneLayer,
+    val observedAt: CivilDateTime,
+)
+
 fun interface ProfessionalFortuneResolver {
     fun locate(
         result: CalculationResult,
         observedAt: CivilDateTime,
     ): ProfessionalFortunePosition
+
+    fun select(
+        result: CalculationResult,
+        current: ProfessionalFortunePosition,
+        selection: ProfessionalFortuneSelection,
+    ): ProfessionalFortunePosition = locate(result, selection.observedAt)
 }

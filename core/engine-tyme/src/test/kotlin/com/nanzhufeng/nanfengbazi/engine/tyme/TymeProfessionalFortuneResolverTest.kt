@@ -1,6 +1,8 @@
 package com.nanzhufeng.nanfengbazi.engine.tyme
 
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
@@ -106,8 +108,8 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals("4–14岁", position.decadeTimeline[1].subtitle)
         assertTrue(position.annualTimeline.none { it.subtitle.startsWith("虚") })
         assertEquals(12, position.monthlyTimeline.size)
-        assertEquals(31, position.dailyTimeline.size)
-        assertEquals(12, position.hourlyTimeline.size)
+        assertTrue(position.dailyTimeline.size in 29..32)
+        assertTrue(position.hourlyTimeline.size in 1..12)
         assertTrue(position.annualTimeline.any { it.selected })
         assertTrue(position.monthlyTimeline.any { it.selected })
         assertTrue(position.dailyTimeline.single { it.selected }.subtitle == "已选")
@@ -268,32 +270,84 @@ class TymeProfessionalFortuneResolverTest {
         val end = resolver.locate(result, CivilDateTime(2200, 12, 31, 21, 0, 0))
 
         assertTrue(end.monthlyTimeline.all { it.observedAt.year <= 2200 })
-        assertEquals(31, end.dailyTimeline.size)
+        assertTrue(end.dailyTimeline.size in 1..32)
         assertTrue(end.dailyTimeline.all { it.observedAt.year <= 2200 })
         assertTrue(end.hourlyTimeline.all { it.observedAt.year <= 2200 })
         assertTrue(end.dailyTimeline.any { it.selected })
     }
 
     @Test
-    fun `流日整月横向选择不再以新选日居中且流时保持同一民用日期`() = runTest {
+    fun `流日覆盖当前节令月且流时选择保持流日父级`() = runTest {
         val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
         val initial = resolver.locate(result, CivilDateTime(2026, 7, 30, 12, 0, 0))
 
-        assertEquals(1, initial.dailyTimeline.first().observedAt.day)
-        assertEquals(31, initial.dailyTimeline.last().observedAt.day)
+        assertEquals("7/7", initial.dailyTimeline.first().label)
+        assertEquals("8/7", initial.dailyTimeline.last().label)
 
         val selectedDay = initial.dailyTimeline.first { it.observedAt.day == 14 }
-        val afterDaySelect = resolver.locate(result, selectedDay.observedAt)
-        assertEquals(1, afterDaySelect.dailyTimeline.first().observedAt.day)
-        assertEquals(31, afterDaySelect.dailyTimeline.last().observedAt.day)
+        val afterDaySelect = resolver.select(
+            result,
+            initial,
+            ProfessionalFortuneSelection(ProfessionalFortuneLayer.DAILY, selectedDay.observedAt),
+        )
+        assertEquals("7/7", afterDaySelect.dailyTimeline.first().label)
+        assertEquals("8/7", afterDaySelect.dailyTimeline.last().label)
         assertEquals(14, afterDaySelect.dailyTimeline.single { it.selected }.observedAt.day)
+        assertEquals(initial.position.decadeFortune?.startAt, afterDaySelect.position.decadeFortune?.startAt)
+        assertEquals(initial.position.annualFortune.calendarYear, afterDaySelect.position.annualFortune.calendarYear)
+        assertEquals(initial.flowPillars.month, afterDaySelect.flowPillars.month)
 
         afterDaySelect.hourlyTimeline.forEach { hour ->
-            assertEquals(14, hour.observedAt.day)
-            val afterHourSelect = resolver.locate(result, hour.observedAt)
-            assertEquals(14, afterHourSelect.position.observedAt.day)
+            val afterHourSelect = resolver.select(
+                result,
+                afterDaySelect,
+                ProfessionalFortuneSelection(ProfessionalFortuneLayer.HOURLY, hour.observedAt),
+            )
+            assertEquals(afterDaySelect.flowPillars.day, afterHourSelect.flowPillars.day)
             assertEquals(afterDaySelect.flowPillars.month, afterHourSelect.flowPillars.month)
+            assertEquals(
+                afterDaySelect.position.annualFortune.calendarYear,
+                afterHourSelect.position.annualFortune.calendarYear,
+            )
+            assertEquals(
+                afterDaySelect.position.decadeFortune?.startAt,
+                afterHourSelect.position.decadeFortune?.startAt,
+            )
             assertEquals(hour.key, afterHourSelect.hourlyTimeline.single { it.selected }.key)
+        }
+    }
+
+    @Test
+    fun `五层选择命令逐级保持父层身份`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(2026, 2, 3, 12, 0, 0))
+
+        current.annualTimeline.forEach { item ->
+            val selected = resolver.select(
+                result,
+                current,
+                ProfessionalFortuneSelection(ProfessionalFortuneLayer.ANNUAL, item.observedAt),
+            )
+            assertEquals(current.position.decadeFortune?.startAt, selected.position.decadeFortune?.startAt)
+        }
+        current.monthlyTimeline.forEach { item ->
+            val selected = resolver.select(
+                result,
+                current,
+                ProfessionalFortuneSelection(ProfessionalFortuneLayer.MONTHLY, item.observedAt),
+            )
+            assertEquals(current.position.decadeFortune?.startAt, selected.position.decadeFortune?.startAt)
+            assertEquals(current.position.annualFortune.calendarYear, selected.position.annualFortune.calendarYear)
+        }
+        current.dailyTimeline.forEach { item ->
+            val selected = resolver.select(
+                result,
+                current,
+                ProfessionalFortuneSelection(ProfessionalFortuneLayer.DAILY, item.observedAt),
+            )
+            assertEquals(current.position.decadeFortune?.startAt, selected.position.decadeFortune?.startAt)
+            assertEquals(current.position.annualFortune.calendarYear, selected.position.annualFortune.calendarYear)
+            assertEquals(current.flowPillars.month, selected.flowPillars.month)
         }
     }
 

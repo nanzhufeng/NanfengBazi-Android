@@ -130,6 +130,8 @@ import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalPillarColumn
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTextGroup
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalTimelineItem
@@ -428,7 +430,7 @@ fun NanfengBaziApp(
                                 onFortuneObservationTimeChange =
                                     viewModel::updateFortuneObservationTime,
                                 onFortuneObservationSelect =
-                                    viewModel::selectFortuneObservation,
+                                    viewModel::selectProfessionalFortuneObservation,
                                 onFortuneToday = viewModel::locateFortuneToday,
                                 modifier = modifier,
                             )
@@ -5915,7 +5917,7 @@ private fun CaseDetailScreen(
     onSelectSection: (CaseDetailSection) -> Unit,
     onFortuneObservationDateChange: (String) -> Unit,
     onFortuneObservationTimeChange: (String) -> Unit,
-    onFortuneObservationSelect: (com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime) -> Unit,
+    onFortuneObservationSelect: (ProfessionalFortuneSelection) -> Unit,
     onFortuneToday: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -6374,7 +6376,7 @@ private fun ReferenceCaseDetailContent(
     fortunePositionError: String?,
     onFortuneObservationDateChange: (String) -> Unit,
     onFortuneObservationTimeChange: (String) -> Unit,
-    onFortuneObservationSelect: (com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime) -> Unit,
+    onFortuneObservationSelect: (ProfessionalFortuneSelection) -> Unit,
     onFortuneToday: () -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
@@ -7914,7 +7916,7 @@ private fun FortuneDetailsView(
     professionalFortunePosition: ProfessionalFortunePosition?,
     fortunePositionError: String?,
     onOpenObservationPicker: () -> Unit,
-    onObservationSelect: (CivilDateTime) -> Unit = {},
+    onObservationSelect: (ProfessionalFortuneSelection) -> Unit = {},
     onToday: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -7943,30 +7945,35 @@ private fun FortuneDetailsView(
             title = "大运",
             items = professionalFortunePosition.decadeTimeline,
             tag = "decade_fortune_details",
+            layer = ProfessionalFortuneLayer.DECADE,
             onSelect = onObservationSelect,
         )
         ProfessionalTimelineRow(
             title = "流年",
             items = professionalFortunePosition.annualTimeline,
             tag = "annual_fortune_details",
+            layer = ProfessionalFortuneLayer.ANNUAL,
             onSelect = onObservationSelect,
         )
         ProfessionalTimelineRow(
             title = "流月",
             items = professionalFortunePosition.monthlyTimeline,
             tag = "monthly_fortune_details",
+            layer = ProfessionalFortuneLayer.MONTHLY,
             onSelect = onObservationSelect,
         )
         ProfessionalTimelineRow(
             title = "流日",
             items = professionalFortunePosition.dailyTimeline,
             tag = "daily_fortune_details",
+            layer = ProfessionalFortuneLayer.DAILY,
             onSelect = onObservationSelect,
         )
         ProfessionalTimelineRow(
             title = "流时",
             items = professionalFortunePosition.hourlyTimeline,
             tag = "hourly_fortune_details",
+            layer = ProfessionalFortuneLayer.HOURLY,
             onSelect = onObservationSelect,
         )
         ProfessionalTextSections(
@@ -8022,10 +8029,10 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
         shape = RoundedCornerShape(16.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f),
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f),
         ),
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        shadowElevation = 2.dp,
     ) {
         Column(modifier = Modifier.background(Color.White)) {
             val groupDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
@@ -8219,14 +8226,15 @@ private fun ProfessionalTenGodLabel(
     )
 }
 
-private val ProfessionalPillarGridSurface = Color(0xFFF9F9F8)
+private val ProfessionalPillarGridSurface = Color(0xFFFBFBFA)
 
 @Composable
 private fun ProfessionalTimelineRow(
     title: String,
     items: List<ProfessionalTimelineItem>,
     tag: String,
-    onSelect: (CivilDateTime) -> Unit,
+    layer: ProfessionalFortuneLayer,
+    onSelect: (ProfessionalFortuneSelection) -> Unit,
 ) {
     if (items.isEmpty()) return
     Card(
@@ -8282,7 +8290,9 @@ private fun ProfessionalTimelineRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 compact = true,
                                 showTrailingDivider = index < items.lastIndex,
-                                onClick = { onSelect(item.observedAt) },
+                                onClick = {
+                                    onSelect(ProfessionalFortuneSelection(layer, item.observedAt))
+                                },
                             )
                         }
                     }

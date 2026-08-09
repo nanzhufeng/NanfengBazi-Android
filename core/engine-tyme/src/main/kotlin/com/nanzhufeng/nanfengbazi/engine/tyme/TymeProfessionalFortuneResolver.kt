@@ -3,6 +3,8 @@ package com.nanzhufeng.nanfengbazi.engine.tyme
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalHiddenStem
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalPillarColumn
@@ -29,6 +31,8 @@ import com.tyme.sixtycycle.SixtyCycle
 import com.tyme.sixtycycle.SixtyCycleYear
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.Duration
 
 class TymeProfessionalFortuneResolver(
     private val fortunePositionResolver: TymeFortunePositionResolver =
@@ -83,8 +87,14 @@ class TymeProfessionalFortuneResolver(
             ),
             annualTimeline = buildAnnualTimeline(coveredResult, position, dayMaster),
             monthlyTimeline = buildMonthlyTimeline(coveredResult, position, observedAt, dayMaster),
-            dailyTimeline = buildDailyTimeline(coveredResult, observedAt, dayMaster),
-            hourlyTimeline = buildHourlyTimeline(coveredResult, observedAt, dayMaster),
+            dailyTimeline = buildDailyTimeline(coveredResult, position, observedAt, dayMaster),
+            hourlyTimeline = buildHourlyTimeline(
+                coveredResult,
+                position,
+                observedAt,
+                dayMaster,
+                fortunePositionResolver,
+            ),
             interactionGroups = buildInteractionGroups(columns),
             shenShaGroups = buildShenShaGroups(columns),
             completedAge = coveredResult.completedAgeAt(observedAt),
@@ -97,6 +107,38 @@ class TymeProfessionalFortuneResolver(
             detailRuleVersion = DETAIL_RULE_VERSION,
             minorFortuneRuleVersion = MINOR_FORTUNE_RULE_VERSION,
         )
+    }
+
+    override fun select(
+        result: CalculationResult,
+        current: ProfessionalFortunePosition,
+        selection: ProfessionalFortuneSelection,
+    ): ProfessionalFortunePosition {
+        val selected = locate(result, selection.observedAt)
+        require(selected.keepsParentsOf(current, selection.layer)) {
+            "${selection.layer.name.lowercase()} 候选越过当前父级岁运区间。"
+        }
+        return selected
+    }
+}
+
+private fun ProfessionalFortunePosition.keepsParentsOf(
+    current: ProfessionalFortunePosition,
+    layer: ProfessionalFortuneLayer,
+): Boolean {
+    val sameDecade = position.status == current.position.status &&
+        position.decadeFortune?.name == current.position.decadeFortune?.name &&
+        position.decadeFortune?.startAt == current.position.decadeFortune?.startAt
+    val sameAnnual = position.annualFortune.calendarYear ==
+        current.position.annualFortune.calendarYear
+    val sameMonth = flowPillars.month == current.flowPillars.month
+    val sameDay = flowPillars.day == current.flowPillars.day
+    return when (layer) {
+        ProfessionalFortuneLayer.DECADE -> true
+        ProfessionalFortuneLayer.ANNUAL -> sameDecade
+        ProfessionalFortuneLayer.MONTHLY -> sameDecade && sameAnnual
+        ProfessionalFortuneLayer.DAILY -> sameDecade && sameAnnual && sameMonth
+        ProfessionalFortuneLayer.HOURLY -> sameDecade && sameAnnual && sameMonth && sameDay
     }
 }
 
@@ -437,26 +479,99 @@ private fun LocalDateTime.toDomain(): CivilDateTime = CivilDateTime(
     second = second,
 )
 
+private data class ProfessionalTimeInterval(
+    val start: LocalDateTime,
+    val endExclusive: LocalDateTime,
+) {
+    init {
+        require(start.isBefore(endExclusive))
+    }
+
+    fun intersect(other: ProfessionalTimeInterval): ProfessionalTimeInterval? {
+        val intersectionStart = maxOf(start, other.start)
+        val intersectionEnd = minOf(endExclusive, other.endExclusive)
+        return if (intersectionStart.isBefore(intersectionEnd)) {
+            ProfessionalTimeInterval(intersectionStart, intersectionEnd)
+        } else {
+            null
+        }
+    }
+
+    fun contains(value: LocalDateTime): Boolean =
+        !value.isBefore(start) && value.isBefore(endExclusive)
+
+    fun firstStableMinute(): LocalDateTime = start.plusMinutes(1).withSecond(0)
+
+    fun anchorOn(date: LocalDate, preferredTime: LocalTime): LocalDateTime? {
+        val dayInterval = ProfessionalTimeInterval(date.atStartOfDay(), date.plusDays(1).atStartOfDay())
+        val overlap = intersect(dayInterval) ?: return null
+        val preferred = date.atTime(preferredTime).withSecond(0)
+        if (preferred.isAfter(overlap.start) && preferred.isBefore(overlap.endExclusive)) {
+            return preferred
+        }
+        val afterStart = overlap.firstStableMinute()
+        if (afterStart.isBefore(overlap.endExclusive)) return afterStart
+        val beforeEnd = overlap.endExclusive.minusMinutes(1).withSecond(0)
+        return beforeEnd.takeIf { !it.isBefore(overlap.start) && it.isBefore(overlap.endExclusive) }
+    }
+}
+
+private fun flowMonthBoundaries(calendarYear: Int): List<LocalDateTime> {
+    val firstJie = SolarTerm.fromName(calendarYear, "立春")
+    return (0..12).map { index ->
+        firstJie.next(index * 2).julianDay.solarTime.toDomain().toLocalDateTime()
+    }
+}
+
+private fun CalculationResult.professionalParentInterval(
+    position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
+): ProfessionalTimeInterval? {
+    position.decadeFortune?.let { decade ->
+        val start = decade.startAt ?: return@let
+        val end = decade.endAtExclusive ?: return@let
+        return ProfessionalTimeInterval(start.toLocalDateTime(), end.toLocalDateTime())
+    }
+    if (position.status != FortunePositionStatus.BEFORE_FIRST_DECADE) return null
+    val birth = calendarConversion?.solarDateTime
+        ?: (normalizedInput.calendarInput as?
+            com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)?.dateTime
+        ?: return null
+    val firstDecadeStart = decadeFortunes.firstOrNull()?.startAt ?: fortuneStart.endAt
+    return ProfessionalTimeInterval(birth.toLocalDateTime(), firstDecadeStart.toLocalDateTime())
+}
+
+private fun com.nanzhufeng.nanfengbazi.domain.FortunePosition.hasSameParentAs(
+    other: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
+): Boolean = status == other.status &&
+    annualFortune.calendarYear == other.annualFortune.calendarYear &&
+    decadeFortune?.name == other.decadeFortune?.name &&
+    decadeFortune?.startAt == other.decadeFortune?.startAt
+
 private fun buildMonthlyTimeline(
     result: CalculationResult,
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     observedAt: CivilDateTime,
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> {
-    val firstJie = SolarTerm.fromName(position.annualFortune.calendarYear, "立春")
+    val boundaries = flowMonthBoundaries(position.annualFortune.calendarYear)
+    val annualInterval = ProfessionalTimeInterval(boundaries.first(), boundaries.last())
+    val parentInterval = result.professionalParentInterval(position)
+        ?.intersect(annualInterval) ?: annualInterval
     return (0 until 12).mapNotNull { index ->
-        val boundaryAt = firstJie.next(index * 2).julianDay.solarTime.toDomain()
-        val at = boundaryAt.stableMinuteAfterBoundary()
+        val interval = ProfessionalTimeInterval(boundaries[index], boundaries[index + 1])
+            .intersect(parentInterval) ?: return@mapNotNull null
+        val at = interval.firstStableMinute().toDomain()
         if (!at.isWithinSupportedCalendarRange()) return@mapNotNull null
         val pillar = at.toTyme().lunarHour.resolveEightChar(result.profile.ratHourRule).month.name
+        val boundaryAt = boundaries[index]
         buildTimelineItem(
-            key = "month_${boundaryAt.year}_${boundaryAt.month}_${boundaryAt.day}",
-            label = "${boundaryAt.month}/${boundaryAt.day}",
-            subtitle = firstJie.next(index * 2).name,
+            key = "month_${boundaryAt.year}_${boundaryAt.monthValue}_${boundaryAt.dayOfMonth}",
+            label = "${boundaryAt.monthValue}/${boundaryAt.dayOfMonth}",
+            subtitle = SolarTerm.fromName(position.annualFortune.calendarYear, "立春")
+                .next(index * 2).name,
             observedAt = at,
             pillar = pillar,
-            selected = pillar == observedAt.toTyme().lunarHour
-                .resolveEightChar(result.profile.ratHourRule).month.name,
+            selected = interval.contains(observedAt.toLocalDateTime()),
             dayMaster = dayMaster,
         )
     }
@@ -464,50 +579,74 @@ private fun buildMonthlyTimeline(
 
 private fun buildDailyTimeline(
     result: CalculationResult,
+    position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     observedAt: CivilDateTime,
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> {
-    val selected = LocalDate.of(observedAt.year, observedAt.month, observedAt.day)
-    val start = selected.withDayOfMonth(1)
-    return (0 until selected.lengthOfMonth()).map { offset ->
-        val date = start.plusDays(offset.toLong())
-        val at = CivilDateTime(
-            date.year,
-            date.monthValue,
-            date.dayOfMonth,
-            observedAt.hour,
-            observedAt.minute,
-            0,
-        )
+    val selectedAt = observedAt.toLocalDateTime()
+    val boundaries = flowMonthBoundaries(position.annualFortune.calendarYear)
+    val monthIndex = (0 until 12).firstOrNull { index ->
+        !selectedAt.isBefore(boundaries[index]) && selectedAt.isBefore(boundaries[index + 1])
+    } ?: return emptyList()
+    val flowMonthInterval = ProfessionalTimeInterval(
+        boundaries[monthIndex],
+        boundaries[monthIndex + 1],
+    )
+    val interval = result.professionalParentInterval(position)
+        ?.intersect(flowMonthInterval) ?: flowMonthInterval
+    val selectedDate = selectedAt.toLocalDate()
+    val finalDate = interval.endExclusive.minusNanos(1).toLocalDate()
+    return generateSequence(interval.start.toLocalDate()) { date ->
+        date.plusDays(1).takeIf { !it.isAfter(finalDate) }
+    }.mapNotNull { date ->
+        val at = interval.anchorOn(date, selectedAt.toLocalTime())?.toDomain()
+            ?: return@mapNotNull null
+        if (!at.isWithinSupportedCalendarRange()) return@mapNotNull null
         val pillar = at.toTyme().lunarHour.resolveEightChar(result.profile.ratHourRule).day.name
         buildTimelineItem(
             key = "day_${date}",
             label = "${date.monthValue}/${date.dayOfMonth}",
-            subtitle = if (date == selected) "已选" else date.dayOfWeek.chineseShortName(),
+            subtitle = if (date == selectedDate) "已选" else date.dayOfWeek.chineseShortName(),
             observedAt = at,
             pillar = pillar,
-            selected = date == selected,
+            selected = date == selectedDate,
             dayMaster = dayMaster,
         )
-    }
+    }.toList()
 }
 
 private fun buildHourlyTimeline(
     result: CalculationResult,
+    position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     observedAt: CivilDateTime,
     dayMaster: HeavenStem,
+    fortunePositionResolver: TymeFortunePositionResolver,
 ): List<ProfessionalTimelineItem> {
     val selectedDate = LocalDate.of(observedAt.year, observedAt.month, observedAt.day)
+    val selectedAt = observedAt.toLocalDateTime()
+    val selectedEightChar = observedAt.toTyme().lunarHour
+        .resolveEightChar(result.profile.ratHourRule)
     val hours = listOf(23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21)
     return hours.mapNotNull { hour ->
-        val at = CivilDateTime(
-            selectedDate.year,
-            selectedDate.monthValue,
-            selectedDate.dayOfMonth,
-            hour,
-            0,
-            0,
-        )
+        val candidates = buildList {
+            addAll((-1L..1L).map { dayOffset ->
+                selectedDate.plusDays(dayOffset).atTime(hour, 0)
+            })
+            if (observedAt.hour.belongsToDoubleHourStartingAt(hour)) add(selectedAt)
+        }
+        val at = candidates.distinct().filter { candidate ->
+            val candidateAt = candidate.toDomain()
+            if (!candidateAt.isWithinSupportedCalendarRange()) return@filter false
+            val candidateEightChar = candidateAt.toTyme().lunarHour
+                .resolveEightChar(result.profile.ratHourRule)
+            val candidatePosition = fortunePositionResolver.locate(result, candidateAt)
+            candidateEightChar.year.name == selectedEightChar.year.name &&
+                candidateEightChar.month.name == selectedEightChar.month.name &&
+                candidateEightChar.day.name == selectedEightChar.day.name &&
+                candidatePosition.hasSameParentAs(position)
+        }.minByOrNull { candidate ->
+            kotlin.math.abs(Duration.between(selectedAt, candidate).seconds)
+        }?.toDomain() ?: return@mapNotNull null
         val pillar = at.toTyme().lunarHour.resolveEightChar(result.profile.ratHourRule).hour.name
         buildTimelineItem(
             key = "hour_${at.year}_${at.month}_${at.day}_$hour",
@@ -515,7 +654,7 @@ private fun buildHourlyTimeline(
             subtitle = pillar.takeLast(1) + "时",
             observedAt = at,
             pillar = pillar,
-            selected = observedAt.hour.belongsToDoubleHourStartingAt(hour),
+            selected = selectedEightChar.hour.name == pillar,
             dayMaster = dayMaster,
         )
     }
