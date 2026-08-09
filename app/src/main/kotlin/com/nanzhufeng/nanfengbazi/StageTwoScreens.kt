@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
@@ -59,7 +61,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -94,6 +95,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -6752,19 +6754,6 @@ private fun ReferenceBasicChart(
         return
     }
     val result = adopted.result
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 10.dp),
-        color = NanfengControlSurface,
-    ) {
-        Text(
-            "胎元 ${result.fetalOrigin}　胎息 ${result.fetalBreath}　" +
-                "命宫 ${result.ownSign}　身宫 ${result.bodySign}",
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
     result.basicChartDetails?.let { basic ->
         val solar = result.calendarConversion?.solarDateTime
         BasicChartDetailsView(
@@ -7199,8 +7188,32 @@ private fun CaseNotesDecadeGroup(
                 modifier = Modifier.padding(start = 24.dp, top = 7.dp),
             )
         }
-        annualEntries.forEach { entry ->
-            Column(modifier = Modifier.padding(start = 18.dp, top = 12.dp)) {
+        annualEntries.forEachIndexed { index, entry ->
+            val connectsToNext = index < annualEntries.lastIndex
+            Column(
+                modifier = Modifier
+                    .padding(start = 18.dp, top = 12.dp)
+                    .then(
+                        if (connectsToNext) {
+                            Modifier
+                                .testTag("notes_annual_connector")
+                                .drawBehind {
+                                    val x = 5.dp.toPx()
+                                    drawLine(
+                                        color = NanfengGold.copy(alpha = 0.38f),
+                                        start = Offset(x, 12.dp.toPx()),
+                                        end = Offset(x, size.height + 24.dp.toPx()),
+                                        strokeWidth = 1.dp.toPx(),
+                                        pathEffect = PathEffect.dashPathEffect(
+                                            floatArrayOf(4.dp.toPx(), 4.dp.toPx()),
+                                        ),
+                                    )
+                                }
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
                 CaseNotesTimelineLabel(
                     text = "${entry.year}年  ${entry.stemBranch}",
                     parent = false,
@@ -7281,7 +7294,6 @@ private fun CaseNotesTimelineInput(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CaseNotesTimePicker(
     calculation: CalculationResult,
@@ -7290,47 +7302,44 @@ private fun CaseNotesTimePicker(
 ) {
     var level by rememberSaveable { mutableStateOf(CaseEventTimelineLevel.DECADE) }
     val currentYear = java.time.LocalDate.now().year
-    val decades = buildList {
-        addAll(calculation.decadeFortunes.filter { currentYear in it.startYear..it.endYear })
-        addAll(
-            calculation.decadeFortunes.filter { it.endYear < currentYear }
-                .sortedByDescending { it.startYear },
-        )
-        addAll(
-            calculation.decadeFortunes.filter { it.startYear > currentYear }
-                .sortedBy { it.startYear },
-        )
-    }.distinctBy { it.startYear }
-    val annuals = buildList {
-        addAll(calculation.annualFortunes.filter { it.calendarYear == currentYear })
-        addAll(
-            calculation.annualFortunes.filter { it.calendarYear < currentYear }
-                .sortedByDescending { it.calendarYear },
-        )
-        addAll(
-            calculation.annualFortunes.filter { it.calendarYear > currentYear }
-                .sortedBy { it.calendarYear },
-        )
-    }.distinctBy { it.calendarYear }
+    val decades = calculation.decadeFortunes
+        .distinctBy { it.startYear }
+        .sortedByDescending { it.startYear }
+    val annuals = calculation.annualFortunes
+        .distinctBy { it.calendarYear }
+        .sortedByDescending { it.calendarYear }
+    val currentDecadeYear = decades
+        .firstOrNull { currentYear in it.startYear..it.endYear }
+        ?.startYear
+    val currentAnnualYear = annuals.firstOrNull { it.calendarYear == currentYear }?.calendarYear
     var selectedYear by rememberSaveable(level) {
         mutableStateOf(
             if (level == CaseEventTimelineLevel.DECADE) {
-                decades.firstOrNull()?.startYear
+                currentDecadeYear ?: decades.firstOrNull()?.startYear
             } else {
-                annuals.firstOrNull()?.calendarYear
+                currentAnnualYear ?: annuals.firstOrNull()?.calendarYear
             },
         )
     }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.testTag("notes_time_picker"),
-        containerColor = Color.White,
-        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+    val selectedDecade = decades.firstOrNull { it.startYear == selectedYear }
+    val selectedAnnual = annuals.firstOrNull { it.calendarYear == selectedYear }
+    val wheelValues = if (level == CaseEventTimelineLevel.DECADE) {
+        decades.map { it.startYear }
+    } else {
+        annuals.map { it.calendarYear }
+    }
+    FixedPickerSheet(
+        onDismiss = onDismiss,
+        targetHeight = 540.dp,
+        surfaceColor = Color.White,
     ) {
         Column(
             modifier = Modifier
+                .fillMaxSize()
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 4.dp),
+                .testTag("notes_time_picker")
+                .navigationBarsPadding()
+                .padding(start = 22.dp, top = 20.dp, end = 22.dp, bottom = 44.dp),
         ) {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val width = minOf(maxWidth * 0.66f, 280.dp)
@@ -7359,82 +7368,72 @@ private fun CaseNotesTimePicker(
             }
             Text(
                 if (level == CaseEventTimelineLevel.DECADE) {
-                    "选择大运（当前阶段在上）"
+                    "选择大运（未来到过去）"
                 } else {
-                    "选择流年（最近时间在上）"
+                    "选择流年（未来到过去）"
                 },
-                modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
+                modifier = Modifier.padding(top = 18.dp, bottom = 10.dp),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 230.dp),
-            ) {
-                if (level == CaseEventTimelineLevel.DECADE) {
-                    items(decades, key = { it.startYear }) { decade ->
-                        CaseNotesPickerRow(
-                            text = "${decade.startYear}年  ${decade.name}大运",
-                            selected = selectedYear == decade.startYear,
-                            onClick = { selectedYear = decade.startYear },
-                        )
-                    }
-                } else {
-                    items(annuals, key = { it.calendarYear }) { annual ->
-                        CaseNotesPickerRow(
-                            text = "${annual.calendarYear}年  ${annual.name}",
-                            selected = selectedYear == annual.calendarYear,
-                            onClick = { selectedYear = annual.calendarYear },
-                        )
-                    }
+            if (selectedYear != null && wheelValues.isNotEmpty()) {
+                WheelSelectionPanel(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(264.dp)
+                        .testTag("notes_timeline_wheel_panel"),
+                ) {
+                    ValueWheel(
+                        label = if (level == CaseEventTimelineLevel.DECADE) "大运" else "流年",
+                        values = wheelValues,
+                        selectedValue = selectedYear!!,
+                        display = { year ->
+                            if (level == CaseEventTimelineLevel.DECADE) {
+                                val name = decades.firstOrNull { it.startYear == year }?.name.orEmpty()
+                                "${year}年  ${name}大运"
+                            } else {
+                                val name = annuals.firstOrNull { it.calendarYear == year }?.name.orEmpty()
+                                "${year}年  $name"
+                            }
+                        },
+                        onSelected = { selectedYear = it },
+                        modifier = Modifier.weight(1f),
+                        tag = "notes_timeline_wheel",
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(264.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("暂无可选时间", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            Spacer(modifier = Modifier.weight(1f))
             Button(
                 onClick = {
                     val year = selectedYear ?: return@Button
                     val name = if (level == CaseEventTimelineLevel.DECADE) {
-                        decades.firstOrNull { it.startYear == year }?.name
+                        selectedDecade?.name
                     } else {
-                        annuals.firstOrNull { it.calendarYear == year }?.name
+                        selectedAnnual?.name
                     } ?: return@Button
                     onConfirm(level, year, name)
                 },
                 enabled = selectedYear != null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 14.dp, bottom = 18.dp)
-                    .height(48.dp),
+                    .padding(top = 14.dp)
+                    .height(48.dp)
+                    .testTag("notes_time_picker_confirm"),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
             ) {
                 Text("确定", fontWeight = FontWeight.SemiBold)
             }
         }
-    }
-}
-
-@Composable
-private fun CaseNotesPickerRow(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-            .clickable(onClick = onClick),
-        color = if (selected) NanfengGold.copy(alpha = 0.11f) else Color.Transparent,
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Text(
-            text,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurface,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            textAlign = TextAlign.Center,
-        )
     }
 }
 
@@ -8843,6 +8842,7 @@ private fun ProfessionalTimelineCell(
         ) {
             Text(
                 item.label,
+                modifier = Modifier.testTag("timeline_${item.key}_label"),
                 fontSize = if (compact) 8.sp else 9.sp,
                 lineHeight = if (compact) 9.sp else 11.sp,
                 color = if (item.selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -8871,11 +8871,7 @@ private fun ProfessionalTimelineCell(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    " ",
-                    modifier = Modifier.padding(vertical = 1.dp),
-                    fontSize = if (compact) 8.sp else 9.sp,
-                )
+                ProfessionalTimelineBranchDetail(item, compact)
             } else if (stem != null) {
                 Text(
                     stem.toString(),
@@ -8904,7 +8900,9 @@ private fun ProfessionalTimelineCell(
             }
             Text(
                 item.subtitle,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .testTag("timeline_${item.key}_subtitle"),
                 textAlign = TextAlign.Center,
                 fontSize = 8.sp,
                 lineHeight = 9.sp,
@@ -8946,20 +8944,46 @@ private fun ProfessionalSelectedDateBar(
             .fillMaxWidth()
             .testTag("fortune_selected_datetime"),
     ) {
-        Text(
-            "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onOpenPicker)
-                .testTag("fortune_observation_picker")
                 .padding(top = 1.dp, bottom = 3.dp),
-            textAlign = TextAlign.Center,
-            fontSize = 10.sp,
-            lineHeight = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                modifier = Modifier
+                    .clickable(onClick = onOpenPicker)
+                    .testTag("fortune_observation_picker")
+                    .semantics { contentDescription = "修改观察时间" },
+                color = Color.White.copy(alpha = 0.76f),
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    NanfengGold.copy(alpha = 0.28f),
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = NanfengGold.copy(alpha = 0.72f),
+                    )
+                    Text(
+                        "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,

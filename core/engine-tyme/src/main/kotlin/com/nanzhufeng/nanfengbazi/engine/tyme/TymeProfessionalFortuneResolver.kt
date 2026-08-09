@@ -362,10 +362,9 @@ private fun buildMinorStageItem(
     val firstDecadeStart = result.decadeFortunes.firstOrNull()?.startAt
         ?: result.fortuneStart.endAt
     val finalMoment = firstDecadeStart.minusOneSecond()
-    val endYearShort = (firstDecadeStart.year % 100).toString().padStart(2, '0')
     return ProfessionalTimelineItem(
         key = "minor_stage",
-        label = "${firstMinor.observedAt.year}–$endYearShort",
+        label = firstMinor.observedAt.year.toString(),
         subtitle = "${result.completedAgeAt(firstMinor.observedAt)}–" +
             "${result.completedAgeAt(finalMoment)}岁",
         observedAt = firstMinor.observedAt,

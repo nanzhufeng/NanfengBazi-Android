@@ -882,9 +882,10 @@ private fun BaziCharacterChoiceGrid(
 }
 
 @Composable
-private fun FixedPickerSheet(
+internal fun FixedPickerSheet(
     onDismiss: () -> Unit,
     targetHeight: Dp? = null,
+    surfaceColor: Color = MaterialTheme.colorScheme.surface,
     content: @Composable () -> Unit,
 ) {
     Dialog(
@@ -912,7 +913,7 @@ private fun FixedPickerSheet(
                         if (resolvedHeight != null) Modifier.height(resolvedHeight)
                         else Modifier.heightIn(max = maxHeight),
                     ),
-                color = MaterialTheme.colorScheme.surface,
+                color = surfaceColor,
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 content = content,
             )
@@ -1067,7 +1068,7 @@ private fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Unit
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun <T> ValueWheel(
+internal fun <T> ValueWheel(
     label: String,
     values: List<T>,
     selectedValue: T,
@@ -1176,7 +1177,7 @@ private fun <T> ValueWheel(
 }
 
 @Composable
-private fun WheelSelectionPanel(
+internal fun WheelSelectionPanel(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {

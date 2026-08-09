@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -12,6 +13,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.platform.app.InstrumentationRegistry
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
@@ -90,6 +94,13 @@ class CaseDetailReferenceLayoutTest {
                             rawText = "工作方向发生明显调整。",
                             createdAt = now,
                         ),
+                        CaseEvent(
+                            id = "reference-event-2018-$caseId",
+                            year = 2018,
+                            datePrecision = EventDatePrecision.YEAR,
+                            rawText = "事业节奏逐步稳定。",
+                            createdAt = now,
+                        ),
                     ),
                 ),
                 expectedRevision = current.revision,
@@ -166,6 +177,10 @@ class CaseDetailReferenceLayoutTest {
         assertTrue("单柱最多显示 5 项", shenShaText.lines().size <= 5)
         composeRule.onNodeWithText("副星").assertDoesNotExist()
         composeRule.onNodeWithText("星运").assertDoesNotExist()
+        composeRule.onNodeWithText("胎元", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("胎息", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("命宫", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("身宫", substring = true).assertDoesNotExist()
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
@@ -228,6 +243,7 @@ class CaseDetailReferenceLayoutTest {
             .fetchSemanticsNode().boundsInRoot
         val observationPicker = composeRule.onNodeWithTag("fortune_observation_picker")
             .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithContentDescription("修改观察时间").assertIsDisplayed()
         val startInfo = composeRule.onNodeWithTag("fortune_start_info")
             .fetchSemanticsNode().boundsInRoot
         assertEquals(selectedDateBar.center.x, observationPicker.center.x, 1f)
@@ -293,9 +309,24 @@ class CaseDetailReferenceLayoutTest {
             .assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_minor_stage_lower", useUnmergedTree = true)
             .assertIsDisplayed()
+        val minorYearLabel = composeRule.onNodeWithTag(
+            "timeline_minor_stage_label",
+            useUnmergedTree = true,
+        ).assertIsDisplayed().fetchSemanticsNode().config[SemanticsProperties.Text]
+        assertEquals("1992", minorYearLabel.single().text)
         (0 until 9).forEach { index ->
             composeRule.onNodeWithTag("timeline_decade_$index").assertIsDisplayed()
         }
+        val minorAgeBounds = composeRule.onNodeWithTag(
+            "timeline_minor_stage_subtitle",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val firstDecadeAgeBounds = composeRule.onNodeWithTag(
+            "timeline_decade_0_subtitle",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        assertEquals(firstDecadeAgeBounds.top, minorAgeBounds.top, 1f)
+        assertEquals(firstDecadeAgeBounds.bottom, minorAgeBounds.bottom, 1f)
         val timelineStem = composeRule.onNodeWithTag(
             "timeline_decade_0_stem",
             useUnmergedTree = true,
@@ -412,10 +443,44 @@ class CaseDetailReferenceLayoutTest {
         assertEquals(masterSaveButton.bottom, ownerSaveButton.bottom, 1f)
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()
         composeRule.onNodeWithText("工作方向发生明显调整。").performScrollTo().assertIsDisplayed()
+        assertEquals(
+            1,
+            composeRule.onAllNodesWithTag("notes_annual_connector")
+                .fetchSemanticsNodes().size,
+        )
         composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("notes_time_picker").assertIsDisplayed()
+        val pickerBoundsBeforeScroll = composeRule.onNodeWithTag("notes_time_picker")
+            .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("notes_timeline_wheel").performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        val pickerBoundsAfterScroll = composeRule.onNodeWithTag("notes_time_picker")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(pickerBoundsBeforeScroll.left, pickerBoundsAfterScroll.left, 1f)
+        assertEquals(pickerBoundsBeforeScroll.top, pickerBoundsAfterScroll.top, 1f)
+        assertEquals(pickerBoundsBeforeScroll.right, pickerBoundsAfterScroll.right, 1f)
+        assertEquals(pickerBoundsBeforeScroll.bottom, pickerBoundsAfterScroll.bottom, 1f)
+        composeRule.onNodeWithTag("picker_scrim_dismiss").performTouchInput {
+            click(Offset(center.x, 4f))
+        }
+        composeRule.waitUntil(timeoutMillis = 3_000) {
+            composeRule.onAllNodesWithTag("notes_time_picker").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
         composeRule.onNodeWithText("流年").performClick()
-        composeRule.onNodeWithText("选择流年（最近时间在上）").assertIsDisplayed()
+        composeRule.onNodeWithText("选择流年（未来到过去）").assertIsDisplayed()
+        val pickerBottom = composeRule.onNodeWithTag("notes_time_picker")
+            .fetchSemanticsNode().boundsInRoot.bottom
+        val confirmBottom = composeRule.onNodeWithTag("notes_time_picker_confirm")
+            .fetchSemanticsNode().boundsInRoot.bottom
+        val confirmBottomGap = pickerBottom - confirmBottom
+        assertTrue(
+            "确认按钮底部留白不足：${confirmBottomGap / displayDensity}dp",
+            confirmBottomGap >= displayDensity * 36f,
+        )
+        val selectedAnnual = composeRule.onNodeWithTag("notes_timeline_wheel")
+            .fetchSemanticsNode().config[SemanticsProperties.StateDescription]
+        assertTrue(selectedAnnual.startsWith(LocalDate.now().year.toString()))
         composeRule.onNodeWithText("确定").performClick()
         composeRule.onAllNodesWithTag("timeline_event_input")[0]
             .performScrollTo()

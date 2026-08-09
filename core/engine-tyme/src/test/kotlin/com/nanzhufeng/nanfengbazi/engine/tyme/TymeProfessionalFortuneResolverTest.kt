@@ -103,7 +103,7 @@ class TymeProfessionalFortuneResolverTest {
         assertEquals("professional-minor-fortune-v1", position.minorFortuneRuleVersion)
         assertEquals(13, position.decadeTimeline.size)
         assertEquals("小运", position.decadeTimeline.first().stageLabel)
-        assertEquals("1992–97", position.decadeTimeline.first().label)
+        assertEquals("1992", position.decadeTimeline.first().label)
         assertEquals("0–4岁", position.decadeTimeline.first().subtitle)
         assertEquals("4–14岁", position.decadeTimeline[1].subtitle)
         assertTrue(position.annualTimeline.none { it.subtitle.startsWith("虚") })
