@@ -70,7 +70,7 @@
 | 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
 |---|---|---|---|
 | 手动新建 | 已接通公历/农历/闰月民用时表单 | `CreateCaseUseCase` → `BaziEngine.calculate` → `CaseRepository.save` | 表单、双向转换、计算、冲突和异常契约 |
-| 命例列表与搜索 | 已显示姓名/别名、性别、出生时间和四柱 | `CaseRepository.search` | Room 查询与 ViewModel 搜索 |
+| 命例列表、搜索、筛选与排序 | 已显示姓名/别名、性别、出生时间和四柱；高级条件与三项公开排序进入同一请求 | `CaseSearchRequest` → `CaseRepository.search` | Room 查询、派生目录与 ViewModel 已应用筛选状态；Compose 只维护弹层草稿 |
 | 命例详情 | 已区分原始录入和计算结果 | `CaseRepository.findById` | 导航与详情读取 |
 | 编辑、删除、复制 | 不存在 | 后续仍须经过 `CaseRepository` | 本阶段不验收 |
 | 问真截图导入 | 不存在 | 未来输入适配器提交标准草稿 | 本阶段不验收 |
@@ -159,6 +159,7 @@
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
 | 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
+| 记录高级筛选 | `StageTwoViewModel` → `CaseSearchRequest.advancedFilter` → `RoomCaseRepository` | 干支、四柱干／支与各自十神、地区、旺相休囚死和神煞一次进入仓储查询；天干十神与地支本气十神一律取自已采用快照的 `BasicChartDetails`，Compose 只维护草稿与展示，不计算十神 |
 | 四柱反查 | 首页地区／时间 → `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 → 用户点选回填 `CaseFormState` | 首页地区是时区的唯一来源；四柱面板只编辑四柱与年份范围，不重复显示或修改地区／时区。只查 1800–2200 的民用时，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；原始反查为空时仅在适配器内按 60 日周期扫描民用代表时刻且仍由唯一正向引擎复算；点选只回填日期、时辰和 offset 并标记 `DOUBLE_HOUR_ONLY`，不改写地区／时区，不伪造真太阳时/精确分钟，候选不自动保存 |
 | 北京时间默认 | `BaziTimeZoneDefaults` → 新建/恢复/导入/国内地点/备份命名 | `Asia/Shanghai` 是唯一默认值与备份文件名时区；只在缺失值时回退，历史命例与用户选择的 IANA 时区保持原样 |
 | 命盘图片导出与分享 | `CaseImageExportContract.prepare()` → `AndroidCaseImageRenderer` → SAF/FileProvider | 领域合同只投影唯一已采用快照和正式记录；保存与分享缓存并复制同一 PNG 字节，系统取消、输出失败、无分享目标和分享启动失败返回稳定错误码，页面不离开当前详情 |

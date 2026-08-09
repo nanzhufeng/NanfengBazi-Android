@@ -16,12 +16,16 @@ import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
+import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
+import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
+import com.nanzhufeng.nanfengbazi.domain.SeasonalWuxingStateResolver
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
@@ -43,17 +47,84 @@ import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.resolveLegacySourceType
 import java.time.Instant
+import java.util.UUID
 import kotlinx.serialization.json.Json
 
 class RoomCaseRepository(
     private val database: NanfengBaziDatabase,
 ) : CaseRepository {
     private val dao = database.caseDao()
+
+    override suspend fun listGroups(): List<CaseGroup> = dao.allGroups().map {
+        CaseGroup(id = it.id, name = it.name)
+    }
+
+    override suspend fun createGroup(name: String): CaseGroup? = database.withTransaction {
+        val normalized = name.trim()
+        if (normalized.isBlank() || dao.groupNameCount(normalized) > 0) {
+            return@withTransaction null
+        }
+        val group = CaseGroup(id = UUID.randomUUID().toString(), name = normalized)
+        dao.insertGroup(
+            CaseGroupEntity(
+                id = group.id,
+                name = group.name,
+                sortOrder = dao.maxGroupSortOrder() + 1,
+            ),
+        )
+        group
+    }
+
+    override suspend fun renameGroup(groupId: String, name: String): Boolean =
+        database.withTransaction {
+            val normalized = name.trim()
+            if (normalized.isBlank()) return@withTransaction false
+            val existing = dao.allGroups().firstOrNull { it.id == groupId }
+                ?: return@withTransaction false
+            if (existing.name.equals(normalized, ignoreCase = true)) {
+                return@withTransaction true
+            }
+            if (dao.groupNameCount(normalized) > 0) return@withTransaction false
+            dao.renameGroup(groupId, normalized) == 1
+        }
+
+    override suspend fun reorderGroups(groupIds: List<String>): Boolean =
+        database.withTransaction {
+            val existing = dao.allGroups().map { it.id }
+            if (groupIds.toSet() != existing.toSet()) return@withTransaction false
+            groupIds.forEachIndexed { index, groupId ->
+                dao.updateGroupSortOrder(groupId, index)
+            }
+            true
+        }
+
+    override suspend fun deleteGroup(groupId: String): Boolean =
+        database.withTransaction { dao.deleteGroup(groupId) == 1 }
+
+    override suspend fun setCasesPinned(
+        caseIds: Set<String>,
+        pinned: Boolean,
+        updatedAt: Instant,
+    ): Int = if (caseIds.isEmpty()) {
+        0
+    } else {
+        dao.setCasesPinned(caseIds.toList(), pinned, updatedAt.toEpochMilli())
+    }
+
+    override suspend fun moveCasesToTrash(
+        caseIds: Set<String>,
+        deletedAt: Instant,
+    ): Int = if (caseIds.isEmpty()) {
+        0
+    } else {
+        dao.moveCasesToTrash(caseIds.toList(), deletedAt.toEpochMilli())
+    }
 
     override suspend fun save(
         case: BaziCase,
@@ -162,6 +233,7 @@ class RoomCaseRepository(
                     request.tagId == null || summary.tags.any { it.id == request.tagId }
                 }
                 .filter { summary -> query.isEmpty() || summary.matches(query) }
+                .filter { summary -> summary.matches(request.advancedFilter) }
                 .sortedWith(request.sortOrder.summaryComparator())
                 .toList()
         }
@@ -479,14 +551,17 @@ private fun CaseEntity.toSummary(
     adoptedSnapshot: CaseCalculationSnapshot?,
     groups: List<CaseGroup>,
     tags: List<CaseTag>,
-): CaseSummary = CaseSummary(
+): CaseSummary {
+    val result = adoptedSnapshot?.result
+    val pillars = result?.fourPillars
+    return CaseSummary(
     id = id,
     alias = alias,
     name = ExplicitText(FieldValueState.valueOf(nameState), nameValue),
     sexForFortuneDirection = SexForFortuneDirection.valueOf(sexForFortuneDirection),
     sourceType = CaseSourceType.valueOf(sourceType),
     birthInput = DomainJson.decodeFromString(BirthInput.serializer(), birthInputJson),
-    fourPillars = adoptedSnapshot?.result?.fourPillars,
+    fourPillars = pillars,
     groups = groups,
     tags = tags,
     isFavorite = isFavorite,
@@ -509,7 +584,76 @@ private fun CaseEntity.toSummary(
         ?.result
         ?.basicChartDetails
         ?.westernZodiac,
-)
+    seasonalWuxingStates = pillars?.month?.getOrNull(1)
+        ?.let(SeasonalWuxingStateResolver::resolve)
+        .orEmpty(),
+    shenShaNames = result?.basicChartDetails?.pillars
+        ?.let(BasicShenShaRules::resolve)
+        ?.flatMap { it.names }
+        ?.toSet()
+        .orEmpty(),
+    pillarStemTenGods = PillarPosition.entries.map { position ->
+        result?.basicChartDetails?.pillars
+            ?.firstOrNull { it.position == position }
+            ?.primaryTenGod
+            .orEmpty()
+    },
+    pillarBranchTenGods = PillarPosition.entries.map { position ->
+        result?.basicChartDetails?.pillars
+            ?.firstOrNull { it.position == position }
+            ?.hiddenStems
+            ?.firstOrNull()
+            ?.tenGod
+            .orEmpty()
+    },
+    )
+}
+
+private fun CaseSummary.matches(filter: CaseAdvancedFilter): Boolean {
+    if (filter.sex != null && sexForFortuneDirection != filter.sex) return false
+    val pillarValues = fourPillars?.let { listOf(it.year, it.month, it.day, it.hour) }.orEmpty()
+    if (filter.ganZhi.isNotEmpty() && pillarValues.none { pillar -> pillar.any(filter.ganZhi::contains) }) {
+        return false
+    }
+    val requestedPillars = listOf(
+        filter.fourPillars.year,
+        filter.fourPillars.month,
+        filter.fourPillars.day,
+        filter.fourPillars.hour,
+    )
+    if (requestedPillars.any { it.isActive } && pillarValues.size != requestedPillars.size) return false
+    if (requestedPillars.zip(pillarValues).withIndex().any { (index, pair) ->
+            val (requested, actual) = pair
+            !actual.matches(
+                filter = requested,
+                stemTenGod = pillarStemTenGods.getOrNull(index),
+                branchTenGod = pillarBranchTenGods.getOrNull(index),
+            )
+        }
+    ) return false
+    if (
+        filter.birthRegion.isNotBlank() &&
+        !birthInput.locationName.orEmpty().trim()
+            .equals(filter.birthRegion.trim(), ignoreCase = true)
+    ) return false
+    if (
+        filter.seasonalWuxingStates.isNotEmpty() &&
+        seasonalWuxingStates.intersect(filter.seasonalWuxingStates).isEmpty()
+    ) return false
+    if (filter.shenSha.isNotEmpty() && shenShaNames.intersect(filter.shenSha).isEmpty()) return false
+    return true
+}
+
+private fun String.matches(
+    filter: PillarCharacterFilter,
+    stemTenGod: String?,
+    branchTenGod: String?,
+): Boolean =
+    (!filter.isActive) ||
+        (filter.stem == null || firstOrNull() == filter.stem) &&
+        (filter.branch == null || getOrNull(1) == filter.branch) &&
+        (filter.stemTenGod == null || stemTenGod == filter.stemTenGod) &&
+        (filter.branchTenGod == null || branchTenGod == filter.branchTenGod)
 
 private fun CaseSummary.hasSameBirthIdentity(
     other: BirthInput,
@@ -542,6 +686,9 @@ private fun CaseSummary.matches(query: String): Boolean {
 
 private fun CaseSortOrder.summaryComparator(): Comparator<CaseSummary> {
     val selected = when (this) {
+        CaseSortOrder.NAME_ASC ->
+            compareBy<CaseSummary> { it.name.value?.ifBlank { null } ?: it.alias }
+
         CaseSortOrder.LAST_VIEWED_DESC ->
             compareByDescending<CaseSummary> { it.lastViewedAt }
                 .thenByDescending { it.updatedAt }

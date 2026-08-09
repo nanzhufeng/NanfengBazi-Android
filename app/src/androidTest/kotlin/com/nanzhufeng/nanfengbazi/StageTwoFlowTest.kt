@@ -69,6 +69,36 @@ class StageTwoFlowTest {
             .assertHasClickAction()
             .assertHeightIsAtLeast(48.dp)
             .assertWidthIsAtLeast(48.dp)
+            .performClick()
+        composeRule.onNodeWithTag("import_screenshots_button").assertIsDisplayed()
+        listOf(
+            "record_more_sort",
+            "record_more_groups",
+            "record_more_pinned",
+            "record_more_delete",
+        ).forEach { tag -> composeRule.onNodeWithTag(tag).assertIsDisplayed() }
+        listOf(
+            "new_case_button",
+            "import_single_case_button",
+            "open_case_comparison",
+            "export_full_backup_button",
+            "preview_full_backup_button",
+        ).forEach { removedTag ->
+            assertTrue(composeRule.onAllNodes(hasTestTag(removedTag)).fetchSemanticsNodes().isEmpty())
+        }
+        composeRule.onNodeWithTag("record_more_groups").performClick()
+        composeRule.onNodeWithTag("record_group_editor").assertIsDisplayed()
+        composeRule.onNodeWithTag("record_group_editor_scrim").assertHasClickAction().performClick()
+        composeRule.onNodeWithTag("record_more").performClick()
+        composeRule.onNodeWithTag("record_more_pinned").performClick()
+        assertTrue(composeRule.onAllNodes(hasTestTag("record_pinned_dialog")).fetchSemanticsNodes().isEmpty())
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("record_more").performClick()
+        composeRule.onNodeWithTag("record_more_delete").performClick()
+        assertTrue(composeRule.onAllNodes(hasTestTag("record_batch_delete_dialog")).fetchSemanticsNodes().isEmpty())
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("case_search").assertHeightIsAtLeast(56.dp)
         composeRule.onNodeWithTag("record_filter_toggle")
             .assertHasClickAction()
@@ -77,17 +107,54 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("record_filter_all")
             .assertHasClickAction()
             .assertHeightIsAtLeast(48.dp)
-        composeRule.onNodeWithTag("record_sort_control")
-            .assertHasClickAction()
-            .assertHeightIsAtLeast(48.dp)
+        assertTrue(composeRule.onAllNodes(hasTestTag("record_sort_control")).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithTag("record_filter_toggle").performClick()
-        composeRule.waitForIdle()
-        assertTrue(
-            composeRule.onAllNodes(hasTestTag("record_filter_strip"))
-                .fetchSemanticsNodes().isEmpty(),
-        )
+        composeRule.onNodeWithTag("record_filter_panel").assertIsDisplayed()
+        composeRule.onNodeWithTag("filter_outside_scrim").assertHasClickAction().performClick()
+        assertTrue(composeRule.onAllNodes(hasTestTag("record_filter_panel")).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithTag("record_filter_toggle").performClick()
+        composeRule.onNodeWithTag("record_filter_panel").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodes(hasTestTag("filter_seasonal_木旺")).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodes(hasTestTag("filter_shensha_天乙贵人")).fetchSemanticsNodes().isEmpty())
+        val ganZhiFirstRowTops = listOf("甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸").map { value ->
+            composeRule.onNodeWithTag("filter_ganzhi_$value")
+                .assertIsDisplayed()
+                .fetchSemanticsNode()
+                .boundsInRoot.top
+        }
+        assertTrue(ganZhiFirstRowTops.maxOrNull()!! - ganZhiFirstRowTops.minOrNull()!! < 2f)
+        composeRule.onNodeWithTag("filter_birth_region").performScrollTo().performClick()
+        composeRule.onNodeWithTag("birthplace_picker_sheet").assertIsDisplayed()
+        composeRule.onNodeWithTag("picker_scrim_dismiss").assertHasClickAction().performClick()
+        composeRule.onNodeWithTag("filter_pillar_stem_0").performClick()
+        composeRule.onNodeWithTag("pillar_filter_sheet").assertIsDisplayed()
+        composeRule.onNodeWithText("请选择 年柱-干").assertIsDisplayed()
+        composeRule.onNodeWithTag("pillar_picker_scrim").assertHasClickAction()
+        composeRule.onNodeWithTag("pillar_picker_stem_甲").performClick()
+        composeRule.onNodeWithTag("pillar_picker_stem_tengod_比肩").performClick()
+        composeRule.onNodeWithTag("pillar_picker_scrim").performClick()
+        composeRule.onNodeWithTag("filter_pillar_branch_0").performClick()
+        composeRule.onNodeWithText("请选择 年柱-支").assertIsDisplayed()
+        composeRule.onNodeWithTag("pillar_picker_branch_子").performClick()
+        composeRule.onNodeWithTag("pillar_picker_branch_tengod_正印").performClick()
+        composeRule.onNodeWithTag("pillar_picker_scrim").performClick()
+        composeRule.onNodeWithTag("filter_seasonal_toggle").performScrollTo().performClick()
+        composeRule.onNodeWithTag("filter_seasonal_木旺").assertIsDisplayed()
+        composeRule.onNodeWithTag("filter_shensha_toggle").performScrollTo().performClick()
+        composeRule.onNodeWithTag("filter_shensha_天乙贵人").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("filter_gender_男").performScrollTo().performClick()
+        composeRule.onNodeWithTag("filter_apply").performClick()
         composeRule.onNodeWithTag("record_filter_strip").assertIsDisplayed()
+        composeRule.onNodeWithTag("record_more").performClick()
+        composeRule.onNodeWithTag("record_more_sort").performClick()
+        composeRule.onNodeWithTag("record_sort_sheet").assertIsDisplayed()
+        composeRule.onNodeWithTag("record_sort_scrim").assertHasClickAction().performClick()
+        assertTrue(composeRule.onAllNodes(hasTestTag("record_sort_sheet")).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithTag("record_more").performClick()
+        composeRule.onNodeWithTag("record_more_sort").performClick()
+        composeRule.onNodeWithTag("record_sort_sheet").assertIsDisplayed()
+        composeRule.onNodeWithTag("record_sort_name_asc").performClick()
+        composeRule.onNodeWithTag("record_sort_confirm").performClick()
         composeRule.onNodeWithTag("nav_settings").performClick()
         composeRule.onNodeWithTag("settings_home_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("settings_import_screenshots")
@@ -114,7 +181,7 @@ class StageTwoFlowTest {
             .orEmpty()
         assertTrue(diagnosticText.contains("南枫八字诊断包"))
         assertTrue(diagnosticText.contains("privacy=REDACTED"))
-        assertTrue(diagnosticText.contains("database.schema=8"))
+        assertTrue(diagnosticText.contains("database.schema=9"))
         assertFalse(diagnosticText.contains("/data/"))
         composeRule.onNodeWithTag("nav_chart").performClick()
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
@@ -1038,25 +1105,8 @@ class StageTwoFlowTest {
             .performScrollTo()
             .assertIsDisplayed()
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("open_case_comparison")
-            .performClick()
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasTestTag("case_comparison_report"))
-                .fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("case_comparison_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("case_comparison_summary")
-            .performScrollTo()
-            .assertIsDisplayed()
-        composeRule.onNodeWithText(
-            "结果仅描述字段异同，不生成吉凶、合婚或关系结论。",
-        ).performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("back_from_case_comparison").performClick()
-        composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
-
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_import_case").performClick()
         val exportedFileName = "${editedAlias.take(48)}_南枫八字命例.json"
         val exportedFile = device.wait(
             Until.findObject(By.text(exportedFileName)),
@@ -1092,8 +1142,8 @@ class StageTwoFlowTest {
         }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_import_case").performClick()
         val exportedFileAgain = device.wait(
             Until.findObject(By.text(exportedFileName)),
             10_000,
@@ -1155,8 +1205,8 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_import_case").performClick()
         val encryptedFileName = "${encryptedExportAlias.take(48)}_南枫八字命例_加密.json"
         val encryptedFile = device.wait(
             Until.findObject(By.text(encryptedFileName)),
@@ -1181,8 +1231,8 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("skip_single_case_import").performClick()
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("export_full_backup_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_export_backup").performClick()
         composeRule.onNodeWithTag("confirm_full_backup_export").performClick()
         val backupSaveButton = device.wait(
             Until.findObject(By.text(Pattern.compile("(?i)save|保存"))),
@@ -1195,8 +1245,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("preview_full_backup_button").performClick()
+        composeRule.onNodeWithTag("settings_restore_backup").performClick()
         val backupFile = device.wait(
             Until.findObject(By.text(Pattern.compile("南枫八字备份_.*\\.zip"))),
             10_000,
@@ -1267,8 +1316,8 @@ class StageTwoFlowTest {
         }
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("export_full_backup_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_export_backup").performClick()
         composeRule.onNodeWithTag("choose_password_full_backup_export").performClick()
         val fullBackupPassword = "FullBackup-Pass123"
         composeRule.onNodeWithTag("full_backup_password")
@@ -1287,8 +1336,7 @@ class StageTwoFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("preview_full_backup_button").performClick()
+        composeRule.onNodeWithTag("settings_restore_backup").performClick()
         val encryptedBackupFile = device.wait(
             Until.findObject(By.text(Pattern.compile("南枫八字备份_.*_加密\\.nfbak"))),
             10_000,

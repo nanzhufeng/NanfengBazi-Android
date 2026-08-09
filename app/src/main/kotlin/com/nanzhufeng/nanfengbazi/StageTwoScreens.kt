@@ -43,7 +43,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -56,10 +59,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -122,10 +127,15 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
+import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
+import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
 import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidate
@@ -150,6 +160,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -316,6 +327,8 @@ fun NanfengBaziApp(
                         onSelectTag = viewModel::selectTag,
                         onSelectSort = viewModel::selectSortOrder,
                         onSelectVisibility = viewModel::selectVisibility,
+                        onApplyAdvancedFilter = viewModel::applyAdvancedFilter,
+                        onClearFilters = viewModel::clearCaseFilters,
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
                         onImportScreenshots = onImportScreenshots,
@@ -323,10 +336,12 @@ fun NanfengBaziApp(
                         onRetryScreenshotImport = onRetryScreenshotImport,
                         onDeleteScreenshotImport = onDeleteScreenshotImport,
                         onReviewScreenshotImport = viewModel::openScreenshotImportReview,
-                        onImportSingleCase = onOpenSingleCaseDocument,
-                        onExportFullBackup = viewModel::requestFullBackupExport,
-                        onPreviewFullBackup = onOpenFullBackupDocument,
-                        onOpenCaseComparison = viewModel::openCaseComparison,
+                        onCreateGroup = viewModel::createCaseGroup,
+                        onRenameGroup = viewModel::renameCaseGroup,
+                        onReorderGroups = viewModel::reorderCaseGroups,
+                        onDeleteGroup = viewModel::deleteCaseGroup,
+                        onUpdatePinnedCases = viewModel::updatePinnedCases,
+                        onBatchDeleteCases = viewModel::batchMoveCasesToTrash,
                         onOpenCase = viewModel::openDetail,
                         modifier = Modifier.padding(padding),
                     )
@@ -2443,6 +2458,8 @@ private fun CaseListScreen(
     onSelectTag: (String?) -> Unit,
     onSelectSort: (CaseSortOrder) -> Unit,
     onSelectVisibility: (CaseVisibility) -> Unit,
+    onApplyAdvancedFilter: (CaseAdvancedFilter) -> Unit,
+    onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
     onImportScreenshots: () -> Unit,
@@ -2450,16 +2467,31 @@ private fun CaseListScreen(
     onRetryScreenshotImport: () -> Unit,
     onDeleteScreenshotImport: () -> Unit,
     onReviewScreenshotImport: () -> Unit,
-    onImportSingleCase: () -> Unit,
-    onExportFullBackup: () -> Unit,
-    onPreviewFullBackup: () -> Unit,
-    onOpenCaseComparison: () -> Unit,
+    onCreateGroup: (String) -> Unit,
+    onRenameGroup: (String, String) -> Unit,
+    onReorderGroups: (List<String>) -> Unit,
+    onDeleteGroup: (String) -> Unit,
+    onUpdatePinnedCases: (Set<String>) -> Unit,
+    onBatchDeleteCases: (Set<String>) -> Unit,
     onOpenCase: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var moreExpanded by rememberSaveable { mutableStateOf(false) }
-    var filtersExpanded by rememberSaveable { mutableStateOf(true) }
-    val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size
+    var showAdvancedFilters by rememberSaveable { mutableStateOf(false) }
+    var showSortOptions by rememberSaveable { mutableStateOf(false) }
+    var showGroupEditor by rememberSaveable { mutableStateOf(false) }
+    var pinnedEditMode by rememberSaveable { mutableStateOf(false) }
+    var pinnedSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var deleteEditMode by rememberSaveable { mutableStateOf(false) }
+    var deleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size +
+        state.advancedFilter.activeCategoryCount
+    BackHandler(enabled = pinnedEditMode || deleteEditMode) {
+        pinnedEditMode = false
+        pinnedSelection = emptySet()
+        deleteEditMode = false
+        deleteSelection = emptySet()
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -2536,12 +2568,41 @@ private fun CaseListScreen(
                         onDismissRequest = { moreExpanded = false },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("新排盘") },
+                            text = { Text("列表排序") },
                             onClick = {
                                 moreExpanded = false
-                                onCreate()
+                                showSortOptions = true
                             },
-                            modifier = Modifier.testTag("new_case_button"),
+                            modifier = Modifier.testTag("record_more_sort"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("分组编辑") },
+                            onClick = {
+                                moreExpanded = false
+                                showGroupEditor = true
+                            },
+                            modifier = Modifier.testTag("record_more_groups"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("置顶八字") },
+                            onClick = {
+                                moreExpanded = false
+                                pinnedSelection = state.batchCases
+                                    .filter { it.isPinned }
+                                    .map { it.id }
+                                    .toSet()
+                                pinnedEditMode = true
+                            },
+                            modifier = Modifier.testTag("record_more_pinned"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("批量删除") },
+                            onClick = {
+                                moreExpanded = false
+                                deleteSelection = emptySet()
+                                deleteEditMode = true
+                            },
+                            modifier = Modifier.testTag("record_more_delete"),
                         )
                         DropdownMenuItem(
                             text = { Text("导入问真截图") },
@@ -2551,39 +2612,6 @@ private fun CaseListScreen(
                             },
                             enabled = !screenshotImportState.busy,
                             modifier = Modifier.testTag("import_screenshots_button"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导入单案例") },
-                            onClick = {
-                                moreExpanded = false
-                                onImportSingleCase()
-                            },
-                            modifier = Modifier.testTag("import_single_case_button"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("命例对比") },
-                            onClick = {
-                                moreExpanded = false
-                                onOpenCaseComparison()
-                            },
-                            enabled = state.visibility == CaseVisibility.ACTIVE,
-                            modifier = Modifier.testTag("open_case_comparison"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导出完整备份") },
-                            onClick = {
-                                moreExpanded = false
-                                onExportFullBackup()
-                            },
-                            modifier = Modifier.testTag("export_full_backup_button"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("恢复完整备份") },
-                            onClick = {
-                                moreExpanded = false
-                                onPreviewFullBackup()
-                            },
-                            modifier = Modifier.testTag("preview_full_backup_button"),
                         )
                     }
                 }
@@ -2610,22 +2638,22 @@ private fun CaseListScreen(
                 },
                 trailingIcon = {
                     Surface(
-                        onClick = { filtersExpanded = !filtersExpanded },
+                        onClick = { showAdvancedFilters = true },
                         modifier = Modifier
                             .height(48.dp)
                             .semantics {
-                                contentDescription = if (filtersExpanded) "收起筛选" else "展开筛选"
+                                contentDescription = "打开记录筛选"
                             }
                             .testTag("record_filter_toggle"),
                         shape = RoundedCornerShape(13.dp),
-                        color = if (filtersExpanded || activeFilterCount > 0) {
+                        color = if (activeFilterCount > 0) {
                             NanfengGreen.copy(alpha = 0.10f)
                         } else {
                             NanfengControlSurface
                         },
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (filtersExpanded || activeFilterCount > 0) {
+                            if (activeFilterCount > 0) {
                                 NanfengGreen.copy(alpha = 0.28f)
                             } else {
                                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
@@ -2641,7 +2669,7 @@ private fun CaseListScreen(
                                 Icons.Filled.List,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
-                                tint = if (filtersExpanded || activeFilterCount > 0) {
+                                tint = if (activeFilterCount > 0) {
                                     NanfengGreen
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -2650,7 +2678,7 @@ private fun CaseListScreen(
                             Text(
                                 if (activeFilterCount > 0) "筛选 $activeFilterCount" else "筛选",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = if (filtersExpanded || activeFilterCount > 0) {
+                                color = if (activeFilterCount > 0) {
                                     NanfengGreen
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -2677,8 +2705,7 @@ private fun CaseListScreen(
             onDelete = onDeleteScreenshotImport,
             onReview = onReviewScreenshotImport,
         )
-        if (filtersExpanded) {
-            Row(
+        Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -2709,18 +2736,7 @@ private fun CaseListScreen(
                         tag = "record_tag_${tag.id}",
                     )
                 }
-                RecordSortChip(
-                    text = state.sortOrder.displayName(),
-                    onClick = {
-                        val next = CaseSortOrder.entries[
-                            (CaseSortOrder.entries.indexOf(state.sortOrder) + 1) %
-                                CaseSortOrder.entries.size
-                        ]
-                        onSelectSort(next)
-                    },
-                )
             }
-        }
         HorizontalDivider(
             modifier = Modifier.padding(horizontal = 16.dp),
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
@@ -2738,7 +2754,7 @@ private fun CaseListScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         end = 28.dp,
-                        bottom = 16.dp,
+                        bottom = if (pinnedEditMode || deleteEditMode) 92.dp else 16.dp,
                     ),
                 ) {
                     itemsIndexed(state.cases, key = { _, item -> item.id }) { index, summary ->
@@ -2754,7 +2770,32 @@ private fun CaseListScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        CaseSummaryRow(summary, onClick = { onOpenCase(summary.id) })
+                        CaseSummaryRow(
+                            summary = summary,
+                            selectionMode = pinnedEditMode || deleteEditMode,
+                            selected = if (pinnedEditMode) {
+                                summary.id in pinnedSelection
+                            } else {
+                                summary.id in deleteSelection
+                            },
+                            onClick = {
+                                if (pinnedEditMode) {
+                                    pinnedSelection = if (summary.id in pinnedSelection) {
+                                        pinnedSelection - summary.id
+                                    } else {
+                                        pinnedSelection + summary.id
+                                    }
+                                } else if (deleteEditMode) {
+                                    deleteSelection = if (summary.id in deleteSelection) {
+                                        deleteSelection - summary.id
+                                    } else {
+                                        deleteSelection + summary.id
+                                    }
+                                } else {
+                                    onOpenCase(summary.id)
+                                }
+                            },
+                        )
                     }
                 }
                 RecordAlphabetIndex(
@@ -2762,9 +2803,1133 @@ private fun CaseListScreen(
                         .align(Alignment.CenterEnd)
                         .padding(end = 4.dp),
                 )
+                if (pinnedEditMode || deleteEditMode) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                            .testTag("record_batch_action_bar"),
+                        color = Color.White,
+                        shadowElevation = 8.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    pinnedEditMode = false
+                                    pinnedSelection = emptySet()
+                                    deleteEditMode = false
+                                    deleteSelection = emptySet()
+                                },
+                                modifier = Modifier.weight(1f).height(52.dp)
+                                    .testTag("record_batch_cancel"),
+                            ) { Text("取消") }
+                            Button(
+                                onClick = {
+                                    if (pinnedEditMode) {
+                                        onUpdatePinnedCases(pinnedSelection)
+                                    } else {
+                                        onBatchDeleteCases(deleteSelection)
+                                    }
+                                    pinnedEditMode = false
+                                    pinnedSelection = emptySet()
+                                    deleteEditMode = false
+                                    deleteSelection = emptySet()
+                                },
+                                enabled = !state.mutationSaving &&
+                                    (pinnedEditMode || deleteSelection.isNotEmpty()),
+                                modifier = Modifier.weight(1f).height(52.dp)
+                                    .testTag("record_batch_confirm"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (deleteEditMode) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        NanfengGold
+                                    },
+                                ),
+                            ) { Text(if (deleteEditMode) "删除" else "置顶") }
+                        }
+                    }
+                }
+            }
+        }
+        if (showAdvancedFilters) {
+            RecordAdvancedFilterDialog(
+                applied = state.advancedFilter,
+                availableSeasonalStates = state.availableSeasonalWuxingStates,
+                availableShenSha = state.availableShenSha,
+                onDismiss = { showAdvancedFilters = false },
+                onReset = {
+                    onClearFilters()
+                    showAdvancedFilters = false
+                },
+                onApply = {
+                    onApplyAdvancedFilter(it)
+                    showAdvancedFilters = false
+                },
+            )
+        }
+        if (showSortOptions) {
+            RecordSortDialog(
+                selected = state.sortOrder,
+                onDismiss = { showSortOptions = false },
+                onConfirm = {
+                    onSelectSort(it)
+                    showSortOptions = false
+                },
+            )
+        }
+        if (showGroupEditor) {
+            RecordGroupEditorDialog(
+                groups = state.availableGroups,
+                cases = state.batchCases,
+                saving = state.mutationSaving,
+                onDismiss = { showGroupEditor = false },
+                onCreate = onCreateGroup,
+                onRename = onRenameGroup,
+                onReorder = onReorderGroups,
+                onDelete = onDeleteGroup,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecordAdvancedFilterDialog(
+    applied: CaseAdvancedFilter,
+    availableSeasonalStates: List<String>,
+    availableShenSha: List<String>,
+    onDismiss: () -> Unit,
+    onReset: () -> Unit,
+    onApply: (CaseAdvancedFilter) -> Unit,
+) {
+    var draft by remember(applied) { mutableStateOf(applied) }
+    var activePillarIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    var activePillarTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var seasonalExpanded by rememberSaveable { mutableStateOf(false) }
+    var shenShaExpanded by rememberSaveable { mutableStateOf(false) }
+    var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    val stems = listOf("甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸")
+    val branches = listOf("子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥")
+    val tenGods = listOf("比肩", "劫财", "食神", "伤官", "偏财", "正财", "七杀", "正官", "偏印", "正印")
+    val seasonalOptions = (
+        availableSeasonalStates + listOf(
+            "木旺", "火相", "水休", "金囚", "土死",
+            "火旺", "土相", "木休", "水囚", "金死",
+            "金旺", "水相", "土休", "火囚", "木死",
+            "水旺", "木相", "金休", "土囚", "火死",
+        )
+    ).distinct()
+    val shenShaOptions = (
+        availableShenSha + listOf(
+            "天乙贵人", "太极贵人", "文昌贵人", "国印贵人",
+            "金舆", "禄神", "羊刃", "驿马", "桃花", "华盖", "将星", "红鸾",
+        )
+    ).distinct()
+    Dialog(
+        onDismissRequest = {
+            if (activePillarIndex != null) {
+                activePillarIndex = null
+                activePillarTarget = null
+            } else {
+                onDismiss()
+            }
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.34f))
+                .testTag("record_filter_panel"),
+        ) {
+            val drawerWidth = minOf(maxWidth * 0.90f, 430.dp)
+            Row(Modifier.fillMaxSize()) {
+                Spacer(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(onClick = onDismiss)
+                        .testTag("filter_outside_scrim"),
+                )
+                Surface(
+                    modifier = Modifier.fillMaxHeight().width(drawerWidth),
+                shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
+                color = Color.White,
+                shadowElevation = 10.dp,
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 60.dp)
+                            .padding(horizontal = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("记录筛选", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = onDismiss, modifier = Modifier.testTag("filter_close")) {
+                            Text("关闭")
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        RecordFilterSection("性别") {
+                            FilterChoiceGrid(
+                                options = listOf("男", "女"),
+                                selected = setOfNotNull(
+                                    when (draft.sex) {
+                                        SexForFortuneDirection.MAN -> "男"
+                                        SexForFortuneDirection.WOMAN -> "女"
+                                        null -> null
+                                    },
+                                ),
+                                columns = 2,
+                                tagPrefix = "filter_gender",
+                            ) { value ->
+                                val sex = if (value == "男") SexForFortuneDirection.MAN else SexForFortuneDirection.WOMAN
+                                draft = draft.copy(sex = sex.takeUnless { it == draft.sex })
+                            }
+                        }
+                        RecordFilterSection("干支") {
+                            ElementFilterChoiceGrid(
+                                options = stems + branches,
+                                selected = draft.ganZhi.map(Char::toString).toSet(),
+                                columns = 10,
+                                tagPrefix = "filter_ganzhi",
+                            ) { value ->
+                                val selected = value.single()
+                                draft = draft.copy(
+                                    ganZhi = draft.ganZhi.toggle(selected),
+                                )
+                            }
+                        }
+                        RecordFilterSection("四柱") {
+                            val pillarFilters = listOf(
+                                draft.fourPillars.year,
+                                draft.fourPillars.month,
+                                draft.fourPillars.day,
+                                draft.fourPillars.hour,
+                            )
+                            val pillarLabels = listOf("年柱", "月柱", "日柱", "时柱")
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                pillarLabels.forEach { label ->
+                                    Text(
+                                        label,
+                                        modifier = Modifier.weight(1f),
+                                        textAlign = TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                pillarFilters.forEachIndexed { index, filter ->
+                                    PillarFilterCell(
+                                        character = filter.stem,
+                                        tenGod = filter.stemTenGod,
+                                        onClick = {
+                                            activePillarIndex = index
+                                            activePillarTarget = "stem"
+                                        },
+                                        modifier = Modifier.weight(1f).testTag("filter_pillar_stem_$index"),
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                pillarFilters.forEachIndexed { index, filter ->
+                                    PillarFilterCell(
+                                        character = filter.branch,
+                                        tenGod = filter.branchTenGod,
+                                        onClick = {
+                                            activePillarIndex = index
+                                            activePillarTarget = "branch"
+                                        },
+                                        modifier = Modifier.weight(1f).testTag("filter_pillar_branch_$index"),
+                                    )
+                                }
+                            }
+                        }
+                        RecordFilterSection("出生地区") {
+                            HomePickerRow(
+                                title = "选择",
+                                value = draft.birthRegion.ifBlank { "请选择地区" },
+                                supporting = "与首页建档使用同一地区库",
+                                onClick = { showBirthplacePicker = true },
+                                tag = "filter_birth_region",
+                            )
+                        }
+                        RecordExpandableFilterSection(
+                            title = "旺相休囚死",
+                            expanded = seasonalExpanded,
+                            onToggle = { seasonalExpanded = !seasonalExpanded },
+                            tag = "filter_seasonal_toggle",
+                        ) {
+                            FilterChoiceGrid(
+                                options = seasonalOptions,
+                                selected = draft.seasonalWuxingStates,
+                                columns = 3,
+                                tagPrefix = "filter_seasonal",
+                            ) { draft = draft.copy(seasonalWuxingStates = draft.seasonalWuxingStates.toggle(it)) }
+                        }
+                        RecordExpandableFilterSection(
+                            title = "神煞",
+                            expanded = shenShaExpanded,
+                            onToggle = { shenShaExpanded = !shenShaExpanded },
+                            tag = "filter_shensha_toggle",
+                        ) {
+                            FilterChoiceGrid(
+                                options = shenShaOptions,
+                                selected = draft.shenSha,
+                                columns = 3,
+                                tagPrefix = "filter_shensha",
+                            ) { draft = draft.copy(shenSha = draft.shenSha.toggle(it)) }
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(start = 18.dp, top = 12.dp, end = 18.dp, bottom = 28.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = onReset,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("filter_reset"),
+                        ) { Text("重置") }
+                        Button(
+                            onClick = { onApply(draft) },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("filter_apply"),
+                            colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+                        ) { Text("确定") }
+                    }
+                    Spacer(Modifier.height(34.dp))
+                    }
+                    val pillarIndex = activePillarIndex
+                    val pillarTarget = activePillarTarget
+                    if (pillarIndex != null && pillarTarget != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.30f)),
+                        )
+                        Column(Modifier.fillMaxSize()) {
+                            Spacer(
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        activePillarIndex = null
+                                        activePillarTarget = null
+                                    }
+                                    .testTag("pillar_picker_scrim"),
+                            )
+                            PillarFilterSelectionSheet(
+                                pillarLabel = listOf("年柱", "月柱", "日柱", "时柱")[pillarIndex],
+                                target = pillarTarget,
+                                filter = listOf(
+                                    draft.fourPillars.year,
+                                    draft.fourPillars.month,
+                                    draft.fourPillars.day,
+                                    draft.fourPillars.hour,
+                                )[pillarIndex],
+                                stems = stems,
+                                branches = branches,
+                                tenGods = tenGods,
+                                onCharacterSelected = { selected ->
+                                    val current = listOf(
+                                        draft.fourPillars.year,
+                                        draft.fourPillars.month,
+                                        draft.fourPillars.day,
+                                        draft.fourPillars.hour,
+                                    )[pillarIndex]
+                                    val updated = if (pillarTarget == "stem") {
+                                        current.copy(stem = selected)
+                                    } else {
+                                        current.copy(branch = selected)
+                                    }
+                                    draft = draft.copy(
+                                        fourPillars = draft.fourPillars.updated(
+                                            pillarIndex,
+                                            updated,
+                                        ),
+                                    )
+                                },
+                                onTenGodSelected = { selected ->
+                                    val current = listOf(
+                                        draft.fourPillars.year,
+                                        draft.fourPillars.month,
+                                        draft.fourPillars.day,
+                                        draft.fourPillars.hour,
+                                    )[pillarIndex]
+                                    val updated = if (pillarTarget == "stem") {
+                                        current.copy(stemTenGod = selected)
+                                    } else {
+                                        current.copy(branchTenGod = selected)
+                                    }
+                                    draft = draft.copy(
+                                        fourPillars = draft.fourPillars.updated(
+                                            pillarIndex,
+                                            updated,
+                                        ),
+                                    )
+                                },
+                            )
+                            Spacer(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .background(Color.White),
+                            )
+                        }
+                    }
+                    }
+                }
             }
         }
     }
+    if (showBirthplacePicker) {
+        BirthplacePickerSheet(
+            form = CaseFormState(locationName = draft.birthRegion),
+            onDismiss = { showBirthplacePicker = false },
+            onConfirm = { place ->
+                draft = draft.copy(birthRegion = place.displayName)
+                showBirthplacePicker = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun PillarFilterSelectionSheet(
+    pillarLabel: String,
+    target: String,
+    filter: PillarCharacterFilter,
+    stems: List<String>,
+    branches: List<String>,
+    tenGods: List<String>,
+    onCharacterSelected: (Char?) -> Unit,
+    onTenGodSelected: (String?) -> Unit,
+) {
+    val selectingStem = target == "stem"
+    val characterOptions = if (selectingStem) stems else branches
+    val selectedCharacter = if (selectingStem) filter.stem else filter.branch
+    val selectedTenGod = if (selectingStem) filter.stemTenGod else filter.branchTenGod
+    val targetLabel = if (selectingStem) "干" else "支"
+    val targetTag = if (selectingStem) "stem" else "branch"
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("pillar_filter_sheet"),
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        color = Color.White,
+        shadowElevation = 8.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "请选择 $pillarLabel-$targetLabel",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ElementFilterChoiceGrid(
+                options = characterOptions + "-",
+                selected = setOf(selectedCharacter?.toString() ?: "-"),
+                columns = 5,
+                tagPrefix = "pillar_picker_$targetTag",
+                minHeight = 36.dp,
+            ) { value ->
+                onCharacterSelected(value.singleOrNull()?.takeUnless { it == '-' })
+            }
+            Text(
+                "请选择 $pillarLabel-十神",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            PillarPickerTextGrid(
+                options = tenGods + "-",
+                selected = setOf(selectedTenGod ?: "-"),
+                columns = 5,
+                tagPrefix = "pillar_picker_${targetTag}_tengod",
+            ) { value ->
+                onTenGodSelected(value.takeUnless { it == "-" })
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordSortDialog(
+    selected: CaseSortOrder,
+    onDismiss: () -> Unit,
+    onConfirm: (CaseSortOrder) -> Unit,
+) {
+    var draft by remember(selected) { mutableStateOf(selected.toPublicRecordSort()) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.32f))
+                .testTag("record_sort_sheet"),
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Spacer(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clickable(onClick = onDismiss)
+                        .testTag("record_sort_scrim"),
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                color = Color.White,
+                ) {
+                    Column(
+                    modifier = Modifier.navigationBarsPadding()
+                        .padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 42.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onDismiss) { Text("取消") }
+                        Text(
+                            "列表排序方式",
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Button(
+                            onClick = { onConfirm(draft) },
+                            colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+                            modifier = Modifier.testTag("record_sort_confirm"),
+                        ) { Text("确定") }
+                    }
+                    listOf(
+                        CaseSortOrder.NAME_ASC to "姓名排序",
+                        CaseSortOrder.UPDATED_DESC to "最近编辑",
+                        CaseSortOrder.BIRTH_ASC to "出生时间",
+                    ).forEach { (value, label) ->
+                        FilterChoiceChip(
+                            text = label,
+                            selected = draft == value,
+                            onClick = { draft = value },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                                .testTag("record_sort_${value.name.lowercase()}"),
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordGroupEditorDialog(
+    groups: List<CaseGroup>,
+    cases: List<CaseSummary>,
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onCreate: (String) -> Unit,
+    onRename: (String, String) -> Unit,
+    onReorder: (List<String>) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    var newGroupName by rememberSaveable { mutableStateOf("") }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var editingGroupId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editName by rememberSaveable { mutableStateOf("") }
+    var pendingDelete by remember { mutableStateOf<CaseGroup?>(null) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.32f))
+                .testTag("record_group_editor"),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss)
+                    .testTag("record_group_editor_scrim"),
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f),
+                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                color = Color.White,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 52.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "全部分组",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        TextButton(onClick = onDismiss) { Text("完成") }
+                    }
+                    Text(
+                        "所有分组（${groups.size}）",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp),
+                        color = NanfengControlSurface,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("全部（${cases.size}）", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        if (groups.isEmpty()) {
+                            item {
+                                Text(
+                                    "暂无分组，点击底部“添加”创建第一个分组。",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 22.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        itemsIndexed(groups, key = { _, group -> group.id }) { index, group ->
+                            val count = cases.count { summary ->
+                                summary.groups.any { it.id == group.id }
+                            }
+                            if (editingGroupId == group.id) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    OutlinedTextField(
+                                        value = editName,
+                                        onValueChange = { editName = it },
+                                        modifier = Modifier.weight(1f)
+                                            .testTag("record_group_name_${group.id}"),
+                                        singleLine = true,
+                                    )
+                                    TextButton(
+                                        onClick = {
+                                            onRename(group.id, editName)
+                                            editingGroupId = null
+                                        },
+                                        enabled = editName.isNotBlank() &&
+                                            editName != group.name && !saving,
+                                    ) { Text("保存") }
+                                    TextButton(onClick = { editingGroupId = null }) { Text("取消") }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 68.dp)
+                                        .padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "${group.name}（$count）",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            editingGroupId = group.id
+                                            editName = group.name
+                                        },
+                                        enabled = !saving,
+                                        modifier = Modifier.testTag("record_group_rename_${group.id}"),
+                                    ) { Icon(Icons.Filled.Edit, "重命名${group.name}") }
+                                    IconButton(
+                                        onClick = {
+                                            val reordered = groups.toMutableList()
+                                            val item = reordered.removeAt(index)
+                                            reordered.add(index - 1, item)
+                                            onReorder(reordered.map { it.id })
+                                        },
+                                        enabled = index > 0 && !saving,
+                                    ) { Icon(Icons.Filled.KeyboardArrowUp, "上移${group.name}") }
+                                    IconButton(
+                                        onClick = {
+                                            val reordered = groups.toMutableList()
+                                            val item = reordered.removeAt(index)
+                                            reordered.add(index + 1, item)
+                                            onReorder(reordered.map { it.id })
+                                        },
+                                        enabled = index < groups.lastIndex && !saving,
+                                    ) { Icon(Icons.Filled.KeyboardArrowDown, "下移${group.name}") }
+                                    IconButton(
+                                        onClick = { pendingDelete = group },
+                                        enabled = !saving,
+                                        modifier = Modifier.testTag("record_group_delete_${group.id}"),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = "删除${group.name}",
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                    if (adding) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = newGroupName,
+                                onValueChange = { newGroupName = it },
+                                modifier = Modifier.weight(1f).testTag("record_group_new_name"),
+                                label = { Text("新分组名称") },
+                                singleLine = true,
+                            )
+                            Button(
+                                onClick = {
+                                    onCreate(newGroupName)
+                                    newGroupName = ""
+                                    adding = false
+                                },
+                                enabled = newGroupName.isNotBlank() && !saving,
+                                modifier = Modifier.testTag("record_group_add_confirm"),
+                            ) { Text("确定") }
+                            TextButton(onClick = { adding = false }) { Text("取消") }
+                        }
+                    } else {
+                        Button(
+                            onClick = { adding = true },
+                            modifier = Modifier.fillMaxWidth().height(52.dp).testTag("record_group_add"),
+                            colors = ButtonDefaults.buttonColors(containerColor = NanfengNavigation),
+                        ) { Text("添加") }
+                    }
+                    Spacer(Modifier.height(32.dp))
+                }
+            }
+        }
+    }
+    pendingDelete?.let { group ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除分组") },
+            text = { Text("确定删除“${group.name}”吗？命例本身不会被删除。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(group.id)
+                        pendingDelete = null
+                    },
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RecordCaseSelectionDialog(
+    title: String,
+    description: String,
+    cases: List<CaseSummary>,
+    initialSelection: Set<String>,
+    confirmLabel: String,
+    saving: Boolean,
+    testTagPrefix: String,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+    destructive: Boolean = false,
+) {
+    var selected by remember(cases, initialSelection) { mutableStateOf(initialSelection) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.32f))
+                .testTag("${testTagPrefix}_dialog"),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss)
+                    .testTag("${testTagPrefix}_scrim"),
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .heightIn(max = 680.dp),
+                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                color = Color.White,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onDismiss) { Text("取消") }
+                        Text(
+                            title,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Button(
+                            onClick = { onConfirm(selected) },
+                            enabled = !saving && (!destructive || selected.isNotEmpty()),
+                            colors = if (destructive) {
+                                ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                )
+                            } else {
+                                ButtonDefaults.buttonColors(containerColor = NanfengGold)
+                            },
+                            modifier = Modifier.testTag("${testTagPrefix}_confirm"),
+                        ) { Text(confirmLabel) }
+                    }
+                    Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (cases.isEmpty()) {
+                        Text("暂无可选择的命例。")
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                            items(cases, key = { it.id }) { summary ->
+                                val checked = summary.id in selected
+                                Surface(
+                                    onClick = {
+                                        selected = if (checked) {
+                                            selected - summary.id
+                                        } else {
+                                            selected + summary.id
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 54.dp)
+                                        .testTag("${testTagPrefix}_case_${summary.id}"),
+                                    color = Color.Transparent,
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Checkbox(
+                                            checked = checked,
+                                            onCheckedChange = null,
+                                        )
+                                        Text(
+                                            summary.name.value?.ifBlank { null } ?: summary.alias,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        summary.fourPillars?.let {
+                                            Text(
+                                                listOf(it.year, it.month, it.day, it.hour)
+                                                    .joinToString(" "),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordFilterSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        content()
+    }
+}
+
+@Composable
+private fun RecordExpandableFilterSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    tag: String,
+    content: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Surface(
+            onClick = onToggle,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag),
+            shape = RoundedCornerShape(12.dp),
+            color = Color.Transparent,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "收起$title" else "展开$title",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (expanded) content()
+    }
+}
+
+@Composable
+private fun FilterChoiceGrid(
+    options: List<String>,
+    selected: Set<String>,
+    columns: Int,
+    tagPrefix: String,
+    onToggle: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        options.chunked(columns).forEach { rowOptions ->
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                rowOptions.forEach { option ->
+                    FilterChoiceChip(
+                        text = option,
+                        selected = option in selected,
+                        onClick = { onToggle(option) },
+                        modifier = Modifier.weight(1f).testTag("${tagPrefix}_$option"),
+                    )
+                }
+                repeat(columns - rowOptions.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ElementFilterChoiceGrid(
+    options: List<String>,
+    selected: Set<String>,
+    columns: Int,
+    tagPrefix: String,
+    minHeight: Dp = 40.dp,
+    onToggle: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        options.chunked(columns).forEach { rowOptions ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                rowOptions.forEach { option ->
+                    val isSelected = option in selected
+                    val character = option.singleOrNull()?.takeUnless { it == '-' }
+                    Surface(
+                        onClick = { onToggle(option) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = minHeight)
+                            .testTag("${tagPrefix}_$option"),
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (isSelected && character != null) {
+                            baziElementSelectedContainerColor(character)
+                        } else {
+                            baziElementContainerColor(character)
+                        },
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isSelected) {
+                                character?.let(::baziElementColor)?.copy(alpha = 0.55f)
+                                    ?: NanfengGold.copy(alpha = 0.65f)
+                            } else {
+                                Color.Transparent
+                            },
+                        ),
+                    ) {
+                        Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                option,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                color = character?.let(::baziElementColor)
+                                    ?: MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+                repeat(columns - rowOptions.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillarPickerTextGrid(
+    options: List<String>,
+    selected: Set<String>,
+    columns: Int,
+    tagPrefix: String,
+    onToggle: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        options.chunked(columns).forEach { rowOptions ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                rowOptions.forEach { option ->
+                    val isSelected = option in selected
+                    Surface(
+                        onClick = { onToggle(option) },
+                        modifier = Modifier.weight(1f).heightIn(min = 36.dp)
+                            .testTag("${tagPrefix}_$option"),
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (isSelected) NanfengGold.copy(alpha = 0.15f) else NanfengControlSurface,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isSelected) NanfengGold.copy(alpha = 0.65f) else Color.Transparent,
+                        ),
+                    ) {
+                        Box(Modifier.padding(horizontal = 4.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                option,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (isSelected) NanfengGold else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+                repeat(columns - rowOptions.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillarFilterCell(
+    character: Char?,
+    tenGod: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = when {
+        character != null && tenGod != null -> "$character·$tenGod"
+        character != null -> character.toString()
+        tenGod != null -> tenGod
+        else -> "-"
+    }
+    val selected = character != null || tenGod != null
+    Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 44.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected && character != null) {
+            baziElementSelectedContainerColor(character)
+        } else {
+            baziElementContainerColor(character)
+        },
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) {
+                character?.let(::baziElementColor)?.copy(alpha = 0.55f)
+                    ?: NanfengGold.copy(alpha = 0.65f)
+            } else {
+                Color.Transparent
+            },
+        ),
+    ) {
+        Box(Modifier.padding(horizontal = 4.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Text(
+                label,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = character?.let(::baziElementColor) ?: MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterChoiceChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 44.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) NanfengGold.copy(alpha = 0.15f) else NanfengControlSurface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) NanfengGold.copy(alpha = 0.65f) else Color.Transparent,
+        ),
+    ) {
+        Box(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
+        }
+    }
+}
+
+private fun <T> Set<T>.toggle(value: T): Set<T> = if (value in this) this - value else this + value
+
+private fun FourPillarsSearchFilter.updated(
+    index: Int,
+    value: PillarCharacterFilter,
+): FourPillarsSearchFilter = when (index) {
+    0 -> copy(year = value)
+    1 -> copy(month = value)
+    2 -> copy(day = value)
+    else -> copy(hour = value)
+}
+
+private fun CaseSortOrder.toPublicRecordSort(): CaseSortOrder = when (this) {
+    CaseSortOrder.NAME_ASC, CaseSortOrder.UPDATED_DESC, CaseSortOrder.BIRTH_ASC -> this
+    CaseSortOrder.LAST_VIEWED_DESC, CaseSortOrder.CREATED_DESC -> CaseSortOrder.UPDATED_DESC
 }
 
 @Composable
@@ -2970,6 +4135,8 @@ private fun ConstellationBadge(
 @Composable
 private fun CaseSummaryRow(
     summary: CaseSummary,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
     onClick: () -> Unit,
 ) {
     Row(
@@ -2981,6 +4148,14 @@ private fun CaseSummaryRow(
             .testTag("case_${summary.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (selectionMode) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = null,
+                modifier = Modifier.padding(end = 8.dp)
+                    .testTag("case_select_${summary.id}"),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
@@ -9785,8 +10960,9 @@ private fun formatSignedDuration(totalSeconds: Int): String {
 private fun FourPillars.display(): String = "$year $month $day $hour"
 
 private fun CaseSortOrder.displayName(): String = when (this) {
+    CaseSortOrder.NAME_ASC -> "姓名"
     CaseSortOrder.LAST_VIEWED_DESC -> "最近查看"
-    CaseSortOrder.UPDATED_DESC -> "最近更新"
+    CaseSortOrder.UPDATED_DESC -> "最近编辑"
     CaseSortOrder.CREATED_DESC -> "最近创建"
     CaseSortOrder.BIRTH_ASC -> "出生时间"
 }

@@ -242,6 +242,7 @@ data class CaseGroupEntity(
     @androidx.room.PrimaryKey
     val id: String,
     val name: String,
+    val sortOrder: Int = 0,
 )
 
 @Serializable

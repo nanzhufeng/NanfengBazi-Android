@@ -49,6 +49,24 @@ internal interface CaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertGroups(entities: List<CaseGroupEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertGroup(entity: CaseGroupEntity)
+
+    @Query("UPDATE case_groups SET name = :name WHERE id = :groupId")
+    suspend fun renameGroup(groupId: String, name: String): Int
+
+    @Query("UPDATE case_groups SET sortOrder = :sortOrder WHERE id = :groupId")
+    suspend fun updateGroupSortOrder(groupId: String, sortOrder: Int): Int
+
+    @Query("DELETE FROM case_groups WHERE id = :groupId")
+    suspend fun deleteGroup(groupId: String): Int
+
+    @Query("SELECT COUNT(*) FROM case_groups WHERE name = :name COLLATE NOCASE")
+    suspend fun groupNameCount(name: String): Int
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM case_groups")
+    suspend fun maxGroupSortOrder(): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTags(entities: List<CaseTagEntity>)
 
@@ -154,8 +172,30 @@ internal interface CaseDao {
     @Query("SELECT * FROM field_evidence ORDER BY caseId, sortOrder, id")
     suspend fun allFieldEvidence(): List<FieldEvidenceEntity>
 
-    @Query("SELECT * FROM case_groups ORDER BY id")
+    @Query("SELECT * FROM case_groups ORDER BY sortOrder, id")
     suspend fun allGroups(): List<CaseGroupEntity>
+
+    @Query(
+        """
+        UPDATE cases SET isPinned = :pinned, updatedAtEpochMillis = :updatedAtEpochMillis,
+            revision = revision + 1
+        WHERE id IN (:caseIds) AND deletedAtEpochMillis IS NULL
+        """,
+    )
+    suspend fun setCasesPinned(
+        caseIds: List<String>,
+        pinned: Boolean,
+        updatedAtEpochMillis: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE cases SET deletedAtEpochMillis = :deletedAtEpochMillis,
+            updatedAtEpochMillis = :deletedAtEpochMillis, revision = revision + 1
+        WHERE id IN (:caseIds) AND deletedAtEpochMillis IS NULL
+        """,
+    )
+    suspend fun moveCasesToTrash(caseIds: List<String>, deletedAtEpochMillis: Long): Int
 
     @Query("SELECT * FROM case_tags ORDER BY id")
     suspend fun allTags(): List<CaseTagEntity>

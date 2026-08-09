@@ -6,10 +6,13 @@ import androidx.test.core.app.ApplicationProvider
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.DuplicateReason
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
+import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
@@ -21,8 +24,10 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
+import com.nanzhufeng.nanfengbazi.domain.model.HiddenStemDetail
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
+import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -200,6 +205,102 @@ class RoomCaseRepositoryTest {
     }
 
     @Test
+    fun `记录高级筛选按类别取交集并按类内取并集`() = runTest {
+        val first = sampleCase().copy(isPinned = false)
+        val secondInput = first.birthInput.copy(
+            sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            locationName = "上海市浦东新区",
+        )
+        val secondPillars = listOf("甲子", "乙酉", "丙戌", "丁亥")
+        val second = first.copy(
+            id = "case-2",
+            alias = "甲字案例",
+            name = ExplicitText.present("测试乙"),
+            sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            birthInput = secondInput,
+            birthTimeCandidates = first.birthTimeCandidates.map {
+                it.copy(id = "candidate-2", birthInput = secondInput, calculationSnapshotId = "snapshot-2")
+            },
+            calculationSnapshots = first.calculationSnapshots.map { snapshot ->
+                snapshot.copy(
+                    id = "snapshot-2",
+                    birthTimeCandidateId = "candidate-2",
+                    result = snapshot.result.copy(
+                        normalizedInput = secondInput,
+                        fourPillars = com.nanzhufeng.nanfengbazi.domain.model.FourPillars(
+                            secondPillars[0], secondPillars[1], secondPillars[2], secondPillars[3],
+                        ),
+                        basicChartDetails = snapshot.result.basicChartDetails?.let { details -> details.copy(
+                            pillars = details.pillars.mapIndexed { index, pillar ->
+                                val value = secondPillars[index]
+                                pillar.copy(
+                                    name = value,
+                                    heavenStem = value.take(1),
+                                    earthBranch = value.takeLast(1),
+                                    primaryTenGod = listOf("比肩", "偏财", "食神", "正官")[index],
+                                    hiddenStems = listOf(
+                                        HiddenStemDetail(
+                                            heavenStem = "辛",
+                                            type = "本气",
+                                            tenGod = listOf("正印", "七杀", "劫财", "伤官")[index],
+                                            element = "金",
+                                        ),
+                                    ),
+                                )
+                            },
+                        ) },
+                    ),
+                )
+            },
+            textRecords = emptyList(),
+            events = emptyList(),
+            attachments = emptyList(),
+            fieldEvidence = emptyList(),
+            groups = emptyList(),
+            tags = emptyList(),
+            copiedFromCaseId = null,
+        )
+        repository.save(first, null)
+        repository.save(second, null)
+
+        assertEquals(
+            listOf("case-2"),
+            repository.search(
+                CaseSearchRequest(
+                    advancedFilter = CaseAdvancedFilter(
+                        sex = SexForFortuneDirection.WOMAN,
+                        ganZhi = setOf('甲', '庚'),
+                        fourPillars = FourPillarsSearchFilter(
+                            month = PillarCharacterFilter(
+                                stem = '乙',
+                                branch = '酉',
+                                stemTenGod = "偏财",
+                                branchTenGod = "七杀",
+                            ),
+                        ),
+                        birthRegion = "上海市浦东新区",
+                        seasonalWuxingStates = setOf("金旺"),
+                    ),
+                ),
+            ).map { it.id },
+        )
+        val secondSummary = repository.search(CaseSearchRequest(query = "甲字")).single()
+        assertTrue(secondSummary.shenShaNames.isNotEmpty())
+        assertEquals(
+            listOf("case-2"),
+            repository.search(
+                CaseSearchRequest(
+                    advancedFilter = CaseAdvancedFilter(shenSha = setOf(secondSummary.shenShaNames.first())),
+                ),
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf("case-2", "case-1"),
+            repository.search(CaseSearchRequest(sortOrder = CaseSortOrder.NAME_ASC)).map { it.id },
+        )
+    }
+
+    @Test
     fun `最近查看只更新查看时间且不制造修订冲突`() = runTest {
         repository.save(sampleCase(), null)
         val viewedAt = Instant.parse("2026-07-30T10:00:00Z")
@@ -208,6 +309,35 @@ class RoomCaseRepositoryTest {
         assertEquals(viewedAt, repository.findById("case-1")?.lastViewedAt)
         assertEquals(1L, repository.findById("case-1")?.revision)
         assertTrue(!repository.markViewed("missing", viewedAt))
+    }
+
+    @Test
+    fun `分组目录和批量星标删除使用持久化数据链路`() = runTest {
+        repository.save(sampleCase().copy(isPinned = false, groups = emptyList()), null)
+
+        val first = requireNotNull(repository.createGroup("清娟"))
+        val second = requireNotNull(repository.createGroup("文曾"))
+        assertEquals(listOf("清娟", "文曾"), repository.listGroups().map { it.name })
+        assertTrue(repository.renameGroup(second.id, "墨墨"))
+        assertTrue(repository.reorderGroups(listOf(second.id, first.id)))
+        assertEquals(listOf("墨墨", "清娟"), repository.listGroups().map { it.name })
+
+        assertEquals(
+            1,
+            repository.setCasesPinned(setOf("case-1"), true, FixtureInstant.plusSeconds(10)),
+        )
+        assertTrue(repository.search().single().isPinned)
+        assertEquals(
+            1,
+            repository.moveCasesToTrash(setOf("case-1"), FixtureInstant.plusSeconds(20)),
+        )
+        assertTrue(repository.search().isEmpty())
+        assertEquals(
+            listOf("case-1"),
+            repository.search(CaseSearchRequest(visibility = CaseVisibility.TRASHED)).map { it.id },
+        )
+        assertTrue(repository.deleteGroup(first.id))
+        assertEquals(listOf("墨墨"), repository.listGroups().map { it.name })
     }
 
     @Test

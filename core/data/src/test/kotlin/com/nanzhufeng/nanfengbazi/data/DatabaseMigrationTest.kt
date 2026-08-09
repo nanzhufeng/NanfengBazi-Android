@@ -87,6 +87,7 @@ class DatabaseMigrationTest {
             DatabaseMigrations.MIGRATION_5_6,
             DatabaseMigrations.MIGRATION_6_7,
             DatabaseMigrations.MIGRATION_7_8,
+            DatabaseMigrations.MIGRATION_8_9,
         )
             .allowMainThreadQueries()
             .build()
@@ -146,6 +147,14 @@ class DatabaseMigrationTest {
             ).use { cursor ->
                 cursor.moveToFirst()
                 assertEquals(0, cursor.getInt(0))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "PRAGMA table_info(case_groups)",
+            ).use { cursor ->
+                val names = buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(1))
+                }
+                assertTrue(names.contains("sortOrder"))
             }
         } finally {
             migrated.close()

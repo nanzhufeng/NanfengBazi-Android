@@ -45,6 +45,7 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
 import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode
 import com.nanzhufeng.nanfengbazi.domain.CaseImageExportInput
@@ -60,6 +61,8 @@ import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryResult
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
+import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
 import com.nanzhufeng.nanfengbazi.domain.CommentaryTextRange
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
@@ -385,9 +388,14 @@ data class StageTwoUiState(
     val selectedTagId: String? = null,
     val sortOrder: CaseSortOrder = CaseSortOrder.UPDATED_DESC,
     val visibility: CaseVisibility = CaseVisibility.ACTIVE,
+    val advancedFilter: CaseAdvancedFilter = CaseAdvancedFilter(),
     val availableGroups: List<CaseGroup> = emptyList(),
     val availableTags: List<CaseTag> = emptyList(),
+    val availableBirthRegions: List<String> = emptyList(),
+    val availableSeasonalWuxingStates: List<String> = emptyList(),
+    val availableShenSha: List<String> = emptyList(),
     val cases: List<CaseSummary> = emptyList(),
+    val batchCases: List<CaseSummary> = emptyList(),
     val recentCases: List<CaseSummary> = emptyList(),
     val comparisonCandidates: List<CaseSummary> = emptyList(),
     val comparisonLeftCaseId: String? = null,
@@ -900,6 +908,7 @@ class StageTwoViewModel(
             tagId = current.selectedTagId,
             sortOrder = current.sortOrder,
             visibility = current.visibility,
+            advancedFilter = current.advancedFilter,
         )
         searchJob = viewModelScope.launch {
             mutableState.update { it.copy(listLoading = true, listError = null) }
@@ -913,6 +922,13 @@ class StageTwoViewModel(
                     .take(3)
                 val catalogRequest = CaseSearchRequest(visibility = current.visibility)
                 val allCases = caseRepository.search(catalogRequest)
+                val batchCases = caseRepository.search(
+                    CaseSearchRequest(
+                        sortOrder = CaseSortOrder.NAME_ASC,
+                        visibility = CaseVisibility.ACTIVE,
+                    ),
+                )
+                val groups = caseRepository.listGroups()
                 val cases = if (request == catalogRequest) {
                     allCases
                 } else {
@@ -921,13 +937,22 @@ class StageTwoViewModel(
                 mutableState.update {
                     it.copy(
                         cases = cases,
+                        batchCases = batchCases,
                         recentCases = recentCases,
-                        availableGroups = allCases.flatMap { item -> item.groups }
-                            .distinctBy { group -> group.id }
-                            .sortedBy { group -> group.name },
+                        availableGroups = groups,
                         availableTags = allCases.flatMap { item -> item.tags }
                             .distinctBy { tag -> tag.id }
                             .sortedBy { tag -> tag.name },
+                        availableBirthRegions = allCases.mapNotNull { item ->
+                            item.birthInput.locationName?.trim()?.takeIf(String::isNotEmpty)
+                        }.distinct().sorted(),
+                        availableSeasonalWuxingStates = allCases
+                            .flatMap { item -> item.seasonalWuxingStates }
+                            .distinct()
+                            .sorted(),
+                        availableShenSha = allCases.flatMap { item -> item.shenShaNames }
+                            .distinct()
+                            .sorted(),
                         listLoading = false,
                         listError = null,
                     )
@@ -2591,6 +2616,105 @@ class StageTwoViewModel(
         refreshCases()
     }
 
+    fun createCaseGroup(name: String) {
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val created = caseRepository.createGroup(name)
+            mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    mutationError = if (created == null) "分组名称为空或已经存在。" else null,
+                    message = if (created != null) "分组已添加。" else it.message,
+                )
+            }
+            if (created != null) refreshCases()
+        }
+    }
+
+    fun renameCaseGroup(groupId: String, name: String) {
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val saved = caseRepository.renameGroup(groupId, name)
+            mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    mutationError = if (saved) null else "分组重命名失败，请检查名称是否重复。",
+                    message = if (saved) "分组名称已更新。" else it.message,
+                )
+            }
+            if (saved) refreshCases()
+        }
+    }
+
+    fun reorderCaseGroups(groupIds: List<String>) {
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            val saved = caseRepository.reorderGroups(groupIds)
+            mutableState.update {
+                it.copy(
+                    mutationError = if (saved) null else "分组顺序保存失败。",
+                    message = if (saved) "分组顺序已更新。" else it.message,
+                )
+            }
+            if (saved) refreshCases()
+        }
+    }
+
+    fun deleteCaseGroup(groupId: String) {
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val deleted = caseRepository.deleteGroup(groupId)
+            mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    selectedGroupId = if (it.selectedGroupId == groupId) null else it.selectedGroupId,
+                    mutationError = if (deleted) null else "分组删除失败。",
+                    message = if (deleted) "分组已删除，命例本身未删除。" else it.message,
+                )
+            }
+            if (deleted) refreshCases()
+        }
+    }
+
+    fun updatePinnedCases(pinnedCaseIds: Set<String>) {
+        if (mutableState.value.mutationSaving) return
+        val currentCases = mutableState.value.batchCases
+        val currentlyPinned = currentCases.filter { it.isPinned }.map { it.id }.toSet()
+        val toPin = pinnedCaseIds - currentlyPinned
+        val toUnpin = currentlyPinned - pinnedCaseIds
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val now = clock.instant()
+            val changed = caseRepository.setCasesPinned(toPin, true, now) +
+                caseRepository.setCasesPinned(toUnpin, false, now)
+            mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    message = "已更新 $changed 个命例的星标置顶状态。",
+                )
+            }
+            refreshCases()
+        }
+    }
+
+    fun batchMoveCasesToTrash(caseIds: Set<String>) {
+        if (caseIds.isEmpty() || mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val changed = caseRepository.moveCasesToTrash(caseIds, clock.instant())
+            mutableState.update {
+                it.copy(
+                    mutationSaving = false,
+                    message = "已将 $changed 个命例移入回收站，可在回收站恢复。",
+                )
+            }
+            refreshCases()
+        }
+    }
+
     fun selectTag(tagId: String?) {
         mutableState.update {
             it.copy(selectedTagId = tagId, listError = null)
@@ -2605,12 +2729,30 @@ class StageTwoViewModel(
         refreshCases()
     }
 
+    fun applyAdvancedFilter(filter: CaseAdvancedFilter) {
+        mutableState.update { it.copy(advancedFilter = filter, listError = null) }
+        refreshCases()
+    }
+
+    fun clearCaseFilters() {
+        mutableState.update {
+            it.copy(
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                listError = null,
+            )
+        }
+        refreshCases()
+    }
+
     fun selectVisibility(visibility: CaseVisibility) {
         mutableState.update {
             it.copy(
                 visibility = visibility,
                 selectedGroupId = null,
                 selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
                 listError = null,
             )
         }
@@ -5372,6 +5514,18 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("defaultRatHourRule", defaultRatHourRule.name)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
+    putString("filterSex", advancedFilter.sex?.name)
+    putString("filterGanZhi", advancedFilter.ganZhi.joinToString(""))
+    putString("filterBirthRegion", advancedFilter.birthRegion)
+    putStringArrayList(
+        "filterSeasonalStates",
+        ArrayList(advancedFilter.seasonalWuxingStates),
+    )
+    putStringArrayList("filterShenSha", ArrayList(advancedFilter.shenSha))
+    putString("filterYearPillar", advancedFilter.fourPillars.year.savedValue())
+    putString("filterMonthPillar", advancedFilter.fourPillars.month.savedValue())
+    putString("filterDayPillar", advancedFilter.fourPillars.day.savedValue())
+    putString("filterHourPillar", advancedFilter.fourPillars.hour.savedValue())
     putString("detailSection", detailSection.name)
     commentaryCandidateSet?.let {
         putBundle("commentaryCandidateSet", it.toSavedStateBundle())
@@ -5415,6 +5569,19 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         query = getString("query").orEmpty(),
         selectedGroupId = getString("selectedGroupId"),
         selectedTagId = getString("selectedTagId"),
+        advancedFilter = CaseAdvancedFilter(
+            sex = enumValueOrNull<SexForFortuneDirection>(getString("filterSex")),
+            ganZhi = getString("filterGanZhi").orEmpty().toSet(),
+            fourPillars = FourPillarsSearchFilter(
+                year = getString("filterYearPillar").toPillarCharacterFilter(),
+                month = getString("filterMonthPillar").toPillarCharacterFilter(),
+                day = getString("filterDayPillar").toPillarCharacterFilter(),
+                hour = getString("filterHourPillar").toPillarCharacterFilter(),
+            ),
+            birthRegion = getString("filterBirthRegion").orEmpty(),
+            seasonalWuxingStates = getStringArrayList("filterSeasonalStates")?.toSet().orEmpty(),
+            shenSha = getStringArrayList("filterShenSha")?.toSet().orEmpty(),
+        ),
         comparisonLeftCaseId = getString("comparisonLeftCaseId"),
         comparisonRightCaseId = getString("comparisonRightCaseId"),
         comparisonLoading = destination == AppDestination.CaseComparison,
@@ -5504,6 +5671,31 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
             getBundle("metadataDraft")?.toCaseMetadataDraft() ?: CaseMetadataDraft(),
         recordDraft = getBundle("recordDraft")?.toTextRecordDraft() ?: TextRecordDraft(),
         eventDraft = getBundle("eventDraft")?.toEventDraft() ?: EventDraft(),
+    )
+}
+
+private fun PillarCharacterFilter.savedValue(): String =
+    listOf(
+        stem?.toString().orEmpty(),
+        branch?.toString().orEmpty(),
+        stemTenGod.orEmpty(),
+        branchTenGod.orEmpty(),
+    ).joinToString("|")
+
+private fun String?.toPillarCharacterFilter(): PillarCharacterFilter {
+    if (this.isNullOrBlank()) return PillarCharacterFilter()
+    if ('|' !in this) {
+        return PillarCharacterFilter(
+            stem = getOrNull(0)?.takeUnless { it == '-' },
+            branch = getOrNull(1)?.takeUnless { it == '-' },
+        )
+    }
+    val parts = split('|', limit = 4)
+    return PillarCharacterFilter(
+        stem = parts.getOrNull(0)?.firstOrNull(),
+        branch = parts.getOrNull(1)?.firstOrNull(),
+        stemTenGod = parts.getOrNull(2)?.takeIf(String::isNotBlank),
+        branchTenGod = parts.getOrNull(3)?.takeIf(String::isNotBlank),
     )
 }
 

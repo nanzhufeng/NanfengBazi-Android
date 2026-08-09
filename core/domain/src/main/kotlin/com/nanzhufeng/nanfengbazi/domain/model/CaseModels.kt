@@ -512,4 +512,8 @@ data class CaseSummary(
     val canonicalSolarDateTime: CivilDateTime? = null,
     val zodiac: String? = null,
     val westernZodiac: String? = null,
+    val seasonalWuxingStates: Set<String> = emptySet(),
+    val shenShaNames: Set<String> = emptySet(),
+    val pillarStemTenGods: List<String> = emptyList(),
+    val pillarBranchTenGods: List<String> = emptyList(),
 )

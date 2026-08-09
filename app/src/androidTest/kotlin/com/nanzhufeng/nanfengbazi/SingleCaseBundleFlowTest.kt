@@ -147,8 +147,8 @@ class SingleCaseBundleFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_import_case").performClick()
         val exportedFile = device.wait(
             Until.findObject(By.textContains(alias.take(32))),
             SYSTEM_UI_TIMEOUT_MILLIS,
@@ -218,8 +218,8 @@ class SingleCaseBundleFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("record_more").performClick()
-        composeRule.onNodeWithTag("import_single_case_button").performClick()
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.onNodeWithTag("settings_import_case").performClick()
         check(clickSystemDocument(device, alias.take(32))) {
             "Android 系统打开文档页面未找到刚导出的密码加密命例附件包"
         }

@@ -52,6 +52,9 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
+import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
+import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
+import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
@@ -826,11 +829,40 @@ class StageTwoViewModelTest {
         viewModel.selectGroup("group-1")
         viewModel.selectTag("tag-1")
         viewModel.selectSortOrder(CaseSortOrder.LAST_VIEWED_DESC)
+        viewModel.applyAdvancedFilter(
+            CaseAdvancedFilter(
+                ganZhi = setOf('甲', '子'),
+                fourPillars = FourPillarsSearchFilter(
+                    year = PillarCharacterFilter(
+                        stem = '甲',
+                        branch = '子',
+                        stemTenGod = "比肩",
+                        branchTenGod = "正印",
+                    ),
+                ),
+                birthRegion = "北京",
+                seasonalWuxingStates = setOf("木旺"),
+                shenSha = setOf("天乙贵人"),
+            ),
+        )
 
         val request = repository.searchRequests.last()
         assertEquals("group-1", request.groupId)
         assertEquals("tag-1", request.tagId)
         assertEquals(CaseSortOrder.LAST_VIEWED_DESC, request.sortOrder)
+        assertEquals(setOf('甲', '子'), request.advancedFilter.ganZhi)
+        assertEquals(
+            PillarCharacterFilter(
+                stem = '甲',
+                branch = '子',
+                stemTenGod = "比肩",
+                branchTenGod = "正印",
+            ),
+            request.advancedFilter.fourPillars.year,
+        )
+        assertEquals("北京", request.advancedFilter.birthRegion)
+        assertEquals(setOf("木旺"), request.advancedFilter.seasonalWuxingStates)
+        assertEquals(setOf("天乙贵人"), request.advancedFilter.shenSha)
     }
 
     @Test

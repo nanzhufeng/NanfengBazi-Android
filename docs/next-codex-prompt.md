@@ -46,7 +46,7 @@ git status/diff/log；先计数或 --stat，再限定文件。
 
 固定边界：
 - 默认只在 emulator-5554 做 Android API 35 验收。
-- 不操作 OPPO，除非用户本轮明确授权。
+- OPPO 在线时默认允许同签名覆盖安装主 APK、启动、人工验收，以及不新增安装包的主机侧 `adb`／UIAutomator 直接操作现有主应用完成验收。禁止在 OPPO 上运行 instrumentation 测试，严禁安装独立 `androidTest` 或其他辅助 APK、卸载、清数据、清库，以及使用 Gradle `connected*AndroidTest` 聚合任务。
 - 不用合成数据冒充真实问真样本或真机证据。
 - 不用历法猜值补齐 OCR 缺失或来源隐去内容。
 - App 继续本地优先；研究时可以按用户指令联网检索，但不能据此给 App 增加 INTERNET、

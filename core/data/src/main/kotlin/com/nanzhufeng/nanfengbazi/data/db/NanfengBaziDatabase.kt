@@ -29,7 +29,7 @@ abstract class NanfengBaziDatabase : RoomDatabase() {
     internal abstract fun importSessionDao(): ImportSessionDao
 
     companion object {
-        const val SCHEMA_VERSION = 8
+        const val SCHEMA_VERSION = 9
     }
 }
 
@@ -194,6 +194,20 @@ object DatabaseMigrations {
             db.execSQL(
                 "UPDATE text_records SET sourceType = 'IMPORTED_IMAGE' " +
                     "WHERE sourceAttachmentId IS NOT NULL",
+            )
+        }
+    }
+
+    val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE case_groups ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0",
+            )
+            db.execSQL(
+                "UPDATE case_groups SET sortOrder = " +
+                    "(SELECT COUNT(*) FROM case_groups AS earlier " +
+                    "WHERE earlier.name < case_groups.name OR " +
+                    "(earlier.name = case_groups.name AND earlier.id < case_groups.id))",
             )
         }
     }
