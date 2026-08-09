@@ -26,6 +26,7 @@
 | 四柱反查 | `FourPillarsLookup` → `TymeFourPillarsLookup` | `StageTwoViewModel` | UI 直接调用 Tyme4j、把候选当出生分钟唯一证明或保存为正式命例 |
 | 命盘图片导出 | `CaseImageExportContract` → `CaseImageRenderer` | 系统文件保存、长图分享 | 截取 Compose 可见视口、两套导出拼接、重新排盘或采用问真来源值 |
 | 外部分析手动桥接 | `ExternalAnalysisBridge` → `ExternalAnalysisBridgeContract` | `StageTwoViewModel`、系统剪贴板、`TextRecordUseCase` | 页面重新投影字段、自动联网发送、无确认复制、无来源回填或把外部内容当算法真值 |
+| AI 命盘分析指令 | `CaseObjectiveSummaryContract` → `BaziAiAnalysisPromptContract` | 基本排盘弹窗、系统剪贴板 | UI 自行拼命盘字段、自动联网、补造缺失资料或把模型推演标成输入事实 |
 | 真太阳时校正 | `TrueSolarTimeCalculator` + `core:solar-time` | `TymeBaziEngine` | 页面自行加分钟、覆盖原始民用时或把 Tyme 类型名当算法 |
 | Tyme4j 状态隔离 | `core:engine-tyme` | `TymeBaziEngine` | 其他模块访问全局 provider |
 | `BaziCase` 与字段空值语义 | `core:domain` | 仓储、备份 | 页面或 OCR 用空串改写真值 |

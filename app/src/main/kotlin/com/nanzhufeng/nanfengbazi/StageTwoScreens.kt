@@ -6938,6 +6938,10 @@ private fun ReferenceBasicChart(
             color = MaterialTheme.colorScheme.error,
         )
     }
+    BasicChartAiPromptSection(
+        case = case,
+        modifier = Modifier.padding(top = 18.dp),
+    )
 }
 
 @Composable

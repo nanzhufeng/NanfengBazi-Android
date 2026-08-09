@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.content.ClipboardManager
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
@@ -181,6 +182,38 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithText("胎息", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("命宫", substring = true).assertDoesNotExist()
         composeRule.onNodeWithText("身宫", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("open_basic_chart_ai_prompt")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.onNodeWithTag("basic_chart_ai_prompt_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_prompt_topic_all").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_prompt_topic_career").performClick()
+        composeRule.onNodeWithTag("ai_prompt_privacy_row")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("toggle_ai_prompt_preview")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("ai_prompt_preview")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("2021—2031 走势", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("copy_basic_chart_ai_prompt")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("basic_chart_ai_prompt_dialog").assertDoesNotExist()
+        val clipboard = InstrumentationRegistry.getInstrumentation()
+            .targetContext.getSystemService(ClipboardManager::class.java)
+        val copiedPrompt = clipboard.primaryClip?.getItemAt(0)
+            ?.coerceToText(InstrumentationRegistry.getInstrumentation().targetContext)
+            ?.toString()
+            .orEmpty()
+        assertTrue(copiedPrompt.contains("# 角色"))
+        assertTrue(copiedPrompt.contains("盲派命理"))
+        assertTrue(copiedPrompt.contains("事业专题解读"))
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
