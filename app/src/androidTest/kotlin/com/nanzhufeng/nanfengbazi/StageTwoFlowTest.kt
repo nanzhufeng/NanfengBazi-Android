@@ -914,7 +914,6 @@ class StageTwoFlowTest {
             .performScrollTo()
             .performTextReplacement("Stage3 合成命主反馈")
         composeRule.onNodeWithTag("save_case_notes_button")
-            .performScrollTo()
             .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("断事笔记已保存。"))
@@ -927,7 +926,6 @@ class StageTwoFlowTest {
         composeRule.onNodeWithTag("master_commentary_input")
             .performTextReplacement("Stage3 合成师傅点评")
         composeRule.onNodeWithTag("save_case_notes_button")
-            .performScrollTo()
             .performClick()
         composeRule.onNodeWithTag("notes_mode_owner").performClick()
 
@@ -942,7 +940,6 @@ class StageTwoFlowTest {
             .performScrollTo()
             .performTextReplacement("Stage3 合成关键事件")
         composeRule.onNodeWithTag("save_case_notes_button")
-            .performScrollTo()
             .performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(hasText("断事笔记已保存。"))

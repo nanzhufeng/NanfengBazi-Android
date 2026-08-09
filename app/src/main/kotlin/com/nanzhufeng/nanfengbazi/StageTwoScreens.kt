@@ -92,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
@@ -163,6 +164,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.toTraditionalChineseText
 import com.nanzhufeng.nanfengbazi.domain.model.TypedFieldValue
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenPageType
 import com.nanzhufeng.nanfengbazi.domain.model.WenzhenSourceFidelityContract
@@ -6236,15 +6238,7 @@ private fun WenzhenCaseIdentityHeader(
                         )
                         Text(
                             lunar?.let {
-                                "农历 %04d年%s%02d月%02d日 %02d:%02d:%02d".format(
-                                    it.year,
-                                    if (it.isLeapMonth) "闰" else "",
-                                    it.month,
-                                    it.day,
-                                    it.hour,
-                                    it.minute,
-                                    it.second,
-                                )
+                                "农历 ${it.toTraditionalChineseText()}"
                             } ?: "农历 暂无换算结果",
                             modifier = Modifier
                                 .padding(top = 2.dp)
@@ -6273,33 +6267,64 @@ private fun WenzhenCaseIdentityHeader(
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                         .testTag("notes_identity_header"),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            case.name.value ?: case.alias,
-                            modifier = Modifier.weight(1f),
-                            color = NanfengGoldLight,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Medium,
-                        )
+                    val pillars = result?.fourPillars?.let {
+                        listOf(it.year, it.month, it.day, it.hour)
+                    }.orEmpty()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(58.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
                             case.sexForFortuneDirection.chartTypeName(),
-                            modifier = Modifier.testTag("notes_identity_chart_type"),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset(x = (-122).dp)
+                                .testTag("notes_identity_chart_type"),
                             color = NanfengGoldLight,
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                         )
+                        if (pillars.isEmpty()) {
+                            Text(
+                                "暂无已采用排盘",
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier.testTag("notes_identity_four_pillars"),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                pillars.forEachIndexed { index, pillar ->
+                                    Column(
+                                        modifier = Modifier.width(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Text(
+                                            pillar.take(1),
+                                            modifier = Modifier.testTag("notes_identity_stem_$index"),
+                                            color = Color.White,
+                                            fontSize = 18.sp,
+                                            lineHeight = 22.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                        Text(
+                                            pillar.drop(1).take(1),
+                                            modifier = Modifier.testTag("notes_identity_branch_$index"),
+                                            color = Color.White,
+                                            fontSize = 18.sp,
+                                            lineHeight = 22.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
-                    Text(
-                        result?.fourPillars?.display() ?: "暂无已采用排盘",
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .testTag("notes_identity_four_pillars"),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
                     HorizontalDivider(
-                        modifier = Modifier.padding(top = 8.dp, bottom = 7.dp),
+                        modifier = Modifier.padding(top = 2.dp, bottom = 7.dp),
                         color = Color.White.copy(alpha = 0.12f),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -6438,12 +6463,59 @@ private fun ReferenceCaseDetailContent(
         )
     }
     val wide = LocalConfiguration.current.screenWidthDp >= 840
+    if (selectedSection == CaseDetailSection.RECORDS) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .testTag("case_notes_layout")
+                .padding(
+                    start = if (wide) 28.dp else 10.dp,
+                    top = 6.dp,
+                    end = if (wide) 28.dp else 10.dp,
+                    bottom = 6.dp,
+                ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 10.dp),
+            ) {
+                ReferenceCaseNotes(
+                    case = case,
+                    adopted = adopted,
+                    mode = notesMode,
+                    onModeChange = { notesMode = it },
+                    onEditRecord = onEditRecord,
+                    draft = caseNotesDraft,
+                    onOwnerFeedbackChange = onOwnerFeedbackChange,
+                    onMasterCommentaryChange = onMasterCommentaryChange,
+                    onAddTimeline = onAddNotesTimeline,
+                    onTimelineContentChange = onNotesTimelineContentChange,
+                )
+            }
+            CaseNotesSaveFooter(
+                case = case,
+                saving = caseNotesSaving,
+                saveError = caseNotesSaveError,
+                saved = caseNotesSaved,
+                onSave = onSaveCaseNotes,
+            )
+        }
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .background(
-                color = Color.White,
+                color = if (selectedSection == CaseDetailSection.FORTUNE) {
+                    NanfengPageBackground
+                } else {
+                    Color.White
+                },
                 shape = if (selectedSection == CaseDetailSection.BASIC_INFO) {
                     RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
                 } else {
@@ -6451,8 +6523,16 @@ private fun ReferenceCaseDetailContent(
                 },
             )
             .padding(
-                horizontal = if (wide) 28.dp else 10.dp,
-                vertical = if (selectedSection == CaseDetailSection.BASIC_INFO) 8.dp else 6.dp,
+                horizontal = when {
+                    selectedSection == CaseDetailSection.FORTUNE -> 0.dp
+                    wide -> 28.dp
+                    else -> 10.dp
+                },
+                vertical = when (selectedSection) {
+                    CaseDetailSection.BASIC_INFO -> 8.dp
+                    CaseDetailSection.FORTUNE -> 0.dp
+                    else -> 6.dp
+                },
             ),
     ) {
         when (selectedSection) {
@@ -6489,22 +6569,7 @@ private fun ReferenceCaseDetailContent(
                 }
             }
 
-            CaseDetailSection.RECORDS -> ReferenceCaseNotes(
-                case = case,
-                adopted = adopted,
-                mode = notesMode,
-                onModeChange = { notesMode = it },
-                onEditRecord = onEditRecord,
-                draft = caseNotesDraft,
-                saving = caseNotesSaving,
-                saveError = caseNotesSaveError,
-                saved = caseNotesSaved,
-                onOwnerFeedbackChange = onOwnerFeedbackChange,
-                onMasterCommentaryChange = onMasterCommentaryChange,
-                onAddTimeline = onAddNotesTimeline,
-                onTimelineContentChange = onNotesTimelineContentChange,
-                onSave = onSaveCaseNotes,
-            )
+            CaseDetailSection.RECORDS -> Unit
         }
         Spacer(Modifier.height(28.dp))
     }
@@ -6866,14 +6931,10 @@ private fun ReferenceCaseNotes(
     onModeChange: (CaseNotesMode) -> Unit,
     onEditRecord: (String) -> Unit,
     draft: CaseNotesDraft,
-    saving: Boolean,
-    saveError: String?,
-    saved: Boolean,
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
     onAddTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onTimelineContentChange: (String, String) -> Unit,
-    onSave: () -> Unit,
 ) {
     var pickerVisible by rememberSaveable(case.id) { mutableStateOf(false) }
     BoxWithConstraints(
@@ -6973,37 +7034,7 @@ private fun ReferenceCaseNotes(
         )
     }
 
-    Spacer(Modifier.height(18.dp))
-    Text(
-        when {
-            saveError != null -> saveError
-            saving -> "正在保存…"
-            saved -> "已自动保存"
-            else -> "编辑中，将自动保存"
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(22.dp),
-        textAlign = TextAlign.Center,
-        style = MaterialTheme.typography.labelSmall,
-        color = if (saveError != null) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-        },
-    )
-    Button(
-        onClick = onSave,
-        enabled = case.deletedAt == null && !saving,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .testTag("save_case_notes_button"),
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
-    ) {
-        Text(if (saving) "保存中" else "保存", fontWeight = FontWeight.SemiBold)
-    }
+    Spacer(Modifier.height(10.dp))
 
     if (pickerVisible && adopted != null) {
         CaseNotesTimePicker(
@@ -7014,6 +7045,52 @@ private fun ReferenceCaseNotes(
                 pickerVisible = false
             },
         )
+    }
+}
+
+@Composable
+private fun CaseNotesSaveFooter(
+    case: BaziCase,
+    saving: Boolean,
+    saveError: String?,
+    saved: Boolean,
+    onSave: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("case_notes_save_footer"),
+    ) {
+        Text(
+            when {
+                saveError != null -> saveError
+                saving -> "正在保存…"
+                saved -> "已自动保存"
+                else -> "编辑中，将自动保存"
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(22.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (saveError != null) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+            },
+        )
+        Button(
+            onClick = onSave,
+            enabled = case.deletedAt == null && !saving,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .testTag("save_case_notes_button"),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+        ) {
+            Text(if (saving) "保存中" else "保存", fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
@@ -8337,8 +8414,9 @@ private fun FortuneDetailsView(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(NanfengPageBackground, RoundedCornerShape(18.dp))
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .background(NanfengPageBackground)
+            .testTag("professional_page_surface")
+            .padding(horizontal = 6.dp, vertical = 8.dp),
     ) {
         if (professionalFortunePosition == null) {
             ReferenceEmptyText(fortunePositionError ?: "正在定位专业岁运…")
@@ -8449,16 +8527,17 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
         shadowElevation = 2.dp,
     ) {
         Column(modifier = Modifier.background(Color.White)) {
-            val groupDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+            val groupDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("professional_transit_natal_divider")
-                    .drawBehind {
+                    .drawWithContent {
+                        drawContent()
                         val x = size.width * 5f / 9f
                         drawLine(
                             color = groupDividerColor,
-                            start = Offset(x, 6.dp.toPx()),
+                            start = Offset(x, 0f),
                             end = Offset(x, size.height),
                             strokeWidth = 1.dp.toPx(),
                         )
@@ -8503,7 +8582,7 @@ private fun ProfessionalPillarCell(
         ) {
             Text(
                 column.label,
-                fontSize = 8.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -8530,8 +8609,8 @@ private fun ProfessionalPillarCell(
                     stem.toString(),
                     modifier = Modifier.testTag("${column.key}_stem_text"),
                     color = baziElementColor(stem),
-                    fontSize = 19.sp,
-                    lineHeight = 21.sp,
+                    fontSize = 20.sp,
+                    lineHeight = 22.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
@@ -8542,8 +8621,8 @@ private fun ProfessionalPillarCell(
                     .padding(top = 5.dp)
                     .testTag("${column.key}_branch_text"),
                 color = baziElementColor(branch),
-                fontSize = 19.sp,
-                lineHeight = 21.sp,
+                fontSize = 20.sp,
+                lineHeight = 22.sp,
                 fontWeight = FontWeight.SemiBold,
             )
         }
@@ -8586,8 +8665,8 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                                     ),
                                     color = hidden.heavenStem.firstOrNull()
                                         ?.let(::baziElementColor) ?: NanfengInk,
-                                    fontSize = 11.sp,
-                                    lineHeight = 14.sp,
+                                    fontSize = 12.sp,
+                                    lineHeight = 15.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
@@ -8596,7 +8675,7 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                                         "${column.key}_hidden_ten_god_$rowIndex",
                                     ),
                                     fontSize = 10.sp,
-                                    lineHeight = 14.sp,
+                                    lineHeight = 15.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -8626,14 +8705,14 @@ private fun ProfessionalTenGodLabel(
             Modifier.padding(vertical = if (compact) 0.dp else 1.dp)
         }).then(if (tag == null) Modifier else Modifier.testTag(tag)),
         fontSize = when {
-            segmented -> 10.sp
-            compact -> 7.sp
-            else -> 9.sp
+            segmented -> 11.sp
+            compact -> 8.sp
+            else -> 10.sp
         },
         lineHeight = when {
-            segmented -> 14.sp
-            compact -> 8.sp
-            else -> 12.sp
+            segmented -> 15.sp
+            compact -> 9.sp
+            else -> 13.sp
         },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -8669,16 +8748,16 @@ private fun ProfessionalTimelineRow(
         ) {
             Column(
                 modifier = Modifier
-                    .width(24.dp)
-                    .padding(vertical = 5.dp),
+                    .width(26.dp)
+                    .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 title.forEach { character ->
                     Text(
                         text = character.toString(),
-                        fontSize = 9.sp,
-                        lineHeight = 10.sp,
+                        fontSize = 10.sp,
+                        lineHeight = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -8690,7 +8769,7 @@ private fun ProfessionalTimelineRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("${tag}_list"),
-                    contentPadding = PaddingValues(vertical = 5.dp),
+                    contentPadding = PaddingValues(vertical = 6.dp),
                     horizontalArrangement = Arrangement.Start,
                 ) {
                     itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
@@ -8764,8 +8843,8 @@ private fun ProfessionalTimelineCell(
         ) {
             Text(
                 item.label,
-                fontSize = if (compact) 7.sp else 8.sp,
-                lineHeight = if (compact) 8.sp else 10.sp,
+                fontSize = if (compact) 8.sp else 9.sp,
+                lineHeight = if (compact) 9.sp else 11.sp,
                 color = if (item.selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
@@ -8776,8 +8855,8 @@ private fun ProfessionalTimelineCell(
                 Text(
                     stageLabel.take(1),
                     modifier = Modifier.testTag("timeline_${item.key}_upper"),
-                    fontSize = if (compact) 13.sp else 14.sp,
-                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontSize = if (compact) 14.sp else 15.sp,
+                    lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -8787,23 +8866,23 @@ private fun ProfessionalTimelineCell(
                     modifier = Modifier
                         .padding(top = 2.dp)
                         .testTag("timeline_${item.key}_lower"),
-                    fontSize = if (compact) 13.sp else 14.sp,
-                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontSize = if (compact) 14.sp else 15.sp,
+                    lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     " ",
                     modifier = Modifier.padding(vertical = 1.dp),
-                    fontSize = if (compact) 7.sp else 8.sp,
+                    fontSize = if (compact) 8.sp else 9.sp,
                 )
             } else if (stem != null) {
                 Text(
                     stem.toString(),
                     modifier = Modifier.testTag("timeline_${item.key}_stem"),
                     color = baziElementColor(stem),
-                    fontSize = if (compact) 13.sp else 14.sp,
-                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontSize = if (compact) 14.sp else 15.sp,
+                    lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Box(modifier = Modifier.testTag("timeline_${item.key}_stem_detail")) {
@@ -8815,11 +8894,10 @@ private fun ProfessionalTimelineCell(
                     branch.toString(),
                     modifier = Modifier
                         .padding(top = 2.dp)
-                        .offset(y = 3.dp)
                         .testTag("timeline_${item.key}_branch"),
                     color = baziElementColor(branch),
-                    fontSize = if (compact) 13.sp else 14.sp,
-                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontSize = if (compact) 14.sp else 15.sp,
+                    lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 ProfessionalTimelineBranchDetail(item, compact)
@@ -8828,8 +8906,8 @@ private fun ProfessionalTimelineCell(
                 item.subtitle,
                 modifier = Modifier.padding(top = 2.dp),
                 textAlign = TextAlign.Center,
-                fontSize = 7.sp,
-                lineHeight = 8.sp,
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
@@ -8845,9 +8923,9 @@ private fun ProfessionalTimelineBranchDetail(
     Text(
         item.hiddenStems.joinToString(separator = "") { tenGodAbbreviation(it.tenGod) },
         modifier = Modifier
-            .padding(top = 3.dp, bottom = 1.dp)
             .testTag("timeline_${item.key}_branch_detail"),
-        fontSize = if (compact) 7.sp else 8.sp,
+        fontSize = if (compact) 8.sp else 9.sp,
+        lineHeight = if (compact) 9.sp else 11.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
@@ -8868,44 +8946,62 @@ private fun ProfessionalSelectedDateBar(
             .fillMaxWidth()
             .testTag("fortune_selected_datetime"),
     ) {
+        Text(
+            "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenPicker)
+                .testTag("fortune_observation_picker")
+                .padding(top = 1.dp, bottom = 3.dp),
+            textAlign = TextAlign.Center,
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("fortune_start_info"),
+            ) {
                 Text(
                     "起运  ${calculation.fortuneStart.direction.displayName()} · " +
                         calculation.fortuneStart.ageDurationDisplay(),
-                    fontSize = 9.sp,
-                    lineHeight = 12.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     "交运  ${calculation.fortuneStart.endAt.display()}",
                     modifier = Modifier.padding(top = 1.dp),
-                    fontSize = 9.sp,
-                    lineHeight = 12.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Row(
                 modifier = Modifier
-                    .padding(end = 12.dp)
+                    .padding(end = 10.dp)
                     .testTag("fortune_age_today_group"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     "$completedAge 岁",
                     modifier = Modifier.testTag("fortune_completed_age"),
-                    fontSize = 14.sp,
-                    lineHeight = 16.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = NanfengInk,
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Surface(
                     modifier = Modifier
-                        .height(32.dp)
+                        .height(34.dp)
                         .clickable(onClick = onToday)
                         .testTag("fortune_today")
                         .semantics { contentDescription = "定位今天" },
@@ -8921,11 +9017,11 @@ private fun ProfessionalSelectedDateBar(
                             painter = painterResource(R.drawable.ic_today),
                             contentDescription = null,
                             tint = NanfengGold,
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(16.dp),
                         )
                         Text(
                             "今",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = NanfengGold,
                         )
@@ -8933,19 +9029,6 @@ private fun ProfessionalSelectedDateBar(
                 }
             }
         }
-        Text(
-            "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenPicker)
-                .testTag("fortune_observation_picker")
-                .padding(top = 3.dp, bottom = 2.dp),
-            fontSize = 9.sp,
-            lineHeight = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
         error?.let {
             Text(
                 it,

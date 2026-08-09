@@ -150,6 +150,7 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithTag("detail_tab_basic_chart").performClick()
         composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
         composeRule.onNodeWithTag("shared_identity_lunar_time").assertIsDisplayed()
+        composeRule.onNodeWithText("农历 1992年七月廿六 午时").assertIsDisplayed()
         composeRule.onNodeWithTag("shared_identity_chart_type").assertIsDisplayed()
         composeRule.onNodeWithText("乾造").assertIsDisplayed()
         composeRule.onNodeWithTag("basic_chart_details").assertIsDisplayed()
@@ -169,7 +170,14 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
         composeRule.onNodeWithTag("shared_identity_lunar_time").assertIsDisplayed()
+        composeRule.onNodeWithText("农历 1992年七月廿六 午时").assertIsDisplayed()
         composeRule.onNodeWithTag("shared_identity_chart_type").assertIsDisplayed()
+        val detailScreen = composeRule.onNodeWithTag("case_detail_screen")
+            .fetchSemanticsNode().boundsInRoot
+        val professionalPageSurface = composeRule.onNodeWithTag("professional_page_surface")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(detailScreen.left, professionalPageSurface.left, 1f)
+        assertEquals(detailScreen.right, professionalPageSurface.right, 1f)
         composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
         composeRule.onNodeWithText("八字排盘").assertDoesNotExist()
         val timeRow = composeRule.onNodeWithTag("flow_hour_time_label")
@@ -218,9 +226,21 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithText("今").assertIsDisplayed()
         val selectedDateBar = composeRule.onNodeWithTag("fortune_selected_datetime")
             .fetchSemanticsNode().boundsInRoot
+        val observationPicker = composeRule.onNodeWithTag("fortune_observation_picker")
+            .fetchSemanticsNode().boundsInRoot
+        val startInfo = composeRule.onNodeWithTag("fortune_start_info")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(selectedDateBar.center.x, observationPicker.center.x, 1f)
+        assertTrue(observationPicker.bottom <= startInfo.top)
         val ageTodayGroup = composeRule.onNodeWithTag("fortune_age_today_group")
             .fetchSemanticsNode().boundsInRoot
         assertTrue(ageTodayGroup.right < selectedDateBar.right)
+        val displayDensity = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics.density
+        assertTrue(selectedDateBar.bottom - ageTodayGroup.bottom <= displayDensity * 3f)
+        val decadeTimeline = composeRule.onNodeWithTag("decade_fortune_details")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(decadeTimeline.top - ageTodayGroup.bottom <= displayDensity * 16f)
         composeRule.onNodeWithTag("fortune_today").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
         assertTenColumnTimelineGrid("daily_fortune_details")
@@ -295,7 +315,7 @@ class CaseDetailReferenceLayoutTest {
         val stemDetailGap = timelineStemDetail.top - timelineStem.bottom
         val branchDetailGap = timelineBranchDetail.top - timelineBranch.bottom
         assertTrue(branchDetailGap >= -1f)
-        assertTrue(branchDetailGap <= stemDetailGap + 2f)
+        assertEquals(stemDetailGap, branchDetailGap, 2f)
         decadeList.performScrollToNode(hasTestTag("timeline_decade_11"))
         composeRule.onNodeWithTag("timeline_decade_11").assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
@@ -345,6 +365,27 @@ class CaseDetailReferenceLayoutTest {
         }
         val notesHeaderBounds = composeRule.onNodeWithTag("notes_identity_header")
             .fetchSemanticsNode().boundsInRoot
+        val pillarsGrid = composeRule.onNodeWithTag("notes_identity_four_pillars")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(notesHeaderBounds.center.x, pillarsGrid.center.x, 2f)
+        val stemBounds = (0 until 4).map { index ->
+            composeRule.onNodeWithTag("notes_identity_stem_$index")
+                .fetchSemanticsNode().boundsInRoot
+        }
+        val branchBounds = (0 until 4).map { index ->
+            composeRule.onNodeWithTag("notes_identity_branch_$index")
+                .fetchSemanticsNode().boundsInRoot
+        }
+        stemBounds.drop(1).forEach { assertEquals(stemBounds.first().center.y, it.center.y, 1f) }
+        branchBounds.drop(1).forEach {
+            assertEquals(branchBounds.first().center.y, it.center.y, 1f)
+        }
+        stemBounds.zip(branchBounds).forEach { (stem, branch) ->
+            assertTrue(stem.bottom <= branch.top)
+        }
+        val chartTypeBounds = composeRule.onNodeWithTag("notes_identity_chart_type")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(chartTypeBounds.right < pillarsGrid.left)
         val notesSwitcherBefore = composeRule.onNodeWithTag("notes_mode_switcher")
             .assertIsDisplayed()
             .fetchSemanticsNode().boundsInRoot
@@ -357,9 +398,18 @@ class CaseDetailReferenceLayoutTest {
         assertEquals(notesSwitcherBefore.left, notesSwitcherAfter.left, 1f)
         assertEquals(notesSwitcherBefore.right, notesSwitcherAfter.right, 1f)
         composeRule.onNodeWithTag("master_commentary_input").assertIsDisplayed()
-        composeRule.onNodeWithTag("save_case_notes_button").performScrollTo().assertIsDisplayed()
+        val notesLayout = composeRule.onNodeWithTag("case_notes_layout")
+            .fetchSemanticsNode().boundsInRoot
+        val masterSaveButton = composeRule.onNodeWithTag("save_case_notes_button")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(notesLayout.bottom - masterSaveButton.bottom <= displayDensity * 8f)
         composeRule.onNodeWithTag("notes_mode_owner").performClick()
         composeRule.onNodeWithTag("owner_feedback_input").assertIsDisplayed()
+        val ownerSaveButton = composeRule.onNodeWithTag("save_case_notes_button")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(masterSaveButton.bottom, ownerSaveButton.bottom, 1f)
         composeRule.onNodeWithText("关键事件反馈记录").assertIsDisplayed()
         composeRule.onNodeWithText("工作方向发生明显调整。").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()

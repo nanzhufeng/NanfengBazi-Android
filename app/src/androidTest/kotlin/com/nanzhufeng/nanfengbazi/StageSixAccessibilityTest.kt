@@ -120,7 +120,7 @@ class StageSixAccessibilityTest {
         composeRule.onNodeWithTag("add_event_button").performScrollTo().performClick()
         composeRule.onNodeWithTag("notes_time_picker").assertIsDisplayed()
         composeRule.onNodeWithText("确定").performClick()
-        composeRule.onNodeWithTag("save_case_notes_button").performScrollTo()
+        composeRule.onNodeWithTag("save_case_notes_button").assertIsDisplayed()
         auditPage("case_detail_screen")
     }
 
