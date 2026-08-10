@@ -257,6 +257,16 @@
 - OPPO Find N5 仅用主应用 Debug APK 执行 `pm install -r --user 0` 同签名覆盖，未安装测试 APK、未运行 instrumentation、未卸载、未清数据。覆盖前后均为 `versionCode=83`、`ceDataInode=1108632`、`deDataInode=1887992`、`dataDir=/data/user/0/com.nanzhufeng.nanfengbazi`；主机侧黑盒点验五项菜单、分组管理、置顶列表内联编辑、批量删除列表内联编辑并全部取消，最终仍显示 2 个案例，没有改动真实案例数据。
 - 所有由用户主动打开的模态弹窗、底部面板、抽屉和管理层统一支持点空白遮罩关闭；关闭不提交、不穿透。该规则已写入项目 `AGENTS.md` 和长期记忆。
 
+## 5F. alpha82 记录编辑、长图与十列时间轴收口证据
+
+- 记录列表左滑只保留编辑、置顶／取消置顶、删除；批量置顶与批量删除继续从三点菜单进入列表内联多选。`CaseListSwipeAndEditFlowTest` 在 API 35 以 1/1 通过。
+- 编辑入口统一为新版“编辑命例”：只显示唯一姓名、性别、出生时间、出生地区和按需真太阳时／时区确认。“保存”更新原命例 id，“创建副本”生成新 id；两条 `StageTwoViewModelTest` 固定仓储数量和原记录保留结果。
+- 详情右上角只保留编辑基本资料、分组与标签、保存命盘长图到图库、分享命盘长图、移入回收站／恢复。长图为一张连续 PNG，按基本信息、基本排盘、专业细盘、断事笔记四段生成；`CaseImageSystemFlowTest` 用合成数据验证 MediaStore PNG 与系统分享并清理测试图片。
+- 大运、流年、流月、流日、流时外屏和内屏统一首屏十列。`CaseDetailReferenceLayoutTest` 逐层按完整列几何断言 `容器宽度 ÷ 列宽 = 10`，不以被裁切的语义节点数量冒充列数。
+- `StageSixAccessibilityTest` 单项通过；`scripts/run_stage6_accessibility_matrix.sh` 的手机／展开态、字体 1.0／2.0、TalkBack 开关四组合全部通过。
+- 完整离线门禁在最后一次列表操作层几何修复后重跑：`328 actionable tasks`，`BUILD SUCCESSFUL in 1m 15s`。Debug APK 为 `versionCode 83 / 0.3.0-alpha82`，SHA-256 `930260367d0c78efb8cfb8f6c1db81fa7c649011daaac6ee46bdbde0ce2f26e7`；AAPT2 权限清单无 `INTERNET`。
+- 本节的图库、分享和 instrumentation 证据均来自模拟器合成数据，不冒充 OPPO 真实资料验收。最终 APK 已在 OPPO Find N5 通过 `push + pm install -r --user 0` 同签名覆盖；覆盖前后 `ceDataInode=1108632`、`deDataInode=1887992`、数据目录和 2 条真实案例保持不变，未装测试包、未卸载、未清数据。主机黑盒检查确认五项列表菜单、左滑三项和外屏专业时间轴十列；并修复了未滑动行底部泄露操作层色条的问题。
+
 ## 6. 尚未完成：间歇性观测与外部门禁
 
 ### 已完成的本地展开态（UI-11）
@@ -280,7 +290,7 @@
 
 - `QA-08`：OPPO Find N5 安装、折叠/展开、数据保留、TalkBack、触觉和真实宽屏视觉。
 - `UI-11` 的宽屏分支与状态已有自动化；不能把模拟器或代码分支冒充 OPPO 实机证据。
-- 已获 OPPO 默认操作授权。2026-08-08 曾错误使用 Gradle 聚合连接测试，导致 OPPO 上的被测应用被测试生命周期清理；随后已用 `0.3.0-alpha82` / `versionCode 83` debug APK 恢复安装。该恢复不能冒充数据保留验收。后续允许显式序列号的同签名主 APK 覆盖安装、启动，以及主机侧 `adb`／UIAutomator 操作已安装主应用完成点击、截图和界面验收；不得安装任何新 APK。禁止在 OPPO 上运行 instrumentation 或 Gradle `connected*AndroidTest`，严禁安装独立 `androidTest`／辅助 APK、卸载、清数据或清库。当前图标真机视觉已由用户验收通过；其他真机门禁仍按具体变更单独记录。
+- OPPO 当前授权与安装禁令只以项目 `AGENTS.md` 为入口，并路由至产品交付 Skill 的第 3 节；不再在交接中维护第二套命令。2026-08-08 的错误连接测试与恢复安装仅作为历史风险证据，不能冒充数据保留验收。当前图标真机视觉已由用户验收通过；其他真机门禁仍按具体变更单独记录。
 
 ### 签名与发布
 

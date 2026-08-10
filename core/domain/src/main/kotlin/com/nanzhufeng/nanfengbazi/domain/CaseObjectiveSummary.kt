@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.domain
 
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
@@ -12,6 +13,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
+import java.time.LocalDate
 
 const val CASE_OBJECTIVE_SUMMARY_VERSION: Int = 1
 
@@ -29,9 +31,23 @@ enum class CaseObjectiveSummaryValueState {
     EXPLICITLY_CLEARED,
 }
 
+enum class CaseObjectiveSummarySensitivity {
+    PUBLIC,
+    IDENTITY,
+    LOCATION,
+    DEMOGRAPHIC,
+    PRECISE_BIRTH_TIME,
+}
+
+data class CaseObjectiveSummaryObservation(
+    val referenceDate: LocalDate,
+    val professionalPosition: ProfessionalFortunePosition,
+)
+
 data class CaseObjectiveSummaryInput(
     val caseData: BaziCase,
     val summaryVersion: Int = CASE_OBJECTIVE_SUMMARY_VERSION,
+    val observation: CaseObjectiveSummaryObservation? = null,
 )
 
 data class CaseObjectiveSummaryField(
@@ -39,6 +55,7 @@ data class CaseObjectiveSummaryField(
     val value: String,
     val source: CaseObjectiveSummarySource,
     val state: CaseObjectiveSummaryValueState = CaseObjectiveSummaryValueState.PRESENT,
+    val sensitivity: CaseObjectiveSummarySensitivity = CaseObjectiveSummarySensitivity.PUBLIC,
 ) {
     init {
         require(label.isNotBlank()) { "客观摘要字段标签不能为空" }
@@ -153,110 +170,131 @@ object CaseObjectiveSummaryContract : CaseObjectiveSummaryGenerator {
                 "命例别名",
                 input.caseData.alias,
                 CaseObjectiveSummarySource.CASE_IDENTITY,
+                CaseObjectiveSummarySensitivity.IDENTITY,
             ),
             when (input.caseData.name.state) {
                 FieldValueState.PRESENT -> presentField(
                     "姓名",
                     input.caseData.name.value.orEmpty(),
                     CaseObjectiveSummarySource.CASE_IDENTITY,
+                    CaseObjectiveSummarySensitivity.IDENTITY,
                 )
                 FieldValueState.ABSENT -> missingField(
                     "姓名",
                     CaseObjectiveSummarySource.CASE_IDENTITY,
                     "未提供",
+                    CaseObjectiveSummarySensitivity.IDENTITY,
                 )
                 FieldValueState.CLEARED -> CaseObjectiveSummaryField(
                     label = "姓名",
                     value = "已明确清空",
                     source = CaseObjectiveSummarySource.CASE_IDENTITY,
                     state = CaseObjectiveSummaryValueState.EXPLICITLY_CLEARED,
+                    sensitivity = CaseObjectiveSummarySensitivity.IDENTITY,
                 )
             },
             presentField(
                 "性别口径",
                 input.caseData.sexForFortuneDirection.displayName(),
                 CaseObjectiveSummarySource.CASE_IDENTITY,
+                CaseObjectiveSummarySensitivity.DEMOGRAPHIC,
             ),
             presentField(
                 "出生历法与时间",
                 normalizedInput.calendarInput.displayText(),
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
             ),
             result.calendarConversion?.let {
                 presentField(
                     "换算公历",
                     it.solarDateTime.displayText(),
                     CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
                 )
             } ?: missingField(
                 "换算公历",
                 CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                sensitivity = CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
             ),
             result.calendarConversion?.let {
                 presentField(
                     "换算农历",
                     it.lunarDateTime.displayText(includeLeapMonth = true),
                     CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
                 )
             } ?: missingField(
                 "换算农历",
                 CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                sensitivity = CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
             ),
             presentField(
                 "IANA 时区",
                 normalizedInput.timeZoneId,
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                CaseObjectiveSummarySensitivity.LOCATION,
             ),
             normalizedInput.resolvedUtcOffsetSeconds?.let {
                 presentField(
                     "UTC offset",
                     it.toOffsetText(),
                     CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                    CaseObjectiveSummarySensitivity.LOCATION,
                 )
             } ?: missingField(
                 "UTC offset",
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                sensitivity = CaseObjectiveSummarySensitivity.LOCATION,
             ),
             normalizedInput.timeZoneDataVersion?.takeIf(String::isNotBlank)?.let {
                 presentField(
                     "时区数据版本",
                     it,
                     CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                    CaseObjectiveSummarySensitivity.LOCATION,
                 )
             } ?: missingField(
                 "时区数据版本",
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                sensitivity = CaseObjectiveSummarySensitivity.LOCATION,
             ),
             presentField(
                 "时间精度",
                 normalizedInput.timePrecision.displayName(),
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
             ),
             presentField(
                 "时间来源",
                 normalizedInput.timeSourceType.displayName(),
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
             ),
             normalizedInput.locationName?.takeIf(String::isNotBlank)?.let {
                 presentField(
                     "出生地区",
                     it,
                     CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                    CaseObjectiveSummarySensitivity.LOCATION,
                 )
             } ?: missingField(
                 "出生地区",
                 CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                sensitivity = CaseObjectiveSummarySensitivity.LOCATION,
             ),
             if (normalizedInput.longitude != null && normalizedInput.latitude != null) {
                 presentField(
                     "经纬度",
                     "${normalizedInput.longitude}, ${normalizedInput.latitude}",
                     CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                    CaseObjectiveSummarySensitivity.LOCATION,
                 )
             } else {
                 missingField(
                     "经纬度",
                     CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                    sensitivity = CaseObjectiveSummarySensitivity.LOCATION,
                 )
             },
         )
@@ -307,6 +345,105 @@ object CaseObjectiveSummaryContract : CaseObjectiveSummaryGenerator {
                     CaseObjectiveSummarySource.ADOPTED_CALCULATION,
                 ),
             )
+            val monthPillar = details?.pillars?.firstOrNull {
+                it.position == PillarPosition.MONTH
+            }
+            val dayPillar = details?.pillars?.firstOrNull {
+                it.position == PillarPosition.DAY
+            }
+            add(
+                monthPillar?.let {
+                    presentField(
+                        "月令",
+                        "${it.earthBranch}（${it.earthBranchElement}）",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    )
+                } ?: missingField(
+                    "月令",
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            add(
+                dayPillar?.let {
+                    presentField(
+                        "日支",
+                        "${it.earthBranch}（${it.earthBranchElement}）",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    )
+                } ?: missingField(
+                    "日支",
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            val elementCounts = details?.surfaceElementCounts()
+            add(
+                elementCounts?.let {
+                    presentField(
+                        "表层五行计数",
+                        ELEMENT_ORDER.joinToString("、") { element ->
+                            "$element${it.getValue(element)}"
+                        } + "（四干四支，不含藏干）",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    )
+                } ?: missingField(
+                    "表层五行计数",
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            add(
+                elementCounts?.let {
+                    val missing = ELEMENT_ORDER.filter { element -> it.getValue(element) == 0 }
+                    presentField(
+                        "表层五行缺失",
+                        missing.joinToString("、").ifEmpty { "无" } + "（不含藏干）",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    )
+                } ?: missingField(
+                    "表层五行缺失",
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            val natalRelations = NatalChartRelationResolver.resolve(pillars)
+            add(
+                presentField(
+                    "原局天干关系",
+                    natalRelations.heavenStemRelations.joinToString("；").ifEmpty { "未发现合冲" },
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            add(
+                presentField(
+                    "原局地支关系",
+                    natalRelations.earthBranchRelations.joinToString("；")
+                        .ifEmpty { "未发现合冲刑害或三合三会" },
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            add(
+                presentField(
+                    "原局整柱关系",
+                    natalRelations.wholePillarRelations.joinToString("；").ifEmpty { "无重复整柱" },
+                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                ),
+            )
+            input.observation?.let { observation ->
+                add(
+                    presentField(
+                        "当前实岁",
+                        "${observation.professionalPosition.completedAge}岁（截至${observation.referenceDate}）",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                        CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
+                    ),
+                )
+                add(
+                    presentField(
+                        "当前虚岁",
+                        "${observation.professionalPosition.position.annualFortune.nominalAge}岁",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                        CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
+                    ),
+                )
+            }
             add(
                 presentField(
                     "胎元",
@@ -491,20 +628,88 @@ object CaseObjectiveSummaryContract : CaseObjectiveSummaryGenerator {
                     ),
                 )
             }
-            add(
-                missingField(
-                    "当前大运",
-                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
-                    "未生成（客观摘要未携带观察时刻）",
-                ),
-            )
-            add(
-                missingField(
-                    "当前流年",
-                    CaseObjectiveSummarySource.ADOPTED_CALCULATION,
-                    "未生成（客观摘要未携带观察时刻）",
-                ),
-            )
+            val observation = input.observation
+            if (observation == null) {
+                add(
+                    missingField(
+                        "当前大运",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                        "未生成（客观摘要未携带观察时刻）",
+                    ),
+                )
+                add(
+                    missingField(
+                        "当前流年",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                        "未生成（客观摘要未携带观察时刻）",
+                    ),
+                )
+            } else {
+                val professional = observation.professionalPosition
+                val position = professional.position
+                add(
+                    presentField(
+                        "分析参考日期",
+                        observation.referenceDate.toString(),
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    ),
+                )
+                add(
+                    presentField(
+                        "当前大运",
+                        position.decadeFortune?.let { decade ->
+                            "${decade.name}｜${decade.startAge}–${decade.endAge}岁｜" +
+                                "${decade.startYear}–${decade.endYear}"
+                        } ?: when (position.status) {
+                            FortunePositionStatus.BEFORE_FIRST_DECADE -> "尚未起运（小运阶段）"
+                            FortunePositionStatus.AFTER_TIMELINE -> "已超出当前大运表范围"
+                            FortunePositionStatus.WITHIN_DECADE -> "未记录"
+                        },
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    ),
+                )
+                add(
+                    presentField(
+                        "当前流年",
+                        "${position.annualFortune.calendarYear} ${position.annualFortune.name}｜" +
+                            "虚岁${position.annualFortune.nominalAge}",
+                        CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                    ),
+                )
+                val yearWindow = (observation.referenceDate.year - 5)..
+                    (observation.referenceDate.year + 5)
+                result.annualFortunes.filter { it.calendarYear in yearWindow }.forEach { annual ->
+                    val decadeName = annual.decadeName
+                        ?: result.decadeFortunes.firstOrNull {
+                            annual.calendarYear in it.startYear..it.endYear
+                        }?.name
+                    add(
+                        presentField(
+                            "流年 ${annual.calendarYear}",
+                            "${annual.name}｜虚岁${annual.nominalAge}" +
+                                decadeName?.let { "｜大运$it" }.orEmpty(),
+                            CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                        ),
+                    )
+                }
+                add(
+                    if (professional.minorTimeline.isEmpty()) {
+                        missingField(
+                            "小运序列",
+                            CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                            "未生成（当前计算档案没有可用小运）",
+                        )
+                    } else {
+                        presentField(
+                            "小运序列",
+                            professional.minorTimeline.joinToString("；") { item ->
+                                "${item.label} ${item.pillar} ${item.subtitle}"
+                            },
+                            CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+                        )
+                    },
+                )
+            }
         }
 
         val profile = result.profile
@@ -660,21 +865,25 @@ private fun presentField(
     label: String,
     value: String,
     source: CaseObjectiveSummarySource,
+    sensitivity: CaseObjectiveSummarySensitivity = CaseObjectiveSummarySensitivity.PUBLIC,
 ): CaseObjectiveSummaryField = CaseObjectiveSummaryField(
     label = label,
     value = value,
     source = source,
+    sensitivity = sensitivity,
 )
 
 private fun missingField(
     label: String,
     source: CaseObjectiveSummarySource,
     value: String = "未记录（旧快照缺少该字段）",
+    sensitivity: CaseObjectiveSummarySensitivity = CaseObjectiveSummarySensitivity.PUBLIC,
 ): CaseObjectiveSummaryField = CaseObjectiveSummaryField(
     label = label,
     value = value,
     source = source,
     state = CaseObjectiveSummaryValueState.NOT_RECORDED,
+    sensitivity = sensitivity,
 )
 
 private fun buildCopyText(
@@ -769,3 +978,11 @@ private fun FortuneDirection.displayName(): String = when (this) {
     FortuneDirection.FORWARD -> "顺排"
     FortuneDirection.BACKWARD -> "逆排"
 }
+
+private val ELEMENT_ORDER = listOf("木", "火", "土", "金", "水")
+
+private fun BasicChartDetails.surfaceElementCounts(): Map<String, Int> =
+    ELEMENT_ORDER.associateWith { element ->
+        pillars.count { it.heavenStemElement == element } +
+            pillars.count { it.earthBranchElement == element }
+    }

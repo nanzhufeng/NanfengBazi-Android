@@ -35,6 +35,7 @@ data class ExternalAnalysisPreviewField(
     val label: String,
     val value: String,
     val source: CaseObjectiveSummarySource,
+    val sensitivity: CaseObjectiveSummarySensitivity,
     val redacted: Boolean,
 ) {
     init {
@@ -164,14 +165,14 @@ object ExternalAnalysisBridgeContract : ExternalAnalysisBridge {
                     )
                 section.fields.forEach { field ->
                     val redacted = request.redactionPolicy.enabled &&
-                        group == ExternalAnalysisFieldGroup.BIRTH_FACTS &&
-                        field.label in SENSITIVE_BIRTH_LABELS
+                        field.sensitivity != CaseObjectiveSummarySensitivity.PUBLIC
                     add(
                         ExternalAnalysisPreviewField(
                             group = group,
                             label = field.label,
                             value = if (redacted) REDACTED_VALUE else field.value,
                             source = field.source,
+                            sensitivity = field.sensitivity,
                             redacted = redacted,
                         ),
                     )
@@ -186,7 +187,8 @@ object ExternalAnalysisBridgeContract : ExternalAnalysisBridge {
             selectedGroups.joinToString(",") { it.name },
             request.redactionPolicy.enabled.toString(),
             fields.joinToString("\u0000") {
-                "${it.group.name}|${it.label}|${it.value}|${it.source.name}|${it.redacted}"
+                "${it.group.name}|${it.label}|${it.value}|${it.source.name}|" +
+                    "${it.sensitivity.name}|${it.redacted}"
             },
         ).joinToString("\u0001")
         val payloadId = "vx11-${identity.sha256().take(16)}"
@@ -287,18 +289,6 @@ object ExternalAnalysisBridgeContract : ExternalAnalysisBridge {
         )
     }
 
-    private val SENSITIVE_BIRTH_LABELS = setOf(
-        "命例别名",
-        "姓名",
-        "性别口径",
-        "出生历法与时间",
-        "换算公历",
-        "换算农历",
-        "IANA 时区",
-        "UTC offset",
-        "出生地区",
-        "经纬度",
-    )
     private const val REDACTED_VALUE = "[已脱敏]"
     private const val SOURCE_NAME_MAX_LENGTH = 80
 }

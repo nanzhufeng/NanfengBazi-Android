@@ -50,6 +50,10 @@ class CaseImageExportContractTest {
         assertEquals(CASE_IMAGE_DOCUMENT_VERSION, facts.documentVersion)
         assertEquals("adopted", facts.adoptedSnapshotId)
         assertEquals(source.revision, facts.caseRevision)
+        assertEquals(
+            listOf("基本信息", "基本排盘", "专业细盘", "断事笔记"),
+            facts.blocks.map(CaseImageRenderBlock::title),
+        )
         assertTrue(
             facts.blocks
                 .filterIsInstance<CaseImageRenderBlock.Paragraphs>()
@@ -68,7 +72,7 @@ class CaseImageExportContractTest {
 
         val identity = result.facts.blocks
             .filterIsInstance<CaseImageRenderBlock.Rows>()
-            .first { it.title == "采用资料" }
+            .first { it.title == "基本信息" }
         assertEquals("未提供", identity.rows.single { it.label == "姓名" }.value)
     }
 

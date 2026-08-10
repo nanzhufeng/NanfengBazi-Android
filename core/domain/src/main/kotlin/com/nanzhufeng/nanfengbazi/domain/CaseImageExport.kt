@@ -8,7 +8,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 
-const val CASE_IMAGE_DOCUMENT_VERSION: Int = 1
+const val CASE_IMAGE_DOCUMENT_VERSION: Int = 2
 
 enum class CaseImageExportScope {
     ADOPTED_CHART_AND_FORMAL_RECORDS,
@@ -170,38 +170,42 @@ object CaseImageExportContract {
                 return CaseImageFactsResult.Rejected(result.failure.toImageFailure())
             }
         }
-        val blocks = buildList {
-            summary.sections.forEach { section ->
-                add(
-                    CaseImageRenderBlock.Rows(
-                        title = section.imageTitle(),
-                        rows = section.fields.map { field ->
-                            CaseImageRenderRow(field.label, field.value)
-                        },
-                    ),
-                )
-            }
-            input.caseData.textRecords
-                .takeIf(List<CaseTextRecord>::isNotEmpty)
-                ?.let { records ->
-                    add(
-                        CaseImageRenderBlock.Paragraphs(
-                            "正式分析记录",
-                            records.map(CaseTextRecord::displayText),
-                        ),
-                    )
+        fun rowsFor(vararg sectionIds: String): List<CaseImageRenderRow> =
+            summary.sections
+                .filter { it.id in sectionIds }
+                .flatMap { section ->
+                    section.fields.map { field ->
+                        CaseImageRenderRow(field.label, field.value)
+                    }
                 }
-            input.caseData.events
-                .takeIf(List<CaseEvent>::isNotEmpty)
-                ?.let { events ->
-                    add(
-                        CaseImageRenderBlock.Paragraphs(
-                            "关键事件",
-                            events.map(CaseEvent::displayText),
-                        ),
-                    )
-                }
+        fun rowsOrEmptyNotice(
+            rows: List<CaseImageRenderRow>,
+            label: String,
+        ): List<CaseImageRenderRow> = rows.ifEmpty {
+            listOf(CaseImageRenderRow("当前状态", label))
         }
+        val notes = buildList {
+            addAll(input.caseData.textRecords.map(CaseTextRecord::displayText))
+            addAll(input.caseData.events.map(CaseEvent::displayText))
+        }.ifEmpty { listOf("暂无断事笔记。") }
+        val blocks = listOf(
+            CaseImageRenderBlock.Rows(
+                title = "基本信息",
+                rows = rowsOrEmptyNotice(rowsFor("birth_facts"), "暂无基本信息"),
+            ),
+            CaseImageRenderBlock.Rows(
+                title = "基本排盘",
+                rows = rowsOrEmptyNotice(rowsFor("chart_facts"), "暂无已采用排盘"),
+            ),
+            CaseImageRenderBlock.Rows(
+                title = "专业细盘",
+                rows = rowsOrEmptyNotice(rowsFor("fortune_facts"), "暂无岁运结果"),
+            ),
+            CaseImageRenderBlock.Paragraphs(
+                title = "断事笔记",
+                paragraphs = notes,
+            ),
+        )
         return CaseImageFactsResult.Prepared(
             CaseImageRenderFacts(
                 documentVersion = input.documentVersion,
@@ -241,15 +245,6 @@ private fun CaseObjectiveSummaryFailure.toImageFailure(): CaseImageExportFailure
         },
         message = message,
     )
-
-private fun CaseObjectiveSummarySection.imageTitle(): String = when (id) {
-    "birth_facts" -> "采用资料"
-    "chart_facts" -> "基础命盘"
-    "fortune_facts" -> "起运与大运"
-    "calculation_evidence" -> "计算档案"
-    "formal_record_index" -> "研究资料索引"
-    else -> title
-}
 
 private fun CaseTextRecord.displayText(): String {
     val typeText = when (type) {

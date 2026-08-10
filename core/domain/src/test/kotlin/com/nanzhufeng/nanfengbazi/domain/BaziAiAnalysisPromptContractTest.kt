@@ -28,8 +28,14 @@ class BaziAiAnalysisPromptContractTest {
         assertTrue(first.prompt.copyText.contains("四柱：壬申　戊申　壬申　丙午"))
         assertTrue(first.prompt.copyText.contains("2021—2031"))
         assertTrue(first.prompt.copyText.contains("事实与推演"))
-        assertTrue(first.prompt.copyText.contains("熟悉盲派命理、主流子平命理"))
+        assertTrue(
+            first.prompt.copyText.contains(
+                "熟悉盲派命理、主流子平命理与常见现代命理分析方法",
+            ),
+        )
         assertTrue(first.prompt.copyText.contains("先单列“盲派断事观察”"))
+        assertTrue(first.prompt.copyText.contains("调候用神"))
+        assertTrue(first.prompt.copyText.contains("不得把表层五行计数直接等同于旺衰或喜忌"))
         assertTrue(first.prompt.copyText.contains("非专业决策依据"))
         assertTrue(first.prompt.hiddenFieldCount > 0)
     }
@@ -90,12 +96,36 @@ class BaziAiAnalysisPromptContractTest {
                 "birth_facts",
                 "出生资料",
                 listOf(
-                    field("命例别名", "合成别名"),
-                    field("姓名", "合成姓名"),
-                    field("性别口径", "乾造"),
-                    field("换算公历", "1992-08-24 12:00:00"),
-                    field("换算农历", "1992年七月廿六 午时"),
-                    field("出生地区", "合成地区"),
+                    field(
+                        "命例称呼",
+                        "合成别名",
+                        CaseObjectiveSummarySensitivity.IDENTITY,
+                    ),
+                    field(
+                        "身份姓名（新标签）",
+                        "合成姓名",
+                        CaseObjectiveSummarySensitivity.IDENTITY,
+                    ),
+                    field(
+                        "性别口径",
+                        "乾造",
+                        CaseObjectiveSummarySensitivity.DEMOGRAPHIC,
+                    ),
+                    field(
+                        "换算公历",
+                        "1992-08-24 12:00:00",
+                        CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
+                    ),
+                    field(
+                        "换算农历",
+                        "1992年七月廿六 午时",
+                        CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
+                    ),
+                    field(
+                        "地点显示名（新标签）",
+                        "合成地区",
+                        CaseObjectiveSummarySensitivity.LOCATION,
+                    ),
                 ),
             ),
             section(
@@ -128,9 +158,14 @@ class BaziAiAnalysisPromptContractTest {
         fields: List<CaseObjectiveSummaryField>,
     ) = CaseObjectiveSummarySection(id, title, fields)
 
-    private fun field(label: String, value: String) = CaseObjectiveSummaryField(
+    private fun field(
+        label: String,
+        value: String,
+        sensitivity: CaseObjectiveSummarySensitivity = CaseObjectiveSummarySensitivity.PUBLIC,
+    ) = CaseObjectiveSummaryField(
         label = label,
         value = value,
         source = CaseObjectiveSummarySource.ADOPTED_CALCULATION,
+        sensitivity = sensitivity,
     )
 }

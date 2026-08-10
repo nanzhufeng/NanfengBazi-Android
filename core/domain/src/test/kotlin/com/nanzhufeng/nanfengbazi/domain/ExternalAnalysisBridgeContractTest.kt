@@ -166,17 +166,29 @@ class ExternalAnalysisBridgeContractTest {
                 "birth_facts",
                 "出生资料",
                 listOf(
-                    field("命例别名", "合成命例", CaseObjectiveSummarySource.CASE_IDENTITY),
-                    field("姓名", "合成姓名", CaseObjectiveSummarySource.CASE_IDENTITY),
+                    field(
+                        "命例称呼",
+                        "合成命例",
+                        CaseObjectiveSummarySource.CASE_IDENTITY,
+                        CaseObjectiveSummarySensitivity.IDENTITY,
+                    ),
+                    field(
+                        "姓名",
+                        "合成姓名",
+                        CaseObjectiveSummarySource.CASE_IDENTITY,
+                        CaseObjectiveSummarySensitivity.IDENTITY,
+                    ),
                     field(
                         "出生历法与时间",
                         "1990-01-02 03:04",
                         CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                        CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
                     ),
                     field(
                         "出生地区",
                         "上海市",
                         CaseObjectiveSummarySource.ADOPTED_SNAPSHOT_INPUT,
+                        CaseObjectiveSummarySensitivity.LOCATION,
                     ),
                 ),
             ),
@@ -230,5 +242,11 @@ class ExternalAnalysisBridgeContractTest {
         label: String,
         value: String,
         source: CaseObjectiveSummarySource,
-    ) = CaseObjectiveSummaryField(label, value, source)
+        sensitivity: CaseObjectiveSummarySensitivity = CaseObjectiveSummarySensitivity.PUBLIC,
+    ) = CaseObjectiveSummaryField(
+        label = label,
+        value = value,
+        source = source,
+        sensitivity = sensitivity,
+    )
 }

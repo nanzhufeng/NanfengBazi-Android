@@ -467,6 +467,47 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `列表编辑入口保存更新原命例而不创建副本`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-edit-from-list"] = sampleStoredCase("case-edit-from-list")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openRecordHub()
+        viewModel.openEditCase("case-edit-from-list")
+        viewModel.updateEditForm {
+            it.copy(alias = "列表编辑后姓名", name = "列表编辑后姓名")
+        }
+
+        viewModel.saveEditedCase()
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(setOf("case-edit-from-list"), repository.stored.keys)
+        assertEquals("列表编辑后姓名", repository.stored.getValue("case-edit-from-list").alias)
+        assertEquals(2L, repository.stored.getValue("case-edit-from-list").revision)
+    }
+
+    @Test
+    fun `创建副本保留原命例并打开新命例详情`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-copy-source"] = sampleStoredCase("case-copy-source")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openRecordHub()
+        viewModel.openEditCase("case-copy-source")
+        viewModel.updateEditForm {
+            it.copy(alias = "命例副本姓名", name = "命例副本姓名")
+        }
+
+        viewModel.createEditedCaseCopy()
+
+        assertEquals(2, repository.stored.size)
+        assertEquals("合成命例甲", repository.stored.getValue("case-copy-source").alias)
+        val copy = repository.stored.values.single { it.id != "case-copy-source" }
+        assertEquals("命例副本姓名", copy.alias)
+        assertEquals(AppDestination.CaseDetail(copy.id), viewModel.state.value.destination)
+    }
+
+    @Test
     fun `新增出生时间候选不改采用盘且可在详情明确切换`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-time-candidates"] = sampleStoredCase("case-time-candidates")
@@ -1283,6 +1324,11 @@ class StageTwoViewModelTest {
         )
 
         viewModel.openDetail("case-fortune")
+        viewModel.selectDetailSection(CaseDetailSection.BASIC_CHART)
+
+        assertEquals("丙午年", viewModel.state.value.fortunePosition?.annualFortune?.name)
+        assertTrue(observations.isNotEmpty())
+
         viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
 
         assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
@@ -1594,7 +1640,7 @@ class StageTwoViewModelTest {
         )
         viewModel.confirmCaseImageDelivery { _, name -> exportFileName = name }
         val exported = ByteArrayOutputStream()
-        viewModel.exportPreparedCaseImage { exported }
+        viewModel.exportPreparedCaseImage(openOutput = { exported })
 
         var sharePrepared = false
         viewModel.requestCaseImageDelivery(
@@ -1635,7 +1681,7 @@ class StageTwoViewModelTest {
         )
         viewModel.confirmCaseImageDelivery { _, _ -> }
 
-        viewModel.exportPreparedCaseImage { null }
+        viewModel.exportPreparedCaseImage(openOutput = { null })
 
         assertEquals(
             com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode.OUTPUT_UNAVAILABLE,

@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -90,6 +91,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -97,10 +99,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
@@ -108,12 +112,18 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
@@ -202,7 +212,9 @@ import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
 import com.nanzhufeng.nanfengbazi.domain.displayName
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 fun NanfengBaziApp(
@@ -223,7 +235,7 @@ fun NanfengBaziApp(
     onCommitSingleCaseImport: ((SingleCaseImportDecision) -> Unit)? = null,
     onCommitSingleCaseMerge: (() -> Unit)? = null,
     onCommitPasswordSingleCaseDocument: (CharArray) -> Unit = {},
-    onCreateCaseImageDocument: (String) -> Unit = {},
+    onSaveCaseImageToGallery: (String) -> Unit = {},
     onSharePreparedCaseImage: () -> Unit = {},
     onCreateFullBackupDocument: (String) -> Unit = {},
     onCreateEncryptedFullBackupDocument: (String) -> Unit = {},
@@ -342,6 +354,8 @@ fun NanfengBaziApp(
                         onDeleteGroup = viewModel::deleteCaseGroup,
                         onUpdatePinnedCases = viewModel::updatePinnedCases,
                         onBatchDeleteCases = viewModel::batchMoveCasesToTrash,
+                        onEditCase = viewModel::openEditCase,
+                        onTogglePinnedCase = viewModel::togglePinnedCase,
                         onOpenCase = viewModel::openDetail,
                         modifier = Modifier.padding(padding),
                     )
@@ -566,16 +580,14 @@ fun NanfengBaziApp(
                             onAdopt = viewModel::adoptFeedbackThemeCandidate,
                             modifier = Modifier.padding(padding),
                         )
-                    is AppDestination.EditCase -> CaseFormScreen(
-                        title = "编辑命例",
-                        screenTag = "edit_case_screen",
+                    is AppDestination.EditCase -> EditCaseScreen(
                         form = state.editForm,
                         error = state.mutationError,
                         saving = state.mutationSaving,
-                        submitLabel = "重新排盘并保存",
                         onBack = viewModel::navigateBack,
                         onFormChange = viewModel::updateEditForm,
-                        onSubmit = { viewModel.saveEditedCase() },
+                        onSave = { viewModel.saveEditedCase() },
+                        onCreateCopy = viewModel::createEditedCaseCopy,
                         duplicateCandidates = state.duplicateCandidates,
                         onConfirmDuplicate = {
                             viewModel.saveEditedCase(allowDuplicate = true)
@@ -659,7 +671,7 @@ fun NanfengBaziApp(
                     title = {
                         Text(
                             if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
-                                "导出命盘长图？"
+                                "保存命盘长图到图库？"
                             } else {
                                 "分享命盘长图？"
                             },
@@ -677,7 +689,7 @@ fun NanfengBaziApp(
                                         "继续后会把同一 PNG 交给你选择的外部应用；" +
                                             "是否实际发送由目标应用决定。"
                                     } else {
-                                        "请只保存到可信位置。"
+                                        "继续后会直接写入手机默认图库。"
                                     },
                                 color = MaterialTheme.colorScheme.error,
                             )
@@ -689,7 +701,7 @@ fun NanfengBaziApp(
                                 viewModel.confirmCaseImageDelivery { preparedMode, fileName ->
                                     when (preparedMode) {
                                         CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE ->
-                                            onCreateCaseImageDocument(fileName)
+                                            onSaveCaseImageToGallery(fileName)
                                         CaseImageDeliveryMode.SHARE_LONG_IMAGE ->
                                             onSharePreparedCaseImage()
                                     }
@@ -705,7 +717,7 @@ fun NanfengBaziApp(
                         ) {
                             Text(
                                 if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
-                                    "生成并选择位置"
+                                    "生成并保存到图库"
                                 } else {
                                     "生成并打开分享"
                                 },
@@ -1564,7 +1576,7 @@ private fun SingleCasePreviewDialog(
                     .testTag("single_case_preview"),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("别名：${sourceCase.alias}", fontWeight = FontWeight.SemiBold)
+                Text("姓名：${sourceCase.name.value ?: sourceCase.alias}", fontWeight = FontWeight.SemiBold)
                 Text("稳定 ID：${sourceCase.id}")
                 Text(
                     "来源：App ${preview.document.appVersion} / " +
@@ -2473,6 +2485,8 @@ private fun CaseListScreen(
     onDeleteGroup: (String) -> Unit,
     onUpdatePinnedCases: (Set<String>) -> Unit,
     onBatchDeleteCases: (Set<String>) -> Unit,
+    onEditCase: (String) -> Unit,
+    onTogglePinnedCase: (String) -> Unit,
     onOpenCase: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2484,6 +2498,7 @@ private fun CaseListScreen(
     var pinnedSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deleteEditMode by rememberSaveable { mutableStateOf(false) }
     var deleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingSwipeDeleteCaseId by rememberSaveable { mutableStateOf<String?>(null) }
     val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size +
         state.advancedFilter.activeCategoryCount
     BackHandler(enabled = pinnedEditMode || deleteEditMode) {
@@ -2624,7 +2639,7 @@ private fun CaseListScreen(
                     .testTag("case_search"),
                 placeholder = {
                     Text(
-                        "搜索姓名、别名或四柱",
+                        "搜索姓名或四柱",
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
                     )
                 },
@@ -2770,7 +2785,7 @@ private fun CaseListScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        CaseSummaryRow(
+                        SwipeableCaseSummaryRow(
                             summary = summary,
                             selectionMode = pinnedEditMode || deleteEditMode,
                             selected = if (pinnedEditMode) {
@@ -2795,6 +2810,9 @@ private fun CaseListScreen(
                                     onOpenCase(summary.id)
                                 }
                             },
+                            onEdit = { onEditCase(summary.id) },
+                            onTogglePinned = { onTogglePinnedCase(summary.id) },
+                            onDelete = { pendingSwipeDeleteCaseId = summary.id },
                         )
                     }
                 }
@@ -2889,6 +2907,27 @@ private fun CaseListScreen(
                 onRename = onRenameGroup,
                 onReorder = onReorderGroups,
                 onDelete = onDeleteGroup,
+            )
+        }
+        pendingSwipeDeleteCaseId?.let { caseId ->
+            AlertDialog(
+                onDismissRequest = { pendingSwipeDeleteCaseId = null },
+                title = { Text("移入回收站？") },
+                text = { Text("该命例会从主列表隐藏，原有记录和计算历史仍保留。") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            pendingSwipeDeleteCaseId = null
+                            onBatchDeleteCases(setOf(caseId))
+                        },
+                        modifier = Modifier.testTag("confirm_swipe_case_delete"),
+                    ) { Text("删除") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingSwipeDeleteCaseId = null }) {
+                        Text("取消")
+                    }
+                },
             )
         }
     }
@@ -4133,6 +4172,150 @@ private fun ConstellationBadge(
 }
 
 @Composable
+private fun SwipeableCaseSummaryRow(
+    summary: CaseSummary,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onTogglePinned: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val actionWidth = 72.dp
+    val revealedWidth = actionWidth * 3
+    val revealedWidthPx = with(LocalDensity.current) { revealedWidth.toPx() }
+    val offset = remember(summary.id) { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(selectionMode) {
+        if (selectionMode) offset.animateTo(0f)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("case_swipe_${summary.id}"),
+    ) {
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .testTag("case_swipe_actions_${summary.id}"),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            SwipeCaseAction(
+                text = "编辑",
+                background = Color(0xFF6E7474),
+                width = actionWidth,
+                tag = "case_swipe_edit_${summary.id}",
+                onClick = {
+                    scope.launch { offset.animateTo(0f) }
+                    onEdit()
+                },
+            )
+            SwipeCaseAction(
+                text = if (summary.isPinned) "取消置顶" else "置顶",
+                background = NanfengNavigation,
+                width = actionWidth,
+                tag = "case_swipe_pin_${summary.id}",
+                onClick = {
+                    scope.launch { offset.animateTo(0f) }
+                    onTogglePinned()
+                },
+            )
+            SwipeCaseAction(
+                text = "删除",
+                background = MaterialTheme.colorScheme.error,
+                width = actionWidth,
+                tag = "case_swipe_delete_${summary.id}",
+                onClick = {
+                    scope.launch { offset.animateTo(0f) }
+                    onDelete()
+                },
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .background(MaterialTheme.colorScheme.background)
+                .then(
+                    if (selectionMode) {
+                        Modifier
+                    } else {
+                        Modifier.pointerInput(summary.id, revealedWidthPx) {
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val next = (offset.value + dragAmount)
+                                        .coerceIn(-revealedWidthPx, 0f)
+                                    scope.launch { offset.snapTo(next) }
+                                },
+                                onDragEnd = {
+                                    scope.launch {
+                                        offset.animateTo(
+                                            if (offset.value <= -revealedWidthPx * 0.32f) {
+                                                -revealedWidthPx
+                                            } else {
+                                                0f
+                                            },
+                                        )
+                                    }
+                                },
+                                onDragCancel = {
+                                    scope.launch { offset.animateTo(0f) }
+                                },
+                            )
+                        }
+                    },
+                ),
+        ) {
+            CaseSummaryRow(
+                summary = summary,
+                selectionMode = selectionMode,
+                selected = selected,
+                onClick = {
+                    if (offset.value < -1f) {
+                        scope.launch { offset.animateTo(0f) }
+                    } else {
+                        onClick()
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SwipeCaseAction(
+    text: String,
+    background: Color,
+    width: Dp,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .width(width)
+            .fillMaxHeight()
+            .semantics { contentDescription = "左滑操作：$text" }
+            .testTag(tag),
+        shape = RectangleShape,
+        color = background,
+        contentColor = Color.White,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
 private fun CaseSummaryRow(
     summary: CaseSummary,
     selectionMode: Boolean = false,
@@ -4143,7 +4326,9 @@ private fun CaseSummaryRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .semantics { contentDescription = "打开命例：${summary.alias}" }
+            .semantics {
+                contentDescription = "打开命例：${summary.name.value ?: summary.alias}"
+            }
             .padding(start = 16.dp, top = 10.dp, end = 8.dp, bottom = 10.dp)
             .testTag("case_${summary.id}"),
         verticalAlignment = Alignment.CenterVertically,
@@ -4176,13 +4361,6 @@ private fun CaseSummaryRow(
                 modifier = Modifier.padding(top = 3.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "别名：${summary.alias}",
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(1.dp),
-                color = Color.Transparent,
             )
         }
         summary.fourPillars?.let { pillars ->
@@ -5239,11 +5417,6 @@ private fun CaseSummaryCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "别名：${summary.alias}",
-                modifier = Modifier.padding(top = 3.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
                 "${summary.sexForFortuneDirection.displayName()} · " +
                     summary.birthInput.displayDateTime() +
                     summary.westernZodiac
@@ -5462,14 +5635,16 @@ private fun WenzhenCreateCaseScreen(
                         ) {
                             if (form.alias.isBlank()) {
                                 Text(
-                                    "请输入姓名或命例名",
+                                    "请输入姓名",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                                 )
                             }
                             BasicTextField(
                                 value = form.alias,
-                                onValueChange = { value -> onFormChange { it.copy(alias = value) } },
+                                onValueChange = { value ->
+                                    onFormChange { it.copy(alias = value, name = value) }
+                                },
                                 enabled = !state.saving,
                                 singleLine = true,
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -5478,7 +5653,17 @@ private fun WenzhenCreateCaseScreen(
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .semantics { contentDescription = "姓名" }
                                     .testTag("case_alias"),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.CenterEnd,
+                                    ) {
+                                        innerTextField()
+                                    }
+                                },
                             )
                         }
                     }
@@ -5574,16 +5759,26 @@ private fun WenzhenCreateCaseScreen(
                             fontWeight = FontWeight.Medium,
                             color = NanfengInk,
                         )
-                        Switch(
-                            checked = saveCase,
-                            onCheckedChange = { saveCase = it },
+                        Surface(
+                            onClick = { saveCase = !saveCase },
                             modifier = Modifier
-                                .graphicsLayer {
-                                    scaleX = 0.78f
-                                    scaleY = 0.78f
-                                }
-                                .semantics { contentDescription = "保存命例" },
-                        )
+                                .size(width = 56.dp, height = 48.dp)
+                                .semantics {
+                                    contentDescription = "保存命例"
+                                    role = Role.Switch
+                                    stateDescription = if (saveCase) "已开启" else "已关闭"
+                                },
+                            shape = RoundedCornerShape(24.dp),
+                            color = Color.Transparent,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Switch(
+                                    checked = saveCase,
+                                    onCheckedChange = null,
+                                    modifier = Modifier.clearAndSetSemantics { },
+                                )
+                            }
+                        }
                     }
                     Button(
                         onClick = if (saveCase) onSubmit else onPreview,
@@ -5664,8 +5859,8 @@ private fun HomeChoiceGroup(
                 Surface(
                     onClick = { onSelect(label) },
                     modifier = Modifier
-                        .height(38.dp)
-                        .widthIn(min = 44.dp)
+                        .height(48.dp)
+                        .widthIn(min = 48.dp)
                         .testTag(tags[index]),
                     shape = RoundedCornerShape(19.dp),
                     color = if (selected) NanfengGreen else Color.Transparent,
@@ -5754,6 +5949,331 @@ private fun CaseFormState.birthDateTimeDisplay(): String {
         "请选择出生时间"
     } else {
         "$date  $time"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun EditCaseScreen(
+    form: CaseFormState,
+    error: String?,
+    saving: Boolean,
+    onBack: () -> Unit,
+    onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onSave: () -> Unit,
+    onCreateCopy: () -> Unit,
+    duplicateCandidates: List<DuplicateCaseCandidate>,
+    onConfirmDuplicate: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var showBirthPicker by rememberSaveable { mutableStateOf(false) }
+    var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    if (showBirthPicker) {
+        BirthDateTimePickerSheet(
+            form = form,
+            onDismiss = { showBirthPicker = false },
+            onConfirm = { selection ->
+                onFormChange {
+                    it.copy(
+                        calendarSystem = if (selection.mode == BirthPickerMode.LUNAR) {
+                            CalendarSystem.LUNAR
+                        } else {
+                            CalendarSystem.SOLAR
+                        },
+                        year = selection.year.toString(),
+                        month = selection.month.toString(),
+                        day = selection.day.toString(),
+                        hour = selection.hour.toString(),
+                        minute = selection.minute.toString(),
+                        second = "0",
+                        isLeapMonth = selection.isLeapMonth,
+                    ).clearTimeZoneResolution()
+                }
+                showBirthPicker = false
+            },
+            showFourPillarsOption = false,
+        )
+    }
+    if (showBirthplacePicker) {
+        BirthplacePickerSheet(
+            form = form,
+            onDismiss = { showBirthplacePicker = false },
+            onConfirm = { place ->
+                onFormChange {
+                    it.copy(
+                        locationName = place.displayName,
+                        timeZoneId = place.timeZoneId,
+                        latitude = place.latitude?.toString().orEmpty(),
+                        longitude = place.longitude?.toString().orEmpty(),
+                    ).clearTimeZoneResolution()
+                }
+                showBirthplacePicker = false
+            },
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(NanfengPageBackground)
+            .testTag("edit_case_screen"),
+    ) {
+        TopAppBar(
+            title = { Text("编辑命例", fontWeight = FontWeight.SemiBold) },
+            navigationIcon = {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                }
+            },
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            EditCaseSectionCard(title = "基本资料") {
+                val displayName = form.name.ifBlank { form.alias }
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { value ->
+                        onFormChange { it.copy(alias = value, name = value) }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("case_alias"),
+                    label = { Text("姓名") },
+                    singleLine = true,
+                    enabled = !saving,
+                    shape = RoundedCornerShape(15.dp),
+                )
+                Text(
+                    "性别",
+                    modifier = Modifier.padding(top = 14.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SexButton(
+                        text = "男",
+                        selected = form.sex == SexForFortuneDirection.MAN,
+                        enabled = !saving,
+                        tag = "sex_man",
+                        onClick = {
+                            onFormChange { it.copy(sex = SexForFortuneDirection.MAN) }
+                        },
+                    )
+                    SexButton(
+                        text = "女",
+                        selected = form.sex == SexForFortuneDirection.WOMAN,
+                        enabled = !saving,
+                        tag = "sex_woman",
+                        onClick = {
+                            onFormChange { it.copy(sex = SexForFortuneDirection.WOMAN) }
+                        },
+                    )
+                }
+            }
+
+            EditCaseSectionCard(title = "出生时间") {
+                HomePickerRow(
+                    title = if (form.calendarSystem == CalendarSystem.LUNAR) {
+                        "农历出生时间"
+                    } else {
+                        "公历出生时间"
+                    },
+                    value = form.birthDateTimeDisplay(),
+                    supporting = "",
+                    onClick = { if (!saving) showBirthPicker = true },
+                    tag = "open_birth_datetime_picker",
+                )
+            }
+
+            EditCaseSectionCard(title = "出生地区") {
+                HomePickerRow(
+                    title = "地区",
+                    value = form.locationName.ifBlank { "请选择地区" },
+                    supporting = "",
+                    onClick = { if (!saving) showBirthplacePicker = true },
+                    tag = "open_birthplace_picker",
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "真太阳时校正",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Switch(
+                        checked = form.useTrueSolarTime,
+                        onCheckedChange = { checked ->
+                            onFormChange { it.copy(useTrueSolarTime = checked) }
+                        },
+                        modifier = Modifier
+                            .size(width = 56.dp, height = 48.dp)
+                            .semantics { contentDescription = "真太阳时校正" }
+                            .testTag("birth_true_solar_time"),
+                        enabled = !saving,
+                    )
+                }
+                if (form.useTrueSolarTime) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = form.longitude,
+                            onValueChange = { value ->
+                                onFormChange { it.copy(longitude = value) }
+                            },
+                            modifier = Modifier.weight(1f).testTag("birth_longitude"),
+                            label = { Text("经度") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            enabled = !saving,
+                            shape = RoundedCornerShape(15.dp),
+                        )
+                        OutlinedTextField(
+                            value = form.latitude,
+                            onValueChange = { value ->
+                                onFormChange { it.copy(latitude = value) }
+                            },
+                            modifier = Modifier.weight(1f).testTag("birth_latitude"),
+                            label = { Text("纬度") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            enabled = !saving,
+                            shape = RoundedCornerShape(15.dp),
+                        )
+                    }
+                }
+            }
+
+            if (form.availableUtcOffsetSeconds.isNotEmpty()) {
+                EditCaseSectionCard(title = "时区确认") {
+                    Text(
+                        "该当地时间出现两次，请选择原始记录对应的 UTC offset。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier.padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        form.availableUtcOffsetSeconds.forEach { offsetSeconds ->
+                            SexButton(
+                                text = formatUtcOffset(offsetSeconds),
+                                selected = form.resolvedUtcOffsetSeconds == offsetSeconds,
+                                enabled = !saving,
+                                tag = "birth_utc_offset_$offsetSeconds",
+                                onClick = {
+                                    onFormChange {
+                                        it.copy(resolvedUtcOffsetSeconds = offsetSeconds)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (error != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().testTag("form_error"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Text(
+                        error,
+                        modifier = Modifier.padding(14.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+            if (duplicateCandidates.isNotEmpty()) {
+                DuplicateCandidatesCard(
+                    candidates = duplicateCandidates,
+                    saving = saving,
+                    onConfirm = onConfirmDuplicate,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.White,
+            shadowElevation = 8.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onCreateCopy,
+                    enabled = !saving,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                        .testTag("create_case_copy"),
+                    shape = RoundedCornerShape(18.dp),
+                ) {
+                    Text("创建副本")
+                }
+                Button(
+                    onClick = onSave,
+                    enabled = !saving,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                        .testTag("save_case"),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = NanfengGreen),
+                ) {
+                    Text(if (saving) "保存中…" else "保存")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditCaseSectionCard(
+    title: String,
+    content: @Composable () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
+            Text(
+                title,
+                modifier = Modifier.padding(bottom = 10.dp),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengInk,
+            )
+            content()
+        }
     }
 }
 
@@ -5853,25 +6373,16 @@ internal fun CaseFormScreen(
         ) {
             topContent?.invoke()
             if (showIdentityFields) {
-                SectionHeading("身份信息", "别名用于本地识别；姓名可以留空。")
+                SectionHeading("身份信息", "")
                 OutlinedTextField(
-                    value = form.alias,
-                    onValueChange = { value -> onFormChange { it.copy(alias = value) } },
+                    value = form.name.ifBlank { form.alias },
+                    onValueChange = { value ->
+                        onFormChange { it.copy(alias = value, name = value) }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("case_alias"),
-                    label = { Text("命例别名 *") },
-                    singleLine = true,
-                    enabled = !saving,
-                )
-                OutlinedTextField(
-                    value = form.name,
-                    onValueChange = { value -> onFormChange { it.copy(name = value) } },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                        .testTag("case_name"),
-                    label = { Text("姓名（可选）") },
+                    label = { Text("姓名 *") },
                     singleLine = true,
                     enabled = !saving,
                 )
@@ -7297,6 +7808,7 @@ private fun CaseDetailScreen(
             navigationIcon = {
                 androidx.compose.material3.IconButton(
                     onClick = onBack,
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                 }
@@ -7305,7 +7817,9 @@ private fun CaseDetailScreen(
                 Box {
                     androidx.compose.material3.IconButton(
                         onClick = { managementMenuExpanded = true },
-                        modifier = Modifier.testTag("toggle_case_management"),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("toggle_case_management"),
                     ) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "管理命例")
                     }
@@ -7327,40 +7841,20 @@ private fun CaseDetailScreen(
                             onClick = { closeThen(onEditMetadata) },
                             modifier = Modifier.testTag("edit_metadata_button"),
                         )
-                        DropdownMenuItem(
-                            text = { Text("管理出生时间候选") },
-                            onClick = { closeThen(onAddBirthTimeCandidate) },
-                        )
                         HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("客观命盘摘要") },
-                            onClick = { closeThen(onOpenObjectiveSummary) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("外部分析桥接") },
-                            onClick = { closeThen(onOpenExternalAnalysis) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导出单命例") },
-                            onClick = { closeThen(onExportSingleCase) },
-                            enabled = !state.singleCaseExchangeBusy,
-                            modifier = Modifier.testTag("export_single_case_button"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导出命盘长图") },
+                            text = { Text("保存命盘长图到图库") },
                             onClick = { closeThen(onExportCaseImage) },
                             enabled = !state.caseImageBusy,
+                            modifier = Modifier.testTag("save_case_image_to_gallery"),
                         )
                         DropdownMenuItem(
                             text = { Text("分享命盘长图") },
                             onClick = { closeThen(onShareCaseImage) },
                             enabled = !state.caseImageBusy,
+                            modifier = Modifier.testTag("share_case_image_button"),
                         )
                         HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("复制命例") },
-                            onClick = { closeThen(onDuplicate) },
-                        )
                         if (state.detail?.deletedAt == null) {
                             DropdownMenuItem(
                                 text = { Text("移入回收站", color = MaterialTheme.colorScheme.error) },
@@ -7892,6 +8386,7 @@ private fun ReferenceCaseDetailContent(
             CaseDetailSection.BASIC_CHART -> ReferenceBasicChart(
                 case = case,
                 adopted = adopted,
+                professionalFortunePosition = professionalFortunePosition,
             )
 
             CaseDetailSection.FORTUNE -> {
@@ -8089,6 +8584,7 @@ private fun ReferenceBasicInfo(
 private fun ReferenceBasicChart(
     case: BaziCase,
     adopted: CaseCalculationSnapshot?,
+    professionalFortunePosition: ProfessionalFortunePosition?,
 ) {
     if (adopted == null) {
         ReferenceEmptyText("当前命例没有已采用的计算快照。")
@@ -8115,6 +8611,7 @@ private fun ReferenceBasicChart(
     }
     BasicChartAiPromptSection(
         case = case,
+        observation = professionalFortunePosition,
         modifier = Modifier.padding(top = 18.dp),
     )
 }
@@ -8337,7 +8834,7 @@ private fun ReferenceCaseNotes(
                 onClick = { pickerVisible = true },
                 enabled = case.deletedAt == null && adopted != null,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(48.dp)
                     .testTag("add_event_button"),
             ) {
                 Icon(
@@ -8860,7 +9357,7 @@ private fun NotesModeTab(
     Surface(
         onClick = onClick,
         modifier = modifier
-            .height(34.dp),
+            .height(48.dp),
         color = if (selected) NanfengGold else Color.Transparent,
         shape = RoundedCornerShape(11.dp),
     ) {
@@ -10297,6 +10794,7 @@ private fun ProfessionalSelectedDateBar(
                 onClick = onOpenPicker,
                 modifier = Modifier
                     .testTag("fortune_observation_picker")
+                    .heightIn(min = 48.dp)
                     .semantics { contentDescription = "修改观察时间" },
                 color = Color.White.copy(alpha = 0.76f),
                 shape = RoundedCornerShape(10.dp),
@@ -10369,7 +10867,7 @@ private fun ProfessionalSelectedDateBar(
                 Surface(
                     onClick = onToday,
                     modifier = Modifier
-                        .height(34.dp)
+                        .height(48.dp)
                         .testTag("fortune_today")
                         .semantics { contentDescription = "定位今天" },
                     color = NanfengGold.copy(alpha = 0.12f),

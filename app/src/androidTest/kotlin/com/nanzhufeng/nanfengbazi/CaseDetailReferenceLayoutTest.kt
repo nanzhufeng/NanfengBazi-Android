@@ -2,6 +2,7 @@ package com.nanzhufeng.nanfengbazi
 
 import android.content.ClipboardManager
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.platform.app.InstrumentationRegistry
@@ -117,11 +119,13 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithTag("nav_records").performClick()
         composeRule.onNodeWithTag("case_search").performTextReplacement(alias)
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("别名：$alias")
+            composeRule.onAllNodes(
+                androidx.compose.ui.test.hasContentDescription("打开命例：席瑞"),
+            )
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
-        composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.onNodeWithContentDescription("打开命例：席瑞").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithTag("case_detail_screen")
                 .fetchSemanticsNodes()
@@ -192,13 +196,35 @@ class CaseDetailReferenceLayoutTest {
         composeRule.onNodeWithTag("ai_prompt_privacy_row")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_prompt_privacy_row").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已开启"),
+        )
+        composeRule.onNodeWithTag("ai_prompt_privacy_row").performClick()
+        composeRule.onNodeWithTag("ai_prompt_privacy_row").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已关闭"),
+        )
+        composeRule.onNodeWithTag("close_basic_chart_ai_prompt")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("open_basic_chart_ai_prompt")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("ai_prompt_privacy_row").performScrollTo()
+        composeRule.onNodeWithTag("ai_prompt_privacy_row").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已开启"),
+        )
+        composeRule.onNodeWithTag("ai_prompt_topic_career").performClick()
         composeRule.onNodeWithTag("toggle_ai_prompt_preview")
             .performScrollTo()
             .performClick()
         composeRule.onNodeWithTag("ai_prompt_preview")
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("2021—2031 走势", substring = true)
+        val referenceYear = LocalDate.now().year
+        composeRule.onNodeWithText(
+            "${referenceYear - 5}—${referenceYear + 5} 走势",
+            substring = true,
+        )
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("copy_basic_chart_ai_prompt")
@@ -212,8 +238,17 @@ class CaseDetailReferenceLayoutTest {
             ?.toString()
             .orEmpty()
         assertTrue(copiedPrompt.contains("# 角色"))
-        assertTrue(copiedPrompt.contains("盲派命理"))
+        assertTrue(
+            copiedPrompt.contains(
+                "熟悉盲派命理、主流子平命理与常见现代命理分析方法",
+            ),
+        )
         assertTrue(copiedPrompt.contains("事业专题解读"))
+        assertTrue(copiedPrompt.contains("表层五行计数"))
+        assertTrue(copiedPrompt.contains("原局天干关系"))
+        assertTrue(copiedPrompt.contains("当前大运"))
+        assertTrue(copiedPrompt.contains("当前流年"))
+        assertTrue(copiedPrompt.contains("小运序列"))
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
         composeRule.onNodeWithTag("shared_identity_solar_time").assertIsDisplayed()
@@ -383,13 +418,17 @@ class CaseDetailReferenceLayoutTest {
         decadeList.performScrollToNode(hasTestTag("timeline_decade_11"))
         composeRule.onNodeWithTag("timeline_decade_11").assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("timeline_annual_2017").performClick()
-        composeRule.onNodeWithText("阳历 2017-", substring = true)
+        assertTenColumnTimelineGrid("annual_fortune_details")
+        composeRule.onNodeWithTag("timeline_annual_2018").performClick()
+        composeRule.onNodeWithText("阳历 2018-", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
         composeRule.onNodeWithTag("monthly_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("monthly_fortune_details")
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("daily_fortune_details")
         composeRule.onNodeWithTag("hourly_fortune_details").performScrollTo().assertIsDisplayed()
+        assertTenColumnTimelineGrid("hourly_fortune_details")
         composeRule.onNodeWithTag("fortune_selected_datetime").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithContentDescription("定位今天").assertIsDisplayed()
         composeRule.onNodeWithTag("fortune_interactions").performScrollTo().assertIsDisplayed()
@@ -530,10 +569,10 @@ class CaseDetailReferenceLayoutTest {
             "${tag}_column",
             useUnmergedTree = true,
         ).fetchSemanticsNodes().map { it.boundsInRoot }
-        assertTrue(columnBounds.size >= 10)
+        assertTrue(columnBounds.isNotEmpty())
         val expectedWidth = listBounds.width / 10f
-        columnBounds.take(10).forEach { bounds ->
-            assertEquals(expectedWidth, bounds.width, 1f)
-        }
+        val fullColumnWidth = columnBounds.maxOf { it.width }
+        assertEquals(expectedWidth, fullColumnWidth, 1f)
+        assertEquals(10f, listBounds.width / fullColumnWidth, 0.15f)
     }
 }

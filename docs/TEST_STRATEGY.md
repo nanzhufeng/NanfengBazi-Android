@@ -502,3 +502,13 @@ OPPO 真机安装、进程重启后的持久读取及真实问真迁移仍需独
 4. 地区入口必须打开与首页相同的 `BirthplacePickerSheet`，遮罩可关闭；仓储测试使用完整标准地区名并验证精确匹配。筛选抽屉、四柱选择层、排序弹层和分组管理层的外部空白遮罩必须可点击关闭，关闭不提交草稿。
 5. `DatabaseMigrationTest` 固定 schema 8→9 的分组顺序列；`RoomCaseRepositoryTest` 覆盖分组新增、重命名、排序、删除，以及批量置顶和软删除的真实持久化结果。
 6. 1140×2616、442dpi 视觉核对检查右侧筛选抽屉可滚动、底部操作区固定且不被手势条遮挡；分组添加按钮和列表编辑操作条必须与手势条保留可见安全间距。OPPO 只覆盖安装主 APK并用宿主机 ADB/UIAutomator 操作现有应用验收，不安装测试 APK，不运行 instrumentation 或 Gradle `connected*AndroidTest`。
+
+## 记录编辑、左滑、长图与十列时间轴门禁
+
+1. `StageTwoViewModelTest` 必须分别证明“保存”更新同一个命例 id 且仓储仍只有一条记录，“创建副本”生成新 id 且原命例不变。
+2. API 35 `CaseListSwipeAndEditFlowTest` 必须断言左滑只出现编辑、置顶／取消置顶、删除，不出现合盘；编辑入口进入唯一姓名表单，旧别名、时间精度、子时换日规则、时间来源字段不可见，保存与创建副本同时可达。
+3. `CaseImageSystemFlowTest` 使用合成命例直接写入 MediaStore，断言新增文件是 PNG 后再打开系统分享，并在测试结束删除该合成图库文件；不得在 OPPO 真实资料上执行图库写入测试。
+4. `CaseImageExportContractTest` 必须固定基本信息、基本排盘、专业细盘、断事笔记四段顺序，并证明图片只读取已采用快照和正式记录。
+5. `CaseDetailReferenceLayoutTest` 必须对大运、流年、流月、流日、流时分别断言完整列宽等于容器宽度的十分之一；用完整列边界计算，不能只统计当前语义树内可见节点。
+6. `StageSixAccessibilityTest` 与 `scripts/run_stage6_accessibility_matrix.sh` 必须覆盖手机／展开态、字体 1.0／2.0 和 TalkBack 开关四组合；固定底部按钮、编辑返回和详情标签不得因字体或窗口变化失去可达性。
+7. 完整离线门禁固定运行 `test lintDebug assembleDebug assembleDebugAndroidTest`。OPPO 只接收同签名主 APK 覆盖并做现有应用黑盒验收，不运行上述 instrumentation 测试。

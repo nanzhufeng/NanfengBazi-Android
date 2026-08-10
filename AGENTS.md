@@ -53,10 +53,14 @@
 - Stage 7B–7F 的节气边界、两种子时口径、专业流运、诊断、计算档案差异和问真来源
   保真合同均已完成内部证据。完整备份恢复必须在预览和提交重读时经过独立临时 Room
   数据库完整往返。Stage 7G 命例对比只报告两个已采用快照及正式聚合的客观异同，禁止
-  吉凶和合婚推断；问真真实样本、外部 AI 与正式发布仍需用户授权。OPPO 在线时只默认允许
-  同签名覆盖安装主 APK、启动、人工验收，以及不新增安装包的主机侧 ADB/UIAutomator 黑盒操作现有主应用完成验收。
-  禁止在 OPPO 上运行任何 instrumentation 测试，严禁安装独立 `androidTest` 或其他辅助 APK、卸载、清数据、
-  清库，以及使用 Gradle `connected*AndroidTest` 聚合任务。
+  吉凶和合婚推断；问真真实样本、外部 AI 与正式发布仍需用户授权。
+- OPPO 在线时已获持续验收授权，不需要每轮重新询问。Android 修改先通过自动门禁，再以
+  显式序列号把同签名主 APK `push` 到 `/data/local/tmp/`，执行
+  `pm install -r --user 0` 覆盖并清理该临时 APK；禁止直接 `adb install`。只允许启动主应用及
+  主机侧 ADB/UIAutomator 黑盒点击、截图和读取；禁止 instrumentation、Gradle
+  `connected*AndroidTest`、独立 `androidTest`／辅助 APK、卸载、清数据、清库和删除用户软件或数据。
+  通用安装方法以 `develop-apps-with-nanfeng-product-standards/references/delivery-and-acceptance.md`
+  第 3 节为权威正文，其他项目文档只引用本条，不复制另一套规则。
 - VX-09 四柱反查只通过 `FourPillarsLookup` 返回 1800–2100 年经正向引擎复算的民用
   代表时刻；候选不证明出生分钟唯一，不做真太阳时推算，也不自动保存为正式命例。
 - Tyme4j `LunarHour.provider` 只允许四柱反查适配器在进程级锁内临时切换并恢复；

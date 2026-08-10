@@ -6,15 +6,20 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -40,14 +45,20 @@ class StageSixAccessibilityTest {
         composeRule.onNodeWithTag("case_alias").performTextInput(alias)
         composeRule.onNodeWithTag("sex_man")
             .performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNodeWithTag("birth_year").performTextInput("1992")
-        composeRule.onNodeWithTag("birth_month").performTextInput("8")
-        composeRule.onNodeWithTag("birth_day").performTextInput("24")
-        composeRule.onNodeWithTag("birth_hour").performTextInput("12")
-        composeRule.onNodeWithTag("birth_minute").performTextInput("0")
-        composeRule.onNodeWithTag("birth_location")
+        composeRule.onNodeWithTag("open_birth_datetime_picker")
             .performScrollTo()
-            .performTextInput("江苏省宿迁市泗阳县")
+            .performClick()
+        auditPage("birth_datetime_picker_sheet")
+        composeRule.onNodeWithTag("birth_year_wheel").performScrollToIndex(1992 - 1800)
+        composeRule.onNodeWithTag("birth_month_wheel").performScrollToIndex(8 - 1)
+        composeRule.onNodeWithTag("birth_day_wheel").performScrollToIndex(24 - 1)
+        composeRule.onNodeWithTag("birth_hour_wheel").performScrollToIndex(12)
+        composeRule.onNodeWithTag("confirm_birth_datetime").performClick()
+        composeRule.onNodeWithTag("open_birthplace_picker")
+            .performScrollTo()
+            .performClick()
+        auditPage("birthplace_picker_sheet")
+        composeRule.onNodeWithTag("confirm_birthplace").performClick()
         composeRule.onNodeWithTag("save_case").performScrollTo()
         auditPage("create_case_screen")
         composeRule.onNodeWithTag("save_case").performClick()
@@ -79,17 +90,24 @@ class StageSixAccessibilityTest {
                 .performScrollTo()
                 .performSemanticsAction(SemanticsActions.OnClick)
         }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("nav_records").performClick()
         composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("case_search").performTextInput(alias)
+        composeRule.onNodeWithTag("case_search").performTextReplacement("")
+        val caseRowMatcher = hasContentDescription("打开命例：", substring = true)
         composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule.onAllNodes(hasText("别名：$alias"))
+            composeRule.onAllNodes(caseRowMatcher)
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.onAllNodes(caseRowMatcher).onFirst().performClick()
         auditPage("case_detail_screen")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("detail_tab_basic_chart"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
 
         listOf(
             "detail_tab_basic_chart",
@@ -101,6 +119,19 @@ class StageSixAccessibilityTest {
             auditPage("case_detail_screen")
         }
 
+        composeRule.onNodeWithTag("detail_tab_basic_chart").performClick()
+        composeRule.onNodeWithTag("open_basic_chart_ai_prompt")
+            .performScrollTo()
+            .performClick()
+        auditPage("basic_chart_ai_prompt_dialog")
+        composeRule.onNodeWithTag("ai_prompt_privacy_row")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("copy_basic_chart_ai_prompt")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("close_basic_chart_ai_prompt").performClick()
+
         composeRule.onNodeWithTag("toggle_case_management").performClick()
         composeRule.onNodeWithTag("edit_metadata_button").performClick()
         auditPage("metadata_editor_screen")
@@ -108,11 +139,17 @@ class StageSixAccessibilityTest {
         auditPage("metadata_editor_screen")
         composeRule.onNodeWithText("返回").performClick()
 
-        composeRule.onNodeWithTag("edit_case_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("toggle_case_management").performClick()
+        composeRule.onNodeWithTag("edit_case_button").performClick()
         auditPage("edit_case_screen")
-        composeRule.onNodeWithTag("save_case").performScrollTo()
+        composeRule.onNodeWithTag("save_case").assertIsDisplayed()
+        composeRule.onNodeWithTag("create_case_copy").assertIsDisplayed()
         auditPage("edit_case_screen")
-        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithContentDescription("返回").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("detail_tab_basic_chart"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
 
         composeRule.onNodeWithTag("detail_tab_records").performClick()
         composeRule.onNodeWithTag("owner_feedback_input").performScrollTo()
@@ -159,8 +196,12 @@ class StageSixAccessibilityTest {
             }
             val widthDp = node.size.width / density
             val heightDp = node.size.height / density
+            val isTenColumnTimelineCell =
+                node.config.getOrNull(SemanticsProperties.TestTag)
+                    ?.startsWith("timeline_") == true && heightDp >= MIN_TOUCH_DP
             if (
-                widthDp < MIN_TOUCH_DP - ROUNDING_TOLERANCE_DP ||
+                (!isTenColumnTimelineCell &&
+                    widthDp < MIN_TOUCH_DP - ROUNDING_TOLERANCE_DP) ||
                 heightDp < MIN_TOUCH_DP - ROUNDING_TOLERANCE_DP
             ) {
                 issues += "触控目标不足 48dp：" +

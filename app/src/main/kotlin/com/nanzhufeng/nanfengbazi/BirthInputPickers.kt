@@ -902,6 +902,7 @@ internal fun FixedPickerSheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .semantics { contentDescription = "关闭选择器" }
                     .clickable(onClick = onDismiss)
                     .testTag("picker_scrim_dismiss"),
             )
@@ -1026,7 +1027,7 @@ private fun <T> PickerSegmentedControl(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(48.dp)
                         .then(
                             itemTag?.let { tag -> Modifier.testTag(tag(value)) } ?: Modifier,
                         ),

@@ -1,6 +1,8 @@
 package com.nanzhufeng.nanfengbazi.domain
 
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
+import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
+import com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetails
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
@@ -16,7 +18,13 @@ import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.FortuneStart
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.HiddenStemDetail
+import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
+import com.nanzhufeng.nanfengbazi.domain.model.PillarPosition
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTermType
+import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -65,8 +73,14 @@ class CaseObjectiveSummaryContractTest {
 
     @Test
     fun `旧快照缺字段显式标记未记录且不反推补造`() {
+        val legacySnapshot = snapshot("adopted", true).copy(
+            result = calculationResult().copy(
+                calendarConversion = null,
+                basicChartDetails = null,
+            ),
+        )
         val result = CaseObjectiveSummaryContract.generate(
-            CaseObjectiveSummaryInput(caseWithSnapshots(listOf(snapshot("adopted", true)))),
+            CaseObjectiveSummaryInput(caseWithSnapshots(listOf(legacySnapshot))),
         ) as CaseObjectiveSummaryResult.Success
 
         listOf(
@@ -116,6 +130,92 @@ class CaseObjectiveSummaryContractTest {
             result.summary.field("formal_record_index", "正式文本记录").value,
         )
         assertFalse(result.summary.copyText.contains(privateRecord))
+    }
+
+    @Test
+    fun `观察时刻补齐年龄当前岁运前后五年和小运且原局关系可追溯`() {
+        val source = caseWithSnapshots(listOf(snapshot("adopted", true)))
+        val result = source.calculationSnapshots.single().result
+        val currentDecade = result.decadeFortunes.last()
+        val currentAnnual = result.annualFortunes.single { it.calendarYear == 2026 }
+        val observedAt = CivilDateTime(2026, 8, 9, 12, 0, 0)
+        val professional = ProfessionalFortunePosition(
+            position = FortunePosition(
+                observedAt = observedAt,
+                annualFortune = currentAnnual.copy(
+                    decadeIndex = result.decadeFortunes.size,
+                    decadeName = currentDecade.name,
+                ),
+                decadeFortune = currentDecade,
+                status = FortunePositionStatus.WITHIN_DECADE,
+            ),
+            flowPillars = FourPillars("丙午", "丙申", "乙巳", "壬午"),
+            minorTimeline = listOf(
+                ProfessionalTimelineItem(
+                    key = "minor_0",
+                    label = "2000",
+                    subtitle = "0岁",
+                    observedAt = CivilDateTime(2000, 1, 2, 3, 5, 0),
+                    pillar = "戊辰",
+                    stemTenGod = "食神",
+                    heavenStemElement = "土",
+                    earthBranchElement = "土",
+                    selected = false,
+                ),
+            ),
+            completedAge = 26,
+            previousSolarTerm = term("立秋", CivilDateTime(2026, 8, 7, 12, 0, 0)),
+            nextSolarTerm = term("处暑", CivilDateTime(2026, 8, 23, 12, 0, 0)),
+            observationTimeMode = SolarTimeMode.CIVIL_TIME,
+            profileId = result.profile.id,
+            ruleVersion = result.profile.ruleVersion,
+        )
+
+        val summary = (
+            CaseObjectiveSummaryContract.generate(
+                CaseObjectiveSummaryInput(
+                    caseData = source,
+                    observation = CaseObjectiveSummaryObservation(
+                        referenceDate = java.time.LocalDate.of(2026, 8, 9),
+                        professionalPosition = professional,
+                    ),
+                ),
+            ) as CaseObjectiveSummaryResult.Success
+            ).summary
+
+        assertEquals("丑（土）", summary.field("chart_facts", "月令").value)
+        assertEquals("寅（木）", summary.field("chart_facts", "日支").value)
+        assertTrue(summary.field("chart_facts", "表层五行计数").value.contains("木4"))
+        assertTrue(summary.field("chart_facts", "表层五行缺失").value.contains("金"))
+        assertTrue(summary.field("chart_facts", "原局地支关系").value.contains("子丑合"))
+        assertEquals("26岁（截至2026-08-09）", summary.field("chart_facts", "当前实岁").value)
+        assertTrue(summary.field("fortune_facts", "当前大运").value.contains(currentDecade.name))
+        assertTrue(summary.field("fortune_facts", "当前流年").value.contains("2026"))
+        assertTrue(summary.field("fortune_facts", "流年 2021").value.isNotBlank())
+        assertTrue(summary.field("fortune_facts", "流年 2031").value.isNotBlank())
+        assertTrue(summary.field("fortune_facts", "小运序列").value.contains("2000 戊辰 0岁"))
+    }
+
+    @Test
+    fun `字段敏感级别不依赖中文标签`() {
+        val summary = (
+            CaseObjectiveSummaryContract.generate(
+                CaseObjectiveSummaryInput(caseWithSnapshots(listOf(snapshot("adopted", true)))),
+            ) as CaseObjectiveSummaryResult.Success
+            ).summary
+
+        assertEquals(
+            CaseObjectiveSummarySensitivity.IDENTITY,
+            summary.field("birth_facts", "命例别名").sensitivity,
+        )
+        assertEquals(
+            CaseObjectiveSummarySensitivity.DEMOGRAPHIC,
+            summary.field("birth_facts", "性别口径").sensitivity,
+        )
+        assertEquals(
+            CaseObjectiveSummarySensitivity.PRECISE_BIRTH_TIME,
+            summary.field("birth_facts", "出生历法与时间").sensitivity,
+        )
     }
 
     @Test
@@ -241,13 +341,66 @@ class CaseObjectiveSummaryContractTest {
         ),
         decadeFortunes = listOf(
             DecadeFortune("戊辰", 4, 13, 2003, 2012),
+            DecadeFortune("己巳", 14, 23, 2013, 2022),
+            DecadeFortune("庚午", 24, 33, 2023, 2032),
         ),
+        annualFortunes = (2021..2031).mapIndexed { index, year ->
+            AnnualFortune(
+                name = listOf(
+                    "辛丑", "壬寅", "癸卯", "甲辰", "乙巳", "丙午",
+                    "丁未", "戊申", "己酉", "庚戌", "辛亥",
+                )[index],
+                calendarYear = year,
+                nominalAge = year - 2000 + 1,
+            )
+        },
         evidence = CalculationEvidence(
             engineName = "TestEngine",
             engineVersion = "test-1",
             ruleVersion = "test-rule-1",
             calculatedAt = NOW,
         ),
+        basicChartDetails = basicChartDetails(),
+    )
+
+    private fun basicChartDetails(): BasicChartDetails = BasicChartDetails(
+        zodiac = "龙",
+        westernZodiac = "摩羯座",
+        dayMaster = "丙",
+        pillars = listOf(
+            pillar(PillarPosition.YEAR, "甲子", "木", "水"),
+            pillar(PillarPosition.MONTH, "乙丑", "木", "土"),
+            pillar(PillarPosition.DAY, "丙寅", "火", "木"),
+            pillar(PillarPosition.HOUR, "丁卯", "火", "木"),
+        ),
+        previousSolarTerm = term("冬至", CivilDateTime(1999, 12, 22, 0, 0, 0)),
+        nextSolarTerm = term("小寒", CivilDateTime(2000, 1, 6, 0, 0, 0)),
+    )
+
+    private fun pillar(
+        position: PillarPosition,
+        name: String,
+        stemElement: String,
+        branchElement: String,
+    ): PillarDetail = PillarDetail(
+        position = position,
+        name = name,
+        heavenStem = name.take(1),
+        earthBranch = name.takeLast(1),
+        heavenStemElement = stemElement,
+        earthBranchElement = branchElement,
+        primaryTenGod = "测试十神",
+        hiddenStems = listOf(HiddenStemDetail("甲", "本气", "测试十神", "木")),
+        terrain = "长生",
+        selfSittingTerrain = "长生",
+        voidEarthBranches = listOf("戌", "亥"),
+        naYin = "测试纳音",
+    )
+
+    private fun term(name: String, at: CivilDateTime): SolarTermPoint = SolarTermPoint(
+        name = name,
+        type = SolarTermType.JIE,
+        at = at,
     )
 
     private fun birthInput(): BirthInput = BirthInput(

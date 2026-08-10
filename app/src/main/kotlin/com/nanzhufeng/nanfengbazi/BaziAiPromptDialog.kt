@@ -40,6 +40,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -51,13 +55,16 @@ import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptResult
 import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisTopic
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryContract
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryInput
+import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryObservation
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryResult
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import java.time.LocalDate
 
 @Composable
 internal fun BasicChartAiPromptSection(
     case: BaziCase,
+    observation: ProfessionalFortunePosition?,
     modifier: Modifier = Modifier,
 ) {
     var dialogVisible by rememberSaveable(case.id) { mutableStateOf(false) }
@@ -117,6 +124,7 @@ internal fun BasicChartAiPromptSection(
     if (dialogVisible) {
         BaziAiPromptDialog(
             case = case,
+            observation = observation,
             onDismiss = { dialogVisible = false },
         )
     }
@@ -125,17 +133,31 @@ internal fun BasicChartAiPromptSection(
 @Composable
 private fun BaziAiPromptDialog(
     case: BaziCase,
+    observation: ProfessionalFortunePosition?,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
-    val referenceDate = remember { LocalDate.now() }
-    val summaryResult = remember(case.id, case.revision) {
-        CaseObjectiveSummaryContract.generate(CaseObjectiveSummaryInput(case))
+    val referenceDate = observation?.position?.observedAt?.let {
+        LocalDate.of(it.year, it.month, it.day)
+    } ?: remember { LocalDate.now() }
+    val summaryObservation = observation?.let {
+        CaseObjectiveSummaryObservation(
+            referenceDate = referenceDate,
+            professionalPosition = it,
+        )
+    }
+    val summaryResult = remember(case.id, case.revision, summaryObservation) {
+        CaseObjectiveSummaryContract.generate(
+            CaseObjectiveSummaryInput(
+                caseData = case,
+                observation = summaryObservation,
+            ),
+        )
     }
     var topic by rememberSaveable(case.id) { mutableStateOf(BaziAiAnalysisTopic.ALL) }
-    var hideIdentityAndLocation by rememberSaveable(case.id) { mutableStateOf(true) }
-    var previewVisible by rememberSaveable(case.id) { mutableStateOf(false) }
-    var copyError by rememberSaveable(case.id) { mutableStateOf<String?>(null) }
+    var hideIdentityAndLocation by remember(case.id) { mutableStateOf(true) }
+    var previewVisible by remember(case.id) { mutableStateOf(false) }
+    var copyError by remember(case.id) { mutableStateOf<String?>(null) }
     val promptResult = remember(summaryResult, topic, hideIdentityAndLocation, referenceDate) {
         when (summaryResult) {
             is CaseObjectiveSummaryResult.Success -> BaziAiAnalysisPromptContract.prepare(
@@ -197,7 +219,9 @@ private fun BaziAiPromptDialog(
                     }
                     TextButton(
                         onClick = onDismiss,
-                        modifier = Modifier.testTag("close_basic_chart_ai_prompt"),
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("close_basic_chart_ai_prompt"),
                     ) {
                         Text("关闭")
                     }
@@ -249,6 +273,10 @@ private fun BaziAiPromptDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 14.dp)
+                        .semantics(mergeDescendants = true) {
+                            role = Role.Switch
+                            stateDescription = if (hideIdentityAndLocation) "已开启" else "已关闭"
+                        }
                         .testTag("ai_prompt_privacy_row"),
                     shape = RoundedCornerShape(15.dp),
                     color = Color(0xFFFAFAF8),
@@ -272,7 +300,9 @@ private fun BaziAiPromptDialog(
                         Switch(
                             checked = hideIdentityAndLocation,
                             onCheckedChange = null,
-                            modifier = Modifier.testTag("ai_prompt_privacy_switch"),
+                            modifier = Modifier
+                                .size(width = 56.dp, height = 48.dp)
+                                .testTag("ai_prompt_privacy_switch"),
                         )
                     }
                 }
@@ -289,6 +319,7 @@ private fun BaziAiPromptDialog(
                         onClick = { previewVisible = !previewVisible },
                         modifier = Modifier
                             .align(Alignment.End)
+                            .heightIn(min = 48.dp)
                             .testTag("toggle_ai_prompt_preview"),
                     ) {
                         Text(if (previewVisible) "收起提示词" else "预览提示词")
@@ -356,7 +387,7 @@ private fun BaziAiTopicGrid(
                     onClick = { onSelect(topic) },
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 42.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("ai_prompt_topic_${topic.name.lowercase()}"),
                     shape = RoundedCornerShape(14.dp),
                     color = if (active) NanfengGold else NanfengControlSurface.copy(alpha = 0.7f),
@@ -414,11 +445,25 @@ private fun AiPromptPreview(prompt: BaziAiAnalysisPrompt) {
 private fun copyPromptToClipboard(
     context: android.content.Context,
     text: String,
-): Boolean = runCatching {
+): Boolean {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return false
-    clipboard.setPrimaryClip(ClipData.newPlainText("南枫八字 AI 指令", text))
-    clipboard.primaryClip
-        ?.getItemAt(0)
-        ?.coerceToText(context)
-        ?.toString() == text
+    return tryWritePromptToClipboard(
+        writer = PromptClipboardWriter { label, value ->
+            clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
+        },
+        text = text,
+    )
+}
+
+internal fun interface PromptClipboardWriter {
+    fun write(label: String, text: String)
+}
+
+internal fun tryWritePromptToClipboard(
+    writer: PromptClipboardWriter,
+    text: String,
+): Boolean = runCatching {
+    require(text.isNotBlank()) { "复制内容不能为空" }
+    writer.write("南枫八字 AI 指令", text)
+    true
 }.getOrDefault(false)

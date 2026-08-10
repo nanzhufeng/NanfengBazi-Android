@@ -79,15 +79,19 @@ object BaziAiAnalysisPromptContract : BaziAiAnalysisPromptBuilder {
         }
 
         val fields = requiredSections.flatMap { id -> sectionsById.getValue(id).fields }
-        val hiddenLabels = if (request.hideIdentityAndLocation) PRIVATE_IDENTITY_LABELS else emptySet()
-        val visibleFields = fields.filterNot { it.label in hiddenLabels }
+        val hiddenSensitivities = if (request.hideIdentityAndLocation) {
+            AI_PRIVATE_SENSITIVITIES
+        } else {
+            emptySet()
+        }
+        val visibleFields = fields.filterNot { it.sensitivity in hiddenSensitivities }
         if (visibleFields.isEmpty()) {
             return rejected(
                 BaziAiAnalysisPromptErrorCode.NO_USABLE_FIELDS,
                 "当前命例没有可用于生成 AI 指令的字段。",
             )
         }
-        val hiddenCount = fields.count { it.label in hiddenLabels }
+        val hiddenCount = fields.count { it.sensitivity in hiddenSensitivities }
         val identity = listOf(
             request.promptVersion.toString(),
             request.summary.caseId,
@@ -96,7 +100,9 @@ object BaziAiAnalysisPromptContract : BaziAiAnalysisPromptBuilder {
             request.topic.name,
             request.referenceDate.toString(),
             request.hideIdentityAndLocation.toString(),
-            visibleFields.joinToString("\u0000") { "${it.label}|${it.value}|${it.source}" },
+            visibleFields.joinToString("\u0000") {
+                "${it.label}|${it.value}|${it.source}|${it.sensitivity}"
+            },
         ).joinToString("\u0001")
         val promptId = "ai-prompt-${identity.sha256().take(16)}"
         return BaziAiAnalysisPromptResult.Success(
@@ -107,19 +113,19 @@ object BaziAiAnalysisPromptContract : BaziAiAnalysisPromptBuilder {
                 referenceDate = request.referenceDate,
                 includedFieldCount = visibleFields.size,
                 hiddenFieldCount = hiddenCount,
-                copyText = buildPromptText(request, promptId, sectionsById, hiddenLabels),
+                copyText = buildPromptText(
+                    request,
+                    promptId,
+                    sectionsById,
+                    hiddenSensitivities,
+                ),
             ),
         )
     }
 
-    private val PRIVATE_IDENTITY_LABELS = setOf(
-        "命例别名",
-        "姓名",
-        "出生地区",
-        "经纬度",
-        "IANA 时区",
-        "UTC offset",
-        "时区数据版本",
+    private val AI_PRIVATE_SENSITIVITIES = setOf(
+        CaseObjectiveSummarySensitivity.IDENTITY,
+        CaseObjectiveSummarySensitivity.LOCATION,
     )
 }
 
@@ -127,7 +133,7 @@ private fun buildPromptText(
     request: BaziAiAnalysisPromptRequest,
     promptId: String,
     sectionsById: Map<String, CaseObjectiveSummarySection>,
-    hiddenLabels: Set<String>,
+    hiddenSensitivities: Set<CaseObjectiveSummarySensitivity>,
 ): String = buildString {
     val startYear = request.referenceDate.year - 5
     val endYear = request.referenceDate.year + 5
@@ -137,7 +143,7 @@ private fun buildPromptText(
     appendLine("# 分析边界")
     appendLine("1. 开头必须原样声明：本分析为文化娱乐参考，非专业决策依据，具体发展需结合个人努力与客观环境。")
     appendLine("2. 只使用本提示词中的资料；未提供的事实明确写“资料未提供”，不得虚构经历、家庭情况、疾病、资产或关系状态。")
-    appendLine("3. 格局、旺衰、喜用忌神、五行比例和事件时间属于模型推演，必须与“输入事实”分开标注，并给出推理链与可能的不同流派结论。")
+    appendLine("3. 月令旺相、格局、身强身弱、调候用神、喜用忌神、五行权重和事件时间属于模型推演，必须与“输入事实”分开标注，并给出推理链与可能的不同流派结论；不得把表层五行计数直接等同于旺衰或喜忌。")
     appendLine("4. 关键事件只给可能的时间范围、传统命理喜忌属性、影响程度和观察信号，不使用“必然、一定、注定”等确定措辞。")
     appendLine("5. 健康内容不得作疾病诊断、治疗或手术结论；财运内容不构成投资建议；子女数量、性别和生育时间不得写成确定事实。")
     appendLine("6. 不联网补充个人资料。涉及下蛊、伤害他人、破坏他人命运或断人财路等要求时直接拒绝。")
@@ -150,7 +156,7 @@ private fun buildPromptText(
         val section = sectionsById.getValue(sectionId)
         appendLine()
         appendLine("## ${section.title}")
-        section.fields.filterNot { it.label in hiddenLabels }.forEach { field ->
+        section.fields.filterNot { it.sensitivity in hiddenSensitivities }.forEach { field ->
             appendLine("- ${field.label}：${field.value}")
         }
     }
@@ -161,7 +167,7 @@ private fun buildPromptText(
     appendLine()
     appendLine("# 输出格式")
     appendLine("1. 输入事实核对：简要复述采用的四柱、日主、十神、藏干、起运和大运资料，并列出缺失项。")
-    appendLine("2. 命盘技法解读：先单列“盲派断事观察”，再写“子平格局与现代方法交叉核对”；涵盖五行生克、十神组合、格局／旺衰／喜用忌神，并明确区分事实与推演。")
+    appendLine("2. 命盘技法解读：先单列“盲派断事观察”，再写“子平格局与现代方法交叉核对”；涵盖五行生克、十神组合、月令旺相、格局／身强身弱／调候用神／喜用忌神，并明确区分事实与推演。")
     if (request.topic == BaziAiAnalysisTopic.ALL) {
         appendLine("3. 命盘事项解读：依次分析事业、财运、婚恋、子女、六亲、健康和学业。")
     } else {

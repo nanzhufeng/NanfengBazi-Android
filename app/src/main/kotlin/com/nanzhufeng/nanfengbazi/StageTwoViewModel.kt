@@ -854,7 +854,10 @@ class StageTwoViewModel(
                     }
                 }
             }
-            if (mutableState.value.detailSection == CaseDetailSection.FORTUNE) {
+            if (
+                mutableState.value.detailSection == CaseDetailSection.FORTUNE ||
+                mutableState.value.detailSection == CaseDetailSection.BASIC_CHART
+            ) {
                 resolveFortunePosition()
             }
         }
@@ -1658,7 +1661,10 @@ class StageTwoViewModel(
         }
     }
 
-    fun exportPreparedCaseImage(openOutput: () -> OutputStream?) {
+    fun exportPreparedCaseImage(
+        openOutput: () -> OutputStream?,
+        onCompleted: (Boolean) -> Boolean = { true },
+    ) {
         val image = pendingCaseImage
         if (image == null) {
             setCaseImageFailure(
@@ -1671,14 +1677,19 @@ class StageTwoViewModel(
             mutableState.update { it.copy(caseImageBusy = true, caseImageError = null) }
             val failure = writeCaseImageBytes(image, openOutput)
             if (failure == null) {
+                if (!onCompleted(true)) {
+                    reportCaseImageGallerySaveFailed()
+                    return@launch
+                }
                 mutableState.update {
                     it.copy(
                         caseImageBusy = false,
                         caseImageLastResultCode = null,
-                        message = "命盘长图已保存到所选系统位置。",
+                        message = "命盘长图已保存到手机图库。",
                     )
                 }
             } else {
+                onCompleted(false)
                 setCaseImageFailure(failure.code, failure.message)
             }
         }
@@ -1725,7 +1736,7 @@ class StageTwoViewModel(
     fun reportNoCaseImageShareTarget() {
         setCaseImageFailure(
             CaseImageExportErrorCode.NO_SHARE_TARGET,
-            "系统中没有可接收 PNG 图片的分享目标；可先使用“导出图片”保存文件。",
+            "系统中没有可接收 PNG 图片的分享目标；可先保存到手机图库。",
         )
     }
 
@@ -1733,6 +1744,13 @@ class StageTwoViewModel(
         setCaseImageFailure(
             CaseImageExportErrorCode.SHARE_LAUNCH_FAILED,
             "系统分享面板无法打开；当前详情和图片仍保留，可重试或改为保存文件。",
+        )
+    }
+
+    fun reportCaseImageGallerySaveFailed() {
+        setCaseImageFailure(
+            CaseImageExportErrorCode.WRITE_FAILED,
+            "无法写入手机默认图库，当前详情和已生成图片仍保留。",
         )
     }
 
@@ -2698,6 +2716,14 @@ class StageTwoViewModel(
             }
             refreshCases()
         }
+    }
+
+    fun togglePinnedCase(caseId: String) {
+        val cases = mutableState.value.batchCases
+        val target = cases.firstOrNull { it.id == caseId } ?: return
+        val pinnedIds = cases.filter { it.isPinned }.map { it.id }.toMutableSet()
+        if (target.isPinned) pinnedIds.remove(caseId) else pinnedIds.add(caseId)
+        updatePinnedCases(pinnedIds)
     }
 
     fun batchMoveCasesToTrash(caseIds: Set<String>) {
@@ -4451,7 +4477,10 @@ class StageTwoViewModel(
         mutableState.update {
             it.copy(detailSection = section)
         }
-        if (section == CaseDetailSection.FORTUNE) {
+        if (
+            section == CaseDetailSection.FORTUNE ||
+            section == CaseDetailSection.BASIC_CHART
+        ) {
             resolveFortunePosition()
         }
     }
@@ -4634,11 +4663,35 @@ class StageTwoViewModel(
     fun openEditCase() {
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
-        val form = detail.toEditableForm()
+        showEditCase(detail)
+    }
+
+    fun openEditCase(caseId: String) {
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            val caseData = try {
+                caseRepository.findById(caseId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (caseData == null || caseData.deletedAt != null) {
+                mutableState.update {
+                    it.copy(mutationError = "命例不存在或已在回收站，无法编辑。")
+                }
+            } else {
+                showEditCase(caseData)
+            }
+        }
+    }
+
+    private fun showEditCase(caseData: BaziCase) {
         mutableState.update {
             it.copy(
-                destination = navigator.openEditCase(detail.id),
-                editForm = form,
+                destination = navigator.openEditCase(caseData.id),
+                detail = caseData,
+                editForm = caseData.toEditableForm(),
                 mutationError = null,
                 duplicateCandidates = emptyList(),
             )
@@ -4778,8 +4831,61 @@ class StageTwoViewModel(
             finishMutation(
                 result = result,
                 caseId = detail.id,
-                successMessage = "命例资料已重新排盘并保存；旧计算快照仍保留。",
+                successMessage = "当前命例已更新并重新排盘。",
             )
+        }
+    }
+
+    fun createEditedCaseCopy() {
+        if (mutableState.value.mutationSaving) return
+        val form = mutableState.value.editForm
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            when (val result = createCase(form, allowDuplicate = true)) {
+                is CreateCaseResult.Created -> {
+                    navigator.backToList()
+                    mutableState.update {
+                        it.copy(
+                            mutationSaving = false,
+                            duplicateCandidates = emptyList(),
+                            message = "已根据当前编辑内容创建副本，原命例未改动。",
+                        )
+                    }
+                    refreshCases()
+                    openDetail(result.caseId)
+                }
+                is CreateCaseResult.ValidationFailed -> mutableState.update {
+                    it.copy(mutationSaving = false, mutationError = result.message)
+                }
+                is CreateCaseResult.TimeZoneChoiceRequired -> mutableState.update {
+                    it.copy(
+                        editForm = it.editForm.copy(
+                            resolvedUtcOffsetSeconds = null,
+                            availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                        ),
+                        mutationSaving = false,
+                        mutationError = "该出生时间在 ${result.timeZoneId} 出现两次，" +
+                            "请选择实际 UTC offset 后再创建副本。",
+                    )
+                }
+                is CreateCaseResult.CalculationFailed -> mutableState.update {
+                    it.copy(
+                        mutationSaving = false,
+                        mutationError = "排盘失败：${result.message}",
+                    )
+                }
+                is CreateCaseResult.DuplicateCandidates -> mutableState.update {
+                    it.copy(mutationSaving = false, mutationError = "创建副本失败。")
+                }
+                is CreateCaseResult.AlreadyExists,
+                is CreateCaseResult.RevisionConflict,
+                -> mutableState.update {
+                    it.copy(mutationSaving = false, mutationError = "副本保存冲突，请重试。")
+                }
+                is CreateCaseResult.StorageFailed -> mutableState.update {
+                    it.copy(mutationSaving = false, mutationError = result.message)
+                }
+            }
         }
     }
 

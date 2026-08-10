@@ -3,11 +3,14 @@ package com.nanzhufeng.nanfengbazi
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -22,7 +25,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -131,19 +133,6 @@ class MainActivity : ComponentActivity() {
                     viewModel.clearPendingFullBackupExport()
                 }
             }
-            val createCaseImageDocument = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.CreateDocument("image/png"),
-            ) { uri ->
-                if (uri != null) {
-                    viewModel.exportPreparedCaseImage {
-                        contentResolver.openOutputStream(uri, "w")
-                    }
-                } else {
-                    viewModel.cancelPreparedCaseImageDelivery(
-                        CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
-                    )
-                }
-            }
             val shareCaseImage = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.StartActivityForResult(),
             ) { result ->
@@ -232,7 +221,7 @@ class MainActivity : ComponentActivity() {
                         lastSingleCaseUri?.let(contentResolver::openInputStream)
                     }
                 },
-                onCreateCaseImageDocument = createCaseImageDocument::launch,
+                onSaveCaseImageToGallery = ::savePreparedCaseImageToGallery,
                 onSharePreparedCaseImage = {
                     val shareDirectory = File(cacheDir, CASE_IMAGE_SHARE_DIRECTORY)
                     val shareFile = File(shareDirectory, CASE_IMAGE_SHARE_FILE_NAME)
@@ -312,6 +301,49 @@ class MainActivity : ComponentActivity() {
             )
         }
         consumeSharedImages(intent)
+    }
+
+    private fun savePreparedCaseImageToGallery(fileName: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            viewModel.reportCaseImageGallerySaveFailed()
+            return
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/南枫八字",
+            )
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = runCatching {
+            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        }.getOrNull()
+        if (uri == null) {
+            viewModel.reportCaseImageGallerySaveFailed()
+            return
+        }
+        viewModel.exportPreparedCaseImage(
+            openOutput = { contentResolver.openOutputStream(uri, "w") },
+            onCompleted = { written ->
+                if (!written) {
+                    runCatching { contentResolver.delete(uri, null, null) }
+                    true
+                } else {
+                    val published = runCatching {
+                        val ready = ContentValues().apply {
+                            put(MediaStore.Images.Media.IS_PENDING, 0)
+                        }
+                        contentResolver.update(uri, ready, null, null) > 0
+                    }.getOrDefault(false)
+                    if (!published) {
+                        runCatching { contentResolver.delete(uri, null, null) }
+                    }
+                    published
+                }
+            },
+        )
     }
 
     override fun onNewIntent(intent: Intent) {
