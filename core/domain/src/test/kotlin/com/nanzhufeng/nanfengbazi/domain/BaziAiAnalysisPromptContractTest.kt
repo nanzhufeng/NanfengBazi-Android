@@ -55,6 +55,38 @@ class BaziAiAnalysisPromptContractTest {
     }
 
     @Test
+    fun `有命主反馈时独立纳入指令并参与材料身份`() {
+        val withoutFeedback = prompt(BaziAiAnalysisTopic.ALL, hideIdentity = true)
+        val withFeedback = (
+            BaziAiAnalysisPromptContract.prepare(
+                BaziAiAnalysisPromptRequest(
+                    summary = summary(),
+                    referenceDate = LocalDate.of(2026, 8, 9),
+                    ownerFeedback = BaziAiAnalysisOwnerFeedback(
+                        summary = "近年有转岗与异地经历。",
+                        timeline = listOf(
+                            BaziAiAnalysisTimelineEvent(
+                                timeLabel = "2024年03月",
+                                title = "转岗",
+                                stemBranch = "甲辰",
+                                status = "已发生",
+                                content = "由技术岗位转为项目管理。",
+                            ),
+                        ),
+                    ),
+                ),
+            ) as BaziAiAnalysisPromptResult.Success
+            ).prompt
+
+        assertNotEquals(withoutFeedback.id, withFeedback.id)
+        assertTrue(withFeedback.copyText.contains("# 命主反馈依据"))
+        assertTrue(withFeedback.copyText.contains("近年有转岗与异地经历。"))
+        assertTrue(withFeedback.copyText.contains("2024年03月（转岗｜甲辰｜已发生）"))
+        assertTrue(withFeedback.copyText.contains("命主反馈核验"))
+        assertFalse(withoutFeedback.copyText.contains("# 命主反馈依据"))
+    }
+
+    @Test
     fun `缺少必要摘要章节时结构化拒绝`() {
         val result = BaziAiAnalysisPromptContract.prepare(
             BaziAiAnalysisPromptRequest(

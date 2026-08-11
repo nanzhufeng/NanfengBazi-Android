@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -315,6 +316,39 @@ class TymeProfessionalFortuneResolverTest {
             )
             assertEquals(hour.key, afterHourSelect.hourlyTimeline.single { it.selected }.key)
         }
+    }
+
+    @Test
+    fun `逐层选择复用未受影响的时间轴`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(2026, 7, 30, 12, 0, 0))
+
+        val afterDay = resolver.select(
+            result,
+            current,
+            ProfessionalFortuneSelection(
+                ProfessionalFortuneLayer.DAILY,
+                current.dailyTimeline.first { !it.selected }.observedAt,
+            ),
+        )
+        assertSame(current.minorTimeline, afterDay.minorTimeline)
+        assertSame(current.decadeTimeline, afterDay.decadeTimeline)
+        assertSame(current.annualTimeline, afterDay.annualTimeline)
+        assertSame(current.monthlyTimeline, afterDay.monthlyTimeline)
+
+        val afterHour = resolver.select(
+            result,
+            afterDay,
+            ProfessionalFortuneSelection(
+                ProfessionalFortuneLayer.HOURLY,
+                afterDay.hourlyTimeline.first { !it.selected }.observedAt,
+            ),
+        )
+        assertSame(afterDay.minorTimeline, afterHour.minorTimeline)
+        assertSame(afterDay.decadeTimeline, afterHour.decadeTimeline)
+        assertSame(afterDay.annualTimeline, afterHour.annualTimeline)
+        assertSame(afterDay.monthlyTimeline, afterHour.monthlyTimeline)
+        assertSame(afterDay.dailyTimeline, afterHour.dailyTimeline)
     }
 
     @Test

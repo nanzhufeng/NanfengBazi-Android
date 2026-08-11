@@ -41,7 +41,14 @@ enum class CaseSourceType {
     MANUAL,
     CASE_COPY,
     WENZHEN_SCREENSHOT,
+    WENZHEN_WEB_IMPORT,
     BACKUP_RESTORE,
+}
+
+@Serializable
+enum class CaseLibraryType {
+    USER,
+    CELEBRITY,
 }
 
 @Serializable
@@ -82,6 +89,7 @@ enum class TextRecordSourceType {
     RULE_TEMPLATE,
     EXTERNAL_AI,
     IMPORTED_IMAGE,
+    WENZHEN_WEB_IMPORT,
     LEGACY_UNSPECIFIED,
 }
 
@@ -354,6 +362,7 @@ data class CaseFieldEvidence(
 data class CaseGroup(
     val id: String,
     val name: String,
+    val libraryType: CaseLibraryType = CaseLibraryType.USER,
 ) {
     init {
         require(id.isNotBlank() && name.isNotBlank())
@@ -378,6 +387,7 @@ data class BaziCase(
     val sexForFortuneDirection: SexForFortuneDirection,
     val sourceType: CaseSourceType,
     val birthInput: BirthInput,
+    val libraryType: CaseLibraryType = CaseLibraryType.USER,
     val birthTimeCandidates: List<BirthTimeCandidate> = emptyList(),
     val profile: CaseProfile = CaseProfile(),
     val textRecords: List<CaseTextRecord> = emptyList(),
@@ -494,6 +504,7 @@ data class CaseSummary(
     val sexForFortuneDirection: SexForFortuneDirection,
     val sourceType: CaseSourceType,
     val birthInput: BirthInput,
+    val libraryType: CaseLibraryType = CaseLibraryType.USER,
     val fourPillars: FourPillars?,
     val groups: List<CaseGroup>,
     val tags: List<CaseTag>,

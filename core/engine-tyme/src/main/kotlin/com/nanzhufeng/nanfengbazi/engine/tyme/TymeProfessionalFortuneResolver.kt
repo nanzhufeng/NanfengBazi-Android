@@ -54,29 +54,17 @@ class TymeProfessionalFortuneResolver(
         val previousTerm = solar.term
         val dayMaster = HeavenStem.fromName(coveredResult.fourPillars.day.take(1))
         val position = fortunePositionResolver.locate(coveredResult, observedAt)
-        val rawColumns = listOf(
-            "flow_hour" to ("流时" to eightChar.hour.name),
-            "flow_day" to ("流日" to eightChar.day.name),
-            "flow_month" to ("流月" to eightChar.month.name),
-            "flow_year" to ("流年" to eightChar.year.name),
-            "decade" to ("大运" to (position.decadeFortune?.name ?: "—")),
-            "natal_year" to ("年柱" to coveredResult.fourPillars.year),
-            "natal_month" to ("月柱" to coveredResult.fourPillars.month),
-            "natal_day" to ("日柱" to coveredResult.fourPillars.day),
-            "natal_hour" to ("时柱" to coveredResult.fourPillars.hour),
+        val flowPillars = FourPillars(
+            year = eightChar.year.name,
+            month = eightChar.month.name,
+            day = eightChar.day.name,
+            hour = eightChar.hour.name,
         )
-        val columns = rawColumns.map { (key, labelled) ->
-            labelled.second.toPillarColumn(key, labelled.first, dayMaster)
-        }
+        val columns = buildProfessionalColumns(coveredResult, position, flowPillars, dayMaster)
         val minorTimeline = buildMinorTimeline(coveredResult, position, dayMaster)
         return ProfessionalFortunePosition(
             position = position,
-            flowPillars = FourPillars(
-                year = eightChar.year.name,
-                month = eightChar.month.name,
-                day = eightChar.day.name,
-                hour = eightChar.hour.name,
-            ),
+            flowPillars = flowPillars,
             pillarColumns = columns,
             minorTimeline = minorTimeline,
             decadeTimeline = buildDecadeTimeline(
@@ -93,7 +81,6 @@ class TymeProfessionalFortuneResolver(
                 position,
                 observedAt,
                 dayMaster,
-                fortunePositionResolver,
             ),
             interactionGroups = buildInteractionGroups(columns),
             shenShaGroups = buildShenShaGroups(columns),
@@ -114,12 +101,111 @@ class TymeProfessionalFortuneResolver(
         current: ProfessionalFortunePosition,
         selection: ProfessionalFortuneSelection,
     ): ProfessionalFortunePosition {
-        val selected = locate(result, selection.observedAt)
-        require(selected.keepsParentsOf(current, selection.layer)) {
+        val coveredResult = result.withProfessionalDecadeCoverage()
+        val solar = selection.observedAt.toTyme()
+        val eightChar = solar.lunarHour.resolveEightChar(coveredResult.profile.ratHourRule)
+        val position = fortunePositionResolver.locate(coveredResult, selection.observedAt)
+        val flowPillars = FourPillars(
+            year = eightChar.year.name,
+            month = eightChar.month.name,
+            day = eightChar.day.name,
+            hour = eightChar.hour.name,
+        )
+        val candidate = current.copy(position = position, flowPillars = flowPillars)
+        require(candidate.keepsParentsOf(current, selection.layer)) {
             "${selection.layer.name.lowercase()} 候选越过当前父级岁运区间。"
         }
-        return selected
+        val dayMaster = HeavenStem.fromName(coveredResult.fourPillars.day.take(1))
+        val columns = buildProfessionalColumns(coveredResult, position, flowPillars, dayMaster)
+        val selectedAt = selection.observedAt
+        val timelineAtSelection: List<ProfessionalTimelineItem>.() -> List<ProfessionalTimelineItem> = {
+            map { item -> item.copy(selected = item.observedAt == selectedAt) }
+        }
+        val minorTimeline: List<ProfessionalTimelineItem>
+        val decadeTimeline: List<ProfessionalTimelineItem>
+        val annualTimeline: List<ProfessionalTimelineItem>
+        val monthlyTimeline: List<ProfessionalTimelineItem>
+        val dailyTimeline: List<ProfessionalTimelineItem>
+        val hourlyTimeline: List<ProfessionalTimelineItem>
+        when (selection.layer) {
+            ProfessionalFortuneLayer.DECADE -> {
+                minorTimeline = buildMinorTimeline(coveredResult, position, dayMaster)
+                decadeTimeline = buildDecadeTimeline(coveredResult, position, dayMaster, minorTimeline)
+                annualTimeline = buildAnnualTimeline(coveredResult, position, dayMaster)
+                monthlyTimeline = buildMonthlyTimeline(coveredResult, position, selectedAt, dayMaster)
+                dailyTimeline = buildDailyTimeline(coveredResult, position, selectedAt, dayMaster)
+                hourlyTimeline = buildHourlyTimeline(coveredResult, position, selectedAt, dayMaster)
+            }
+            ProfessionalFortuneLayer.ANNUAL -> {
+                minorTimeline = current.minorTimeline
+                decadeTimeline = current.decadeTimeline
+                annualTimeline = current.annualTimeline.timelineAtSelection()
+                monthlyTimeline = buildMonthlyTimeline(coveredResult, position, selectedAt, dayMaster)
+                dailyTimeline = buildDailyTimeline(coveredResult, position, selectedAt, dayMaster)
+                hourlyTimeline = buildHourlyTimeline(coveredResult, position, selectedAt, dayMaster)
+            }
+            ProfessionalFortuneLayer.MONTHLY -> {
+                minorTimeline = current.minorTimeline
+                decadeTimeline = current.decadeTimeline
+                annualTimeline = current.annualTimeline
+                monthlyTimeline = current.monthlyTimeline.timelineAtSelection()
+                dailyTimeline = buildDailyTimeline(coveredResult, position, selectedAt, dayMaster)
+                hourlyTimeline = buildHourlyTimeline(coveredResult, position, selectedAt, dayMaster)
+            }
+            ProfessionalFortuneLayer.DAILY -> {
+                minorTimeline = current.minorTimeline
+                decadeTimeline = current.decadeTimeline
+                annualTimeline = current.annualTimeline
+                monthlyTimeline = current.monthlyTimeline
+                dailyTimeline = current.dailyTimeline.timelineAtSelection()
+                hourlyTimeline = buildHourlyTimeline(coveredResult, position, selectedAt, dayMaster)
+            }
+            ProfessionalFortuneLayer.HOURLY -> {
+                minorTimeline = current.minorTimeline
+                decadeTimeline = current.decadeTimeline
+                annualTimeline = current.annualTimeline
+                monthlyTimeline = current.monthlyTimeline
+                dailyTimeline = current.dailyTimeline
+                hourlyTimeline = current.hourlyTimeline.timelineAtSelection()
+            }
+        }
+        return current.copy(
+            position = position,
+            flowPillars = flowPillars,
+            pillarColumns = columns,
+            minorTimeline = minorTimeline,
+            decadeTimeline = decadeTimeline,
+            annualTimeline = annualTimeline,
+            monthlyTimeline = monthlyTimeline,
+            dailyTimeline = dailyTimeline,
+            hourlyTimeline = hourlyTimeline,
+            interactionGroups = buildInteractionGroups(columns),
+            shenShaGroups = buildShenShaGroups(columns),
+            completedAge = coveredResult.completedAgeAt(selectedAt),
+            selectedDateDetail = solar.toSelectedDateDetail(eightChar.hour.earthBranch.name),
+            previousSolarTerm = solar.term.toDomainPoint(),
+            nextSolarTerm = solar.term.next(1).toDomainPoint(),
+        )
     }
+}
+
+private fun buildProfessionalColumns(
+    result: CalculationResult,
+    position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
+    flowPillars: FourPillars,
+    dayMaster: HeavenStem,
+): List<ProfessionalPillarColumn> = listOf(
+    "flow_hour" to ("流时" to flowPillars.hour),
+    "flow_day" to ("流日" to flowPillars.day),
+    "flow_month" to ("流月" to flowPillars.month),
+    "flow_year" to ("流年" to flowPillars.year),
+    "decade" to ("大运" to (position.decadeFortune?.name ?: "—")),
+    "natal_year" to ("年柱" to result.fourPillars.year),
+    "natal_month" to ("月柱" to result.fourPillars.month),
+    "natal_day" to ("日柱" to result.fourPillars.day),
+    "natal_hour" to ("时柱" to result.fourPillars.hour),
+).map { (key, labelled) ->
+    labelled.second.toPillarColumn(key, labelled.first, dayMaster)
 }
 
 private fun ProfessionalFortunePosition.keepsParentsOf(
@@ -539,13 +625,6 @@ private fun CalculationResult.professionalParentInterval(
     return ProfessionalTimeInterval(birth.toLocalDateTime(), firstDecadeStart.toLocalDateTime())
 }
 
-private fun com.nanzhufeng.nanfengbazi.domain.FortunePosition.hasSameParentAs(
-    other: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
-): Boolean = status == other.status &&
-    annualFortune.calendarYear == other.annualFortune.calendarYear &&
-    decadeFortune?.name == other.decadeFortune?.name &&
-    decadeFortune?.startAt == other.decadeFortune?.startAt
-
 private fun buildMonthlyTimeline(
     result: CalculationResult,
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
@@ -619,12 +698,12 @@ private fun buildHourlyTimeline(
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     observedAt: CivilDateTime,
     dayMaster: HeavenStem,
-    fortunePositionResolver: TymeFortunePositionResolver,
 ): List<ProfessionalTimelineItem> {
     val selectedDate = LocalDate.of(observedAt.year, observedAt.month, observedAt.day)
     val selectedAt = observedAt.toLocalDateTime()
     val selectedEightChar = observedAt.toTyme().lunarHour
         .resolveEightChar(result.profile.ratHourRule)
+    val parentInterval = result.professionalParentInterval(position)
     val hours = listOf(23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21)
     return hours.mapNotNull { hour ->
         val candidates = buildList {
@@ -636,13 +715,12 @@ private fun buildHourlyTimeline(
         val at = candidates.distinct().filter { candidate ->
             val candidateAt = candidate.toDomain()
             if (!candidateAt.isWithinSupportedCalendarRange()) return@filter false
+            if (parentInterval != null && !parentInterval.contains(candidate)) return@filter false
             val candidateEightChar = candidateAt.toTyme().lunarHour
                 .resolveEightChar(result.profile.ratHourRule)
-            val candidatePosition = fortunePositionResolver.locate(result, candidateAt)
             candidateEightChar.year.name == selectedEightChar.year.name &&
                 candidateEightChar.month.name == selectedEightChar.month.name &&
-                candidateEightChar.day.name == selectedEightChar.day.name &&
-                candidatePosition.hasSameParentAs(position)
+                candidateEightChar.day.name == selectedEightChar.day.name
         }.minByOrNull { candidate ->
             kotlin.math.abs(Duration.between(selectedAt, candidate).seconds)
         }?.toDomain() ?: return@mapNotNull null

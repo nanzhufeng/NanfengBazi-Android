@@ -119,12 +119,11 @@ class SingleCaseBundleFlowTest {
         openSourceDetail()
 
         composeRule.onNodeWithTag("toggle_case_management").performClick()
-        composeRule.onNodeWithTag("export_single_case_button")
-            .performScrollTo()
-            .performClick()
-        composeRule.onNodeWithText("选择单命例导出内容").assertIsDisplayed()
+        composeRule.onNodeWithTag("export_single_case_menu").performClick()
+        composeRule.onNodeWithText("导出当前命例").assertIsDisplayed()
         composeRule.onNodeWithTag("single_case_export_with_attachments")
             .assertIsDisplayed()
+            .performClick()
         composeRule.onNodeWithTag("confirm_single_case_export").performClick()
 
         val saveButton = device.wait(
@@ -139,6 +138,7 @@ class SingleCaseBundleFlowTest {
                 hasText("单命例附件包已导出，图片二进制和引用均已校验。"),
             ).fetchSemanticsNodes().isNotEmpty()
         }
+        waitForMessageToDismiss("单命例附件包已导出，图片二进制和引用均已校验。")
 
         composeRule.activityRule.scenario.onActivity {
             it.onBackPressedDispatcher.onBackPressed()
@@ -147,8 +147,7 @@ class SingleCaseBundleFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("nav_settings").performClick()
-        composeRule.onNodeWithTag("settings_import_case").performClick()
+        openSingleCaseImport()
         val exportedFile = device.wait(
             Until.findObject(By.textContains(alias.take(32))),
             SYSTEM_UI_TIMEOUT_MILLIS,
@@ -185,15 +184,12 @@ class SingleCaseBundleFlowTest {
 
         openSourceDetail()
         composeRule.onNodeWithTag("toggle_case_management").performClick()
-        composeRule.onNodeWithTag("export_single_case_button")
-            .performScrollTo()
-            .performClick()
+        composeRule.onNodeWithTag("export_single_case_menu").performClick()
         composeRule.onNodeWithTag("single_case_export_with_attachments")
             .assertIsDisplayed()
+            .performClick()
         composeRule.onNodeWithTag("choose_password_single_case_export").performClick()
         composeRule.onNodeWithTag("single_case_password").performTextInput(password)
-        composeRule.onNodeWithTag("single_case_password_confirmation")
-            .performTextInput(password)
         composeRule.onNodeWithTag("confirm_password_single_case_export").performClick()
 
         val saveButton = device.wait(
@@ -210,6 +206,9 @@ class SingleCaseBundleFlowTest {
                 ),
             ).fetchSemanticsNodes().isNotEmpty()
         }
+        waitForMessageToDismiss(
+            "密码加密单命例附件包已导出；图片二进制已包含，请另行保存密码。",
+        )
 
         composeRule.activityRule.scenario.onActivity {
             it.onBackPressedDispatcher.onBackPressed()
@@ -218,8 +217,7 @@ class SingleCaseBundleFlowTest {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithTag("nav_settings").performClick()
-        composeRule.onNodeWithTag("settings_import_case").performClick()
+        openSingleCaseImport()
         check(clickSystemDocument(device, alias.take(32))) {
             "Android 系统打开文档页面未找到刚导出的密码加密命例附件包"
         }
@@ -262,12 +260,33 @@ class SingleCaseBundleFlowTest {
         composeRule.onNodeWithTag("case_list_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_search").performTextInput(alias)
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodes(hasText("别名：$alias"))
+            composeRule.onAllNodes(hasText(alias))
                 .fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText("别名：$alias").performClick()
+        composeRule.onNodeWithTag("case_$sourceCaseId").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
+    }
+
+    private fun openSingleCaseImport() {
+        composeRule.onNodeWithTag("nav_settings").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasTestTag("settings_home_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("settings_import_case")
+            .performScrollTo()
+            .performClick()
+    }
+
+    private fun waitForMessageToDismiss(message: String) {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodes(hasText(message))
+                .fetchSemanticsNodes().isEmpty()
+        }
     }
 
     private fun verifyImportedCopy() {

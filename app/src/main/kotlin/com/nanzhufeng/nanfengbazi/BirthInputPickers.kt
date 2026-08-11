@@ -815,7 +815,7 @@ private fun PillarCharacterEditor(
                 modifier = Modifier
                     .size(6.dp)
                     .background(
-                        if (active) NanfengGreen else Color.Transparent,
+                        if (active) MaterialTheme.colorScheme.primary else Color.Transparent,
                         CircleShape,
                     ),
             )
@@ -824,7 +824,7 @@ private fun PillarCharacterEditor(
                 title,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = if (active) NanfengGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         content()
@@ -1100,11 +1100,13 @@ internal fun <T> ValueWheel(
                 if (index == null || index !in currentValues.indices) return@collect
                 if (index != lastCenteredIndex) {
                     lastCenteredIndex = index
-                    val next = currentValues[index]
-                    if (scrolling && next != currentSelected) {
+                    if (scrolling) {
                         haptic.perform(AppHapticEvent.SNAP)
-                        currentOnSelected(next)
                     }
+                }
+                if (!scrolling) {
+                    val settled = currentValues[index]
+                    if (settled != currentSelected) currentOnSelected(settled)
                 }
             }
     }

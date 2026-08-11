@@ -32,11 +32,14 @@ import java.time.LocalDateTime
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class PendingImportImage(
     val originalFileName: String,
@@ -108,6 +111,9 @@ data class ScreenshotImportUiState(
     val parserVersion: String? = null,
     val failureCodes: List<String> = emptyList(),
     val failureDiagnosticIds: List<String> = emptyList(),
+    val awaitingAiModelConsent: Boolean = false,
+    val aiModelProviderName: String? = null,
+    val aiModelName: String? = null,
     val message: String? = null,
 )
 
@@ -116,14 +122,17 @@ class ScreenshotImportViewModel(
     private val imageStore: PrivateImportImageStore,
     private val recognitionScheduler: ScreenshotRecognitionScheduler,
     private val importCommitter: ScreenshotImportCommitter? = null,
+    private val aiCommentarySettings: AiCommentarySettingsStore? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val idFactory: () -> String = { UUID.randomUUID().toString() },
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     constructor(container: AppContainer) : this(
         repository = container.importSessionRepository,
         imageStore = container.importImageStore,
         recognitionScheduler = container.screenshotRecognitionScheduler,
         importCommitter = container.screenshotImportCommitter,
+        aiCommentarySettings = container.aiCommentarySettings,
     )
 
     private val mutableState = MutableStateFlow(ScreenshotImportUiState())
@@ -153,7 +162,7 @@ class ScreenshotImportViewModel(
                     id = sessionId,
                     sourceApp = ImportSourceApp.WENZHEN_BAZI,
                     status = ImportStatus.WAITING,
-                    parserVersion = PARSER_VERSION,
+                    parserVersion = recognitionParserVersion(),
                     createdAt = now,
                     updatedAt = now,
                 )
@@ -193,15 +202,31 @@ class ScreenshotImportViewModel(
                         updatedAt = clock.instant(),
                     ),
                 )
-                mutableState.update {
-                    it.copy(
-                        progressText = "正在使用内置中文模型离线识别…",
-                        completedImageCount = requireNotNull(session).images.size,
-                    )
+                val imported = requireNotNull(session)
+                if (aiCommentarySettings == null) {
+                    // Test-only constructor: production always injects the configured-model
+                    // consent gate below.
+                    mutableState.update {
+                        it.copy(
+                            progressText = "正在识别截图…",
+                            completedImageCount = imported.images.size,
+                        )
+                    }
+                    applyRecognitionResult(recognitionScheduler.recognize(sessionId))
+                } else {
+                    val model = selectedAiModel()
+                    mutableState.update {
+                        it.copy(
+                            busy = false,
+                            progressText = null,
+                            completedImageCount = imported.images.size,
+                            awaitingAiModelConsent = true,
+                            aiModelProviderName = model?.first,
+                            aiModelName = model?.second,
+                            message = "原图已私有保存，确认后才会上传给所选 AI 模型识别。",
+                        )
+                    }
                 }
-                applyRecognitionResult(
-                    recognitionScheduler.recognize(sessionId),
-                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
@@ -239,6 +264,18 @@ class ScreenshotImportViewModel(
     fun retryRecognition() {
         val sessionId = mutableState.value.activeSessionId ?: return
         if (mutableState.value.busy) return
+        if (aiCommentarySettings != null) {
+            val model = selectedAiModel()
+            mutableState.update {
+                it.copy(
+                    awaitingAiModelConsent = true,
+                    aiModelProviderName = model?.first,
+                    aiModelName = model?.second,
+                    message = null,
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             mutableState.update {
                 it.copy(
@@ -249,6 +286,32 @@ class ScreenshotImportViewModel(
             }
             applyRecognitionResult(
                 recognitionScheduler.recognize(sessionId),
+            )
+        }
+    }
+
+    fun confirmAiModelRecognition() {
+        val sessionId = mutableState.value.activeSessionId ?: return
+        if (!mutableState.value.awaitingAiModelConsent || mutableState.value.busy) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    busy = true,
+                    awaitingAiModelConsent = false,
+                    progressText = "正在上传私有原图并由 AI 模型识别…",
+                    message = null,
+                )
+            }
+            applyRecognitionResult(recognitionScheduler.recognize(sessionId))
+        }
+    }
+
+    fun cancelAiModelRecognition() {
+        if (!mutableState.value.awaitingAiModelConsent) return
+        mutableState.update {
+            it.copy(
+                awaitingAiModelConsent = false,
+                message = "未上传原图；本次导入已保留，可稍后选择“复用原图重试”。",
             )
         }
     }
@@ -384,11 +447,13 @@ class ScreenshotImportViewModel(
                 )
             }
             when (
-                val result = committer.commitCandidate(
-                    sessionId,
-                    candidateId,
-                    allowDuplicate,
-                )
+                val result = withContext(ioDispatcher) {
+                    committer.commitCandidate(
+                        sessionId,
+                        candidateId,
+                        allowDuplicate,
+                    )
+                }
             ) {
                 is ScreenshotCandidateCommitResult.Committed -> {
                     if (result.sessionCompleted) {
@@ -527,9 +592,10 @@ class ScreenshotImportViewModel(
                     extractedLongTextCount = result.session.extractedLongTexts.size,
                     reviewCandidates = result.session.toReviewCandidates(),
                     needsReview = true,
+                    awaitingAiModelConsent = false,
                     canRetry = result.session.imageFailures.any { failure -> failure.retryable },
                     message = if (result.session.imageFailures.isEmpty()) {
-                        "离线识别已完成，结果保存在待核对会话中，尚未写入正式命例。"
+                        "AI 模型识别已完成，结果保存在待核对会话中，尚未写入正式命例。"
                     } else {
                         "其余图片已完成识别，失败图片可单独重试；尚未写入正式命例。"
                     },
@@ -554,6 +620,7 @@ class ScreenshotImportViewModel(
                         addAll(result.session.imageFailures.map { failure -> failure.diagnosticId })
                     },
                     needsReview = false,
+                    awaitingAiModelConsent = false,
                     canRetry = result.session.failure?.retryable == true,
                     message = result.session.failure?.userMessage,
                 )
@@ -618,7 +685,9 @@ class ScreenshotImportViewModel(
             var recoveryMessage: String? = null
             if (recoverableCompletion != null && importCommitter != null) {
                 recoveryMessage = when (
-                    val recovery = importCommitter.resumeCompletedSession(recoverableCompletion.id)
+                    val recovery = withContext(ioDispatcher) {
+                        importCommitter.resumeCompletedSession(recoverableCompletion.id)
+                    }
                 ) {
                     is ScreenshotCandidateCommitResult.Committed -> null
                     is ScreenshotCandidateCommitResult.DuplicateFound ->
@@ -667,6 +736,11 @@ class ScreenshotImportViewModel(
                         extractedLongTextCount = recent.extractedLongTexts.size,
                         reviewCandidates = recent.toReviewCandidates(),
                         needsReview = recent.status == ImportStatus.NEEDS_REVIEW,
+                        awaitingAiModelConsent = aiCommentarySettings != null &&
+                            recent.status == ImportStatus.CLASSIFYING &&
+                            recent.attemptCount == 0,
+                        aiModelProviderName = selectedAiModel()?.first,
+                        aiModelName = selectedAiModel()?.second,
                         canRetry = when (recent.status) {
                             ImportStatus.CLASSIFYING,
                             ImportStatus.RECOGNIZING,
@@ -690,6 +764,23 @@ class ScreenshotImportViewModel(
         val matches = ImportImageDuplicateDetector().findMatches(session.images)
         return matches.count { it.kind == DuplicateImageKind.EXACT } to
             matches.count { it.kind == DuplicateImageKind.VISUALLY_SIMILAR }
+    }
+
+    private fun selectedAiModel(): Pair<String, String>? {
+        val settings = aiCommentarySettings ?: return null
+        val providerId = settings.selectedProvider()
+        val config = settings.configs().getValue(providerId)
+        return providerId.displayName to AiCommentaryProviderPresets.displayModel(
+            providerId,
+            config.model,
+        )
+    }
+
+    private fun recognitionParserVersion(): String {
+        val settings = aiCommentarySettings ?: return PARSER_VERSION
+        val providerId = settings.selectedProvider()
+        val model = settings.configs().getValue(providerId).model
+        return "$PARSER_VERSION:${providerId.name.lowercase()}:$model"
     }
 
     private fun updateReviewSession(
@@ -1115,7 +1206,7 @@ class ScreenshotImportViewModel(
     }
 
     private companion object {
-        const val PARSER_VERSION = "wenzhen-p0-v7"
+        const val PARSER_VERSION = "ai-vision-v1+p0-v7"
         val REQUIRED_COMMIT_FIELD_KEYS = listOf(
             "identity.alias",
             "identity.sex",

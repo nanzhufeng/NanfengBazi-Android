@@ -24,6 +24,12 @@ data class AlmanacDoubleHour(
     val timeRangeLabel: String,
 )
 
+/** 同一日、同一子时口径下，一个十二时辰对应的完整时柱。 */
+data class AlmanacHourPillar(
+    val doubleHour: AlmanacDoubleHour,
+    val pillar: String,
+)
+
 object AlmanacDoubleHours {
     val all: List<AlmanacDoubleHour> = listOf(
         AlmanacDoubleHour(0, "子", 0, "23:00–01:00"),
@@ -73,6 +79,7 @@ data class AlmanacDayDetails(
     val dayPillar: String,
     val hourPillar: String,
     val selectedDoubleHour: AlmanacDoubleHour,
+    val hourPillars: List<AlmanacHourPillar> = emptyList(),
     val pillars: List<AlmanacPillarDetail>,
     val relations: List<AlmanacPillarRelation> = emptyList(),
     val folkBoneWeight: FolkBoneWeight? = null,

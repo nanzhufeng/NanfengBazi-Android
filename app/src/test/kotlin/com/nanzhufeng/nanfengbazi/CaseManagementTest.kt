@@ -28,6 +28,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
+import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import java.time.Clock
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
@@ -631,6 +632,7 @@ class CaseManagementTest {
                         level = CaseEventTimelineLevel.ANNUAL,
                         year = 2024,
                         stemBranch = "甲辰",
+                        status = "吉",
                         content = "更新后的流年记录",
                     ),
                 ),
@@ -645,6 +647,7 @@ class CaseManagementTest {
             stored.textRecords.map { it.content }.sorted(),
         )
         assertEquals(2, stored.events.size)
+        assertEquals("吉", stored.events.first { it.id == legacyAnnual.id }.status)
         assertEquals(
             CaseEventTimelineLevel.DECADE,
             stored.events.first { it.id == "decade-2020" }.timelineLevel,
@@ -664,6 +667,31 @@ class CaseManagementTest {
                 it.eventId == legacyAnnual.id && it.changeType == RecordChangeType.UPDATED
             },
         )
+    }
+
+    @Test
+    fun `AI点评允许未生成时手动录入并保存为独立记录`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-ai-notes"] = sampleStoredCase("case-ai-notes")
+        }
+        val useCase = CaseNotesEditorUseCase(
+            caseRepository = repository,
+            clock = fixedClock,
+            idGenerator = IdGenerator { "manual-ai-commentary" },
+        )
+
+        val result = useCase.save(
+            caseId = "case-ai-notes",
+            expectedRevision = 1,
+            draft = CaseNotesDraft(aiCommentary = "我自己整理的 AI 点评"),
+        )
+
+        assertEquals(CaseMutationResult.Saved("case-ai-notes", 2), result)
+        val record = repository.stored.getValue("case-ai-notes").textRecords.single()
+        assertEquals("manual-ai-commentary", record.id)
+        assertEquals(CaseTextRecordType.ANALYSIS, record.type)
+        assertEquals(TextRecordSourceType.USER, record.sourceType)
+        assertEquals("我自己整理的 AI 点评", record.aiCommentaryBody())
     }
 
     @Test
@@ -924,6 +952,43 @@ class CaseManagementTest {
         assertTrue(copied.eventRevisions.isEmpty())
         assertTrue(copied.attachments.isEmpty())
         assertTrue(copied.fieldEvidence.isEmpty())
+    }
+
+    @Test
+    fun `命主反馈提示词上下文包含总结与按时间排序的事件`() {
+        val case = sampleStoredCase("case-ai-feedback").copy(
+            textRecords = listOf(feedbackRecord("命主总结：近年经历过转岗。")),
+            events = listOf(
+                CaseEvent(
+                    id = "event-later",
+                    title = "迁居",
+                    year = 2025,
+                    month = 5,
+                    datePrecision = EventDatePrecision.MONTH,
+                    stemBranch = "乙巳",
+                    status = "已发生",
+                    rawText = "因工作迁居。",
+                    createdAt = FixedInstant,
+                ),
+                CaseEvent(
+                    id = "event-earlier",
+                    title = "转岗",
+                    year = 2024,
+                    month = 3,
+                    datePrecision = EventDatePrecision.MONTH,
+                    stemBranch = "甲辰",
+                    rawText = "由技术岗转为管理岗。",
+                    createdAt = FixedInstant,
+                ),
+            ),
+        )
+
+        val feedback = case.toAiAnalysisOwnerFeedback()
+
+        assertEquals("命主总结：近年经历过转岗。", feedback.summary)
+        assertEquals(listOf("2024年03月", "2025年05月"), feedback.timeline.map { it.timeLabel })
+        assertEquals("由技术岗转为管理岗。", feedback.timeline.first().content)
+        assertEquals("已发生", feedback.timeline.last().status)
     }
 
     private fun feedbackRecord(content: String) = CaseTextRecord(

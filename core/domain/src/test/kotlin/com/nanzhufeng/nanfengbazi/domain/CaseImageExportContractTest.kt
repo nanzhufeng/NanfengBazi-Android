@@ -8,8 +8,6 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
-import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
-import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
@@ -20,27 +18,14 @@ import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CaseImageExportContractTest {
     @Test
-    fun `导出事实只读取唯一采用快照并保留正式长记录`() {
-        val longRecord = "研究记录".repeat(600)
+    fun `页面截图合同只保留唯一采用快照和命例身份元数据`() {
         val source = caseWithSnapshots(
             snapshots = listOf(snapshot("old", adopted = false), snapshot("adopted", adopted = true)),
-        ).copy(
-            name = ExplicitText.absent(),
-            textRecords = listOf(
-                CaseTextRecord(
-                    id = "record-1",
-                    type = CaseTextRecordType.MASTER_COMMENTARY,
-                    content = longRecord,
-                    createdAt = NOW,
-                    updatedAt = NOW,
-                ),
-            ),
         )
 
         val result = CaseImageExportContract.prepare(CaseImageExportInput(source))
@@ -50,30 +35,17 @@ class CaseImageExportContractTest {
         assertEquals(CASE_IMAGE_DOCUMENT_VERSION, facts.documentVersion)
         assertEquals("adopted", facts.adoptedSnapshotId)
         assertEquals(source.revision, facts.caseRevision)
-        assertEquals(
-            listOf("基本信息", "基本排盘", "专业细盘", "断事笔记"),
-            facts.blocks.map(CaseImageRenderBlock::title),
-        )
-        assertTrue(
-            facts.blocks
-                .filterIsInstance<CaseImageRenderBlock.Paragraphs>()
-                .flatMap { it.paragraphs }
-                .any { longRecord in it },
-        )
-        assertTrue(facts.provenanceNotice.contains("未采用候选和旧快照未作为计算真值"))
-        assertFalse(facts.blocks.toString().contains("old"))
+        assertEquals(CaseImageExportScope.CURRENT_DETAIL_PAGES, facts.scope)
+        assertEquals("合成命例", facts.suggestedFileStem)
     }
 
     @Test
-    fun `缺失姓名按明确空值渲染而不是制造姓名`() {
+    fun `缺失姓名时文件名回退兼容显示名而不创建页面字段模型`() {
         val result = CaseImageExportContract.prepare(
             CaseImageExportInput(caseWithSnapshots(listOf(snapshot("adopted", true)))),
         ) as CaseImageFactsResult.Prepared
 
-        val identity = result.facts.blocks
-            .filterIsInstance<CaseImageRenderBlock.Rows>()
-            .first { it.title == "基本信息" }
-        assertEquals("未提供", identity.rows.single { it.label == "姓名" }.value)
+        assertEquals("合成命例", result.facts.suggestedFileStem)
     }
 
     @Test

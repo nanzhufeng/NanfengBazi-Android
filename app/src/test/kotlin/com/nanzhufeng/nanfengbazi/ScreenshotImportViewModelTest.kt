@@ -36,6 +36,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -103,6 +104,54 @@ class ScreenshotImportViewModelTest {
         assertEquals(ImportStatus.NEEDS_REVIEW, session.status)
         assertEquals(bytes.toList(), imageStore.readBytes(session.images.single()).toList())
         assertTrue(session.ocrDocuments.single().rawText.contains("用户列表"))
+    }
+
+    @Test
+    fun `配置模型时必须确认后才会调用截图识别`() = runBlocking {
+        val repository = FakeImportSessionRepository()
+        val imageStore = PrivateImportImageStore(temporaryFolder.newFolder("ai-imports").toPath())
+        var recognitionCalls = 0
+        val ids = ArrayDeque(listOf("ai-session", "ai-image"))
+        val viewModel = ScreenshotImportViewModel(
+            repository = repository,
+            imageStore = imageStore,
+            recognitionScheduler = ScreenshotRecognitionScheduler {
+                recognitionCalls += 1
+                com.nanzhufeng.nanfengbazi.imageparser.RecognitionRunResult.Rejected(
+                    ImportStatus.CLASSIFYING,
+                )
+            },
+            aiCommentarySettings = FixtureAiSettings(),
+            idFactory = ids::removeFirst,
+        )
+
+        viewModel.importImages(
+            listOf(
+                PendingImportImage(
+                    originalFileName = "待确认.png",
+                    mimeType = "image/png",
+                    openInput = { ByteArrayInputStream("vision-input".encodeToByteArray()) },
+                ),
+            ),
+        )
+
+        withTimeout(5_000) {
+            viewModel.state.first { it.awaitingAiModelConsent && !it.busy }
+        }
+        assertEquals(0, recognitionCalls)
+        viewModel.cancelAiModelRecognition()
+        assertFalse(viewModel.state.value.awaitingAiModelConsent)
+        assertEquals(0, recognitionCalls)
+
+        viewModel.retryRecognition()
+        withTimeout(5_000) {
+            viewModel.state.first { it.awaitingAiModelConsent }
+        }
+        viewModel.confirmAiModelRecognition()
+        withTimeout(5_000) {
+            viewModel.state.first { !it.busy && it.message?.contains("当前会话状态") == true }
+        }
+        assertEquals(1, recognitionCalls)
     }
 
     @Test
@@ -377,6 +426,24 @@ private class FixtureOfflineOcrEngine : OcrEngine {
         engineVersion = engineVersion,
         recognizedAt = Instant.parse("2026-01-01T00:00:00Z"),
     )
+}
+
+private class FixtureAiSettings : AiCommentarySettingsStore {
+    override fun configs(): Map<AiCommentaryProviderId, AiCommentaryProviderConfig> =
+        AiCommentaryProviderId.entries.associateWith { providerId ->
+            AiCommentaryProviderPresets.defaults(providerId).copy(
+                enabled = providerId == AiCommentaryProviderId.OPEN_ROUTER,
+                hasApiKey = providerId == AiCommentaryProviderId.OPEN_ROUTER,
+            )
+        }
+
+    override fun selectedProvider(): AiCommentaryProviderId = AiCommentaryProviderId.OPEN_ROUTER
+
+    override fun saveConfig(config: AiCommentaryProviderConfig, apiKey: String?) = Unit
+
+    override fun selectProvider(providerId: AiCommentaryProviderId) = Unit
+
+    override fun apiKey(providerId: AiCommentaryProviderId): String? = "fixture-key"
 }
 
 private class FakeImportSessionRepository(

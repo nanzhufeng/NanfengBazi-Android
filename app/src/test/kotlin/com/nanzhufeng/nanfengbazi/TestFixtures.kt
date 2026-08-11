@@ -13,6 +13,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationEvidence
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
@@ -85,17 +87,25 @@ internal class RecordingEngine : BaziEngine {
 
 internal class FakeCaseRepository : CaseRepository {
     val stored = linkedMapOf<String, BaziCase>()
+    val groupCatalog = mutableListOf<CaseGroup>()
     val searchQueries = mutableListOf<String>()
     val searchRequests = mutableListOf<CaseSearchRequest>()
+    val findByIdRequests = mutableListOf<String>()
     var writeOverride: CaseWriteResult? = null
     var saveFailure: Exception? = null
     var readFailure: Exception? = null
+    var deleteFailure: Exception? = null
+    var beforeSave: suspend () -> Unit = {}
+    var beforeFindById: suspend (String) -> Unit = {}
+    var beforeMoveCasesToTrash: suspend () -> Unit = {}
+    var beforePermanentDelete: suspend () -> Unit = {}
     var lastExpectedRevision: Long? = -1
 
     override suspend fun save(
         case: BaziCase,
         expectedRevision: Long?,
     ): CaseWriteResult {
+        beforeSave()
         saveFailure?.let { throw it }
         lastExpectedRevision = expectedRevision
         val override = writeOverride
@@ -111,8 +121,51 @@ internal class FakeCaseRepository : CaseRepository {
     }
 
     override suspend fun findById(id: String): BaziCase? {
+        beforeFindById(id)
+        findByIdRequests += id
         readFailure?.let { throw it }
         return stored[id]
+    }
+
+    override suspend fun deleteTrashedCasesPermanently(caseIds: Set<String>): Int {
+        beforePermanentDelete()
+        deleteFailure?.let { throw it }
+        val removable = caseIds.filter { stored[it]?.deletedAt != null }
+        removable.forEach(stored::remove)
+        return removable.size
+    }
+
+    override suspend fun setCasesPinned(
+        caseIds: Set<String>,
+        pinned: Boolean,
+        updatedAt: Instant,
+    ): Int {
+        val editable = caseIds.filter { stored[it]?.deletedAt == null }
+        editable.forEach { caseId ->
+            stored[caseId] = stored.getValue(caseId).copy(
+                isPinned = pinned,
+                updatedAt = updatedAt,
+                revision = stored.getValue(caseId).revision + 1,
+            )
+        }
+        return editable.size
+    }
+
+    override suspend fun moveCasesToTrash(
+        caseIds: Set<String>,
+        deletedAt: Instant,
+    ): Int {
+        beforeMoveCasesToTrash()
+        deleteFailure?.let { throw it }
+        val editable = caseIds.filter { stored[it]?.deletedAt == null }
+        editable.forEach { caseId ->
+            stored[caseId] = stored.getValue(caseId).copy(
+                deletedAt = deletedAt,
+                updatedAt = deletedAt,
+                revision = stored.getValue(caseId).revision + 1,
+            )
+        }
+        return editable.size
     }
 
     override suspend fun search(request: CaseSearchRequest): List<CaseSummary> {
@@ -127,6 +180,9 @@ internal class FakeCaseRepository : CaseRepository {
                     CaseVisibility.TRASHED -> it.deletedAt != null
                     CaseVisibility.ALL -> true
                 }
+            }
+            .filter {
+                request.libraryType == null || it.libraryType == request.libraryType
             }
             .filter {
                 query.isBlank() ||
@@ -152,6 +208,7 @@ internal class FakeCaseRepository : CaseRepository {
                     sexForFortuneDirection = case.sexForFortuneDirection,
                     sourceType = case.sourceType,
                     birthInput = case.birthInput,
+                    libraryType = case.libraryType,
                     fourPillars = case.calculationSnapshots
                         .asReversed()
                         .firstOrNull { it.adopted }
@@ -230,6 +287,25 @@ internal class FakeCaseRepository : CaseRepository {
         if (current.deletedAt != null) return false
         stored[caseId] = current.copy(lastViewedAt = viewedAt)
         return true
+    }
+
+    override suspend fun listGroups(libraryType: CaseLibraryType?): List<CaseGroup> =
+        groupCatalog.filter { libraryType == null || it.libraryType == libraryType }
+
+    override suspend fun createGroup(
+        name: String,
+        libraryType: CaseLibraryType,
+    ): CaseGroup? {
+        val normalized = name.trim()
+        if (
+            normalized.isEmpty() ||
+            groupCatalog.any { it.name == normalized && it.libraryType == libraryType }
+        ) return null
+        return CaseGroup(
+            id = "fake-group-${groupCatalog.size + 1}",
+            name = normalized,
+            libraryType = libraryType,
+        ).also(groupCatalog::add)
     }
 }
 

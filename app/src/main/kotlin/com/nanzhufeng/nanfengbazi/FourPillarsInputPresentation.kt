@@ -74,7 +74,7 @@ internal fun FourPillarsInputGrid(
                         FontWeight.Normal
                     },
                     color = if (selectedPillarIndex == index) {
-                        NanfengGreen
+                        MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },

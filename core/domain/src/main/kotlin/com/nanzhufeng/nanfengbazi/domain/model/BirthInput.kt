@@ -73,6 +73,7 @@ enum class TimeSourceType {
     FAMILY_REPORTED,
     OFFICIAL_RECORD,
     WENZHEN_SCREENSHOT,
+    WENZHEN_WEB_IMPORT,
     OTHER_RECORD,
     UNKNOWN,
 }

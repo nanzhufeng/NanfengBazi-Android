@@ -59,6 +59,117 @@ class CaseBackupServiceTest {
     private val fixedClock = Clock.fixed(FixtureInstant, ZoneOffset.UTC)
 
     @Test
+    fun `云端结构化快照排除设备本地最近查看时间`() = runTest {
+        withDatabase { database ->
+            val repository = RoomCaseRepository(database)
+            repository.save(sampleCase(), expectedRevision = null)
+            repository.markViewed("case-1", FixtureInstant.plusSeconds(90))
+
+            val output = ByteArrayOutputStream()
+            val result = CaseBackupService(database, fixedClock).exportCloudSnapshot(
+                output = output,
+                appVersion = "0.3.0-test",
+            )
+
+            assertTrue(result is BackupExportResult.Success)
+            val casesJson = ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+                generateSequence { zip.nextEntry }.first { it.name == "cases.json" }
+                zip.readBytes().decodeToString()
+            }
+            assertTrue(casesJson.contains("\"lastViewedAtEpochMillis\":null"))
+            assertFalse(casesJson.contains(FixtureInstant.plusSeconds(90).toEpochMilli().toString()))
+        }
+    }
+
+    @Test
+    fun `云端结构化快照不包含来源附件或字段证据`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-cloud-snapshot-")
+        val attachments = root.resolve("attachments")
+        val attachment = attachments.resolve("case-1/source/screen.png")
+        Files.createDirectories(attachment.parent)
+        Files.write(attachment, "脱敏截图夹具".encodeToByteArray())
+        try {
+            withDatabase { database ->
+                RoomCaseRepository(database).save(sampleCase("脱敏截图夹具".encodeToByteArray()), null)
+                val output = ByteArrayOutputStream()
+                val result = CaseBackupService(database, fixedClock).exportCloudSnapshot(
+                    output = output,
+                    appVersion = "0.3.0-test",
+                )
+                assertTrue(result is BackupExportResult.Success)
+                val entries = mutableListOf<String>()
+                ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        entries += entry.name
+                    }
+                }
+                assertFalse(entries.any { it.startsWith("attachments/") })
+                assertTrue(entries.contains("imports.json"))
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `大型断事笔记云端快照可生成并恢复`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-cloud-large-notes-")
+        try {
+            val noteContent = "x".repeat(384 * 1024)
+            val records = (1..48).map { index ->
+                sampleCase().textRecords.first().copy(
+                    id = "large-note-$index",
+                    content = noteContent,
+                    sourceAttachmentId = null,
+                )
+            }
+            val sourceCase = sampleCase().copy(
+                textRecords = records,
+                events = emptyList(),
+                attachments = emptyList(),
+                fieldEvidence = emptyList(),
+            )
+            val snapshot = withDatabase { source ->
+                RoomCaseRepository(source).save(sourceCase, expectedRevision = null)
+                ByteArrayOutputStream().also { output ->
+                    assertTrue(
+                        CaseBackupService(source, fixedClock).exportCloudSnapshot(
+                            output = output,
+                            appVersion = "0.3.0-test",
+                        ) is BackupExportResult.Success,
+                    )
+                }.toByteArray()
+            }
+            val notesEntryBytes = ZipInputStream(ByteArrayInputStream(snapshot)).use { zip ->
+                generateSequence { zip.nextEntry }.first { it.name == "notes.json" }
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val count = zip.read(buffer)
+                    if (count < 0) break
+                    total += count
+                }
+                total
+            }
+            assertTrue(notesEntryBytes > 16L * 1024 * 1024)
+
+            withDatabase { destination ->
+                val restore = CaseBackupService(destination, fixedClock)
+                    .restoreCloudSnapshotIntoEmptyStore(
+                        input = ByteArrayInputStream(snapshot),
+                        workRoot = root.resolve("work"),
+                        attachmentRoot = root.resolve("attachments"),
+                    )
+                assertTrue(restore is BackupRestoreResult.Success)
+                assertEquals(records.size, RoomCaseRepository(destination).findById("case-1")!!.textRecords.size)
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `完整备份预览先经过独立临时数据库完整往返`() = runTest {
         val root = Files.createTempDirectory("nanfeng-backup-preflight-")
         val backup = ByteArrayOutputStream()

@@ -38,6 +38,7 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseCounts
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldDifference
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.Files
@@ -48,6 +49,7 @@ import java.time.ZoneOffset
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthQuery
+import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
@@ -56,6 +58,8 @@ import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
 import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionResolver
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
@@ -70,6 +74,7 @@ import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
@@ -78,9 +83,14 @@ import com.nanzhufeng.nanfengbazi.domain.model.RecordChangeType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.CaseProfile
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
+import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SourceAttachment
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
@@ -117,19 +127,90 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `列表加载与姓名别名搜索均走仓储`() = runTest {
+    fun `列表首次加载后姓名别名搜索复用缓存`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-1"] = sampleStoredCase("case-1")
         }
         val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
 
         assertEquals(listOf("case-1"), viewModel.state.value.cases.map { it.id })
 
         viewModel.updateQuery("测试甲")
 
-        assertEquals("测试甲", repository.searchQueries.last())
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertEquals("测试甲", viewModel.state.value.query)
         assertEquals(listOf("case-1"), viewModel.state.value.cases.map { it.id })
         assertFalse(viewModel.state.value.listLoading)
+    }
+
+    @Test
+    fun `主导航切换不触发无关命例目录重投影`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-nav"] = sampleStoredCase("case-nav")
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.openSettings()
+        viewModel.openCreate()
+        viewModel.openRecordHub()
+
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertFalse(viewModel.state.value.listLoading)
+    }
+
+    @Test
+    fun `应用级命例目录在重建页面时先提供已有快照再静默校准`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-shared"] = sampleStoredCase("case-shared")
+        }
+        val catalogStore = RepositoryCaseCatalogStore(repository, dispatcher)
+        catalogStore.load(forceRefresh = false)
+        val readsBeforeRecreation = repository.searchRequests.size
+        catalogStore.load(forceRefresh = false)
+        assertEquals(readsBeforeRecreation, repository.searchRequests.size)
+
+        val viewModel = createViewModel(
+            repository = repository,
+            caseCatalogStore = catalogStore,
+        )
+
+        assertEquals(listOf("case-shared"), viewModel.state.value.cases.map { it.id })
+        assertFalse(viewModel.state.value.listLoading)
+        assertTrue(repository.searchRequests.size > readsBeforeRecreation)
+    }
+
+    @Test
+    fun `进程重建优先使用持久目录快照并在后台校准`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-persisted"] = sampleStoredCase("case-persisted")
+        }
+        val persistedSnapshot = CaseCatalogSnapshot(
+            cases = repository.search(CaseSearchRequest(visibility = CaseVisibility.ALL)),
+            groupsByLibrary = CaseLibraryType.entries.associateWith { emptyList<CaseGroup>() },
+        )
+        repository.searchRequests.clear()
+        val persistentCache = object : CaseCatalogSnapshotCache {
+            override suspend fun read(): CaseCatalogSnapshot = persistedSnapshot
+
+            override suspend fun write(snapshot: CaseCatalogSnapshot) = Unit
+        }
+        val catalogStore = RepositoryCaseCatalogStore(
+            repository = repository,
+            ioDispatcher = dispatcher,
+            persistentCache = persistentCache,
+        )
+
+        val bootstrap = catalogStore.bootstrap()
+
+        assertTrue(bootstrap.fromPersistentCache)
+        assertEquals(listOf("case-persisted"), bootstrap.snapshot.cases.map { it.id })
+        assertEquals(0, repository.searchRequests.size)
+
+        catalogStore.load(forceRefresh = true)
+
+        assertEquals(1, repository.searchRequests.size)
     }
 
     @Test
@@ -159,11 +240,13 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `万年历默认今天并可将所选公历日期带回排盘首页`() = runTest {
+    fun `万年历所选日期直接打开未保存的即时专业细盘`() = runTest {
+        val repository = FakeCaseRepository()
         val viewModel = createViewModel(
-            repository = FakeCaseRepository(),
+            repository = repository,
             almanacReader = TymeAlmanacReader(),
         )
+        viewModel.updateForm { validForm() }
 
         viewModel.openAlmanac()
 
@@ -180,12 +263,23 @@ class StageTwoViewModelTest {
         viewModel.selectAlmanacDoubleHour(6)
         viewModel.useAlmanacDateForChart()
 
-        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals(
+            AppDestination.CaseDetail("instant-almanac-preview"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertEquals("即时排盘案例", viewModel.state.value.detail?.alias)
+        assertEquals(true, viewModel.state.value.detailIsTransient)
+        assertEquals(emptySet<String>(), repository.stored.keys)
         assertEquals(CalendarSystem.SOLAR, viewModel.state.value.form.calendarSystem)
         assertEquals("2026", viewModel.state.value.form.year)
         assertEquals("8", viewModel.state.value.form.month)
         assertEquals("2", viewModel.state.value.form.day)
         assertEquals("11", viewModel.state.value.form.hour)
+
+        viewModel.closeTransientDetail()
+        assertEquals(AppDestination.Almanac, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.detail)
     }
 
     @Test
@@ -240,8 +334,16 @@ class StageTwoViewModelTest {
         assertEquals(2026, viewModel.state.value.almanacYear)
         assertEquals(7, viewModel.state.value.almanacMonth)
         assertEquals(30, viewModel.state.value.almanacSelectedDay)
+        assertEquals(
+            AlmanacDoubleHours.indexForCivilHour(8),
+            viewModel.state.value.almanacSelectedDoubleHourIndex,
+        )
         assertEquals(7, viewModel.state.value.almanacView?.query?.month)
         assertEquals(30, viewModel.state.value.almanacView?.selected?.date?.day)
+        assertEquals(
+            "辰",
+            viewModel.state.value.almanacView?.selected?.selectedDoubleHour?.branch,
+        )
         assertFalse(viewModel.state.value.almanacRefreshingSelection)
 
         reader.gate = CompletableDeferred()
@@ -334,16 +436,12 @@ class StageTwoViewModelTest {
 
         assertEquals(3, viewModel.state.value.recentCases.size)
         assertTrue(viewModel.state.value.recentCases.all { it.lastViewedAt != null })
-        assertTrue(
-            repository.searchRequests.any {
-                it.sortOrder == CaseSortOrder.LAST_VIEWED_DESC &&
-                    it.visibility == CaseVisibility.ACTIVE
-            },
-        )
+        assertEquals(1, repository.searchRequests.size)
+        assertEquals(CaseVisibility.ALL, repository.searchRequests.single().visibility)
     }
 
     @Test
-    fun `表单错误保留在新建页且成功后返回刷新列表`() = runTest {
+    fun `表单错误保留在新建页且保存成功后直接进入专业细盘`() = runTest {
         val repository = FakeCaseRepository()
         val viewModel = createViewModel(repository)
         viewModel.openCreate()
@@ -356,13 +454,75 @@ class StageTwoViewModelTest {
         viewModel.updateForm { validForm() }
         viewModel.submitCase()
 
-        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(
+            AppDestination.CaseDetail(repository.stored.keys.single()),
+            viewModel.state.value.destination,
+        )
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertEquals(repository.stored.keys.single(), viewModel.state.value.detail?.id)
         assertEquals(1, viewModel.state.value.cases.size)
+        assertTrue(repository.findByIdRequests.isEmpty())
         assertEquals("命例已完成排盘并保存。", viewModel.state.value.message)
     }
 
     @Test
-    fun `即时排盘不写库且任一输入变化清除旧结果`() = runTest {
+    fun `保存命例在数据库写入期间立即进入正在保存的专业细盘`() = runTest {
+        val saveGate = CompletableDeferred<Unit>()
+        val repository = FakeCaseRepository().apply {
+            beforeSave = { saveGate.await() }
+        }
+        val engine = RecordingEngine()
+        val viewModel = createViewModel(repository, engine = engine)
+        viewModel.openCreate()
+        viewModel.updateForm { validForm() }
+
+        viewModel.submitCase()
+
+        assertEquals(
+            AppDestination.CaseDetail("pending-manual-save"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertEquals("pending-manual-save", viewModel.state.value.detail?.id)
+        assertTrue(viewModel.state.value.detailIsTransient)
+        assertTrue(viewModel.state.value.detailSavePending)
+        assertTrue(viewModel.state.value.saving)
+        assertNull(viewModel.state.value.message)
+        assertEquals(1, engine.calls)
+        assertTrue(repository.stored.isEmpty())
+
+        saveGate.complete(Unit)
+
+        assertEquals(1, repository.stored.size)
+        assertFalse(viewModel.state.value.detailIsTransient)
+        assertFalse(viewModel.state.value.detailSavePending)
+        assertFalse(viewModel.state.value.saving)
+        assertEquals(repository.stored.keys.single(), viewModel.state.value.detail?.id)
+        assertEquals(1, engine.calls)
+    }
+
+    @Test
+    fun `首页可创建新分组并将后续保存命例归入该分组`() = runTest {
+        val repository = FakeCaseRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.openCreate()
+
+        viewModel.createAndSelectCaseGroup("研究案例")
+
+        val selectedGroupId = requireNotNull(viewModel.state.value.form.groupId)
+        assertEquals("研究案例", repository.groupCatalog.single().name)
+        assertEquals(selectedGroupId, repository.groupCatalog.single().id)
+        viewModel.updateForm { validForm().copy(groupId = it.groupId) }
+        viewModel.submitCase()
+
+        assertEquals(
+            listOf(repository.groupCatalog.single()),
+            repository.stored.values.single().groups,
+        )
+    }
+
+    @Test
+    fun `关闭保存时开始排盘直接进入未保存专业细盘且不写库`() = runTest {
         val repository = FakeCaseRepository()
         val viewModel = createViewModel(repository)
         viewModel.openCreate()
@@ -370,10 +530,17 @@ class StageTwoViewModelTest {
 
         viewModel.previewCase()
 
-        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals(
+            AppDestination.CaseDetail("instant-manual-preview"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertEquals(true, viewModel.state.value.detailIsTransient)
+        assertEquals("即时排盘案例", viewModel.state.value.detail?.alias)
         assertNotNull(viewModel.state.value.instantCalculation)
         assertTrue(repository.stored.isEmpty())
 
+        viewModel.closeTransientDetail()
         viewModel.updateForm { it.copy(minute = "38") }
 
         assertNull(viewModel.state.value.instantCalculation)
@@ -423,7 +590,8 @@ class StageTwoViewModelTest {
         }
         viewModel.submitCase()
 
-        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertTrue(viewModel.state.value.destination is AppDestination.CaseDetail)
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
         assertEquals(-18_000, repository.stored.values.single().birthInput.resolvedUtcOffsetSeconds)
         assertEquals("tzdb:test", repository.stored.values.single().birthInput.timeZoneDataVersion)
     }
@@ -443,6 +611,154 @@ class StageTwoViewModelTest {
         )
         assertNotNull(viewModel.state.value.detail)
         assertEquals("合成命例甲", viewModel.state.value.detail?.alias)
+        assertEquals(listOf("case-detail"), repository.findByIdRequests)
+        assertEquals(FixedInstant, viewModel.state.value.detail?.lastViewedAt)
+    }
+
+    @Test
+    fun `再次打开同一命例会保留已有详情且后台刷新失败不清空页面`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-retained"] = sampleStoredCase("case-retained")
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetailFromList("case-retained")
+        viewModel.backToList()
+        repository.readFailure = IllegalStateException("模拟后台读取失败")
+        viewModel.openDetailFromList("case-retained")
+
+        assertEquals(
+            AppDestination.CaseDetail("case-retained"),
+            viewModel.state.value.destination,
+        )
+        assertEquals("case-retained", viewModel.state.value.detail?.id)
+        assertEquals(false, viewModel.state.value.detailLoading)
+        assertNull(viewModel.state.value.detailError)
+        assertEquals("详情刷新失败，已保留上次打开的内容。", viewModel.state.value.message)
+    }
+
+    @Test
+    fun `列表点击命例默认进入专业细盘`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-professional-default"] = sampleStoredCase("case-professional-default")
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetailFromList("case-professional-default")
+
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertEquals(
+            AppDestination.CaseDetail("case-professional-default"),
+            viewModel.state.value.destination,
+        )
+        assertNotNull(viewModel.state.value.detail)
+    }
+
+    @Test
+    fun `列表点击立即进入专业细盘且不等待仓储读取`() = runTest {
+        val readGate = CompletableDeferred<Unit>()
+        val repository = FakeCaseRepository().apply {
+            stored["case-immediate"] = sampleStoredCase("case-immediate")
+            beforeFindById = { id ->
+                if (id == "case-immediate") readGate.await()
+            }
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetailFromList("case-immediate")
+
+        assertEquals(
+            AppDestination.CaseDetail("case-immediate"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertTrue(viewModel.state.value.detailLoading)
+
+        readGate.complete(Unit)
+
+        assertEquals("case-immediate", viewModel.state.value.detail?.id)
+        assertFalse(viewModel.state.value.detailLoading)
+    }
+
+    @Test
+    fun `快速点击多个案例只允许最后一次详情读取回写`() = runTest {
+        val firstGate = CompletableDeferred<Unit>()
+        val repository = FakeCaseRepository().apply {
+            stored["case-first"] = sampleStoredCase("case-first")
+            stored["case-last"] = sampleStoredCase("case-last")
+            beforeFindById = { id ->
+                if (id == "case-first") firstGate.await()
+            }
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetailFromList("case-first")
+        viewModel.openDetailFromList("case-last")
+
+        assertEquals(
+            AppDestination.CaseDetail("case-last"),
+            viewModel.state.value.destination,
+        )
+        assertEquals("case-last", viewModel.state.value.detail?.id)
+
+        firstGate.complete(Unit)
+
+        assertEquals(
+            AppDestination.CaseDetail("case-last"),
+            viewModel.state.value.destination,
+        )
+        assertEquals("case-last", viewModel.state.value.detail?.id)
+    }
+
+    @Test
+    fun `专业细盘进入默认定位当前时刻，已故或百年命例定位三十六岁`() = runTest {
+        val currentCase = sampleStoredCase("current")
+        val historicalInput = BirthInput(
+            calendarInput = BirthCalendarInput.Solar(CivilDateTime(1920, 3, 4, 5, 6, 0)),
+            sexForFortuneDirection = SexForFortuneDirection.MAN,
+            timePrecision = TimePrecision.EXACT_TO_SECOND,
+        )
+        val historicalCase = sampleStoredCase("historical").copy(
+            birthInput = historicalInput,
+            calculationSnapshots = sampleStoredCase("historical").calculationSnapshots.map { snapshot ->
+                snapshot.copy(result = snapshot.result.copy(normalizedInput = historicalInput))
+            },
+        )
+        val deceasedCase = sampleStoredCase("deceased").copy(
+            profile = CaseProfile(health = ExplicitText.present("已故")),
+        )
+        val forecastCase = sampleStoredCase("forecast").copy(
+            profile = CaseProfile(health = ExplicitText.present("预测2082年是去世的一个时间点")),
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[currentCase.id] = currentCase
+            stored[historicalCase.id] = historicalCase
+            stored[deceasedCase.id] = deceasedCase
+            stored[forecastCase.id] = forecastCase
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetailFromList(currentCase.id)
+        assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
+
+        viewModel.updateFortuneObservationDate("2001-01-01")
+        viewModel.selectDetailSection(CaseDetailSection.BASIC_INFO)
+        viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
+        assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
+
+        viewModel.openDetailFromList(historicalCase.id)
+        assertEquals("1956-03-04", viewModel.state.value.fortuneObservationDate)
+        assertEquals("05:06", viewModel.state.value.fortuneObservationTime)
+
+        viewModel.openDetailFromList(deceasedCase.id)
+        assertEquals("2036-02-29", viewModel.state.value.fortuneObservationDate)
+        assertEquals("10:30", viewModel.state.value.fortuneObservationTime)
+
+        viewModel.openDetailFromList(forecastCase.id)
+        assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
     }
 
     @Test
@@ -758,6 +1074,150 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `同修订命例预取命中并快速切换时笔记始终归属当前命例`() = runTest {
+        val caseARecord = masterCommentary().copy(id = "notes-a", content = "甲命例点评")
+        val caseBRecord = masterCommentary().copy(id = "notes-b", content = "乙命例点评")
+        val caseA = sampleStoredCase("case-notes-a").copy(
+            revision = 7,
+            textRecords = listOf(caseARecord),
+        )
+        val caseB = sampleStoredCase("case-notes-b").copy(
+            revision = 7,
+            textRecords = listOf(caseBRecord),
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[caseA.id] = caseA
+            stored[caseB.id] = caseB
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.prefetchCaseDetail(caseA.id)
+        viewModel.prefetchCaseDetail(caseB.id)
+        dispatcher.scheduler.runCurrent()
+
+        viewModel.openDetailFromList(caseA.id)
+        assertEquals(caseA.id, viewModel.state.value.caseNotesCaseId)
+        assertEquals(7L, viewModel.state.value.caseNotesRevision)
+        assertEquals("甲命例点评", viewModel.state.value.caseNotesDraft.masterCommentary)
+
+        viewModel.openDetailFromList(caseB.id)
+        assertEquals(caseB.id, viewModel.state.value.detail?.id)
+        assertEquals(caseB.id, viewModel.state.value.caseNotesCaseId)
+        assertEquals(7L, viewModel.state.value.caseNotesRevision)
+        assertEquals("乙命例点评", viewModel.state.value.caseNotesDraft.masterCommentary)
+
+        viewModel.openDetailFromList(caseA.id)
+        assertEquals(caseA.id, viewModel.state.value.detail?.id)
+        assertEquals(caseA.id, viewModel.state.value.caseNotesCaseId)
+        assertEquals("甲命例点评", viewModel.state.value.caseNotesDraft.masterCommentary)
+    }
+
+    @Test
+    fun `父修订未变但后台更新子笔记时重新读取聚合而不沿用缓存`() = runTest {
+        val oldRecord = masterCommentary().copy(id = "notes-sync", content = "同步前点评")
+        val stored = sampleStoredCase("case-notes-sync").copy(
+            revision = 9,
+            textRecords = listOf(oldRecord),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+        viewModel.prefetchCaseDetail(stored.id)
+        dispatcher.scheduler.runCurrent()
+
+        repository.stored[stored.id] = stored.copy(
+            textRecords = listOf(oldRecord.copy(content = "后台同步后的点评")),
+        )
+        viewModel.openDetailFromList(stored.id)
+        dispatcher.scheduler.runCurrent()
+
+        assertEquals(stored.id, viewModel.state.value.caseNotesCaseId)
+        assertEquals(9L, viewModel.state.value.caseNotesRevision)
+        assertEquals("后台同步后的点评", viewModel.state.value.caseNotesDraft.masterCommentary)
+    }
+
+    @Test
+    fun `空预取草稿遇到数据库非空时保持不可渲染并强制重读`() = runTest {
+        val stored = sampleStoredCase("case-notes-empty-cache").copy(revision = 10)
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+        viewModel.prefetchCaseDetail(stored.id)
+        dispatcher.scheduler.runCurrent()
+
+        val databaseRecord = masterCommentary().copy(
+            id = "notes-after-empty-cache",
+            content = "数据库实际存在的点评",
+        )
+        repository.stored[stored.id] = stored.copy(textRecords = listOf(databaseRecord))
+        val readGate = CompletableDeferred<Unit>()
+        repository.beforeFindById = { caseId ->
+            if (caseId == stored.id) readGate.await()
+        }
+
+        viewModel.openDetailFromList(stored.id)
+
+        assertTrue(viewModel.state.value.caseNotesHydrating)
+        assertTrue(viewModel.state.value.caseNotesDraft.masterCommentary.isEmpty())
+
+        readGate.complete(Unit)
+        dispatcher.scheduler.runCurrent()
+
+        assertFalse(viewModel.state.value.caseNotesHydrating)
+        assertEquals(stored.id, viewModel.state.value.caseNotesCaseId)
+        assertEquals(10L, viewModel.state.value.caseNotesRevision)
+        assertEquals(
+            "数据库实际存在的点评",
+            viewModel.state.value.caseNotesDraft.masterCommentary,
+        )
+    }
+
+    @Test
+    fun `杀进程恢复详情时原子恢复笔记所有权与内容`() = runTest {
+        val record = masterCommentary().copy(id = "notes-restored", content = "进程恢复点评")
+        val stored = sampleStoredCase("case-notes-restored").copy(
+            revision = 12,
+            textRecords = listOf(record),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val restored = createViewModel(
+            repository = repository,
+            restoredUiStateOverride = StageTwoUiState(
+                destination = AppDestination.CaseDetail(stored.id),
+                detailSection = CaseDetailSection.RECORDS,
+            ),
+        )
+        dispatcher.scheduler.runCurrent()
+
+        assertEquals(stored.id, restored.state.value.detail?.id)
+        assertEquals(stored.id, restored.state.value.caseNotesCaseId)
+        assertEquals(12L, restored.state.value.caseNotesRevision)
+        assertEquals("进程恢复点评", restored.state.value.caseNotesDraft.masterCommentary)
+    }
+
+    @Test
+    fun `千例目录中打开末端命例不会串用上一命例笔记`() = runTest {
+        val repository = FakeCaseRepository()
+        repeat(1_001) { index ->
+            val record = masterCommentary().copy(
+                id = "notes-scale-$index",
+                content = "规模点评-$index",
+            )
+            val stored = sampleStoredCase("case-scale-$index").copy(
+                revision = 3,
+                textRecords = listOf(record),
+            )
+            repository.stored[stored.id] = stored
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetailFromList("case-scale-0")
+        viewModel.openDetailFromList("case-scale-1000")
+
+        assertEquals("case-scale-1000", viewModel.state.value.detail?.id)
+        assertEquals("case-scale-1000", viewModel.state.value.caseNotesCaseId)
+        assertEquals("规模点评-1000", viewModel.state.value.caseNotesDraft.masterCommentary)
+    }
+
+    @Test
     fun `反馈主题候选可编辑拒绝采用且采用只追加正式标签`() = runTest {
         val feedback = ownerFeedback()
         val stored = sampleStoredCase("case-feedback-theme-candidates").copy(
@@ -858,7 +1318,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `分组标签筛选与排序通过结构化仓储请求刷新`() = runTest {
+    fun `分组标签筛选与排序直接复用已加载目录`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-filter"] = sampleStoredCase("case-filter").copy(
                 groups = listOf(CaseGroup("group-1", "家人")),
@@ -866,6 +1326,7 @@ class StageTwoViewModelTest {
             )
         }
         val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
 
         viewModel.selectGroup("group-1")
         viewModel.selectTag("tag-1")
@@ -887,11 +1348,11 @@ class StageTwoViewModelTest {
             ),
         )
 
-        val request = repository.searchRequests.last()
-        assertEquals("group-1", request.groupId)
-        assertEquals("tag-1", request.tagId)
-        assertEquals(CaseSortOrder.LAST_VIEWED_DESC, request.sortOrder)
-        assertEquals(setOf('甲', '子'), request.advancedFilter.ganZhi)
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertEquals("group-1", viewModel.state.value.selectedGroupId)
+        assertEquals("tag-1", viewModel.state.value.selectedTagId)
+        assertEquals(CaseSortOrder.LAST_VIEWED_DESC, viewModel.state.value.sortOrder)
+        assertEquals(setOf('甲', '子'), viewModel.state.value.advancedFilter.ganZhi)
         assertEquals(
             PillarCharacterFilter(
                 stem = '甲',
@@ -899,11 +1360,180 @@ class StageTwoViewModelTest {
                 stemTenGod = "比肩",
                 branchTenGod = "正印",
             ),
-            request.advancedFilter.fourPillars.year,
+            viewModel.state.value.advancedFilter.fourPillars.year,
         )
-        assertEquals("北京", request.advancedFilter.birthRegion)
-        assertEquals(setOf("木旺"), request.advancedFilter.seasonalWuxingStates)
-        assertEquals(setOf("天乙贵人"), request.advancedFilter.shenSha)
+        assertEquals("北京", viewModel.state.value.advancedFilter.birthRegion)
+        assertEquals(setOf("木旺"), viewModel.state.value.advancedFilter.seasonalWuxingStates)
+        assertEquals(setOf("天乙贵人"), viewModel.state.value.advancedFilter.shenSha)
+    }
+
+    @Test
+    fun `用户列表与名人案例通过独立案例库类型切换`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["user-case"] = sampleStoredCase("user-case")
+            stored["celebrity-case"] = sampleStoredCase("celebrity-case").copy(
+                libraryType = com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType.CELEBRITY,
+            )
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.selectCaseLibrary(
+            com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType.CELEBRITY,
+        )
+
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType.CELEBRITY,
+            viewModel.state.value.libraryType,
+        )
+        assertEquals(listOf("celebrity-case"), viewModel.state.value.cases.map { it.id })
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertEquals(1, viewModel.state.value.libraryCaseCounts[CaseLibraryType.USER])
+        assertEquals(1, viewModel.state.value.libraryCaseCounts[CaseLibraryType.CELEBRITY])
+    }
+
+    @Test
+    fun `空回收站切换不重读数据库也不显示加载`() = runTest {
+        val repository = FakeCaseRepository()
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertFalse(viewModel.state.value.listLoading)
+        assertTrue(viewModel.state.value.cases.isEmpty())
+        assertEquals(0, viewModel.state.value.trashedCaseCount)
+    }
+
+    @Test
+    fun `置顶操作精确更新缓存且不重新读取整库`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-1"] = sampleStoredCase("case-1")
+            stored["case-2"] = sampleStoredCase("case-2").copy(alias = "另一案例")
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.updatePinnedCases(setOf("case-2"))
+
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertFalse(viewModel.state.value.listLoading)
+        assertTrue(viewModel.state.value.cases.first { it.id == "case-2" }.isPinned)
+        assertTrue(repository.stored.getValue("case-2").isPinned)
+        assertEquals("已更新 1 个命例的星标置顶状态。", viewModel.state.value.message)
+    }
+
+    @Test
+    fun `活动案例批量删除精确移入回收站且列表保持可见状态`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-delete"] = sampleStoredCase("case-delete")
+            stored["case-keep"] = sampleStoredCase("case-keep").copy(alias = "保留案例")
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.batchDeleteCases(setOf("case-delete"))
+
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertFalse(viewModel.state.value.listLoading)
+        assertEquals(listOf("case-keep"), viewModel.state.value.cases.map { it.id })
+        assertEquals(1, viewModel.state.value.trashedCaseCount)
+        assertNotNull(repository.stored.getValue("case-delete").deletedAt)
+    }
+
+    @Test
+    fun `批量删除等待数据库提交时先更新列表且不触发整库读取`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-delete"] = sampleStoredCase("case-delete")
+            stored["case-keep"] = sampleStoredCase("case-keep").copy(alias = "保留案例")
+        }
+        val deleteStarted = CompletableDeferred<Unit>()
+        val allowDeleteToFinish = CompletableDeferred<Unit>()
+        repository.beforeMoveCasesToTrash = {
+            deleteStarted.complete(Unit)
+            allowDeleteToFinish.await()
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.batchDeleteCases(setOf("case-delete"))
+        deleteStarted.await()
+
+        assertEquals(listOf("case-keep"), viewModel.state.value.cases.map { it.id })
+        assertEquals(1, viewModel.state.value.trashedCaseCount)
+        assertTrue(viewModel.state.value.mutationSaving)
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+
+        allowDeleteToFinish.complete(Unit)
+        testScheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.mutationSaving)
+        assertNotNull(repository.stored.getValue("case-delete").deletedAt)
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+    }
+
+    @Test
+    fun `批量删除写库失败会恢复乐观列表且不显示全屏加载`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-delete"] = sampleStoredCase("case-delete")
+            stored["case-keep"] = sampleStoredCase("case-keep").copy(alias = "保留案例")
+            deleteFailure = IllegalStateException("模拟删除失败")
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.batchDeleteCases(setOf("case-delete"))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(
+            setOf("case-delete", "case-keep"),
+            viewModel.state.value.cases.map { it.id }.toSet(),
+        )
+        assertFalse(viewModel.state.value.mutationSaving)
+        assertFalse(viewModel.state.value.listLoading)
+        assertEquals("删除失败，列表已恢复，请稍后重试。", viewModel.state.value.mutationError)
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+    }
+
+    @Test
+    fun `新增名人案例入口预设名人归属并同步名人分组`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            groupCatalog += CaseGroup(
+                id = "user-group",
+                name = "用户分组",
+                libraryType = CaseLibraryType.USER,
+            )
+            groupCatalog += CaseGroup(
+                id = "celebrity-group",
+                name = "名人分组",
+                libraryType = CaseLibraryType.CELEBRITY,
+            )
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.selectGroup("user-group")
+
+        viewModel.openCreateCelebrityCase()
+
+        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType.CELEBRITY,
+            viewModel.state.value.form.libraryType,
+        )
+        assertEquals(CaseLibraryType.CELEBRITY, viewModel.state.value.libraryType)
+        assertNull(viewModel.state.value.selectedGroupId)
+        assertEquals(
+            listOf("celebrity-group"),
+            viewModel.state.value.availableGroups.map { it.id },
+        )
+
+        viewModel.openCreate()
+
+        assertEquals(CaseLibraryType.USER, viewModel.state.value.form.libraryType)
+        assertEquals(
+            listOf("user-group"),
+            viewModel.state.value.availableGroups.map { it.id },
+        )
     }
 
     @Test
@@ -950,7 +1580,8 @@ class StageTwoViewModelTest {
 
         viewModel.submitCase(allowDuplicate = true)
 
-        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertTrue(viewModel.state.value.destination is AppDestination.CaseDetail)
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
         assertEquals(2, repository.stored.size)
     }
 
@@ -980,6 +1611,26 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `回收站批量删除会永久移除案例且不再提示移入回收站`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["trashed"] = sampleStoredCase("trashed").copy(deletedAt = FixedInstant)
+            stored["active"] = sampleStoredCase("active")
+        }
+        val viewModel = createViewModel(repository)
+        val catalogReadCount = repository.searchRequests.size
+
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+        viewModel.batchDeleteCases(setOf("trashed", "active"))
+
+        assertEquals(catalogReadCount, repository.searchRequests.size)
+        assertFalse(viewModel.state.value.listLoading)
+        assertNull(repository.stored["trashed"])
+        assertNotNull(repository.stored["active"])
+        assertEquals(0, viewModel.state.value.trashedCaseCount)
+        assertEquals("已永久删除 1 个命例。", viewModel.state.value.message)
+    }
+
+    @Test
     fun `复制命例后打开新副本详情且保留来源`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-source"] = sampleStoredCase("case-source")
@@ -1004,8 +1655,9 @@ class StageTwoViewModelTest {
         viewModel.requestSingleCaseExport()
 
         assertTrue(viewModel.state.value.singleCaseExportConfirmationVisible)
-        val fileName = viewModel.confirmSingleCaseExport()
-        assertEquals("合成命例甲_南枫八字命例.json", fileName)
+        val request = viewModel.confirmSingleCaseExport()
+        assertEquals("合成命例甲_南枫八字命例.json", request?.fileName)
+        assertEquals(SingleCaseExportDocumentKind.JSON, request?.kind)
 
         val output = ByteArrayOutputStream()
         viewModel.exportCurrentCase { output }
@@ -1072,6 +1724,23 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `回收站命例不能进入导出或命盘图片交付`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["trashed-export"] = sampleStoredCase("trashed-export").copy(
+                deletedAt = FixedInstant,
+            )
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("trashed-export")
+
+        viewModel.requestSingleCaseExport()
+        viewModel.requestCaseImageDelivery(CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE)
+
+        assertFalse(viewModel.state.value.singleCaseExportConfirmationVisible)
+        assertNull(viewModel.state.value.caseImageConfirmationMode)
+    }
+
+    @Test
     fun `密码加密导出后错误密码保留重试且正确密码进入预览`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-password"] = sampleStoredCase("case-password")
@@ -1082,11 +1751,9 @@ class StageTwoViewModelTest {
         viewModel.requestPasswordSingleCaseExport()
         val password = "合成测试密码123".toCharArray()
 
-        val fileName = viewModel.confirmPasswordSingleCaseExport(
-            password.copyOf(),
-            password.copyOf(),
-        )
-        assertEquals("合成命例甲_南枫八字命例_加密.json", fileName)
+        val request = viewModel.confirmPasswordSingleCaseExport(password.copyOf())
+        assertEquals("合成命例甲_南枫八字命例_加密.json", request?.fileName)
+        assertEquals(SingleCaseExportDocumentKind.ENCRYPTED_JSON, request?.kind)
         val output = ByteArrayOutputStream()
         viewModel.exportCurrentCase { output }
 
@@ -1119,20 +1786,39 @@ class StageTwoViewModelTest {
     fun `密码流程提前结束时清零调用方字符数组`() = runTest {
         val viewModel = createViewModel(FakeCaseRepository())
         val password = "临时密码123".toCharArray()
-        val confirmation = password.copyOf()
 
         assertEquals(
             null,
-            viewModel.confirmPasswordSingleCaseExport(password, confirmation),
+            viewModel.confirmPasswordSingleCaseExport(password),
         )
         assertTrue(password.all { it == '\u0000' })
-        assertTrue(confirmation.all { it == '\u0000' })
 
         val emptyPassword = CharArray(0)
         viewModel.previewSingleCaseWithPassword(emptyPassword) {
             error("空密码不应打开文件")
         }
         assertTrue(emptyPassword.all { it == '\u0000' })
+    }
+
+    @Test
+    fun `单命例导出密码最少允许六位`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-password-length"] = sampleStoredCase("case-password-length")
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.openDetail("case-password-length")
+        viewModel.requestSingleCaseExport()
+        viewModel.requestPasswordSingleCaseExport()
+
+        val shortPassword = "12345".toCharArray()
+        assertNull(viewModel.confirmPasswordSingleCaseExport(shortPassword))
+        assertTrue(shortPassword.all { it == '\u0000' })
+        assertEquals("密码至少需要 6 个字符。", viewModel.state.value.singleCasePasswordError)
+
+        val minimumPassword = "123456".toCharArray()
+        val request = viewModel.confirmPasswordSingleCaseExport(minimumPassword)
+        assertTrue(minimumPassword.all { it == '\u0000' })
+        assertEquals(SingleCaseExportDocumentKind.ENCRYPTED_JSON, request?.kind)
     }
 
     @Test
@@ -1162,9 +1848,11 @@ class StageTwoViewModelTest {
         viewModel.openDetail(caseData.id)
         viewModel.requestSingleCaseExport()
 
-        assertTrue(viewModel.state.value.singleCaseExportIncludesAttachments)
-        val fileName = viewModel.confirmSingleCaseExport()
-        assertEquals("合成命例甲_南枫八字命例包.nfbcase", fileName)
+        assertFalse(viewModel.state.value.singleCaseExportIncludesAttachments)
+        viewModel.chooseSingleCaseExportAttachments(true)
+        val request = viewModel.confirmSingleCaseExport()
+        assertEquals("合成命例甲_南枫八字命例包.nfbcase", request?.fileName)
+        assertEquals(SingleCaseExportDocumentKind.BUNDLE, request?.kind)
         val output = ByteArrayOutputStream()
         viewModel.exportCurrentCase { output }
         assertTrue(bundle.exportCalled)
@@ -1225,9 +1913,11 @@ class StageTwoViewModelTest {
 
         viewModel.requestFullBackupExport()
         viewModel.requestPasswordFullBackupExport()
+        assertNull(viewModel.confirmPasswordFullBackupExport("12345".toCharArray()))
+        assertTrue(viewModel.state.value.fullBackupPasswordError?.contains("至少需要 6") == true)
         assertEquals(
             "南枫八字备份_测试_加密.nfbak",
-            viewModel.confirmPasswordFullBackupExport(password.copyOf(), password.copyOf()),
+            viewModel.confirmPasswordFullBackupExport(password.copyOf()),
         )
         val output = ByteArrayOutputStream()
         viewModel.exportFullBackup { output }
@@ -1332,9 +2022,9 @@ class StageTwoViewModelTest {
         viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
 
         assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
-        assertEquals("12:00", viewModel.state.value.fortuneObservationTime)
+        assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
         assertEquals("丙午年", viewModel.state.value.fortunePosition?.annualFortune?.name)
-        assertEquals(12, observations.last().hour)
+        assertEquals(8, observations.last().hour)
 
         viewModel.updateFortuneObservationTime("23:15")
 
@@ -1364,6 +2054,81 @@ class StageTwoViewModelTest {
         assertNull(viewModel.state.value.fortunePositionError)
         assertEquals(2, observations.last().month)
         assertEquals(3, observations.last().day)
+    }
+
+    @Test
+    fun `专业细盘反复切换复用默认定位结果且不重新计算`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-fortune-cache"] = sampleStoredCase("case-fortune-cache")
+        }
+        var resolveCount = 0
+        val resolver = FortunePositionResolver { result, observedAt ->
+            resolveCount += 1
+            FortunePosition(
+                observedAt = observedAt,
+                annualFortune = AnnualFortune(
+                    name = "丙午年",
+                    calendarYear = observedAt.year,
+                    nominalAge = observedAt.year - 1999,
+                    decadeIndex = 0,
+                    decadeName = result.decadeFortunes.first().name,
+                ),
+                decadeFortune = result.decadeFortunes.first(),
+                status = FortunePositionStatus.WITHIN_DECADE,
+            )
+        }
+        val viewModel = createViewModel(
+            repository = repository,
+            fortunePositionResolver = resolver,
+        )
+
+        viewModel.openDetailFromList("case-fortune-cache")
+        assertEquals(1, resolveCount)
+        assertNotNull(viewModel.state.value.fortunePosition)
+
+        viewModel.selectDetailSection(CaseDetailSection.BASIC_INFO)
+        viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
+
+        assertEquals(1, resolveCount)
+        assertNotNull(viewModel.state.value.fortunePosition)
+        assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
+    }
+
+    @Test
+    fun `观察日期时间一次确认只触发一次岁运定位`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-fortune-atomic"] = sampleStoredCase("case-fortune-atomic")
+        }
+        val observations =
+            mutableListOf<com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime>()
+        val resolver = FortunePositionResolver { result, observedAt ->
+            observations += observedAt
+            FortunePosition(
+                observedAt = observedAt,
+                annualFortune = AnnualFortune(
+                    name = "丙午年",
+                    calendarYear = observedAt.year,
+                    nominalAge = observedAt.year - 1999,
+                    decadeIndex = 0,
+                    decadeName = result.decadeFortunes.first().name,
+                ),
+                decadeFortune = result.decadeFortunes.first(),
+                status = FortunePositionStatus.WITHIN_DECADE,
+            )
+        }
+        val viewModel = createViewModel(
+            repository = repository,
+            fortunePositionResolver = resolver,
+        )
+        viewModel.openDetailFromList("case-fortune-atomic")
+        val before = observations.size
+
+        viewModel.updateFortuneObservation("2026-02-03", "23:15")
+
+        assertEquals(before + 1, observations.size)
+        assertEquals(23, observations.last().hour)
+        assertEquals(15, observations.last().minute)
     }
 
     @Test
@@ -1626,19 +2391,26 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `图片导出与分享复用同一渲染字节并保持详情`() = runTest {
+    fun `图片导出与分享只接收真实页面快照且不调用字段渲染器`() = runTest {
         val repository = FakeCaseRepository()
         val stored = sampleStoredCase("case-image")
         repository.stored[stored.id] = stored
-        val renderer = RecordingCaseImageRenderer()
-        val viewModel = createViewModel(repository, caseImageRenderer = renderer)
+        val viewModel = createViewModel(repository)
         viewModel.openDetail(stored.id)
 
         var exportFileName: String? = null
         viewModel.requestCaseImageDelivery(
             com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
         )
-        viewModel.confirmCaseImageDelivery { _, name -> exportFileName = name }
+        val savedCapture = capturedPageImage(byteArrayOf(1, 2, 3, 4))
+        viewModel.confirmCaseImageDelivery { mode, facts, name ->
+            viewModel.completeCaseDetailPageCapture(
+                mode,
+                facts,
+                name.first(),
+                savedCapture,
+            ) { _, completedName -> exportFileName = completedName }
+        }
         val exported = ByteArrayOutputStream()
         viewModel.exportPreparedCaseImage(openOutput = { exported })
 
@@ -1646,7 +2418,15 @@ class StageTwoViewModelTest {
         viewModel.requestCaseImageDelivery(
             com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SHARE_LONG_IMAGE,
         )
-        viewModel.confirmCaseImageDelivery { _, _ -> sharePrepared = true }
+        val sharedCapture = capturedPageImage(byteArrayOf(5, 6, 7, 8))
+        viewModel.confirmCaseImageDelivery { mode, facts, name ->
+            viewModel.completeCaseDetailPageCapture(
+                mode,
+                facts,
+                name.first(),
+                sharedCapture,
+            ) { _, _ -> sharePrepared = true }
+        }
         val shared = ByteArrayOutputStream()
         var shareFileReady = false
         viewModel.copyPreparedCaseImageForShare(
@@ -1654,12 +2434,11 @@ class StageTwoViewModelTest {
             onReady = { shareFileReady = true },
         )
 
-        assertEquals(1, renderer.calls)
         assertTrue(exportFileName?.endsWith("_南枫八字命盘.png") == true)
         assertTrue(sharePrepared)
         assertTrue(shareFileReady)
-        assertArrayEquals(renderer.bytes, exported.toByteArray())
-        assertArrayEquals(renderer.bytes, shared.toByteArray())
+        assertArrayEquals(savedCapture.bytes, exported.toByteArray())
+        assertArrayEquals(sharedCapture.bytes, shared.toByteArray())
         assertEquals(
             AppDestination.CaseDetail(stored.id),
             viewModel.state.value.destination,
@@ -1671,15 +2450,19 @@ class StageTwoViewModelTest {
         val repository = FakeCaseRepository()
         val stored = sampleStoredCase("case-image-output")
         repository.stored[stored.id] = stored
-        val viewModel = createViewModel(
-            repository,
-            caseImageRenderer = RecordingCaseImageRenderer(),
-        )
+        val viewModel = createViewModel(repository)
         viewModel.openDetail(stored.id)
         viewModel.requestCaseImageDelivery(
             com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
         )
-        viewModel.confirmCaseImageDelivery { _, _ -> }
+        viewModel.confirmCaseImageDelivery { mode, facts, name ->
+            viewModel.completeCaseDetailPageCapture(
+                mode,
+                facts,
+                name.first(),
+                capturedPageImage(byteArrayOf(9, 10, 11)),
+            ) { _, _ -> }
+        }
 
         viewModel.exportPreparedCaseImage(openOutput = { null })
 
@@ -1698,13 +2481,19 @@ class StageTwoViewModelTest {
         val repository = FakeCaseRepository()
         val stored = sampleStoredCase("case-image-cancel")
         repository.stored[stored.id] = stored
-        val renderer = RecordingCaseImageRenderer()
-        val viewModel = createViewModel(repository, caseImageRenderer = renderer)
+        val viewModel = createViewModel(repository)
         viewModel.openDetail(stored.id)
         viewModel.requestCaseImageDelivery(
             com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
         )
-        viewModel.confirmCaseImageDelivery { _, _ -> }
+        viewModel.confirmCaseImageDelivery { mode, facts, name ->
+            viewModel.completeCaseDetailPageCapture(
+                mode,
+                facts,
+                name.first(),
+                capturedPageImage(byteArrayOf(12, 13, 14)),
+            ) { _, _ -> }
+        }
 
         viewModel.cancelPreparedCaseImageDelivery(
             com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE,
@@ -1712,9 +2501,15 @@ class StageTwoViewModelTest {
         viewModel.requestCaseImageDelivery(
             com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode.SHARE_LONG_IMAGE,
         )
-        viewModel.confirmCaseImageDelivery { _, _ -> }
+        viewModel.confirmCaseImageDelivery { mode, facts, name ->
+            viewModel.completeCaseDetailPageCapture(
+                mode,
+                facts,
+                name.first(),
+                capturedPageImage(byteArrayOf(15, 16, 17)),
+            ) { _, _ -> }
+        }
 
-        assertEquals(1, renderer.calls)
         assertEquals(
             AppDestination.CaseDetail(stored.id),
             viewModel.state.value.destination,
@@ -1734,6 +2529,12 @@ class StageTwoViewModelTest {
             com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode.NO_SHARE_TARGET,
             viewModel.state.value.caseImageLastResultCode,
         )
+        // A late callback from the Android chooser must not overwrite a real failure.
+        viewModel.completeCaseImageShare(cancelled = true)
+        assertEquals(
+            com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode.NO_SHARE_TARGET,
+            viewModel.state.value.caseImageLastResultCode,
+        )
         viewModel.dismissCaseImageError()
         viewModel.completeCaseImageShare(cancelled = true)
 
@@ -1749,6 +2550,7 @@ class StageTwoViewModelTest {
 
     private fun createViewModel(
         repository: FakeCaseRepository,
+        caseCatalogStore: CaseCatalogStore = RepositoryCaseCatalogStore(repository, dispatcher),
         bundleOperations: SingleCaseBundleOperations? = null,
         backupOperations: CaseBackupOperations? = null,
         backupRoot: Path? = null,
@@ -1756,10 +2558,10 @@ class StageTwoViewModelTest {
         fortunePositionResolver: FortunePositionResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
         almanacReader: AlmanacReader? = null,
-        caseImageRenderer: com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer? = null,
         calculationPreferenceStore: CalculationPreferenceStore =
             InMemoryCalculationPreferenceStore(),
         savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
+        restoredUiStateOverride: StageTwoUiState? = null,
     ): StageTwoViewModel {
         val fixedClock = Clock.fixed(FixedInstant, ZoneOffset.UTC)
         val ids = generateSequence(1) { it + 1 }
@@ -1767,6 +2569,7 @@ class StageTwoViewModelTest {
             .iterator()
         return StageTwoViewModel(
             caseRepository = repository,
+            caseCatalogStore = caseCatalogStore,
             createCase = CreateCaseUseCase(
                 baziEngine = engine,
                 caseRepository = repository,
@@ -1810,7 +2613,6 @@ class StageTwoViewModelTest {
             fortunePositionResolver = fortunePositionResolver,
             fourPillarsLookup = fourPillarsLookup,
             almanacReader = almanacReader,
-            caseImageRenderer = caseImageRenderer,
             singleCaseExchange = SingleCaseExchangeService(
                 repository = repository,
                 clock = fixedClock,
@@ -1823,7 +2625,10 @@ class StageTwoViewModelTest {
             backupWorkRoot = backupRoot?.resolve("work"),
             calculationPreferenceStore = calculationPreferenceStore,
             ioDispatcher = dispatcher,
+            fortuneCalculationDispatcher = dispatcher,
+            searchDebounceMillis = 0L,
             savedStateHandle = savedStateHandle,
+            restoredUiStateOverride = restoredUiStateOverride,
         )
     }
 
@@ -1866,32 +2671,14 @@ class StageTwoViewModelTest {
         changedAt = FixedInstant,
     )
 
-    private class RecordingCaseImageRenderer :
-        com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer {
-        var calls = 0
-        val bytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 1, 2, 3)
-
-        override suspend fun render(
-            input: com.nanzhufeng.nanfengbazi.domain.CaseImageExportInput,
-        ): com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult {
-            calls += 1
-            val facts = (
-                com.nanzhufeng.nanfengbazi.domain.CaseImageExportContract.prepare(input)
-                    as com.nanzhufeng.nanfengbazi.domain.CaseImageFactsResult.Prepared
-                ).facts
-            return com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult.Success(
-                com.nanzhufeng.nanfengbazi.domain.RenderedCaseImage(
-                    facts = facts,
-                    mimeType = "image/png",
-                    fileExtension = "png",
-                    bytes = bytes,
-                    widthPixels = 1080,
-                    heightPixels = 2400,
-                    sha256 = "0".repeat(64),
-                ),
-            )
-        }
-    }
+    private fun capturedPageImage(bytes: ByteArray) = CapturedCaseDetailLongImage(
+        bytes = bytes,
+        widthPixels = 1080,
+        heightPixels = 3200,
+        sha256 = MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { byte -> "%02x".format(byte) },
+    )
 
     private class RecordingSingleCaseBundleOperations(
         private val caseData: BaziCase,

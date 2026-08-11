@@ -7,6 +7,7 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacDaySummary
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacError
 import com.nanzhufeng.nanfengbazi.domain.AlmanacHiddenStem
+import com.nanzhufeng.nanfengbazi.domain.AlmanacHourPillar
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthQuery
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
 import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarDetail
@@ -70,6 +71,17 @@ private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
     val lunar = lunarDay
     val sixtyCycle = sixtyCycleDay
     val selectedDoubleHour = AlmanacDoubleHours.fromIndex(query.selectedDoubleHourIndex)
+    val hourPillars = AlmanacDoubleHours.all.map { doubleHour ->
+        val hourEightChar = SolarTime.fromYmdHms(
+            year,
+            month,
+            day,
+            doubleHour.representativeHour,
+            0,
+            0,
+        ).lunarHour.resolveEightChar(query.ratHourRule)
+        AlmanacHourPillar(doubleHour = doubleHour, pillar = hourEightChar.hour.name)
+    }
     val solarTime = SolarTime.fromYmdHms(
         year,
         month,
@@ -102,8 +114,9 @@ private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
         yearPillar = sixtyCycle.year.name,
         monthPillar = sixtyCycle.month.name,
         dayPillar = sixtyCycle.sixtyCycle.name,
-        hourPillar = eightChar.hour.name,
+        hourPillar = hourPillars.first { it.doubleHour.index == selectedDoubleHour.index }.pillar,
         selectedDoubleHour = selectedDoubleHour,
+        hourPillars = hourPillars,
         pillars = pillarCycles.mapIndexed { index, cycle ->
             cycle.toAlmanacPillar(
                 label = listOf("年柱", "月柱", "日柱", "时柱")[index],

@@ -4,8 +4,19 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.withTransaction
 import com.nanzhufeng.nanfengbazi.data.db.CalculationSnapshotEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEventEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseEventRevisionEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseGroupCrossRefEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseGroupEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseTagCrossRefEntity
+import com.nanzhufeng.nanfengbazi.data.db.CaseTagEntity
+import com.nanzhufeng.nanfengbazi.data.db.FieldEvidenceEntity
 import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.db.RoomDataSnapshot
+import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
+import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
+import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import com.nanzhufeng.nanfengbazi.data.exchange.PasswordCrypto
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseFieldKey
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseMergeModule
@@ -24,7 +35,9 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.BufferedWriter
 import java.io.ByteArrayInputStream
+import java.io.OutputStreamWriter
 import java.io.SequenceInputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -40,6 +53,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.encodeToString
 
 interface CaseBackupOperations {
@@ -49,6 +63,30 @@ interface CaseBackupOperations {
         appVersion: String,
         protection: BackupProtection,
     ): BackupExportResult
+
+    /**
+     * 为端到端加密云同步生成结构化快照。
+     *
+     * 此通道刻意不包含原始截图、附件及依赖附件的字段证据；它们继续只保留在本机和
+     * 用户主动导出的完整备份中。调用方必须在传输前再进行加密。
+     */
+    suspend fun exportCloudSnapshot(
+        output: OutputStream,
+        appVersion: String,
+    ): BackupExportResult = BackupExportResult.Rejected(
+        code = "CLOUD_SNAPSHOT_UNAVAILABLE",
+        message = "当前备份实现不支持生成云端结构化快照。",
+    )
+
+    /** 仅用于已确认为空的本机，从端到端加密云快照恢复结构化命例。 */
+    suspend fun restoreCloudSnapshotIntoEmptyStore(
+        input: InputStream,
+        workRoot: Path,
+        attachmentRoot: Path,
+    ): BackupRestoreResult = BackupRestoreResult.Rejected(
+        code = "CLOUD_SNAPSHOT_RESTORE_UNAVAILABLE",
+        message = "当前备份实现不支持恢复云端结构化快照。",
+    )
 
     fun suggestedFileName(): String
 
@@ -152,10 +190,62 @@ class CaseBackupService(
                 counts = manifest.counts,
                 fileCount = sources.size + 1,
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             BackupExportResult.Rejected(
                 code = "EXPORT_IO_ERROR",
                 message = "备份导出失败，请保留诊断代码并重试。",
+            )
+        }
+    }
+
+    override suspend fun exportCloudSnapshot(
+        output: OutputStream,
+        appVersion: String,
+    ): BackupExportResult {
+        if (appVersion.isBlank()) {
+            return BackupExportResult.Rejected(
+                code = "APP_VERSION_REQUIRED",
+                message = "云端快照必须记录 App 版本。",
+            )
+        }
+        return try {
+            val snapshot = database.withTransaction { readSnapshot().forCloudSync() }
+            // Cloud snapshots can contain thousands of cases.  Do not call
+            // Json.encodeToString on an entire list here: that creates a second giant
+            // in-memory UTF-16 copy of the snapshot and previously killed the process.
+            // Each ZIP entry is deterministically streamed once for its manifest digest
+            // and once into the archive, so the largest transient JSON value is one row.
+            val sources = buildCloudEntrySources(snapshot)
+            val manifest = buildManifest(
+                snapshot = snapshot,
+                sources = sources,
+                appVersion = appVersion,
+                encrypted = false,
+                createdAt = "",
+            )
+            val manifestBytes = DomainJson.encodeToString(manifest).encodeToByteArray()
+            ZipOutputStream(output.buffered()).use { zip ->
+                zip.putNextEntry(stableZipEntry(MANIFEST_PATH))
+                zip.write(manifestBytes)
+                zip.closeEntry()
+                sources.forEach { source ->
+                    zip.putNextEntry(stableZipEntry(source.path))
+                    source.writeTo(zip)
+                    zip.closeEntry()
+                }
+            }
+            BackupExportResult.Success(
+                counts = manifest.counts,
+                fileCount = sources.size + 1,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            BackupExportResult.Rejected(
+                code = "CLOUD_SNAPSHOT_EXPORT_FAILED",
+                message = "云端结构化快照生成失败，请稍后重试。",
             )
         }
     }
@@ -900,6 +990,12 @@ class CaseBackupService(
         }
     }
 
+    override suspend fun restoreCloudSnapshotIntoEmptyStore(
+        input: InputStream,
+        workRoot: Path,
+        attachmentRoot: Path,
+    ): BackupRestoreResult = restoreIntoEmptyStore(input, workRoot, attachmentRoot)
+
     private suspend fun readSnapshot(
         sourceDatabase: NanfengBaziDatabase = database,
     ): RoomDataSnapshot {
@@ -1306,7 +1402,7 @@ class CaseBackupService(
 
     private fun buildEntrySources(
         snapshot: RoomDataSnapshot,
-        attachmentRoot: Path,
+        attachmentRoot: Path?,
     ): List<EntrySource>? {
         val notes = snapshot.textRecords.filter {
             it.type == "NOTE" || it.type == "OWNER_FEEDBACK"
@@ -1351,7 +1447,8 @@ class CaseBackupService(
         ).map { (path, json) -> EntrySource.fromBytes(path, json.encodeToByteArray()) }
 
         val attachmentSources = snapshot.attachments.map { attachment ->
-            val file = resolveContained(attachmentRoot, attachment.relativePath) ?: return null
+            val root = attachmentRoot ?: return null
+            val file = resolveContained(root, attachment.relativePath) ?: return null
             if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return null
             if (Files.size(file) != attachment.byteSize) return null
             if (sha256(file) != attachment.sha256) return null
@@ -1360,11 +1457,183 @@ class CaseBackupService(
         return jsonSources + attachmentSources
     }
 
+    /**
+     * Builds the cloud-only entry set without assembling entire database tables into a
+     * String or ByteArray.  The normal user backup path keeps its existing behaviour;
+     * this path is intentionally separate because automatic sync must remain safe on
+     * large real-world libraries.
+     */
+    private fun buildCloudEntrySources(snapshot: RoomDataSnapshot): List<EntrySource> {
+        val notes = snapshot.textRecords.filter {
+            it.type == "NOTE" || it.type == "OWNER_FEEDBACK"
+        }
+        val analysis = snapshot.textRecords.filter {
+            it.type == "MASTER_COMMENTARY" || it.type == "ANALYSIS"
+        }
+        val revisionsByType = snapshot.textRecordRevisions.groupBy { entity ->
+            DomainJson.decodeFromString(
+                CaseTextRecordRevision.serializer(),
+                entity.revisionJson,
+            ).snapshot.type.name
+        }
+        val noteRevisions = revisionsByType["NOTE"].orEmpty() +
+            revisionsByType["OWNER_FEEDBACK"].orEmpty()
+        val analysisRevisions = revisionsByType["MASTER_COMMENTARY"].orEmpty() +
+            revisionsByType["ANALYSIS"].orEmpty()
+
+        return listOf(
+            EntrySource.fromStreaming(CASES_PATH) { output ->
+                writeJsonListEnvelope(output, "cases", snapshot.cases, CaseEntity.serializer())
+            },
+            EntrySource.fromStreaming(SNAPSHOTS_PATH) { output ->
+                writeJsonListEnvelope(
+                    output,
+                    "snapshots",
+                    snapshot.calculationSnapshots,
+                    CalculationSnapshotEntity.serializer(),
+                )
+            },
+            EntrySource.fromStreaming(NOTES_PATH) { output ->
+                writeTextRecordsEnvelope(output, notes, noteRevisions)
+            },
+            EntrySource.fromStreaming(ANALYSIS_PATH) { output ->
+                writeTextRecordsEnvelope(output, analysis, analysisRevisions)
+            },
+            EntrySource.fromStreaming(EVENTS_PATH) { output ->
+                writeEventsEnvelope(output, snapshot.events, snapshot.eventRevisions)
+            },
+            EntrySource.fromStreaming(GROUPS_PATH) { output ->
+                writeGroupsEnvelope(output, snapshot.groups, snapshot.caseGroupCrossRefs)
+            },
+            EntrySource.fromStreaming(TAGS_PATH) { output ->
+                writeTagsEnvelope(output, snapshot.tags, snapshot.caseTagCrossRefs)
+            },
+            EntrySource.fromStreaming(SETTINGS_PATH) { output ->
+                writeJsonObject(output) { writer ->
+                    writer.write(DomainJson.encodeToString(SettingsFile()))
+                }
+            },
+            EntrySource.fromStreaming(IMPORTS_PATH) { output ->
+                writeImportsEnvelope(output, emptyList(), emptyList())
+            },
+        )
+    }
+
+    private fun writeTextRecordsEnvelope(
+        output: OutputStream,
+        records: List<TextRecordEntity>,
+        revisions: List<TextRecordRevisionEntity>,
+    ) = writeJsonObject(output) { writer ->
+        writer.write("{\"records\":")
+        writeJsonArray(writer, records, TextRecordEntity.serializer())
+        writer.write(",\"revisions\":")
+        writeJsonArray(writer, revisions, TextRecordRevisionEntity.serializer())
+        writer.write("}")
+    }
+
+    private fun writeEventsEnvelope(
+        output: OutputStream,
+        events: List<CaseEventEntity>,
+        revisions: List<CaseEventRevisionEntity>,
+    ) = writeJsonObject(output) { writer ->
+        writer.write("{\"events\":")
+        writeJsonArray(writer, events, CaseEventEntity.serializer())
+        writer.write(",\"revisions\":")
+        writeJsonArray(writer, revisions, CaseEventRevisionEntity.serializer())
+        writer.write("}")
+    }
+
+    private fun writeGroupsEnvelope(
+        output: OutputStream,
+        groups: List<CaseGroupEntity>,
+        crossRefs: List<CaseGroupCrossRefEntity>,
+    ) = writeJsonObject(output) { writer ->
+        writer.write("{\"groups\":")
+        writeJsonArray(writer, groups, CaseGroupEntity.serializer())
+        writer.write(",\"crossRefs\":")
+        writeJsonArray(writer, crossRefs, CaseGroupCrossRefEntity.serializer())
+        writer.write("}")
+    }
+
+    private fun writeTagsEnvelope(
+        output: OutputStream,
+        tags: List<CaseTagEntity>,
+        crossRefs: List<CaseTagCrossRefEntity>,
+    ) = writeJsonObject(output) { writer ->
+        writer.write("{\"tags\":")
+        writeJsonArray(writer, tags, CaseTagEntity.serializer())
+        writer.write(",\"crossRefs\":")
+        writeJsonArray(writer, crossRefs, CaseTagCrossRefEntity.serializer())
+        writer.write("}")
+    }
+
+    private fun writeImportsEnvelope(
+        output: OutputStream,
+        attachments: List<SourceAttachmentEntity>,
+        fieldEvidence: List<FieldEvidenceEntity>,
+    ) = writeJsonObject(output) { writer ->
+        writer.write("{\"attachments\":")
+        writeJsonArray(writer, attachments, SourceAttachmentEntity.serializer())
+        writer.write(",\"fieldEvidence\":")
+        writeJsonArray(writer, fieldEvidence, FieldEvidenceEntity.serializer())
+        writer.write("}")
+    }
+
+    private fun <T> writeJsonListEnvelope(
+        output: OutputStream,
+        key: String,
+        values: List<T>,
+        serializer: SerializationStrategy<T>,
+    ) = writeJsonObject(output) { writer ->
+        writer.write("{\"")
+        writer.write(key)
+        writer.write("\":")
+        writeJsonArray(writer, values, serializer)
+        writer.write("}")
+    }
+
+    private fun writeJsonObject(
+        output: OutputStream,
+        block: (BufferedWriter) -> Unit,
+    ) {
+        // Do not close this writer: for the second pass its OutputStream is the live ZIP
+        // stream and closing it would close the entire archive before subsequent entries.
+        val writer = BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8))
+        block(writer)
+        writer.flush()
+    }
+
+    private fun <T> writeJsonArray(
+        writer: BufferedWriter,
+        values: List<T>,
+        serializer: SerializationStrategy<T>,
+    ) {
+        writer.write("[")
+        values.forEachIndexed { index, value ->
+            if (index > 0) writer.write(",")
+            writer.write(DomainJson.encodeToString(serializer, value))
+        }
+        writer.write("]")
+    }
+
+    /**
+     * Cloud sync is a portable copy of the user's case material, not a replica of
+     * device-local browsing history.  In particular, opening a case updates
+     * [CaseEntity.lastViewedAtEpochMillis]; carrying that timestamp into the
+     * snapshot would manufacture a new cloud revision every time a case is read.
+     */
+    private fun RoomDataSnapshot.forCloudSync(): RoomDataSnapshot = copy(
+        cases = cases.map { it.copy(lastViewedAtEpochMillis = null) },
+        attachments = emptyList(),
+        fieldEvidence = emptyList(),
+    )
+
     private fun buildManifest(
         snapshot: RoomDataSnapshot,
         sources: List<EntrySource>,
         appVersion: String,
         encrypted: Boolean,
+        createdAt: String = clock.instant().toString(),
     ): BackupManifest {
         val calculationSnapshots = snapshot.calculationSnapshots.map {
             DomainJson.decodeFromString(CaseCalculationSnapshot.serializer(), it.resultJson)
@@ -1373,7 +1642,7 @@ class CaseBackupService(
             formatVersion = BACKUP_FORMAT_VERSION,
             appVersion = appVersion,
             databaseSchemaVersion = NanfengBaziDatabase.SCHEMA_VERSION,
-            createdAt = clock.instant().toString(),
+            createdAt = createdAt,
             encrypted = encrypted,
             encryptionParametersVersion = if (encrypted) {
                 BackupEncryption.PROTECTION_VERSION
@@ -1727,7 +1996,44 @@ class CaseBackupService(
                     Files.newInputStream(file).buffered().use { it.copyTo(output) }
                 },
             )
+
+            /**
+             * Hash a deterministic writer without buffering its complete payload, then
+             * invoke the same writer for the ZIP entry.  This is used by cloud sync so
+             * a large case library never needs a second full JSON copy in memory.
+             */
+            fun fromStreaming(
+                path: String,
+                writeTo: (OutputStream) -> Unit,
+            ): EntrySource {
+                val digestingOutput = DigestingCountingOutputStream()
+                writeTo(digestingOutput)
+                return EntrySource(
+                    path = path,
+                    byteSize = digestingOutput.byteSize,
+                    sha256 = digestingOutput.sha256(),
+                    writeTo = writeTo,
+                )
+            }
         }
+    }
+
+    private class DigestingCountingOutputStream : OutputStream() {
+        private val digest = MessageDigest.getInstance("SHA-256")
+        var byteSize: Long = 0
+            private set
+
+        override fun write(value: Int) {
+            digest.update(value.toByte())
+            byteSize += 1
+        }
+
+        override fun write(buffer: ByteArray, offset: Int, length: Int) {
+            digest.update(buffer, offset, length)
+            byteSize += length
+        }
+
+        fun sha256(): String = digest.digest().toHex()
     }
 
     private data class PreparedImportedCase(
@@ -1830,7 +2136,10 @@ class CaseBackupService(
         private const val MAX_RESTORE_JOURNAL_BYTES = 64L * 1024
         private const val MAX_RESTORE_ID_GENERATION_ATTEMPTS = 100
         private const val MAX_ENTRY_COUNT = 10_000
-        private const val MAX_JSON_BYTES = 16L * 1024 * 1024
+        // A real cloud snapshot can legitimately contain more than 16 MiB of notes
+        // across a thousand-case library.  It remains bounded well below the general
+        // entry limit and is still checked against the manifest hash before restore.
+        private const val MAX_JSON_BYTES = 64L * 1024 * 1024
         private const val MAX_SINGLE_ENTRY_BYTES = 512L * 1024 * 1024
         private const val MAX_TOTAL_BYTES = 2L * 1024 * 1024 * 1024
         private val FILE_NAME_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm")

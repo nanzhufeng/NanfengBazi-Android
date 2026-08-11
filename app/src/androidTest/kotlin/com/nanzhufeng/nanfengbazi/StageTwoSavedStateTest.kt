@@ -70,6 +70,9 @@ class StageTwoSavedStateTest {
         val container = application.container
         val original = createViewModel(container)
         val alias = "状态恢复-${System.currentTimeMillis()}"
+        val group = requireNotNull(
+            container.caseRepository.createGroup("状态分组-${System.currentTimeMillis()}"),
+        )
 
         original.updateQuery("待研究")
         original.openCreate()
@@ -87,6 +90,7 @@ class StageTwoSavedStateTest {
                 locationName = "江苏省宿迁市泗阳县",
                 sourceNote = "进程重建前保留",
                 ratHourRule = RatHourRule.LATE_RAT_SAME_DAY,
+                groupId = group.id,
             )
         }
         val createHandle = SavedStateHandle()
@@ -97,6 +101,7 @@ class StageTwoSavedStateTest {
         assertEquals("待研究", restoredCreate.state.value.query)
         assertEquals(alias, restoredCreate.state.value.form.alias)
         assertEquals("进程重建前保留", restoredCreate.state.value.form.sourceNote)
+        assertEquals(group.id, restoredCreate.state.value.form.groupId)
         assertEquals(
             RatHourRule.LATE_RAT_SAME_DAY,
             restoredCreate.state.value.form.ratHourRule,
@@ -113,6 +118,10 @@ class StageTwoSavedStateTest {
         }
         val caseId = requireNotNull(
             restoredCreate.state.value.cases.firstOrNull { it.alias == alias }?.id,
+        )
+        assertEquals(
+            group.id,
+            restoredCreate.state.value.cases.first { it.id == caseId }.groups.single().id,
         )
         restoredCreate.openDetail(caseId)
         waitUntil { restoredCreate.state.value.detail?.id == caseId }

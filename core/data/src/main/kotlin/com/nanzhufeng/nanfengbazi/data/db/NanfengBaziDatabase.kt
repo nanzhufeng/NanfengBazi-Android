@@ -29,7 +29,7 @@ abstract class NanfengBaziDatabase : RoomDatabase() {
     internal abstract fun importSessionDao(): ImportSessionDao
 
     companion object {
-        const val SCHEMA_VERSION = 9
+        const val SCHEMA_VERSION = 12
     }
 }
 
@@ -208,6 +208,31 @@ object DatabaseMigrations {
                     "(SELECT COUNT(*) FROM case_groups AS earlier " +
                     "WHERE earlier.name < case_groups.name OR " +
                     "(earlier.name = case_groups.name AND earlier.id < case_groups.id))",
+            )
+        }
+    }
+
+    val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE cases ADD COLUMN libraryType TEXT NOT NULL DEFAULT 'USER'",
+            )
+        }
+    }
+
+    val MIGRATION_10_11: Migration = object : Migration(10, 11) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE case_groups ADD COLUMN libraryType TEXT NOT NULL DEFAULT 'USER'",
+            )
+        }
+    }
+
+    val MIGRATION_11_12: Migration = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_calculation_snapshots_adopted_caseId_sortOrder_id " +
+                    "ON calculation_snapshots (adopted, caseId, sortOrder, id)",
             )
         }
     }

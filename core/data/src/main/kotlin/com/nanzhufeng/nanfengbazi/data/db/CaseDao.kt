@@ -25,6 +25,11 @@ internal interface CaseDao {
     )
     suspend fun markViewed(caseId: String, viewedAtEpochMillis: Long): Int
 
+    @Query(
+        "DELETE FROM cases WHERE id IN (:caseIds) AND deletedAtEpochMillis IS NOT NULL",
+    )
+    suspend fun deleteTrashedCasesPermanently(caseIds: List<String>): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCalculationSnapshots(entities: List<CalculationSnapshotEntity>)
 
@@ -61,11 +66,16 @@ internal interface CaseDao {
     @Query("DELETE FROM case_groups WHERE id = :groupId")
     suspend fun deleteGroup(groupId: String): Int
 
-    @Query("SELECT COUNT(*) FROM case_groups WHERE name = :name COLLATE NOCASE")
-    suspend fun groupNameCount(name: String): Int
+    @Query(
+        "SELECT COUNT(*) FROM case_groups " +
+            "WHERE name = :name COLLATE NOCASE AND libraryType = :libraryType",
+    )
+    suspend fun groupNameCount(name: String, libraryType: String): Int
 
-    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM case_groups")
-    suspend fun maxGroupSortOrder(): Int
+    @Query(
+        "SELECT COALESCE(MAX(sortOrder), -1) FROM case_groups WHERE libraryType = :libraryType",
+    )
+    suspend fun maxGroupSortOrder(libraryType: String): Int
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertTags(entities: List<CaseTagEntity>)
@@ -154,6 +164,9 @@ internal interface CaseDao {
     @Query("SELECT * FROM calculation_snapshots ORDER BY caseId, sortOrder, id")
     suspend fun allCalculationSnapshots(): List<CalculationSnapshotEntity>
 
+    @Query("SELECT * FROM calculation_snapshots WHERE adopted = 1 ORDER BY caseId, sortOrder, id")
+    suspend fun adoptedCalculationSnapshots(): List<CalculationSnapshotEntity>
+
     @Query("SELECT * FROM text_records ORDER BY caseId, sortOrder, id")
     suspend fun allTextRecords(): List<TextRecordEntity>
 
@@ -174,6 +187,11 @@ internal interface CaseDao {
 
     @Query("SELECT * FROM case_groups ORDER BY sortOrder, id")
     suspend fun allGroups(): List<CaseGroupEntity>
+
+    @Query(
+        "SELECT * FROM case_groups WHERE libraryType = :libraryType ORDER BY sortOrder, id",
+    )
+    suspend fun groupsByLibrary(libraryType: String): List<CaseGroupEntity>
 
     @Query(
         """

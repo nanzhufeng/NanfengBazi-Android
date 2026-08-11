@@ -18,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
-    fun `v1 命例迁移到 v8 时补充管理历史来源时间候选和导入会话且保留原值`() {
+    fun `v1 命例迁移到当前版本时补充案例库类型且保留原值`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "migration-${UUID.randomUUID()}.db"
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -88,6 +88,9 @@ class DatabaseMigrationTest {
             DatabaseMigrations.MIGRATION_6_7,
             DatabaseMigrations.MIGRATION_7_8,
             DatabaseMigrations.MIGRATION_8_9,
+            DatabaseMigrations.MIGRATION_9_10,
+            DatabaseMigrations.MIGRATION_10_11,
+            DatabaseMigrations.MIGRATION_11_12,
         )
             .allowMainThreadQueries()
             .build()
@@ -96,7 +99,7 @@ class DatabaseMigrationTest {
                 """
                 SELECT alias, sourceType, revision, isFavorite, isPinned,
                        lastViewedAtEpochMillis, copiedFromCaseId, deletedAtEpochMillis,
-                       birthTimeCandidatesJson
+                       birthTimeCandidatesJson, libraryType
                 FROM cases WHERE id = 'legacy-case'
                 """.trimIndent(),
             ).use { cursor ->
@@ -110,6 +113,7 @@ class DatabaseMigrationTest {
                 assertEquals(true, cursor.isNull(6))
                 assertEquals(true, cursor.isNull(7))
                 assertEquals("[]", cursor.getString(8))
+                assertEquals("USER", cursor.getString(9))
             }
             migrated.openHelper.readableDatabase.query(
                 "PRAGMA table_info(text_records)",
@@ -119,6 +123,14 @@ class DatabaseMigrationTest {
                 }
                 assertTrue(names.contains("analysisCategory"))
                 assertTrue(names.contains("sourceType"))
+            }
+            migrated.openHelper.readableDatabase.query(
+                "PRAGMA index_list(calculation_snapshots)",
+            ).use { cursor ->
+                val names = buildList {
+                    while (cursor.moveToNext()) add(cursor.getString(1))
+                }
+                assertTrue(names.contains("index_calculation_snapshots_adopted_caseId_sortOrder_id"))
             }
             migrated.openHelper.readableDatabase.query(
                 "SELECT id, sourceType FROM text_records ORDER BY id",
@@ -155,6 +167,7 @@ class DatabaseMigrationTest {
                     while (cursor.moveToNext()) add(cursor.getString(1))
                 }
                 assertTrue(names.contains("sortOrder"))
+                assertTrue(names.contains("libraryType"))
             }
         } finally {
             migrated.close()

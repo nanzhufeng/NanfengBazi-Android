@@ -52,6 +52,17 @@ class WenzhenPageClassifierTest {
         assertTrue(result.matchedAnchors.contains("专业细盘"))
     }
 
+    @Test
+    fun `AI 视觉适配器提供明确页面类型时不再依赖关键词猜测`() {
+        val result = classifier.classify(
+            document("[[WENZHEN_PAGE:FEEDBACK]]\n职业：教师\n婚姻：未婚"),
+        )
+
+        assertEquals(WenzhenPageType.FEEDBACK, result.pageType)
+        assertEquals(0.99f, result.confidence)
+        assertTrue(result.classifierVersion.contains("ai-vision-hint"))
+    }
+
     private fun document(text: String): OcrDocument = OcrDocument(
         imageId = "image-1",
         rawText = text,

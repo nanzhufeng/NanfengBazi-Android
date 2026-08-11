@@ -24,6 +24,7 @@ data class CaseEntity(
     val nameValue: String?,
     val sexForFortuneDirection: String,
     val sourceType: String,
+    val libraryType: String = "USER",
     val birthInputJson: String,
     val birthTimeCandidatesJson: String = "[]",
     val profileJson: String,
@@ -48,7 +49,10 @@ data class CaseEntity(
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["caseId"])],
+    indices = [
+        Index(value = ["caseId"]),
+        Index(value = ["adopted", "caseId", "sortOrder", "id"]),
+    ],
 )
 data class CalculationSnapshotEntity(
     @androidx.room.PrimaryKey
@@ -243,6 +247,7 @@ data class CaseGroupEntity(
     val id: String,
     val name: String,
     val sortOrder: Int = 0,
+    val libraryType: String = "USER",
 )
 
 @Serializable

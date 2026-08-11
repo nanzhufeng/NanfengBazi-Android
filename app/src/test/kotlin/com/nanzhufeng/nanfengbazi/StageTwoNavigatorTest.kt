@@ -5,6 +5,21 @@ import org.junit.Test
 
 class StageTwoNavigatorTest {
     @Test
+    fun `后台保存完成时原位替换临时详情且返回首页`() {
+        val navigator = StageTwoNavigator()
+
+        assertEquals(
+            AppDestination.CaseDetail("pending-manual-save"),
+            navigator.openDetail("pending-manual-save"),
+        )
+        assertEquals(
+            AppDestination.CaseDetail("saved-case"),
+            navigator.replaceCurrentDetail("saved-case"),
+        )
+        assertEquals(AppDestination.CreateCase, navigator.back())
+    }
+
+    @Test
     fun `排盘为首页且详情可返回记录列表`() {
         val navigator = StageTwoNavigator()
 

@@ -137,10 +137,10 @@ class ImportRecognitionCoordinatorTest {
         assertEquals(2, engine.callsByImage.getValue("image-2"))
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `在线 OCR 引擎不能接入图片导入主链路`() {
+    @Test
+    fun `在线视觉引擎可复用同一可恢复识别协调器`() {
         val bytes = byteArrayOf(1)
-        ImportRecognitionCoordinator(
+        val coordinator = ImportRecognitionCoordinator(
             repository = InMemoryImportSessionRepository(fixture(1)),
             contentReader = ImportImageContentReader { bytes },
             ocrEngine = object : FixtureOcrEngine() {
@@ -148,6 +148,8 @@ class ImportRecognitionCoordinatorTest {
             },
             pageClassifier = AnchorBasedWenzhenPageClassifier(),
         )
+
+        assertNotNull(coordinator)
     }
 
     private fun coordinator(

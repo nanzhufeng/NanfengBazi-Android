@@ -65,6 +65,7 @@ import java.time.LocalDate
 internal fun BasicChartAiPromptSection(
     case: BaziCase,
     observation: ProfessionalFortunePosition?,
+    onCopied: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var dialogVisible by rememberSaveable(case.id) { mutableStateOf(false) }
@@ -126,6 +127,7 @@ internal fun BasicChartAiPromptSection(
             case = case,
             observation = observation,
             onDismiss = { dialogVisible = false },
+            onCopied = onCopied,
         )
     }
 }
@@ -135,6 +137,7 @@ private fun BaziAiPromptDialog(
     case: BaziCase,
     observation: ProfessionalFortunePosition?,
     onDismiss: () -> Unit,
+    onCopied: () -> Unit,
 ) {
     val context = LocalContext.current
     val referenceDate = observation?.position?.observedAt?.let {
@@ -158,7 +161,16 @@ private fun BaziAiPromptDialog(
     var hideIdentityAndLocation by remember(case.id) { mutableStateOf(true) }
     var previewVisible by remember(case.id) { mutableStateOf(false) }
     var copyError by remember(case.id) { mutableStateOf<String?>(null) }
-    val promptResult = remember(summaryResult, topic, hideIdentityAndLocation, referenceDate) {
+    val ownerFeedback = remember(case.id, case.revision) {
+        case.toAiAnalysisOwnerFeedback()
+    }
+    val promptResult = remember(
+        summaryResult,
+        topic,
+        hideIdentityAndLocation,
+        referenceDate,
+        ownerFeedback,
+    ) {
         when (summaryResult) {
             is CaseObjectiveSummaryResult.Success -> BaziAiAnalysisPromptContract.prepare(
                 BaziAiAnalysisPromptRequest(
@@ -166,6 +178,7 @@ private fun BaziAiPromptDialog(
                     topic = topic,
                     referenceDate = referenceDate,
                     hideIdentityAndLocation = hideIdentityAndLocation,
+                    ownerFeedback = ownerFeedback,
                 ),
             )
             is CaseObjectiveSummaryResult.Rejected -> null
@@ -280,10 +293,6 @@ private fun BaziAiPromptDialog(
                         .testTag("ai_prompt_privacy_row"),
                     shape = RoundedCornerShape(15.dp),
                     color = Color(0xFFFAFAF8),
-                    border = BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                    ),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -345,6 +354,7 @@ private fun BaziAiPromptDialog(
                         } == true
                         if (copied) {
                             onDismiss()
+                            onCopied()
                         } else {
                             copyError = "复制失败，请确认系统剪贴板当前可用。"
                         }
@@ -391,10 +401,6 @@ private fun BaziAiTopicGrid(
                         .testTag("ai_prompt_topic_${topic.name.lowercase()}"),
                     shape = RoundedCornerShape(14.dp),
                     color = if (active) NanfengGold else NanfengControlSurface.copy(alpha = 0.7f),
-                    border = if (active) null else BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                    ),
                     shadowElevation = if (active) 1.dp else 0.dp,
                 ) {
                     Box(
@@ -424,10 +430,6 @@ private fun AiPromptPreview(prompt: BaziAiAnalysisPrompt) {
             .testTag("ai_prompt_preview"),
         shape = RoundedCornerShape(14.dp),
         color = Color(0xFFF8F8F6),
-        border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-        ),
     ) {
         SelectionContainer {
             Text(

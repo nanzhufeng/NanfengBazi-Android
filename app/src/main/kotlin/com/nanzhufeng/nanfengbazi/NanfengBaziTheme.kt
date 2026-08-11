@@ -1,21 +1,55 @@
 package com.nanzhufeng.nanfengbazi
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
+import kotlin.math.roundToInt
 
 internal val NanfengPageBackground = Color(0xFFF4F4F2)
 internal val NanfengCard = Color(0xFFFFFFFF)
@@ -26,27 +60,39 @@ internal val NanfengGreen = Color(0xFF3D7052)
 internal val NanfengOrange = Color(0xFFD9823E)
 internal val NanfengSolarTermRed = Color(0xFFC63D3A)
 internal val NanfengGold = Color(0xFFB99A58)
+internal val NanfengGoldText = Color(0xFF856526)
 internal val NanfengGoldLight = Color(0xFFF0D7A4)
 internal val NanfengWarmTint = Color(0xFFF8F5EF)
 internal val NanfengControlSurface = Color(0xFFF3F3F2)
 
-private val NanfengBaziColorScheme = lightColorScheme(
-    primary = NanfengGreen,
+internal val LocalBaziSkin = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART }
+internal val LocalBaziSkinTokens = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.tokens }
+internal val LocalBaziSkinVisualRecipe = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.visualRecipe }
+
+private fun baziColorScheme(tokens: BaziSkinTokens) = lightColorScheme(
+    primary = tokens.primary,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCEBDF),
-    onPrimaryContainer = Color(0xFF183A28),
-    secondary = NanfengOrange,
+    primaryContainer = tokens.primary.copy(alpha = 0.16f),
+    onPrimaryContainer = tokens.textPrimary,
+    secondary = tokens.secondary,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFE4D2),
-    onSecondaryContainer = Color(0xFF542A11),
-    background = NanfengPageBackground,
-    onBackground = NanfengInk,
-    surface = NanfengCard,
-    onSurface = NanfengInk,
-    surfaceVariant = Color(0xFFEDEDEB),
-    onSurfaceVariant = Color(0xFF656A66),
-    outline = Color(0xFFD3D5D2),
-    outlineVariant = Color(0xFFE7E8E6),
+    secondaryContainer = tokens.secondary.copy(alpha = 0.16f),
+    onSecondaryContainer = tokens.textPrimary,
+    background = tokens.background,
+    onBackground = tokens.textPrimary,
+    surface = tokens.surface,
+    onSurface = tokens.textPrimary,
+    surfaceTint = Color.Transparent,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = tokens.surface,
+    surfaceContainer = tokens.surface,
+    surfaceContainerHigh = tokens.surfaceRaised,
+    surfaceContainerHighest = tokens.surfaceRaised,
+    surfaceVariant = tokens.surfaceRaised,
+    onSurfaceVariant = tokens.textSecondary,
+    // 分隔只承担层级，不参与卡片和按钮的外轮廓；避免主题切换后出现黑色描边。
+    outline = tokens.textPrimary.copy(alpha = 0.10f),
+    outlineVariant = tokens.textPrimary.copy(alpha = 0.08f),
     error = Color(0xFFB3261E),
 )
 
@@ -98,12 +144,161 @@ private fun appFont(
 )
 
 @Composable
-internal fun NanfengBaziTheme(content: @Composable () -> Unit) {
+internal fun NanfengBaziTheme(
+    skin: BaziSkin = BaziSkin.INK_STAR_CHART,
+    content: @Composable () -> Unit,
+) {
     val typography = rememberNanfengBaziTypography()
-    MaterialTheme(
-        colorScheme = NanfengBaziColorScheme,
-        typography = typography,
-        shapes = NanfengBaziShapes,
-        content = content,
+    CompositionLocalProvider(
+        LocalBaziSkin provides skin,
+        LocalBaziSkinTokens provides skin.tokens,
+        LocalBaziSkinVisualRecipe provides skin.visualRecipe,
+    ) {
+        MaterialTheme(
+            colorScheme = baziColorScheme(skin.tokens),
+            typography = typography,
+            shapes = NanfengBaziShapes,
+            content = content,
+        )
+    }
+}
+
+@Composable
+internal fun BoxScope.NanfengWhiteDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    var anchorBounds by remember { mutableStateOf(IntRect(0, 0, 0, 0)) }
+    Box(
+        modifier = Modifier
+            .matchParentSize()
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                anchorBounds = IntRect(
+                    left = bounds.left.roundToInt(),
+                    top = bounds.top.roundToInt(),
+                    right = bounds.right.roundToInt(),
+                    bottom = bounds.bottom.roundToInt(),
+                )
+            },
     )
+    if (!expanded || anchorBounds.width == 0 || anchorBounds.height == 0) return
+    val menuGapPx = with(LocalDensity.current) { 4.dp.roundToPx() }
+    var popupOriginInWindow by remember { mutableStateOf(IntOffset.Zero) }
+    Popup(
+        popupPositionProvider = FullScreenPopupPositionProvider,
+        onDismissRequest = onDismissRequest,
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = true,
+        ),
+    ) {
+        Layout(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    popupOriginInWindow = IntOffset(
+                        bounds.left.roundToInt(),
+                        bounds.top.roundToInt(),
+                    )
+                }
+                .pointerInput(onDismissRequest) {
+                    detectTapGestures(onTap = { onDismissRequest() })
+                },
+            content = {
+                Surface(
+                    modifier = modifier
+                        .width(IntrinsicSize.Max)
+                        .widthIn(min = 112.dp, max = 280.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 6.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        content = content,
+                    )
+                }
+            },
+        ) { measurables, constraints ->
+            val menu = measurables.single().measure(
+                constraints.copy(minWidth = 0, minHeight = 0),
+            )
+            val position = anchoredMenuPosition(
+                anchorBounds = anchorBounds,
+                windowSize = IntSize(constraints.maxWidth, constraints.maxHeight),
+                layoutDirection = layoutDirection,
+                menuSize = IntSize(menu.width, menu.height),
+                gapPx = menuGapPx,
+            )
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                menu.place(
+                    x = position.x - popupOriginInWindow.x,
+                    y = position.y - popupOriginInWindow.y,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun NanfengOverflowMenuItem(
+    label: String,
+    icon: ImageVector,
+    accent: Color,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val foreground = if (enabled) accent else accent.copy(alpha = 0.38f)
+    DropdownMenuItem(
+        text = { Text(label, color = foreground) },
+        onClick = onClick,
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = foreground,
+            )
+        },
+        enabled = enabled,
+        modifier = modifier,
+    )
+}
+
+private object FullScreenPopupPositionProvider : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset = IntOffset.Zero
+}
+
+private fun anchoredMenuPosition(
+    anchorBounds: IntRect,
+    windowSize: IntSize,
+    layoutDirection: LayoutDirection,
+    menuSize: IntSize,
+    gapPx: Int,
+): IntOffset {
+    val preferredX = if (layoutDirection == LayoutDirection.Ltr) {
+        anchorBounds.right - menuSize.width
+    } else {
+        anchorBounds.left
+    }
+    val maxX = (windowSize.width - menuSize.width - gapPx).coerceAtLeast(gapPx)
+    val x = preferredX.coerceIn(gapPx, maxX)
+
+    val below = anchorBounds.bottom + gapPx
+    val above = anchorBounds.top - menuSize.height - gapPx
+    val maxY = (windowSize.height - menuSize.height - gapPx).coerceAtLeast(gapPx)
+    val y = if (below <= maxY) below else above.coerceIn(gapPx, maxY)
+    return IntOffset(x, y)
 }

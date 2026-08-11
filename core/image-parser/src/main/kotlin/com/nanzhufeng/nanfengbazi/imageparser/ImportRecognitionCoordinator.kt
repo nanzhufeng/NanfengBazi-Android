@@ -35,9 +35,11 @@ class ImportRecognitionCoordinator(
     private val diagnosticIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
     init {
-        require(ocrEngine.executionMode == OcrExecutionMode.OFFLINE) {
-            "图片导入只允许离线 OCR 引擎"
-        }
+        // Recognition engines are adapters only. Whether an image may leave the device is
+        // decided by the app-level consent gate before this coordinator is scheduled; this
+        // coordinator still owns the same recoverable session, validation and review path.
+        require(ocrEngine.engineId.isNotBlank()) { "图片识别引擎身份不能为空" }
+        require(ocrEngine.engineVersion.isNotBlank()) { "图片识别引擎版本不能为空" }
     }
 
     suspend fun recognize(sessionId: String): RecognitionRunResult {
@@ -128,12 +130,14 @@ class ImportRecognitionCoordinator(
                     recognizedDocuments += document
                 } catch (cancelled: CancellationException) {
                     throw cancelled
-                } catch (_: Throwable) {
+                } catch (failure: Throwable) {
                     processedImages[image.id] = image
                     imageFailures += ImportImageFailure(
                         imageId = image.id,
                         code = "IMAGE_RECOGNITION_FAILED",
-                        userMessage = "这张图片未能识别，可单独重试。",
+                        userMessage = failure.message
+                            ?.takeIf { message -> message.length <= 180 }
+                            ?: "这张图片未能识别，可单独重试。",
                         retryable = true,
                         diagnosticId = diagnosticIdFactory(),
                     )
@@ -145,6 +149,7 @@ class ImportRecognitionCoordinator(
             val mergedFailures = session.imageFailures
                 .filterNot { it.imageId in targetImageIds } + imageFailures
             if (mergedDocuments.isEmpty()) {
+                val firstFailure = mergedFailures.firstOrNull()?.userMessage
                 val failed = session.copy(
                     status = ImportStatus.FAILED,
                     images = mergedImages,
@@ -152,7 +157,9 @@ class ImportRecognitionCoordinator(
                     imageFailures = mergedFailures,
                     failure = ImportFailure(
                         code = "ALL_IMAGES_RECOGNITION_FAILED",
-                        userMessage = "所选图片均未能识别，可稍后复用原图重试。",
+                        userMessage = firstFailure
+                            ?.let { "所选图片均未能识别：$it" }
+                            ?: "所选图片均未能识别，可稍后复用原图重试。",
                         retryable = true,
                         failedStage = ImportStatus.RECOGNIZING,
                         diagnosticId = diagnosticIdFactory(),

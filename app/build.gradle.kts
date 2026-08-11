@@ -1,8 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties().apply {
+    if (localPropertiesFile.isFile) localPropertiesFile.inputStream().use(::load)
+}
+
+fun localValue(name: String): String = localProperties.getProperty(name)?.trim().orEmpty()
+
+fun quotedBuildConfig(value: String): String =
+    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "com.nanzhufeng.nanfengbazi"
@@ -12,9 +25,20 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 83
-        versionName = "0.3.0-alpha82"
+        versionCode = 84
+        versionName = "0.3.0-alpha83"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "NANFENG_CLOUD_URL", quotedBuildConfig(localValue("nanfeng.cloud.url")))
+        buildConfigField(
+            "String",
+            "NANFENG_CLOUD_PUBLISHABLE_KEY",
+            quotedBuildConfig(localValue("nanfeng.cloud.publishableKey")),
+        )
+        buildConfigField(
+            "String",
+            "NANFENG_CLOUD_GOOGLE_SERVER_CLIENT_ID",
+            quotedBuildConfig(localValue("nanfeng.cloud.googleServerClientId")),
+        )
     }
 
     buildTypes {
@@ -50,7 +74,7 @@ android {
 }
 
 base {
-    archivesName.set("NanfengBazi-Android-v0.3.0-alpha82")
+    archivesName.set("NanfengBazi-Android-v0.3.0-alpha83")
 }
 
 dependencies {
@@ -64,11 +88,16 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.10.5")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.material3:material3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

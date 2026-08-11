@@ -4,12 +4,17 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.icu.text.BreakIterator
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -33,6 +39,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,32 +50,36 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialog as MaterialAlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.LocalMinimumInteractiveComponentEnforcement
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -76,6 +87,7 @@ import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SnackbarHost
@@ -91,19 +103,27 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -114,15 +134,20 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -135,6 +160,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -144,6 +170,7 @@ import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.caseNameInitial
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
 import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.DuplicateCaseCandidate
@@ -171,6 +198,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
@@ -207,11 +235,15 @@ import com.nanzhufeng.nanfengbazi.data.backup.BackupCaseRestoreDecision
 import com.nanzhufeng.nanfengbazi.data.backup.BackupDatabasePreflight
 import com.nanzhufeng.nanfengbazi.data.backup.BackupRestorePlan
 import com.nanzhufeng.nanfengbazi.data.backup.RestorePreview
+import com.nanzhufeng.nanfengbazi.cloud.BaziCloudSyncCoordinator
+import com.nanzhufeng.nanfengbazi.cloud.BaziCloudSyncState
+import com.nanzhufeng.nanfengbazi.cloud.BaziGoogleSignInClient
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
 import com.nanzhufeng.nanfengbazi.domain.displayName
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
@@ -222,6 +254,8 @@ fun NanfengBaziApp(
     onImportScreenshots: () -> Unit = {},
     screenshotImportState: ScreenshotImportUiState = ScreenshotImportUiState(),
     onRetryScreenshotImport: () -> Unit = {},
+    onConfirmScreenshotAiRecognition: () -> Unit = {},
+    onCancelScreenshotAiRecognition: () -> Unit = {},
     onDeleteScreenshotImport: () -> Unit = {},
     onSetScreenshotFieldAdopted: (String, String, Boolean) -> Unit = { _, _, _ -> },
     onUpdateScreenshotFieldValue: (String, String, String) -> Unit = { _, _, _ -> },
@@ -229,14 +263,15 @@ fun NanfengBaziApp(
     onSetScreenshotCandidateAdopted: (String, Boolean) -> Unit = { _, _ -> },
     onCommitScreenshotCandidate: (String, Boolean) -> Unit = { _, _ -> },
     onConsumeScreenshotImportMessage: () -> Unit = {},
-    onCreateSingleCaseDocument: (String) -> Unit = {},
+    onCreateSingleCaseDocument: (SingleCaseExportDocumentRequest) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
+    onOpenWenzhenImportDocument: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
     onCommitSingleCaseImport: ((SingleCaseImportDecision) -> Unit)? = null,
     onCommitSingleCaseMerge: (() -> Unit)? = null,
     onCommitPasswordSingleCaseDocument: (CharArray) -> Unit = {},
-    onSaveCaseImageToGallery: (String) -> Unit = {},
-    onSharePreparedCaseImage: () -> Unit = {},
+    onSaveCaseImagesToGallery: (List<String>) -> Unit = {},
+    onSharePreparedCaseImages: () -> Unit = {},
     onCreateFullBackupDocument: (String) -> Unit = {},
     onCreateEncryptedFullBackupDocument: (String) -> Unit = {},
     onOpenFullBackupDocument: () -> Unit = {},
@@ -245,8 +280,18 @@ fun NanfengBaziApp(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val cloudContainer = (context.applicationContext as? NanfengBaziApplication)?.container
+    val skinPreferenceStore = remember(cloudContainer) { cloudContainer?.baziSkinPreferenceStore }
+    var selectedSkin by remember(skinPreferenceStore) {
+        mutableStateOf(skinPreferenceStore?.read() ?: BaziSkin.INK_STAR_CHART)
+    }
+    val rootView = LocalView.current
+    val coroutineScope = rememberCoroutineScope()
+    val caseDetailCaptureRegistry = remember { CaseDetailPageCaptureRegistry() }
+    val latestUiState by rememberUpdatedState(state)
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
+    var transientMessage by remember { mutableStateOf<String?>(null) }
     val commitSingleCaseImport = onCommitSingleCaseImport
         ?: { decision -> viewModel.commitSingleCaseImport(decision) }
     val commitSingleCaseMerge = onCommitSingleCaseMerge
@@ -255,6 +300,12 @@ fun NanfengBaziApp(
         if (message != null) {
             snackbarHostState.showSnackbar(message)
             viewModel.consumeMessage()
+        }
+    }
+    LaunchedEffect(transientMessage) {
+        transientMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            transientMessage = null
         }
     }
     LaunchedEffect(screenshotImportState.message) {
@@ -284,7 +335,81 @@ fun NanfengBaziApp(
     ) {
         viewModel.navigateBack()
     }
-    NanfengBaziTheme {
+    NanfengBaziTheme(skin = selectedSkin) {
+        state.wenzhenImportPreview?.let { preview ->
+            AlertDialog(
+                onDismissRequest = viewModel::cancelWenzhenWebImport,
+                title = { Text("导入问真网页案例？") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("用户案例 ${preview.userCaseCount} 个，名人案例 ${preview.celebrityCaseCount} 个。")
+                        Text(
+                            "用户分组 ${preview.userGroupCount} 个，名人分类 " +
+                                "${preview.celebrityGroupCount} 个，名人标签 " +
+                                "${preview.celebrityTagCount} 个。",
+                        )
+                        Text(
+                            "导入会逐例校验并使用稳定 ID；重复执行只跳过已存在案例。" +
+                                "中途中断后可重新选择同一文件续传。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = viewModel::executeWenzhenWebImport,
+                        modifier = Modifier.testTag("wenzhen_import_confirm"),
+                    ) { Text("开始导入") }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelWenzhenWebImport) { Text("取消") }
+                },
+            )
+        }
+        if (state.wenzhenImportBusy && state.wenzhenImportProgress != null) {
+            val progress = requireNotNull(state.wenzhenImportProgress)
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("正在导入问真案例") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text("${progress.stage}  ${progress.completed}/${progress.total}")
+                    }
+                },
+                confirmButton = {},
+            )
+        }
+        state.wenzhenImportResult?.let { result ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissWenzhenImportResult,
+                title = { Text("问真案例导入完成") },
+                text = {
+                    Text(
+                        "新增 ${result.created} 个（用户 ${result.userCreated}、名人 " +
+                            "${result.celebrityCreated}），已存在 ${result.skipped} 个，" +
+                            "异常 ${result.invalid} 个。",
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissWenzhenImportResult) { Text("完成") }
+                },
+            )
+        }
+        state.wenzhenImportError?.let { error ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissWenzhenImportResult,
+                title = { Text("问真案例导入未完成") },
+                text = { Text(error) },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissWenzhenImportResult) { Text("知道了") }
+                },
+            )
+        }
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
@@ -302,21 +427,22 @@ fun NanfengBaziApp(
                         viewModel.openCreate()
                     }
                 }
+                val shouldFloatRootNavigation = showRootNavigation && !useNavigationRail
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     snackbarHost = { SnackbarHost(snackbarHostState) },
-                    bottomBar = {
-                        if (showRootNavigation && !useNavigationRail) {
-                            RootNavigationBar(
-                                destination = state.destination,
-                                onOpenChart = openChart,
-                                onOpenRecords = viewModel::backToList,
-                                onOpenSettings = viewModel::openSettings,
-                            )
-                        }
-                    },
                 ) { padding ->
-                    Row(modifier = Modifier.fillMaxSize()) {
+                    // The floating navigation overlays the page.  Its safe space belongs to each
+                    // scrollable content consumer, never to this root container: shrinking the
+                    // root left a visible scaffold-colored strip below the page.
+                    val rootScreenModifier = Modifier.padding(padding)
+                    val floatingNavigationContentInset = if (shouldFloatRootNavigation) {
+                        FLOATING_ROOT_NAVIGATION_CONTENT_INSET
+                    } else {
+                        0.dp
+                    }
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Row(modifier = Modifier.fillMaxSize()) {
                         if (showRootNavigation && useNavigationRail) {
                             RootNavigationRail(
                                 destination = state.destination,
@@ -339,25 +465,34 @@ fun NanfengBaziApp(
                         onSelectTag = viewModel::selectTag,
                         onSelectSort = viewModel::selectSortOrder,
                         onSelectVisibility = viewModel::selectVisibility,
+                        onSelectLibrary = viewModel::selectCaseLibrary,
                         onApplyAdvancedFilter = viewModel::applyAdvancedFilter,
                         onClearFilters = viewModel::clearCaseFilters,
                         onRefresh = viewModel::refreshCases,
                         onCreate = viewModel::openCreate,
+                        onCreateCelebrity = viewModel::openCreateCelebrityCase,
                         onImportScreenshots = onImportScreenshots,
                         screenshotImportState = screenshotImportState,
                         onRetryScreenshotImport = onRetryScreenshotImport,
+                        onConfirmScreenshotAiRecognition = onConfirmScreenshotAiRecognition,
+                        onCancelScreenshotAiRecognition = onCancelScreenshotAiRecognition,
                         onDeleteScreenshotImport = onDeleteScreenshotImport,
                         onReviewScreenshotImport = viewModel::openScreenshotImportReview,
                         onCreateGroup = viewModel::createCaseGroup,
                         onRenameGroup = viewModel::renameCaseGroup,
                         onReorderGroups = viewModel::reorderCaseGroups,
                         onDeleteGroup = viewModel::deleteCaseGroup,
+                        onEnterBatchMode = {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                        },
                         onUpdatePinnedCases = viewModel::updatePinnedCases,
-                        onBatchDeleteCases = viewModel::batchMoveCasesToTrash,
+                        onBatchDeleteCases = viewModel::batchDeleteCases,
                         onEditCase = viewModel::openEditCase,
                         onTogglePinnedCase = viewModel::togglePinnedCase,
-                        onOpenCase = viewModel::openDetail,
-                        modifier = Modifier.padding(padding),
+                        onPrefetchCase = viewModel::prefetchCaseDetail,
+                        onOpenCase = viewModel::openDetailFromList,
+                        bottomContentInset = floatingNavigationContentInset,
+                        modifier = rootScreenModifier,
                     )
                     AppDestination.CaseComparison -> CaseComparisonScreen(
                         state = state,
@@ -392,18 +527,34 @@ fun NanfengBaziApp(
                         loading = state.listLoading,
                         error = state.listError,
                         onRefresh = viewModel::refreshCases,
-                        onOpenCase = viewModel::openDetail,
-                        modifier = Modifier.padding(padding),
+                        onOpenCase = viewModel::openDetailFromList,
+                        bottomContentInset = floatingNavigationContentInset,
+                        modifier = rootScreenModifier,
                     )
                     AppDestination.Settings -> SettingsHomeScreen(
                         state = state,
+                        aiCommentaryState = state.aiCommentary,
+                        selectedSkin = selectedSkin,
+                        onSkinPreview = { selectedSkin = it },
+                        onSkinCommitted = { skin ->
+                            selectedSkin = skin
+                            skinPreferenceStore?.write(skin)
+                        },
                         screenshotImportState = screenshotImportState,
                         onRatHourRuleChange = viewModel::updateDefaultRatHourRule,
                         onImportScreenshots = onImportScreenshots,
                         onImportSingleCase = onOpenSingleCaseDocument,
+                        onImportWenzhen = onOpenWenzhenImportDocument,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onRestoreFullBackup = onOpenFullBackupDocument,
-                        modifier = Modifier.padding(padding),
+                        onOpenAiServicePage = viewModel::openAiServicePage,
+                        onOpenAiSettings = viewModel::openAiCommentarySettings,
+                        onOpenAiHistory = viewModel::openAiCallHistory,
+                        cloudSyncCoordinator = cloudContainer?.cloudSyncCoordinator,
+                        googleSignInClient = cloudContainer?.googleSignInClient,
+                        activityContext = context,
+                        bottomContentInset = floatingNavigationContentInset,
+                        modifier = rootScreenModifier,
                     )
                     AppDestination.ScreenshotImportReview -> ScreenshotImportReviewScreen(
                         state = screenshotImportState,
@@ -418,7 +569,8 @@ fun NanfengBaziApp(
                     AppDestination.CreateCase -> CreateCaseScreen(
                         state = state,
                         onBack = viewModel::backToList,
-                        onOpenCase = viewModel::openDetail,
+                        onOpenCase = viewModel::openDetailFromList,
+                        onCreateGroup = viewModel::createAndSelectCaseGroup,
                         onFormChange = viewModel::updateForm,
                         onPreview = viewModel::previewCase,
                         onSubmit = { viewModel.submitCase() },
@@ -426,13 +578,21 @@ fun NanfengBaziApp(
                         onConfirmFourPillarsLookup = viewModel::confirmFourPillarsLookup,
                         onPrepareBirthPickerToday = viewModel::prepareBirthPickerToday,
                         onOpenAlmanac = viewModel::openAlmanac,
-                        modifier = Modifier.padding(padding),
+                        bottomContentInset = floatingNavigationContentInset,
+                        modifier = rootScreenModifier,
                     )
                     is AppDestination.CaseDetail -> {
                         val detailContent: @Composable (Modifier) -> Unit = { modifier ->
                             CaseDetailScreen(
                                 state = state,
-                                onBack = viewModel::backToList,
+                                captureRegistry = caseDetailCaptureRegistry,
+                                onBack = {
+                                    if (state.detailIsTransient) {
+                                        viewModel.closeTransientDetail()
+                                    } else {
+                                        viewModel.backToList()
+                                    }
+                                },
                                 onEditCase = viewModel::openEditCase,
                                 onAddBirthTimeCandidate = viewModel::openBirthTimeCandidate,
                                 onAdoptBirthTimeCandidate = viewModel::adoptBirthTimeCandidate,
@@ -447,10 +607,12 @@ fun NanfengBaziApp(
                                 onEditEvent = viewModel::openEvent,
                                 onOwnerFeedbackChange = viewModel::updateOwnerFeedback,
                                 onMasterCommentaryChange = viewModel::updateMasterCommentary,
+                                onAiCommentaryChange = viewModel::updateManualAiCommentary,
                                 onAddNotesTimeline = viewModel::addCaseNotesTimeline,
                                 onNotesTimelineContentChange =
                                     viewModel::updateCaseNotesTimelineContent,
                                 onSaveCaseNotes = viewModel::saveCaseNotes,
+                                onEnsureCaseNotesHydrated = viewModel::ensureCaseNotesHydrated,
                                 onDuplicate = viewModel::duplicateCase,
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
                                 onOpenObjectiveSummary = viewModel::openObjectiveSummary,
@@ -468,13 +630,15 @@ fun NanfengBaziApp(
                                 onMoveToTrash = viewModel::requestMoveToTrash,
                                 onRestore = viewModel::restoreCase,
                                 onSelectSection = viewModel::selectDetailSection,
-                                onFortuneObservationDateChange =
-                                    viewModel::updateFortuneObservationDate,
-                                onFortuneObservationTimeChange =
-                                    viewModel::updateFortuneObservationTime,
+                                onFortuneObservationChange =
+                                    viewModel::updateFortuneObservation,
                                 onFortuneObservationSelect =
                                     viewModel::selectProfessionalFortuneObservation,
                                 onFortuneToday = viewModel::locateFortuneToday,
+                                onAiPromptCopied = {
+                                    transientMessage = "AI 指令已复制到剪贴板。"
+                                },
+                                onOpenAiCommentary = viewModel::openAiCommentary,
                                 modifier = modifier,
                             )
                         }
@@ -490,7 +654,7 @@ fun NanfengBaziApp(
                                     loading = state.listLoading,
                                     error = state.listError,
                                     onRefresh = viewModel::refreshCases,
-                                    onOpenCase = viewModel::openDetail,
+                                    onOpenCase = viewModel::openDetailFromList,
                                     modifier = Modifier
                                         .width(340.dp)
                                         .fillMaxHeight(),
@@ -638,6 +802,23 @@ fun NanfengBaziApp(
                             }
                         }
                     }
+                    if (shouldFloatRootNavigation) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(horizontal = 18.dp)
+                                .padding(bottom = 8.dp),
+                        ) {
+                            RootNavigationBar(
+                                destination = state.destination,
+                                onOpenChart = openChart,
+                                onOpenRecords = viewModel::backToList,
+                                onOpenSettings = viewModel::openSettings,
+                            )
+                        }
+                    }
+                    }
                 }
             }
             if (state.deleteConfirmationVisible) {
@@ -665,45 +846,81 @@ fun NanfengBaziApp(
                     },
                 )
             }
+            AiCommentaryDialogs(
+                state = state.aiCommentary,
+                onDismissCommentary = viewModel::dismissAiCommentary,
+                onDismissServiceMenu = viewModel::closeAiServiceMenu,
+                onOpenSettings = viewModel::openAiCommentarySettings,
+                onDismissSettings = viewModel::closeAiCommentarySettings,
+                onOpenHistory = viewModel::openAiCallHistory,
+                onDismissHistory = viewModel::closeAiCallHistory,
+                onSaveProvider = viewModel::saveAiCommentaryProvider,
+                onSelectProvider = viewModel::selectAiCommentaryProvider,
+                onPrivacyConfirmed = viewModel::setAiCommentaryPrivacyConfirmed,
+                onGenerate = viewModel::generateAiCommentary,
+                onContentChange = viewModel::updateAiCommentaryContent,
+                onSaveCommentary = viewModel::saveAiCommentary,
+            )
             state.caseImageConfirmationMode?.let { mode ->
                 AlertDialog(
                     onDismissRequest = viewModel::cancelCaseImageConfirmation,
                     title = {
                         Text(
                             if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
-                                "保存命盘长图到图库？"
+                                "保存两张命盘长图"
                             } else {
-                                "分享命盘长图？"
+                                "分享两张命盘长图"
                             },
                         )
                     },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(
-                                "图片会使用当前已采用的本机计算快照和正式记录，" +
-                                    "不会重新排盘，也不会把问真来源值或旧快照当作当前结果。",
-                            )
-                            Text(
-                                "图片包含姓名、出生资料、命盘和研究记录。" +
-                                    if (mode == CaseImageDeliveryMode.SHARE_LONG_IMAGE) {
-                                        "继续后会把同一 PNG 交给你选择的外部应用；" +
-                                            "是否实际发送由目标应用决定。"
-                                    } else {
-                                        "继续后会直接写入手机默认图库。"
-                                    },
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
+                        Text(
+                            if (mode == CaseImageDeliveryMode.SHARE_LONG_IMAGE) {
+                                "将基本资料、基本排盘、专业细盘合并为一张长图；断事笔记（含命主反馈、师傅点评、AI 点评）生成另一张后打开分享。"
+                            } else {
+                                "将基本资料、基本排盘、专业细盘合并为一张长图；断事笔记（含命主反馈、师傅点评、AI 点评）生成另一张并保存到系统图库。"
+                            },
+                        )
                     },
                     confirmButton = {
                         Button(
                             onClick = {
-                                viewModel.confirmCaseImageDelivery { preparedMode, fileName ->
-                                    when (preparedMode) {
-                                        CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE ->
-                                            onSaveCaseImageToGallery(fileName)
-                                        CaseImageDeliveryMode.SHARE_LONG_IMAGE ->
-                                            onSharePreparedCaseImage()
+                                viewModel.confirmCaseImageDelivery { preparedMode, facts, fileNames ->
+                                    val originalSection = state.detailSection
+                                    coroutineScope.launch {
+                                        when (
+                                            val result = captureCaseDetailLongImage(
+                                                rootView = rootView,
+                                                registry = caseDetailCaptureRegistry,
+                                                originalSection = originalSection,
+                                                selectSection = viewModel::selectDetailSection,
+                                                isSectionContentReady = { section ->
+                                                    section != CaseDetailSection.FORTUNE ||
+                                                        latestUiState.professionalFortunePosition != null ||
+                                                        latestUiState.fortunePositionError != null
+                                                },
+                                            )
+                                        ) {
+                                            is CaseDetailLongImageCaptureResult.Success ->
+                                                viewModel.completeCaseDetailPageCapture(
+                                                    mode = preparedMode,
+                                                    facts = facts,
+                                                    fileNames = fileNames,
+                                                    captured = result.images,
+                                                ) { completedMode, completedFileNames ->
+                                                    when (completedMode) {
+                                                        CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE ->
+                                                            onSaveCaseImagesToGallery(completedFileNames)
+                                                        CaseImageDeliveryMode.SHARE_LONG_IMAGE ->
+                                                            onSharePreparedCaseImages()
+                                                    }
+                                                }
+
+                                            is CaseDetailLongImageCaptureResult.Rejected ->
+                                                viewModel.reportCaseDetailPageCaptureFailed(
+                                                    result.message,
+                                                )
+                                        }
                                     }
                                 }
                             },
@@ -717,9 +934,9 @@ fun NanfengBaziApp(
                         ) {
                             Text(
                                 if (mode == CaseImageDeliveryMode.SAVE_TO_SYSTEM_FILE) {
-                                    "生成并保存到图库"
+                                    "保存"
                                 } else {
-                                    "生成并打开分享"
+                                    "分享"
                                 },
                             )
                         }
@@ -734,12 +951,12 @@ fun NanfengBaziApp(
             if (state.fullBackupExportConfirmationVisible) {
                 AlertDialog(
                     onDismissRequest = viewModel::cancelFullBackupExport,
-                    title = { Text("导出完整未加密备份？") },
+                    title = { Text("导出完整备份") },
                     text = {
                         Text(
-                            "ZIP 会包含全部命例、出生资料、健康/婚姻/财务记录、" +
-                                "版本历史和来源图片附件。如不想保存明文，请选择密码加密；" +
-                                "否则请只保存到可信位置。",
+                            "默认导出 ZIP；文件含敏感命例资料，请妥善保存。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
                     confirmButton = {
@@ -751,7 +968,7 @@ fun NanfengBaziApp(
                             },
                             modifier = Modifier.testTag("confirm_full_backup_export"),
                         ) {
-                            Text("确认并选择位置")
+                            Text("导出")
                         }
                     },
                     dismissButton = {
@@ -771,19 +988,17 @@ fun NanfengBaziApp(
             }
             if (state.fullBackupPasswordExportVisible) {
                 SingleCasePasswordDialog(
-                    title = "设置完整备份加密密码",
-                    description = "密码不会写入备份，也无法找回。请至少输入 8 个字符并另行保管。",
+                    title = "导出密码",
+                    description = "输入至少 6 位密码，请妥善保管。",
                     error = state.fullBackupPasswordError,
-                    requireConfirmation = true,
-                    confirmLabel = "选择保存位置",
+                    requireConfirmation = false,
+                    confirmLabel = "保存",
                     confirmTag = "confirm_password_full_backup_export",
                     passwordTag = "full_backup_password",
-                    confirmationTag = "full_backup_password_confirmation",
-                    onConfirm = { password, confirmation ->
-                        viewModel.confirmPasswordFullBackupExport(
-                            password,
-                            checkNotNull(confirmation),
-                        )?.let(onCreateEncryptedFullBackupDocument)
+                    dismissLabel = "返回",
+                    onConfirm = { password, _ ->
+                        viewModel.confirmPasswordFullBackupExport(password)
+                            ?.let(onCreateEncryptedFullBackupDocument)
                     },
                     onDismiss = viewModel::cancelPasswordFullBackupExport,
                 )
@@ -882,41 +1097,34 @@ fun NanfengBaziApp(
             if (state.singleCaseExportConfirmationVisible) {
                 AlertDialog(
                     onDismissRequest = viewModel::cancelSingleCaseExport,
-                    title = { Text("选择单命例导出内容") },
+                    title = { Text("导出当前命例") },
                     text = {
                         val attachmentCount = state.detail?.attachments?.size ?: 0
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "文件可能包含出生资料、健康、婚姻、财务、反馈和分析，" +
-                                    "未加密导出请妥善保管。",
-                            )
-                            SelectionButton(
-                                text = "JSON（只保存图片引用，兼容轻量交换）",
-                                selected = !state.singleCaseExportIncludesAttachments,
-                                onClick = {
-                                    viewModel.chooseSingleCaseExportAttachments(false)
-                                },
-                                tag = "single_case_export_references_only",
+                                "默认导出 JSON；文件含敏感命例资料，请妥善保存。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (attachmentCount > 0) {
-                                SelectionButton(
-                                    text = "命例包（包含 $attachmentCount 个图片附件）",
-                                    selected =
-                                        state.singleCaseExportIncludesAttachments,
-                                    onClick = {
-                                        viewModel.chooseSingleCaseExportAttachments(true)
-                                    },
-                                    tag = "single_case_export_with_attachments",
-                                )
-                                Text(
-                                    "命例包会逐个校验附件大小与 SHA-256，适合完整迁移问真截图证据。",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            } else {
-                                Text(
-                                    "该命例当前没有图片附件，只需导出 JSON。",
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "包含 $attachmentCount 张图片附件",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Switch(
+                                        checked = state.singleCaseExportIncludesAttachments,
+                                        onCheckedChange =
+                                            viewModel::chooseSingleCaseExportAttachments,
+                                        modifier = Modifier.testTag(
+                                            "single_case_export_with_attachments",
+                                        ),
+                                    )
+                                }
                             }
                         }
                     },
@@ -929,7 +1137,7 @@ fun NanfengBaziApp(
                             },
                             modifier = Modifier.testTag("confirm_single_case_export"),
                         ) {
-                            Text("选择保存位置")
+                            Text("保存")
                         }
                     },
                     dismissButton = {
@@ -951,17 +1159,16 @@ fun NanfengBaziApp(
             }
             if (state.singleCasePasswordExportVisible) {
                 SingleCasePasswordDialog(
-                    title = "设置单命例加密密码",
-                    description = "密码不会写入文件，也无法找回。请至少输入 8 个字符并另行保管。",
+                    title = "导出密码",
+                    description = "输入至少 6 位密码，请妥善保管。",
                     error = state.singleCasePasswordError,
-                    requireConfirmation = true,
-                    confirmLabel = "选择保存位置",
+                    requireConfirmation = false,
+                    confirmLabel = "保存",
                     confirmTag = "confirm_password_single_case_export",
-                    onConfirm = { password, confirmation ->
-                        viewModel.confirmPasswordSingleCaseExport(
-                            password,
-                            checkNotNull(confirmation),
-                        )?.let(onCreateSingleCaseDocument)
+                    dismissLabel = "返回",
+                    onConfirm = { password, _ ->
+                        viewModel.confirmPasswordSingleCaseExport(password)
+                            ?.let(onCreateSingleCaseDocument)
                     },
                     onDismiss = viewModel::cancelPasswordSingleCaseExport,
                 )
@@ -1687,6 +1894,7 @@ private fun SingleCasePasswordDialog(
     confirmTag: String,
     passwordTag: String = "single_case_password",
     confirmationTag: String = "single_case_password_confirmation",
+    dismissLabel: String = "取消",
     onConfirm: (CharArray, CharArray?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1746,7 +1954,7 @@ private fun SingleCasePasswordDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(dismissLabel)
             }
         },
     )
@@ -1903,6 +2111,32 @@ private fun SingleCaseConflictReason.displayName(): String = when (this) {
 
 private val EXPANDED_NAVIGATION_MIN_WIDTH = 840.dp
 private val EXPANDED_DETAIL_MIN_WIDTH = 360.dp
+private val FLOATING_ROOT_NAVIGATION_CONTENT_INSET = 84.dp
+
+@Composable
+private fun AlertDialog(
+    onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissButton: @Composable (() -> Unit)? = null,
+    icon: @Composable (() -> Unit)? = null,
+    title: @Composable (() -> Unit)? = null,
+    text: @Composable (() -> Unit)? = null,
+    properties: DialogProperties = DialogProperties(),
+) {
+    MaterialAlertDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = confirmButton,
+        modifier = modifier,
+        dismissButton = dismissButton,
+        icon = icon,
+        title = title,
+        text = text,
+        containerColor = Color.White,
+        tonalElevation = 0.dp,
+        properties = properties,
+    )
+}
 
 private data class RootNavigationAction(
     val label: String,
@@ -1949,43 +2183,95 @@ private fun RootNavigationBar(
     onOpenChart: () -> Unit,
     onOpenRecords: () -> Unit,
     onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    var optimisticSelectedTag by remember { mutableStateOf<String?>(null) }
+    var pendingNavigationTag by remember { mutableStateOf<String?>(null) }
+    val navigationShape = RoundedCornerShape(26.dp)
     val items = rootNavigationActions(
         destination = destination,
         onOpenChart = onOpenChart,
         onOpenRecords = onOpenRecords,
         onOpenSettings = onOpenSettings,
     )
+    val latestItems by rememberUpdatedState(items)
+    LaunchedEffect(destination) {
+        if (pendingNavigationTag == null) {
+            optimisticSelectedTag = null
+        }
+    }
+    LaunchedEffect(pendingNavigationTag) {
+        val targetTag = pendingNavigationTag ?: return@LaunchedEffect
+        withFrameNanos { }
+        latestItems.firstOrNull { it.tag == targetTag }?.onClick?.invoke()
+        if (pendingNavigationTag == targetTag) {
+            pendingNavigationTag = null
+            optimisticSelectedTag = null
+        }
+    }
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .height(68.dp)
+            // The root bar floats over page content: only its downward spot shadow should be visible.
+            .graphicsLayer {
+                shadowElevation = 12.dp.toPx()
+                shape = navigationShape
+                clip = false
+                ambientShadowColor = Color.Transparent
+                spotShadowColor = NanfengInk.copy(alpha = 0.30f)
+            }
             .testTag("root_navigation"),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 4.dp,
+        shape = navigationShape,
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
-        NavigationBar(
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 5.dp, vertical = 5.dp),
         ) {
             items.forEach { item ->
-                NavigationBarItem(
-                    selected = item.selected,
-                    onClick = item.onClick,
-                    icon = { Icon(item.icon, contentDescription = null) },
-                    label = { Text(item.label) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NanfengGreen,
-                        selectedTextColor = NanfengGreen,
-                        indicatorColor = Color.Transparent,
-                        unselectedIconColor = NanfengNavigationMuted,
-                        unselectedTextColor = NanfengNavigationMuted,
-                    ),
+                val selected = optimisticSelectedTag?.let { it == item.tag } ?: item.selected
+                Surface(
+                    onClick = {
+                        if (!selected) {
+                            optimisticSelectedTag = item.tag
+                            // The keyed effect cancels an older target automatically.
+                            pendingNavigationTag = item.tag
+                        }
+                    },
                     modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .widthIn(min = 48.dp)
+                        .weight(1f)
+                        .padding(horizontal = 4.dp)
+                        .height(58.dp)
                         .semantics { contentDescription = item.label }
                         .testTag(item.tag),
-                )
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            item.icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(19.dp),
+                            tint = if (selected) MaterialTheme.colorScheme.primary else NanfengNavigationMuted,
+                        )
+                        Text(
+                            item.label,
+                            modifier = Modifier.padding(top = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) MaterialTheme.colorScheme.primary else NanfengNavigationMuted,
+                        )
+                    }
+                }
             }
         }
     }
@@ -2021,8 +2307,8 @@ private fun RootNavigationRail(
                 icon = { Icon(item.icon, contentDescription = null) },
                 label = { Text(item.label) },
                 colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = NanfengGreen,
-                    selectedTextColor = NanfengGreen,
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
                     indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                     unselectedIconColor = NanfengNavigationMuted,
                     unselectedTextColor = NanfengNavigationMuted,
@@ -2121,11 +2407,13 @@ private fun RecordHubScreen(
     error: String?,
     onRefresh: () -> Unit,
     onOpenCase: (String) -> Unit,
+    bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(Color.White)
             .testTag("record_hub_screen"),
     ) {
         Surface(color = MaterialTheme.colorScheme.surface) {
@@ -2164,7 +2452,7 @@ private fun RecordHubScreen(
                     start = 16.dp,
                     top = 10.dp,
                     end = 16.dp,
-                    bottom = 24.dp,
+                    bottom = 24.dp + bottomContentInset,
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -2233,15 +2521,53 @@ private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
 @Composable
 private fun SettingsHomeScreen(
     state: StageTwoUiState,
+    aiCommentaryState: AiCommentaryUiState,
+    selectedSkin: BaziSkin,
+    onSkinPreview: (BaziSkin) -> Unit,
+    onSkinCommitted: (BaziSkin) -> Unit,
     screenshotImportState: ScreenshotImportUiState,
     onRatHourRuleChange: (RatHourRule) -> Unit,
     onImportScreenshots: () -> Unit,
     onImportSingleCase: () -> Unit,
+    onImportWenzhen: () -> Unit,
     onExportFullBackup: () -> Unit,
     onRestoreFullBackup: () -> Unit,
+    onOpenAiServicePage: () -> Unit,
+    onOpenAiSettings: () -> Unit,
+    onOpenAiHistory: () -> Unit,
+    cloudSyncCoordinator: BaziCloudSyncCoordinator?,
+    googleSignInClient: BaziGoogleSignInClient?,
+    activityContext: android.content.Context,
+    bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    var showSkinPicker by rememberSaveable { mutableStateOf(false) }
+    var showRatHourRulePicker by rememberSaveable { mutableStateOf(false) }
+    var showAiServicePage by rememberSaveable { mutableStateOf(false) }
+    var showCloudSettings by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showAiServicePage) { showAiServicePage = false }
+    if (showAiServicePage) {
+        AiServiceSettingsPage(
+            state = aiCommentaryState,
+            onBack = { showAiServicePage = false },
+            onOpenSettings = onOpenAiSettings,
+            onOpenHistory = onOpenAiHistory,
+            bottomContentInset = bottomContentInset,
+            modifier = modifier,
+        )
+        return
+    }
+    BackHandler(enabled = showCloudSettings) { showCloudSettings = false }
+    if (showCloudSettings && cloudSyncCoordinator != null && googleSignInClient != null) {
+        BaziCloudSettingsPage(
+            coordinator = cloudSyncCoordinator,
+            googleSignInClient = googleSignInClient,
+            activityContext = activityContext,
+            onBack = { showCloudSettings = false },
+            modifier = modifier,
+        )
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -2259,48 +2585,54 @@ private fun SettingsHomeScreen(
                 fontWeight = FontWeight.Medium,
             )
         }
-        Card(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("本地优先", color = NanfengGreen, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "命例、截图识别与排盘只在本机处理，不连接外部 AI。",
-                    modifier = Modifier.padding(top = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        SettingsGroupTitle("皮肤")
+        BaziSkinSettingRow(
+            selectedSkin = selectedSkin,
+            onClick = { showSkinPicker = true },
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        SettingsGroupTitle("南枫云")
+        SettingsActionGroup {
+            val cloudState by (cloudSyncCoordinator?.state
+                ?.collectAsStateWithLifecycle(initialValue = BaziCloudSyncState.Unconfigured)
+                ?: remember { mutableStateOf(BaziCloudSyncState.Unconfigured) })
+            SettingsActionRow(
+                title = "Google 账号与同步",
+                description = cloudDescription(cloudState),
+                icon = Icons.Filled.Settings,
+                onClick = { showCloudSettings = true },
+                tag = "settings_cloud_sync",
+                accent = NanfengGreen,
+            )
+        }
+        SettingsGroupTitle("AI 点评")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "AI 模型服务",
+                description = "模型设置与调用记录",
+                icon = Icons.Filled.Settings,
+                onClick = {
+                    onOpenAiServicePage()
+                    showAiServicePage = true
+                },
+                tag = "settings_ai_commentary",
+                accent = NanfengGold,
+            )
         }
         SettingsGroupTitle("排盘偏好")
         SettingsActionGroup {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text("子时口径", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "作为新排盘与四柱反查的默认规则；既有命例仍按快照规则复算。",
-                    modifier = Modifier.padding(top = 3.dp, bottom = 10.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RatHourRuleButton(
-                        label = "23:00 换日",
-                        selected = state.defaultRatHourRule == RatHourRule.TYME_DEFAULT,
-                        tag = "settings_rat_default",
-                        onClick = { onRatHourRuleChange(RatHourRule.TYME_DEFAULT) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    RatHourRuleButton(
-                        label = "晚子时算当天",
-                        selected = state.defaultRatHourRule == RatHourRule.LATE_RAT_SAME_DAY,
-                        tag = "settings_rat_late",
-                        onClick = { onRatHourRuleChange(RatHourRule.LATE_RAT_SAME_DAY) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            SettingsActionRow(
+                title = "子时口径",
+                description = if (state.defaultRatHourRule == RatHourRule.TYME_DEFAULT) {
+                    "23:00 换日"
+                } else {
+                    "晚子时算当天"
+                },
+                icon = Icons.Filled.Settings,
+                onClick = { showRatHourRulePicker = true },
+                tag = "settings_rat_hour_rule",
+                accent = NanfengGreen,
+            )
         }
         SettingsGroupTitle("导入与建档")
         SettingsActionGroup {
@@ -2315,8 +2647,18 @@ private fun SettingsHomeScreen(
             )
             HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
             SettingsActionRow(
-                title = "导入单案例文件",
-                description = "先查冲突，不覆盖现有案例",
+                title = "导入问真网页案例",
+                description = "先核对数量，再批量导入用户与名人案例",
+                icon = Icons.Filled.List,
+                onClick = onImportWenzhen,
+                enabled = !state.wenzhenImportBusy,
+                tag = "settings_import_wenzhen_web",
+                accent = NanfengGold,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "导入南枫命例包",
+                description = "跨设备转移单个命例；先预览冲突再决定合并",
                 icon = Icons.Filled.List,
                 onClick = onImportSingleCase,
                 tag = "settings_import_case",
@@ -2333,7 +2675,7 @@ private fun SettingsHomeScreen(
             )
             HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
             SettingsActionRow(
-                title = "预览并恢复完整备份",
+                title = "恢复完整备份",
                 description = "先核验清单再决定写入",
                 icon = Icons.Filled.KeyboardArrowRight,
                 onClick = onRestoreFullBackup,
@@ -2341,33 +2683,204 @@ private fun SettingsHomeScreen(
                 accent = NanfengOrange,
             )
         }
-        SettingsGroupTitle("诊断与版本")
-        SettingsActionGroup {
-            SettingsActionRow(
-                title = "复制脱敏诊断包",
-                description = "不包含个人资料与附件内容",
-                icon = Icons.Filled.Settings,
-                onClick = {
-                    val diagnostics = buildAppDiagnosticText(
-                        state = state,
-                        screenshot = screenshotImportState,
-                        appVersion = BuildConfig.VERSION_NAME,
-                        versionCode = BuildConfig.VERSION_CODE,
-                    )
-                    context.getSystemService(ClipboardManager::class.java)
-                        ?.setPrimaryClip(ClipData.newPlainText("南枫八字诊断包", diagnostics))
-                },
-                tag = "settings_copy_diagnostics",
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
-            SettingsStaticRow("当前版本", BuildConfig.VERSION_NAME)
-        }
-        Text(
-            "正式发布仍需签名、真实问真样本与真机数据保留验收。",
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Spacer(modifier = Modifier.height(bottomContentInset + 12.dp))
+    }
+    if (showSkinPicker) {
+        BaziSkinPickerDialog(
+            selectedSkin = selectedSkin,
+            onSkinPreview = onSkinPreview,
+            onSkinCommitted = onSkinCommitted,
+            onDismissRequest = { showSkinPicker = false },
         )
+    }
+    if (showRatHourRulePicker) {
+        AlertDialog(
+            onDismissRequest = { showRatHourRulePicker = false },
+            title = { Text("子时口径") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        RatHourRule.TYME_DEFAULT to "23:00 换日",
+                        RatHourRule.LATE_RAT_SAME_DAY to "晚子时算当天",
+                    ).forEach { (rule, label) ->
+                        Surface(
+                            onClick = {
+                                onRatHourRuleChange(rule)
+                                showRatHourRulePicker = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (state.defaultRatHourRule == rule) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = state.defaultRatHourRule == rule,
+                                    onClick = null,
+                                )
+                                Text(label, modifier = Modifier.padding(start = 8.dp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showRatHourRulePicker = false }) { Text("取消") }
+            },
+        )
+    }
+}
+
+private fun cloudDescription(state: BaziCloudSyncState): String = when (state) {
+    BaziCloudSyncState.Unconfigured -> "当前构建尚未配置云端"
+    BaziCloudSyncState.SignedOut -> "登录后加密同步结构化命例"
+    is BaziCloudSyncState.Ready -> state.message
+    is BaziCloudSyncState.Working -> state.message
+    is BaziCloudSyncState.RecoveryCodeReady -> "请安全保存一次性恢复码"
+    BaziCloudSyncState.RecoveryCodeRequired -> "需要恢复码解锁云端数据"
+    is BaziCloudSyncState.AccountEntryChoice -> "请确认本机与云端数据的处理方式"
+    is BaziCloudSyncState.Failure -> state.message
+}
+
+@Composable
+private fun AiServiceSettingsPage(
+    state: AiCommentaryUiState,
+    onBack: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    bottomContentInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .testTag("ai_service_settings_page"),
+    ) {
+        Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("ai_service_back")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回设置")
+                }
+                Text(
+                    "AI 模型服务",
+                    modifier = Modifier.padding(start = 4.dp),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bottomContentInset),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AiServiceDestinationCard(
+                    title = "模型设置",
+                    description = "已配置 ${state.configs.values.count { it.enabled && it.hasApiKey }} / " +
+                        "${AiCommentaryProviderPresets.providerIds.size} 个服务",
+                    icon = Icons.Filled.Settings,
+                    onClick = onOpenSettings,
+                    tag = "ai_service_open_settings",
+                    accent = NanfengGold,
+                )
+                AiServiceDestinationCard(
+                    title = "调用记录",
+                    description = if (state.callRecords.isEmpty()) "暂无记录" else "最近 ${state.callRecords.size} 条",
+                    icon = Icons.Filled.List,
+                    onClick = onOpenHistory,
+                    tag = "ai_service_open_history",
+                    accent = NanfengGreen,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiServiceDestinationCard(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    tag: String,
+    accent: Color,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            // Keep the requested compact 68 dp at normal text, while allowing the two text
+            // lines to grow rather than top-clipping at an accessibility font scale.
+            .heightIn(min = 68.dp)
+            .testTag(tag),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 68.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(38.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = accent.copy(alpha = 0.13f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = accent,
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+            )
+        }
     }
 }
 
@@ -2461,7 +2974,7 @@ private fun SettingsStaticRow(title: String, value: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun CaseListScreen(
     state: StageTwoUiState,
@@ -2470,26 +2983,35 @@ private fun CaseListScreen(
     onSelectTag: (String?) -> Unit,
     onSelectSort: (CaseSortOrder) -> Unit,
     onSelectVisibility: (CaseVisibility) -> Unit,
+    onSelectLibrary: (CaseLibraryType) -> Unit,
     onApplyAdvancedFilter: (CaseAdvancedFilter) -> Unit,
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
     onCreate: () -> Unit,
+    onCreateCelebrity: () -> Unit,
     onImportScreenshots: () -> Unit,
     screenshotImportState: ScreenshotImportUiState,
     onRetryScreenshotImport: () -> Unit,
+    onConfirmScreenshotAiRecognition: () -> Unit,
+    onCancelScreenshotAiRecognition: () -> Unit,
     onDeleteScreenshotImport: () -> Unit,
     onReviewScreenshotImport: () -> Unit,
     onCreateGroup: (String) -> Unit,
     onRenameGroup: (String, String) -> Unit,
     onReorderGroups: (List<String>) -> Unit,
     onDeleteGroup: (String) -> Unit,
+    onEnterBatchMode: () -> Unit,
     onUpdatePinnedCases: (Set<String>) -> Unit,
     onBatchDeleteCases: (Set<String>) -> Unit,
     onEditCase: (String) -> Unit,
     onTogglePinnedCase: (String) -> Unit,
+    onPrefetchCase: (String) -> Unit,
     onOpenCase: (String) -> Unit,
+    bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var moreExpanded by rememberSaveable { mutableStateOf(false) }
     var showAdvancedFilters by rememberSaveable { mutableStateOf(false) }
     var showSortOptions by rememberSaveable { mutableStateOf(false) }
@@ -2499,8 +3021,38 @@ private fun CaseListScreen(
     var deleteEditMode by rememberSaveable { mutableStateOf(false) }
     var deleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingSwipeDeleteCaseId by rememberSaveable { mutableStateOf<String?>(null) }
+    val caseListState = rememberLazyListState()
+    val alphabetActivationDistancePx = with(LocalDensity.current) { 48.dp.roundToPx() }
+    val activeAlphabetInitial by remember(state.cases, alphabetActivationDistancePx) {
+        derivedStateOf {
+            val layoutInfo = caseListState.layoutInfo
+            val viewportStart = layoutInfo.viewportStartOffset
+            val upcomingSection = layoutInfo.visibleItemsInfo
+                .asSequence()
+                .filter { item ->
+                    item.offset >= viewportStart &&
+                        item.offset <= viewportStart + alphabetActivationDistancePx
+                }
+                .mapNotNull { item ->
+                    val summary = state.cases.getOrNull(item.index) ?: return@mapNotNull null
+                    val section = summary.recordSection()
+                    val previousSection = state.cases.getOrNull(item.index - 1)?.recordSection()
+                    section.takeIf { it != previousSection }
+                }
+                .lastOrNull()
+            upcomingSection?.firstOrNull()
+                ?: state.cases.getOrNull(caseListState.firstVisibleItemIndex)
+                    ?.displayCaseName()
+                    ?.caseNameInitial()
+                ?: '#'
+        }
+    }
     val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size +
         state.advancedFilter.activeCategoryCount
+    val visibleDeleteCaseIds = state.cases.mapTo(linkedSetOf()) { it.id }
+    val allVisibleDeleteCasesSelected = deleteEditMode &&
+        visibleDeleteCaseIds.isNotEmpty() &&
+        visibleDeleteCaseIds.all { it in deleteSelection }
     BackHandler(enabled = pinnedEditMode || deleteEditMode) {
         pinnedEditMode = false
         pinnedSelection = emptySet()
@@ -2510,6 +3062,7 @@ private fun CaseListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .testTag("case_list_screen"),
     ) {
         Column(
@@ -2530,27 +3083,35 @@ private fun CaseListScreen(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("record_visibility_switcher"),
-                    shape = RoundedCornerShape(18.dp),
-                    color = NanfengControlSurface,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
-                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFFF9F9F8),
                 ) {
                     Row(modifier = Modifier.padding(3.dp)) {
                         RecordTopTab(
-                            text = "用户列表",
-                            selected = state.visibility != CaseVisibility.TRASHED,
-                            onClick = { onSelectVisibility(CaseVisibility.ACTIVE) },
+                            text = "用户列表 ${state.libraryCaseCounts[CaseLibraryType.USER] ?: 0}",
+                            selected = state.visibility == CaseVisibility.ACTIVE &&
+                                state.libraryType == CaseLibraryType.USER,
+                            onClick = { onSelectLibrary(CaseLibraryType.USER) },
                             modifier = Modifier.weight(1f),
                             tag = "visibility_active",
+                            accent = NanfengGreen,
                         )
                         RecordTopTab(
-                            text = "回收站",
+                            text = "名人案例 ${state.libraryCaseCounts[CaseLibraryType.CELEBRITY] ?: 0}",
+                            selected = state.visibility == CaseVisibility.ACTIVE &&
+                                state.libraryType == CaseLibraryType.CELEBRITY,
+                            onClick = { onSelectLibrary(CaseLibraryType.CELEBRITY) },
+                            modifier = Modifier.weight(1f),
+                            tag = "visibility_celebrity",
+                            accent = NanfengGoldText,
+                        )
+                        RecordTopTab(
+                            text = "回收站 ${state.trashedCaseCount}",
                             selected = state.visibility == CaseVisibility.TRASHED,
                             onClick = { onSelectVisibility(CaseVisibility.TRASHED) },
                             modifier = Modifier.weight(1f),
                             tag = "visibility_trashed",
+                            accent = NanfengSolarTermRed,
                         )
                     }
                 }
@@ -2558,15 +3119,11 @@ private fun CaseListScreen(
                     Surface(
                         onClick = { moreExpanded = true },
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(width = 68.dp, height = 44.dp)
                             .semantics { contentDescription = "更多命例操作" }
                             .testTag("record_more"),
-                        shape = RoundedCornerShape(17.dp),
+                        shape = RoundedCornerShape(22.dp),
                         color = Color.White,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.78f),
-                        ),
                         shadowElevation = 1.dp,
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -2578,30 +3135,61 @@ private fun CaseListScreen(
                             )
                         }
                     }
-                    DropdownMenu(
+                    NanfengWhiteDropdownMenu(
                         expanded = moreExpanded,
                         onDismissRequest = { moreExpanded = false },
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("列表排序") },
+                        NanfengOverflowMenuItem(
+                            label = "新增名人案例",
+                            icon = Icons.Filled.Add,
+                            accent = NanfengGoldText,
+                            onClick = {
+                                moreExpanded = false
+                                onCreateCelebrity()
+                            },
+                            modifier = Modifier.testTag("record_more_create_celebrity"),
+                        )
+                        NanfengOverflowMenuItem(
+                            label = "导入问真截图",
+                            icon = Icons.Filled.Search,
+                            accent = NanfengOrange,
+                            onClick = {
+                                moreExpanded = false
+                                onImportScreenshots()
+                            },
+                            enabled = !screenshotImportState.busy,
+                            modifier = Modifier.testTag("import_screenshots_button"),
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        NanfengOverflowMenuItem(
+                            label = "列表排序",
+                            icon = Icons.Filled.List,
+                            accent = NanfengGreen,
                             onClick = {
                                 moreExpanded = false
                                 showSortOptions = true
                             },
                             modifier = Modifier.testTag("record_more_sort"),
                         )
-                        DropdownMenuItem(
-                            text = { Text("分组编辑") },
+                        NanfengOverflowMenuItem(
+                            label = "分组管理",
+                            icon = Icons.Filled.Edit,
+                            accent = NanfengGreen,
                             onClick = {
                                 moreExpanded = false
                                 showGroupEditor = true
                             },
                             modifier = Modifier.testTag("record_more_groups"),
                         )
-                        DropdownMenuItem(
-                            text = { Text("置顶八字") },
+                        NanfengOverflowMenuItem(
+                            label = "置顶八字",
+                            icon = Icons.Filled.Star,
+                            accent = NanfengGoldText,
                             onClick = {
                                 moreExpanded = false
+                                onEnterBatchMode()
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                                 pinnedSelection = state.batchCases
                                     .filter { it.isPinned }
                                     .map { it.id }
@@ -2610,23 +3198,20 @@ private fun CaseListScreen(
                             },
                             modifier = Modifier.testTag("record_more_pinned"),
                         )
-                        DropdownMenuItem(
-                            text = { Text("批量删除") },
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        NanfengOverflowMenuItem(
+                            label = "批量删除",
+                            icon = Icons.Filled.Delete,
+                            accent = NanfengSolarTermRed,
                             onClick = {
                                 moreExpanded = false
+                                onEnterBatchMode()
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                                 deleteSelection = emptySet()
                                 deleteEditMode = true
                             },
                             modifier = Modifier.testTag("record_more_delete"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("导入问真截图") },
-                            onClick = {
-                                moreExpanded = false
-                                onImportScreenshots()
-                            },
-                            enabled = !screenshotImportState.busy,
-                            modifier = Modifier.testTag("import_screenshots_button"),
                         )
                     }
                 }
@@ -2652,53 +3237,88 @@ private fun CaseListScreen(
                     )
                 },
                 trailingIcon = {
-                    Surface(
-                        onClick = { showAdvancedFilters = true },
+                    Row(
                         modifier = Modifier
-                            .height(48.dp)
-                            .semantics {
-                                contentDescription = "打开记录筛选"
-                            }
-                            .testTag("record_filter_toggle"),
-                        shape = RoundedCornerShape(13.dp),
-                        color = if (activeFilterCount > 0) {
-                            NanfengGreen.copy(alpha = 0.10f)
-                        } else {
-                            NanfengControlSurface
-                        },
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (activeFilterCount > 0) {
-                                NanfengGreen.copy(alpha = 0.28f)
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f)
-                            },
+                            .width(128.dp)
+                            .padding(end = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            4.dp,
+                            Alignment.End,
                         ),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .combinedClickable(
+                                    enabled = state.query.isNotEmpty(),
+                                    onClickLabel = "删除一个搜索字",
+                                    onLongClickLabel = "清空搜索文字",
+                                    onLongClick = { onQueryChange("") },
+                                    onClick = {
+                                        onQueryChange(state.query.dropLastTextElement())
+                                    },
+                                )
+                                .semantics {
+                                    contentDescription = "删除搜索文字，长按清空"
+                                }
+                                .testTag("record_search_delete"),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                Icons.Filled.List,
+                                Icons.Filled.Close,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = if (activeFilterCount > 0) {
-                                    NanfengGreen
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                    alpha = if (state.query.isNotEmpty()) 0.82f else 0.30f,
+                                ),
                             )
-                            Text(
-                                if (activeFilterCount > 0) "筛选 $activeFilterCount" else "筛选",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (activeFilterCount > 0) {
-                                    NanfengGreen
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
+                        }
+                        Surface(
+                            onClick = { showAdvancedFilters = true },
+                            modifier = Modifier
+                                .height(34.dp)
+                                .width(72.dp)
+                                .semantics {
+                                    contentDescription = "打开记录筛选"
+                                }
+                                .testTag("record_filter_toggle"),
+                            shape = RoundedCornerShape(17.dp),
+                            color = if (activeFilterCount > 0) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                NanfengControlSurface
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(
+                                    4.dp,
+                                    Alignment.CenterHorizontally,
+                                ),
+                            ) {
+                                Icon(
+                                    Icons.Filled.List,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp),
+                                    tint = if (activeFilterCount > 0) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                                Text(
+                                    if (activeFilterCount > 0) "筛选 $activeFilterCount" else "筛选",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (activeFilterCount > 0) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -2708,15 +3328,17 @@ private fun CaseListScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White,
-                    focusedBorderColor = NanfengGreen.copy(alpha = 0.48f),
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.82f),
-                    cursorColor = NanfengGreen,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.48f),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    cursorColor = MaterialTheme.colorScheme.primary,
                 ),
             )
         }
         ScreenshotImportSummary(
             state = screenshotImportState,
             onRetry = onRetryScreenshotImport,
+            onConfirmAiRecognition = onConfirmScreenshotAiRecognition,
+            onCancelAiRecognition = onCancelScreenshotAiRecognition,
             onDelete = onDeleteScreenshotImport,
             onReview = onReviewScreenshotImport,
         )
@@ -2724,20 +3346,20 @@ private fun CaseListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
                     .testTag("record_filter_strip"),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RecordCategoryTab(
-                    text = "全部",
+                    text = "全部 ${if (state.visibility == CaseVisibility.TRASHED) state.trashedCaseCount else state.libraryCaseCounts[state.libraryType] ?: 0}",
                     selected = state.selectedGroupId == null && state.selectedTagId == null,
                     onClick = { onSelectGroup(null); onSelectTag(null) },
                     tag = "record_filter_all",
                 )
                 state.availableGroups.take(5).forEach { group ->
                     RecordCategoryTab(
-                        text = group.name,
+                        text = "${group.name} ${state.groupCaseCounts[group.id] ?: 0}",
                         selected = state.selectedGroupId == group.id,
                         onClick = { onSelectGroup(group.id) },
                         tag = "record_group_${group.id}",
@@ -2754,25 +3376,44 @@ private fun CaseListScreen(
             }
         HorizontalDivider(
             modifier = Modifier.padding(horizontal = 16.dp),
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
+            color = MaterialTheme.colorScheme.outlineVariant,
         )
         when {
-            state.listLoading -> LoadingBox("正在读取命例…")
+            state.listLoading && state.cases.isEmpty() -> LoadingBox("正在读取命例…")
             state.listError != null -> ErrorBox(
                 message = state.listError,
                 actionLabel = "重试",
                 onAction = onRefresh,
             )
-            state.cases.isEmpty() -> EmptyCaseList(state.visibility, onCreate)
-            else -> Box(modifier = Modifier.fillMaxSize()) {
+            state.cases.isEmpty() -> EmptyCaseList(
+                visibility = state.visibility,
+                libraryType = state.libraryType,
+                onCreate = if (state.libraryType == CaseLibraryType.CELEBRITY) {
+                    onCreateCelebrity
+                } else {
+                    onCreate
+                },
+            )
+            else -> Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color.White),
+            ) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    state = caseListState,
+                    modifier = Modifier.fillMaxSize().background(Color.White),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        end = 28.dp,
-                        bottom = if (pinnedEditMode || deleteEditMode) 92.dp else 16.dp,
+                        bottom = maxOf(
+                            if (pinnedEditMode || deleteEditMode) 92.dp else 16.dp,
+                            bottomContentInset + 16.dp,
+                        ),
                     ),
                 ) {
                     itemsIndexed(state.cases, key = { _, item -> item.id }) { index, summary ->
+                        LaunchedEffect(summary.id) {
+                            onPrefetchCase(summary.id)
+                        }
                         val section = summary.recordSection()
                         val previousSection = state.cases.getOrNull(index - 1)?.recordSection()
                         if (section != previousSection) {
@@ -2780,50 +3421,58 @@ private fun CaseListScreen(
                                 section,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.background)
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        SwipeableCaseSummaryRow(
-                            summary = summary,
-                            selectionMode = pinnedEditMode || deleteEditMode,
-                            selected = if (pinnedEditMode) {
-                                summary.id in pinnedSelection
-                            } else {
-                                summary.id in deleteSelection
-                            },
-                            onClick = {
-                                if (pinnedEditMode) {
-                                    pinnedSelection = if (summary.id in pinnedSelection) {
-                                        pinnedSelection - summary.id
-                                    } else {
-                                        pinnedSelection + summary.id
-                                    }
-                                } else if (deleteEditMode) {
-                                    deleteSelection = if (summary.id in deleteSelection) {
-                                        deleteSelection - summary.id
-                                    } else {
-                                        deleteSelection + summary.id
-                                    }
+                        Box(modifier = Modifier.padding(end = 28.dp)) {
+                            SwipeableCaseSummaryRow(
+                                summary = summary,
+                                selectionMode = pinnedEditMode || deleteEditMode,
+                                selected = if (pinnedEditMode) {
+                                    summary.id in pinnedSelection
                                 } else {
-                                    onOpenCase(summary.id)
-                                }
-                            },
-                            onEdit = { onEditCase(summary.id) },
-                            onTogglePinned = { onTogglePinnedCase(summary.id) },
-                            onDelete = { pendingSwipeDeleteCaseId = summary.id },
-                        )
+                                    summary.id in deleteSelection
+                                },
+                                onClick = {
+                                    if (pinnedEditMode) {
+                                        pinnedSelection = if (summary.id in pinnedSelection) {
+                                            pinnedSelection - summary.id
+                                        } else {
+                                            pinnedSelection + summary.id
+                                        }
+                                    } else if (deleteEditMode) {
+                                        if (summary.id in deleteSelection) {
+                                            deleteSelection = deleteSelection - summary.id
+                                        } else {
+                                            deleteSelection = deleteSelection + summary.id
+                                        }
+                                    } else {
+                                        onOpenCase(summary.id)
+                                    }
+                                },
+                                onEdit = { onEditCase(summary.id) },
+                                onTogglePinned = { onTogglePinnedCase(summary.id) },
+                                onDelete = { pendingSwipeDeleteCaseId = summary.id },
+                            )
+                        }
                     }
                 }
                 RecordAlphabetIndex(
+                    activeInitial = activeAlphabetInitial,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = 4.dp),
+                        .fillMaxHeight()
+                        .padding(end = 3.dp, top = 8.dp, bottom = 8.dp),
                 )
                 if (pinnedEditMode || deleteEditMode) {
                     Surface(
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(bottom = bottomContentInset)
                             .testTag("record_batch_action_bar"),
                         color = Color.White,
                         shadowElevation = 8.dp,
@@ -2832,6 +3481,58 @@ private fun CaseListScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            if (deleteEditMode) {
+                                OutlinedButton(
+                                    onClick = {
+                                        if (allVisibleDeleteCasesSelected) {
+                                            deleteSelection = deleteSelection - visibleDeleteCaseIds
+                                        } else {
+                                            deleteSelection = deleteSelection + visibleDeleteCaseIds
+                                        }
+                                    },
+                                    enabled = visibleDeleteCaseIds.isNotEmpty(),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(52.dp)
+                                        .testTag("record_batch_select_all"),
+                                    shape = RoundedCornerShape(16.dp),
+                                ) {
+                                    Text(
+                                        if (allVisibleDeleteCasesSelected) "取消全选" else "全选",
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    if (pinnedEditMode) {
+                                        onUpdatePinnedCases(pinnedSelection)
+                                    } else {
+                                        onBatchDeleteCases(deleteSelection.toSet())
+                                    }
+                                    pinnedEditMode = false
+                                    pinnedSelection = emptySet()
+                                    deleteEditMode = false
+                                    deleteSelection = emptySet()
+                                },
+                                enabled = pinnedEditMode || deleteSelection.isNotEmpty(),
+                                modifier = Modifier.weight(1f).height(52.dp)
+                                    .testTag("record_batch_confirm"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (deleteEditMode) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        NanfengGold
+                                    },
+                                ),
+                            ) {
+                                Text(
+                                    if (deleteEditMode) {
+                                        "删除 ${deleteSelection.size}"
+                                    } else {
+                                        "置顶"
+                                    },
+                                )
+                            }
                             OutlinedButton(
                                 onClick = {
                                     pinnedEditMode = false
@@ -2842,30 +3543,6 @@ private fun CaseListScreen(
                                 modifier = Modifier.weight(1f).height(52.dp)
                                     .testTag("record_batch_cancel"),
                             ) { Text("取消") }
-                            Button(
-                                onClick = {
-                                    if (pinnedEditMode) {
-                                        onUpdatePinnedCases(pinnedSelection)
-                                    } else {
-                                        onBatchDeleteCases(deleteSelection)
-                                    }
-                                    pinnedEditMode = false
-                                    pinnedSelection = emptySet()
-                                    deleteEditMode = false
-                                    deleteSelection = emptySet()
-                                },
-                                enabled = !state.mutationSaving &&
-                                    (pinnedEditMode || deleteSelection.isNotEmpty()),
-                                modifier = Modifier.weight(1f).height(52.dp)
-                                    .testTag("record_batch_confirm"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (deleteEditMode) {
-                                        MaterialTheme.colorScheme.error
-                                    } else {
-                                        NanfengGold
-                                    },
-                                ),
-                            ) { Text(if (deleteEditMode) "删除" else "置顶") }
                         }
                     }
                 }
@@ -3012,7 +3689,7 @@ private fun RecordAdvancedFilterDialog(
                             Text("关闭")
                         }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -3131,7 +3808,7 @@ private fun RecordAdvancedFilterDialog(
                             ) { draft = draft.copy(shenSha = draft.shenSha.toggle(it)) }
                         }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3391,6 +4068,15 @@ private fun RecordGroupEditorDialog(
     var editingGroupId by rememberSaveable { mutableStateOf<String?>(null) }
     var editName by rememberSaveable { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<CaseGroup?>(null) }
+    var displayedGroups by remember(groups) { mutableStateOf(groups) }
+    var draggedGroupId by remember { mutableStateOf<String?>(null) }
+    var draggedOffsetY by remember { mutableStateOf(0f) }
+    val displayedGroupsState by rememberUpdatedState(displayedGroups)
+    val groupListState = rememberLazyListState()
+
+    LaunchedEffect(groups) {
+        if (draggedGroupId == null) displayedGroups = groups
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -3418,7 +4104,7 @@ private fun RecordGroupEditorDialog(
                 Column(
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 52.dp),
+                        .padding(start = 18.dp, top = 18.dp, end = 18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3447,8 +4133,11 @@ private fun RecordGroupEditorDialog(
                             Text("全部（${cases.size}）", style = MaterialTheme.typography.titleMedium)
                         }
                     }
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        if (groups.isEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        state = groupListState,
+                    ) {
+                        if (displayedGroups.isEmpty()) {
                             item {
                                 Text(
                                     "暂无分组，点击底部“添加”创建第一个分组。",
@@ -3457,7 +4146,7 @@ private fun RecordGroupEditorDialog(
                                 )
                             }
                         }
-                        itemsIndexed(groups, key = { _, group -> group.id }) { index, group ->
+                        itemsIndexed(displayedGroups, key = { _, group -> group.id }) { _, group ->
                             val count = cases.count { summary ->
                                 summary.groups.any { it.id == group.id }
                             }
@@ -3489,7 +4178,15 @@ private fun RecordGroupEditorDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 68.dp)
-                                        .padding(horizontal = 4.dp),
+                                        .padding(horizontal = 4.dp)
+                                        .graphicsLayer {
+                                            translationY = if (draggedGroupId == group.id) {
+                                                draggedOffsetY
+                                            } else {
+                                                0f
+                                            }
+                                        }
+                                        .zIndex(if (draggedGroupId == group.id) 1f else 0f),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
@@ -3505,24 +4202,69 @@ private fun RecordGroupEditorDialog(
                                         enabled = !saving,
                                         modifier = Modifier.testTag("record_group_rename_${group.id}"),
                                     ) { Icon(Icons.Filled.Edit, "重命名${group.name}") }
-                                    IconButton(
-                                        onClick = {
-                                            val reordered = groups.toMutableList()
-                                            val item = reordered.removeAt(index)
-                                            reordered.add(index - 1, item)
-                                            onReorder(reordered.map { it.id })
-                                        },
-                                        enabled = index > 0 && !saving,
-                                    ) { Icon(Icons.Filled.KeyboardArrowUp, "上移${group.name}") }
-                                    IconButton(
-                                        onClick = {
-                                            val reordered = groups.toMutableList()
-                                            val item = reordered.removeAt(index)
-                                            reordered.add(index + 1, item)
-                                            onReorder(reordered.map { it.id })
-                                        },
-                                        enabled = index < groups.lastIndex && !saving,
-                                    ) { Icon(Icons.Filled.KeyboardArrowDown, "下移${group.name}") }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .testTag("record_group_reorder_${group.id}")
+                                            .semantics {
+                                                contentDescription = "拖动排序${group.name}"
+                                            }
+                                            .pointerInput(group.id, saving) {
+                                                if (!saving) {
+                                                    detectVerticalDragGestures(
+                                                        onDragStart = {
+                                                            draggedGroupId = group.id
+                                                            draggedOffsetY = 0f
+                                                        },
+                                                        onVerticalDrag = { change, dragAmount ->
+                                                            change.consume()
+                                                            val currentGroups = displayedGroupsState
+                                                            val currentIndex = currentGroups.indexOfFirst {
+                                                                it.id == group.id
+                                                            }
+                                                            if (currentIndex < 0) return@detectVerticalDragGestures
+                                                            draggedOffsetY += dragAmount
+                                                            val draggedItem = groupListState.layoutInfo
+                                                                .visibleItemsInfo
+                                                                .firstOrNull { it.key == group.id }
+                                                                ?: return@detectVerticalDragGestures
+                                                            val draggedCenter = draggedItem.offset +
+                                                                draggedOffsetY + draggedItem.size / 2f
+                                                            val targetItem = groupListState.layoutInfo
+                                                                .visibleItemsInfo
+                                                                .firstOrNull { item ->
+                                                                    item.key != group.id &&
+                                                                        draggedCenter in item.offset.toFloat()..
+                                                                            (item.offset + item.size).toFloat()
+                                                                }
+                                                            val targetIndex = targetItem?.let { item ->
+                                                                currentGroups.indexOfFirst { it.id == item.key }
+                                                            } ?: -1
+                                                            if (targetIndex >= 0 && targetIndex != currentIndex) {
+                                                                displayedGroups = currentGroups.toMutableList().apply {
+                                                                    add(targetIndex, removeAt(currentIndex))
+                                                                }
+                                                                draggedOffsetY = 0f
+                                                            }
+                                                        },
+                                                        onDragEnd = {
+                                                            val orderedIds = displayedGroupsState.map { it.id }
+                                                            if (orderedIds != groups.map { it.id }) onReorder(orderedIds)
+                                                            draggedGroupId = null
+                                                            draggedOffsetY = 0f
+                                                        },
+                                                        onDragCancel = {
+                                                            draggedGroupId = null
+                                                            draggedOffsetY = 0f
+                                                            displayedGroups = groups
+                                                        },
+                                                    )
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(Icons.Filled.List, contentDescription = null)
+                                    }
                                     IconButton(
                                         onClick = { pendingDelete = group },
                                         enabled = !saving,
@@ -3540,27 +4282,40 @@ private fun RecordGroupEditorDialog(
                         }
                     }
                     if (adding) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = NanfengControlSurface,
                         ) {
-                            OutlinedTextField(
-                                value = newGroupName,
-                                onValueChange = { newGroupName = it },
-                                modifier = Modifier.weight(1f).testTag("record_group_new_name"),
-                                label = { Text("新分组名称") },
-                                singleLine = true,
-                            )
-                            Button(
-                                onClick = {
-                                    onCreate(newGroupName)
-                                    newGroupName = ""
-                                    adding = false
-                                },
-                                enabled = newGroupName.isNotBlank() && !saving,
-                                modifier = Modifier.testTag("record_group_add_confirm"),
-                            ) { Text("确定") }
-                            TextButton(onClick = { adding = false }) { Text("取消") }
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedTextField(
+                                    value = newGroupName,
+                                    onValueChange = { newGroupName = it },
+                                    modifier = Modifier.weight(1f).testTag("record_group_new_name"),
+                                    placeholder = { Text("输入新分组名称") },
+                                    singleLine = true,
+                                )
+                                Button(
+                                    onClick = {
+                                        onCreate(newGroupName)
+                                        newGroupName = ""
+                                        adding = false
+                                    },
+                                    enabled = newGroupName.isNotBlank() && !saving,
+                                    modifier = Modifier.testTag("record_group_add_confirm"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = NanfengNavigation,
+                                    ),
+                                ) { Text("创建") }
+                                IconButton(onClick = { adding = false }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "取消新增分组")
+                                }
+                            }
                         }
                     } else {
                         Button(
@@ -3569,7 +4324,11 @@ private fun RecordGroupEditorDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = NanfengNavigation),
                         ) { Text("添加") }
                     }
-                    Spacer(Modifier.height(32.dp))
+                    Spacer(
+                        Modifier
+                            .height(GroupDialogBottomSafetySpace)
+                            .testTag("record_group_bottom_safety_space"),
+                    )
                 }
             }
         }
@@ -3978,77 +4737,130 @@ private fun RecordTopTab(
     onClick: () -> Unit,
     modifier: Modifier,
     tag: String,
+    accent: Color,
 ) {
+    val (label, count) = text.recordLabelAndCount()
     Surface(
         onClick = onClick,
         modifier = modifier
-            .height(48.dp)
+            .height(40.dp)
             .testTag(tag),
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(20.dp),
         color = if (selected) Color.White else Color.Transparent,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (selected) NanfengGreen.copy(alpha = 0.22f) else Color.Transparent,
+            if (selected) accent.copy(alpha = 0.22f) else Color.Transparent,
         ),
         shadowElevation = if (selected) 1.dp else 0.dp,
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
             Text(
-                text,
+                label,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) {
-                    NanfengGreen
+                    accent
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    accent.copy(alpha = 0.78f)
                 },
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
+            count?.let {
+                Text(
+                    it,
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .widthIn(min = 18.dp),
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (selected) accent else accent.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                )
+            }
         }
     }
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun RecordCategoryTab(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
     tag: String? = null,
 ) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .then(if (tag == null) Modifier else Modifier.testTag(tag)),
-        shape = RoundedCornerShape(15.dp),
-        color = if (selected) NanfengGreen.copy(alpha = 0.10f) else Color.White,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (selected) {
-                NanfengGreen.copy(alpha = 0.30f)
-            } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f)
-            },
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+    val (label, count) = text.recordLabelAndCount()
+    // 分组胶囊保持固定几何；名称和计数合计较长时收紧文字，不能撑宽或挤断计数。
+    val compactText = label.length + (count?.length ?: 0) >= 6
+    CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+        Surface(
+            onClick = onClick,
+            modifier = Modifier
+                .width(92.dp)
+                .height(36.dp)
+                .then(if (tag == null) Modifier else Modifier.testTag(tag)),
+            shape = RoundedCornerShape(18.dp),
+            color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.White,
         ) {
-            if (selected) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
-                        .background(NanfengGreen, CircleShape),
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            CircleShape,
+                        ),
                 )
+                Text(
+                    label,
+                    fontSize = if (compactText) 9.sp else 11.sp,
+                    lineHeight = if (compactText) 12.sp else 15.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontWeight = FontWeight.Medium,
+                )
+                count?.let {
+                    Text(
+                        it,
+                        fontSize = if (compactText) 8.sp else 9.sp,
+                        lineHeight = if (compactText) 10.sp else 12.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
-            Text(
-                text,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) NanfengGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            )
         }
     }
+}
+
+private fun String.recordLabelAndCount(): Pair<String, String?> {
+    val separator = lastIndexOf(' ')
+    if (separator <= 0) return this to null
+    val possibleCount = substring(separator + 1)
+    return if (possibleCount.toIntOrNull() != null) substring(0, separator) to possibleCount else this to null
 }
 
 @Composable
@@ -4091,23 +4903,40 @@ private fun RecordSortChip(
 }
 
 @Composable
-private fun RecordAlphabetIndex(modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+private fun RecordAlphabetIndex(
+    activeInitial: Char,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".forEach { initial ->
-            Text(
-                initial.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val active = initial == activeInitial
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+            ) {
+                Text(
+                    initial.toString(),
+                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp),
+                    fontSize = if (active) 10.sp else 8.sp,
+                    lineHeight = if (active) 12.sp else 10.sp,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
 
 private fun CaseSummary.recordSection(): String {
     if (isPinned) return "星标置顶"
-    val first = (name.value ?: alias).trim().firstOrNull() ?: return "#"
-    return if (first.isLetter() && first.code < 128) first.uppercase() else "#"
+    return displayCaseName().caseNameInitial().toString()
 }
+
+private fun CaseSummary.displayCaseName(): String = name.value?.ifBlank { null } ?: alias
 
 private fun String?.constellationIconRes(): Int? = when (this?.removeSuffix("座")) {
     "白羊" -> R.drawable.zodiac_aries
@@ -4237,7 +5066,7 @@ private fun SwipeableCaseSummaryRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .offset { IntOffset(offset.value.roundToInt(), 0) }
-                .background(MaterialTheme.colorScheme.background)
+                .background(Color.White)
                 .then(
                     if (selectionMode) {
                         Modifier
@@ -4599,6 +5428,8 @@ private fun CaseComparisonOutcome.displayName(): String = when (this) {
 private fun ScreenshotImportSummary(
     state: ScreenshotImportUiState,
     onRetry: () -> Unit,
+    onConfirmAiRecognition: () -> Unit,
+    onCancelAiRecognition: () -> Unit,
     onDelete: () -> Unit,
     onReview: () -> Unit,
 ) {
@@ -4626,7 +5457,8 @@ private fun ScreenshotImportSummary(
         ) {
             Text(
                 text = when {
-                    state.busy -> "截图正在本机处理"
+                    state.busy -> "截图正在由 AI 模型识别"
+                    state.awaitingAiModelConsent -> "等待确认上传截图"
                     state.needsReview -> "截图识别结果待核对"
                     state.canRetry -> "截图识别可重试"
                     else -> "存在未完成的截图导入"
@@ -4673,6 +5505,27 @@ private fun ScreenshotImportSummary(
                 }
             }
             if (facts.isNotEmpty()) Text(facts.joinToString(" · "))
+            if (state.awaitingAiModelConsent) {
+                Text(
+                    "将上传原图给 ${state.aiModelProviderName ?: "已选服务"}" +
+                        " · ${state.aiModelName ?: "已选模型"} 进行识别；" +
+                        "仅在你确认后发送，结果仍须逐项核对。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = onConfirmAiRecognition,
+                    modifier = Modifier.testTag("confirm_ai_screenshot_recognition"),
+                ) {
+                    Text("确认并开始识别")
+                }
+                TextButton(
+                    onClick = onCancelAiRecognition,
+                    modifier = Modifier.testTag("cancel_ai_screenshot_recognition"),
+                ) {
+                    Text("暂不上传")
+                }
+            }
             if (state.needsReview) {
                 Text("当前结果只保存在导入会话中，尚未写入正式命例。")
                 if (state.reviewCandidates.isNotEmpty()) {
@@ -5352,6 +6205,7 @@ private fun SelectionButton(
 @Composable
 private fun EmptyCaseList(
     visibility: CaseVisibility,
+    libraryType: CaseLibraryType,
     onCreate: () -> Unit,
 ) {
     Box(
@@ -5363,13 +6217,19 @@ private fun EmptyCaseList(
             modifier = Modifier.padding(32.dp),
         ) {
             Text(
-                if (visibility == CaseVisibility.TRASHED) "回收站为空" else "还没有命例",
+                when {
+                    visibility == CaseVisibility.TRASHED -> "回收站为空"
+                    libraryType == CaseLibraryType.CELEBRITY -> "还没有名人案例"
+                    else -> "还没有命例"
+                },
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 if (visibility == CaseVisibility.TRASHED) {
                     "移入回收站的命例会保留完整数据，并可从这里恢复。"
+                } else if (libraryType == CaseLibraryType.CELEBRITY) {
+                    "可先手动录入名人出生资料；后续文字自动录入也会保存到这里。"
                 } else {
                     "先手动录入出生资料，应用会完成排盘并保存到本机。"
                 },
@@ -5383,7 +6243,13 @@ private fun EmptyCaseList(
                         .padding(top = 20.dp)
                         .heightIn(min = 48.dp),
                 ) {
-                    Text("新建第一个命例")
+                    Text(
+                        if (libraryType == CaseLibraryType.CELEBRITY) {
+                            "新建名人案例"
+                        } else {
+                            "新建第一个命例"
+                        },
+                    )
                 }
             }
         }
@@ -5465,6 +6331,8 @@ private fun CreateCaseScreen(
     onConfirmFourPillarsLookup: (FourPillarsLookupSelection) -> Unit,
     onPrepareBirthPickerToday: () -> Unit,
     onOpenAlmanac: () -> Unit,
+    onCreateGroup: (String) -> Unit,
+    bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     WenzhenCreateCaseScreen(
@@ -5476,8 +6344,222 @@ private fun CreateCaseScreen(
         onConfirmFourPillarsLookup = onConfirmFourPillarsLookup,
         onPrepareBirthPickerToday = onPrepareBirthPickerToday,
         onOpenAlmanac = onOpenAlmanac,
+        onCreateGroup = onCreateGroup,
+        bottomContentInset = bottomContentInset,
         modifier = modifier,
     )
+}
+
+@Composable
+private fun HomeCaseGroupPickerDialog(
+    groups: List<CaseGroup>,
+    selectedGroupId: String?,
+    saving: Boolean,
+    creationError: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String?) -> Unit,
+    onCreate: (String) -> Unit,
+) {
+    var newGroupName by rememberSaveable { mutableStateOf("") }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(selectedGroupId, groups) {
+        val selectedName = groups.firstOrNull { it.id == selectedGroupId }?.name
+        if (selectedName != null && selectedName == newGroupName.trim()) {
+            newGroupName = ""
+        }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.32f))
+                .testTag("home_group_picker_dialog"),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss)
+                    .testTag("home_group_picker_scrim"),
+            )
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f),
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = Color.White,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding()
+                        .navigationBarsPadding()
+                        .padding(
+                            start = 18.dp,
+                            top = 16.dp,
+                            end = 18.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "保存到分组",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        TextButton(onClick = onDismiss) { Text("完成") }
+                    }
+                    Text(
+                        "所有分组（${groups.size}）",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        item {
+                            HomeCaseGroupOption(
+                                name = "全部",
+                                selected = selectedGroupId == null,
+                                tag = "home_group_option_none",
+                                featured = true,
+                                onClick = { onSelect(null) },
+                            )
+                        }
+                        items(groups, key = { it.id }) { group ->
+                            Column {
+                                HomeCaseGroupOption(
+                                    name = group.name,
+                                    selected = selectedGroupId == group.id,
+                                    tag = "home_group_option_${group.id}",
+                                    featured = false,
+                                    onClick = { onSelect(group.id) },
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                    if (adding) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = NanfengControlSurface,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedTextField(
+                                    value = newGroupName,
+                                    onValueChange = { newGroupName = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("home_group_new_name"),
+                                    placeholder = { Text("输入新分组名称") },
+                                    singleLine = true,
+                                )
+                                Button(
+                                    onClick = { onCreate(newGroupName) },
+                                    enabled = newGroupName.isNotBlank() && !saving,
+                                    modifier = Modifier.testTag("home_group_create_and_select"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = NanfengNavigation,
+                                    ),
+                                ) { Text(if (saving) "创建中" else "创建") }
+                                IconButton(onClick = { adding = false }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "取消新增分组")
+                                }
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = { adding = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .testTag("home_group_add"),
+                            colors = ButtonDefaults.buttonColors(containerColor = NanfengNavigation),
+                        ) { Text("添加") }
+                    }
+                    creationError?.let { error ->
+                        Text(
+                            error,
+                            modifier = Modifier.testTag("home_group_creation_error"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Spacer(
+                        Modifier
+                            .height(GroupDialogBottomSafetySpace)
+                            .testTag("home_group_bottom_safety_space"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val GroupDialogBottomSafetySpace = 96.dp
+
+@Composable
+private fun HomeCaseGroupOption(
+    name: String,
+    selected: Boolean,
+    tag: String,
+    featured: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = if (featured) 58.dp else 64.dp)
+            .testTag(tag)
+            .semantics { stateDescription = if (selected) "已选中" else "未选中" },
+        shape = RoundedCornerShape(if (featured) 14.dp else 0.dp),
+        color = when {
+            selected -> NanfengGold.copy(alpha = 0.12f)
+            featured -> NanfengControlSurface
+            else -> Color.Transparent
+        },
+        border = if (selected && featured) {
+            androidx.compose.foundation.BorderStroke(1.dp, NanfengGold.copy(alpha = 0.45f))
+        } else {
+            null
+        },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = if (featured) 16.dp else 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                name,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (selected) {
+                Text(
+                    "已选",
+                    color = if (featured) NanfengGold else MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -5490,12 +6572,15 @@ private fun WenzhenCreateCaseScreen(
     onConfirmFourPillarsLookup: (FourPillarsLookupSelection) -> Unit,
     onPrepareBirthPickerToday: () -> Unit,
     onOpenAlmanac: () -> Unit,
+    onCreateGroup: (String) -> Unit,
+    bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
     var saveCase by rememberSaveable { mutableStateOf(true) }
     var showBirthPicker by rememberSaveable { mutableStateOf(false) }
     var birthPickerEntryMode by rememberSaveable { mutableStateOf(BirthPickerMode.SOLAR) }
     var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    var showGroupPicker by rememberSaveable { mutableStateOf(false) }
     val form = state.form
     LaunchedEffect(showBirthPicker) {
         if (showBirthPicker) onPrepareBirthPickerToday()
@@ -5578,6 +6663,20 @@ private fun WenzhenCreateCaseScreen(
             },
         )
     }
+    if (showGroupPicker) {
+        HomeCaseGroupPickerDialog(
+            groups = state.availableGroups,
+            selectedGroupId = form.groupId,
+            saving = state.mutationSaving,
+            creationError = state.mutationError,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { groupId ->
+                onFormChange { it.copy(groupId = groupId) }
+                showGroupPicker = false
+            },
+            onCreate = onCreateGroup,
+        )
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -5592,7 +6691,11 @@ private fun WenzhenCreateCaseScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    "首页排盘",
+                    if (form.libraryType == CaseLibraryType.CELEBRITY) {
+                        "名人案例录入"
+                    } else {
+                        "首页排盘"
+                    },
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
@@ -5603,9 +6706,13 @@ private fun WenzhenCreateCaseScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(bottom = bottomContentInset),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (form.libraryType != CaseLibraryType.CELEBRITY) {
+                BaziHomeSkinHeader(modifier = Modifier.testTag("home_skin_header"))
+            }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -5746,10 +6853,21 @@ private fun WenzhenCreateCaseScreen(
                         tag = "open_birthplace_picker",
                     )
                     HorizontalDivider()
+                    HomePickerRow(
+                        title = "分组",
+                        value = state.availableGroups
+                            .firstOrNull { it.id == form.groupId }
+                            ?.name
+                            ?: "全部",
+                        supporting = "",
+                        onClick = { showGroupPicker = true },
+                        tag = "open_case_group_picker",
+                    )
+                    HorizontalDivider()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(46.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Spacer(modifier = Modifier.weight(1f))
@@ -5762,13 +6880,13 @@ private fun WenzhenCreateCaseScreen(
                         Surface(
                             onClick = { saveCase = !saveCase },
                             modifier = Modifier
-                                .size(width = 56.dp, height = 48.dp)
+                                .size(width = 66.dp, height = 40.dp)
                                 .semantics {
                                     contentDescription = "保存命例"
                                     role = Role.Switch
                                     stateDescription = if (saveCase) "已开启" else "已关闭"
                                 },
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = Color.Transparent,
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -5789,8 +6907,8 @@ private fun WenzhenCreateCaseScreen(
                             .height(50.dp)
                             .testTag(if (saveCase) "save_case" else "preview_case"),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                            containerColor = NanfengNavigation,
-                            contentColor = Color(0xFFF2D8A5),
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                         shape = RoundedCornerShape(25.dp),
                     ) {
@@ -5822,12 +6940,6 @@ private fun WenzhenCreateCaseScreen(
                     )
                 }
             }
-            if (state.instantCalculation != null) {
-                InstantCalculationPreviewCard(
-                    calculation = state.instantCalculation,
-                    sex = form.sex ?: state.instantCalculation.normalizedInput.sexForFortuneDirection,
-                )
-            }
             if (state.duplicateCandidates.isNotEmpty()) {
                 DuplicateCandidatesCard(
                     candidates = state.duplicateCandidates,
@@ -5847,26 +6959,22 @@ private fun HomeChoiceGroup(
     tags: List<String>,
 ) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = NanfengPageBackground,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant,
-        ),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.background,
     ) {
-        Row {
+        Row(modifier = Modifier.padding(2.dp)) {
             options.forEachIndexed { index, (label, selected) ->
                 Surface(
                     onClick = { onSelect(label) },
                     modifier = Modifier
-                        .height(48.dp)
-                        .widthIn(min = 48.dp)
+                        .height(32.dp)
+                        .width(70.dp)
                         .testTag(tags[index]),
-                    shape = RoundedCornerShape(19.dp),
-                    color = if (selected) NanfengGreen else Color.Transparent,
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
                 ) {
                     Box(
-                        modifier = Modifier.padding(horizontal = 12.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -5952,6 +7060,14 @@ private fun CaseFormState.birthDateTimeDisplay(): String {
     }
 }
 
+private fun String.dropLastTextElement(): String {
+    if (isEmpty()) return this
+    val iterator = BreakIterator.getCharacterInstance()
+    iterator.setText(this)
+    val previousBoundary = iterator.preceding(length)
+    return if (previousBoundary == BreakIterator.DONE) "" else substring(0, previousBoundary)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EditCaseScreen(
@@ -6015,7 +7131,7 @@ internal fun EditCaseScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(NanfengPageBackground)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("edit_case_screen"),
     ) {
         TopAppBar(
@@ -6104,7 +7220,7 @@ internal fun EditCaseScreen(
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 6.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.outlineVariant,
                 )
                 Row(
                     modifier = Modifier
@@ -6244,7 +7360,7 @@ internal fun EditCaseScreen(
                         .height(52.dp)
                         .testTag("save_case"),
                     shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = NanfengGreen),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 ) {
                     Text(if (saving) "保存中…" else "保存")
                 }
@@ -6741,7 +7857,7 @@ private fun InstantCalculationPreviewCard(
             .padding(top = 16.dp)
             .testTag("instant_calculation_preview"),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+            containerColor = Color.White,
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -7059,7 +8175,7 @@ private fun CaseObjectiveSummaryScreen(
         )
         Box(modifier = Modifier.weight(1f)) {
             when {
-                state.objectiveSummaryLoading ->
+                state.objectiveSummaryLoading && state.objectiveSummary == null ->
                     LoadingBox("正在读取已采用快照并生成客观摘要…")
                 state.objectiveSummary == null && state.objectiveSummaryFailure != null ->
                     ErrorBox(
@@ -7760,6 +8876,7 @@ private fun FeedbackThemeCandidateCard(
 @Composable
 private fun CaseDetailScreen(
     state: StageTwoUiState,
+    captureRegistry: CaseDetailPageCaptureRegistry,
     onBack: () -> Unit,
     onEditCase: () -> Unit,
     onAddBirthTimeCandidate: () -> Unit,
@@ -7773,9 +8890,11 @@ private fun CaseDetailScreen(
     onEditEvent: (String) -> Unit,
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
+    onAiCommentaryChange: (String) -> Unit,
     onAddNotesTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onNotesTimelineContentChange: (String, String) -> Unit,
     onSaveCaseNotes: () -> Unit,
+    onEnsureCaseNotesHydrated: () -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
     onOpenObjectiveSummary: () -> Unit,
@@ -7785,16 +8904,72 @@ private fun CaseDetailScreen(
     onMoveToTrash: () -> Unit,
     onRestore: () -> Unit,
     onSelectSection: (CaseDetailSection) -> Unit,
-    onFortuneObservationDateChange: (String) -> Unit,
-    onFortuneObservationTimeChange: (String) -> Unit,
+    onFortuneObservationChange: (String, String) -> Unit,
     onFortuneObservationSelect: (ProfessionalFortuneSelection) -> Unit,
     onFortuneToday: () -> Unit,
+    onAiPromptCopied: () -> Unit,
+    onOpenAiCommentary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var managementMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var requestedDetailSection by remember(state.detail?.id) {
+        mutableStateOf(state.detailSection)
+    }
+    var pendingSectionCommit by remember { mutableStateOf<CaseDetailSection?>(null) }
+    val latestOnSelectSection by rememberUpdatedState(onSelectSection)
+    LaunchedEffect(state.detailSection) {
+        if (pendingSectionCommit == null) {
+            requestedDetailSection = state.detailSection
+        }
+    }
+    LaunchedEffect(pendingSectionCommit) {
+        val target = pendingSectionCommit ?: return@LaunchedEffect
+        withFrameNanos { }
+        latestOnSelectSection(target)
+        if (pendingSectionCommit == target) {
+            pendingSectionCommit = null
+        }
+    }
+    // Keep the identity header on the section that is actually drawn so users
+    // never see a new header paired with old content.
+    var renderedDetailSection by remember(state.detail?.id) {
+        mutableStateOf(state.detailSection)
+    }
+    var mountedDetailContentId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.detail?.id) {
+        val detailId = state.detail?.id
+        if (detailId == null) {
+            mountedDetailContentId = null
+        } else {
+            // Commit the correct app bar, tabs and identity header first. The dense
+            // chart body joins on the following frame instead of holding navigation.
+            withFrameNanos { }
+            mountedDetailContentId = detailId
+        }
+    }
+    val detailScrollStates = remember(state.detail?.id) {
+        CaseDetailSection.entries.associateWith { ScrollState(0) }
+    }
+    val caseNotesReady = state.detail?.let { detail ->
+        state.caseNotesCaseId == detail.id &&
+            state.caseNotesRevision == detail.revision &&
+            !state.caseNotesHydrating
+    } == true
+    LaunchedEffect(
+        state.detail?.id,
+        state.detail?.revision,
+        state.caseNotesCaseId,
+        state.caseNotesRevision,
+        state.caseNotesHydrating,
+    ) {
+        if (state.detail != null && !caseNotesReady) {
+            onEnsureCaseNotesHydrated()
+        }
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
+            .registerCaseDetailPageBounds(captureRegistry)
             .testTag("case_detail_screen"),
     ) {
         TopAppBar(
@@ -7814,7 +8989,14 @@ private fun CaseDetailScreen(
                 }
             },
             actions = {
-                Box {
+                if (state.detailIsTransient) {
+                    Text(
+                        if (state.detailSavePending) "正在保存" else "未保存",
+                        modifier = Modifier.padding(end = 12.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                } else Box {
                     androidx.compose.material3.IconButton(
                         onClick = { managementMenuExpanded = true },
                         modifier = Modifier
@@ -7823,7 +9005,7 @@ private fun CaseDetailScreen(
                     ) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "管理命例")
                     }
-                    DropdownMenu(
+                    NanfengWhiteDropdownMenu(
                         expanded = managementMenuExpanded,
                         onDismissRequest = { managementMenuExpanded = false },
                     ) {
@@ -7831,38 +9013,62 @@ private fun CaseDetailScreen(
                             managementMenuExpanded = false
                             action()
                         }
-                        DropdownMenuItem(
-                            text = { Text("编辑基本资料") },
-                            onClick = { closeThen(onEditCase) },
-                            modifier = Modifier.testTag("edit_case_button"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("分组与标签") },
-                            onClick = { closeThen(onEditMetadata) },
-                            modifier = Modifier.testTag("edit_metadata_button"),
-                        )
-                        HorizontalDivider()
-                        DropdownMenuItem(
-                            text = { Text("保存命盘长图到图库") },
-                            onClick = { closeThen(onExportCaseImage) },
-                            enabled = !state.caseImageBusy,
-                            modifier = Modifier.testTag("save_case_image_to_gallery"),
-                        )
-                        DropdownMenuItem(
-                            text = { Text("分享命盘长图") },
-                            onClick = { closeThen(onShareCaseImage) },
-                            enabled = !state.caseImageBusy,
-                            modifier = Modifier.testTag("share_case_image_button"),
-                        )
-                        HorizontalDivider()
                         if (state.detail?.deletedAt == null) {
-                            DropdownMenuItem(
-                                text = { Text("移入回收站", color = MaterialTheme.colorScheme.error) },
+                            NanfengOverflowMenuItem(
+                                label = "编辑基本资料",
+                                icon = Icons.Filled.Edit,
+                                accent = NanfengGreen,
+                                onClick = { closeThen(onEditCase) },
+                                modifier = Modifier.testTag("edit_case_button"),
+                            )
+                            NanfengOverflowMenuItem(
+                                label = "分组与标签",
+                                icon = Icons.Filled.Label,
+                                accent = NanfengGreen,
+                                onClick = { closeThen(onEditMetadata) },
+                                modifier = Modifier.testTag("edit_metadata_button"),
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                            NanfengOverflowMenuItem(
+                                label = if (state.singleCaseExchangeBusy) {
+                                    "正在准备导出…"
+                                } else {
+                                    "导出当前命例"
+                                },
+                                icon = Icons.Filled.FileUpload,
+                                accent = NanfengGoldText,
+                                onClick = { closeThen(onExportSingleCase) },
+                                enabled = !state.singleCaseExchangeBusy,
+                                modifier = Modifier.testTag("export_single_case_menu"),
+                            )
+                            NanfengOverflowMenuItem(
+                                label = "保存命盘长图",
+                                icon = Icons.Filled.Image,
+                                accent = NanfengGoldText,
+                                onClick = { closeThen(onExportCaseImage) },
+                                enabled = !state.caseImageBusy,
+                                modifier = Modifier.testTag("save_case_image_to_gallery"),
+                            )
+                            NanfengOverflowMenuItem(
+                                label = "分享命盘长图",
+                                icon = Icons.Filled.Share,
+                                accent = NanfengOrange,
+                                onClick = { closeThen(onShareCaseImage) },
+                                enabled = !state.caseImageBusy,
+                                modifier = Modifier.testTag("share_case_image_button"),
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                            NanfengOverflowMenuItem(
+                                label = "移入回收站",
+                                icon = Icons.Filled.Delete,
+                                accent = NanfengSolarTermRed,
                                 onClick = { closeThen(onMoveToTrash) },
                             )
                         } else {
-                            DropdownMenuItem(
-                                text = { Text("恢复命例") },
+                            NanfengOverflowMenuItem(
+                                label = "恢复命例",
+                                icon = Icons.Filled.RestoreFromTrash,
+                                accent = NanfengGreen,
                                 onClick = { closeThen(onRestore) },
                             )
                         }
@@ -7870,65 +9076,92 @@ private fun CaseDetailScreen(
                 }
             },
         )
-        if (state.detail != null && !state.detailLoading && state.detailError == null) {
+        if (state.detail != null && state.detailError == null) {
             CaseDetailTabs(
-                selectedSection = state.detailSection,
-                onSelectSection = onSelectSection,
+                selectedSection = requestedDetailSection,
+                onSelectSection = { section ->
+                    if (section != requestedDetailSection) {
+                        requestedDetailSection = section
+                        // The tab and already-retained page update locally first;
+                        // the keyed effect commits shared/restorable state next frame.
+                        pendingSectionCommit = section
+                    }
+                },
             )
             WenzhenCaseIdentityHeader(
                 case = state.detail,
                 adopted = state.detail.calculationSnapshots.asReversed()
                     .firstOrNull { it.adopted },
-                section = state.detailSection,
+                section = renderedDetailSection,
             )
         }
         Box(modifier = Modifier.weight(1f)) {
             when {
-                state.detailLoading -> LoadingBox("正在读取命例详情…")
+                state.detailLoading && state.detail == null ->
+                    LoadingBox("正在读取命例详情…")
                 state.detailError != null -> ErrorBox(
                     message = state.detailError,
                     actionLabel = "返回列表",
                     onAction = onBack,
                 )
-                state.detail != null -> ReferenceCaseDetailContent(
-                    case = state.detail,
-                    onEditCase = onEditCase,
-                    onAddBirthTimeCandidate = onAddBirthTimeCandidate,
-                    onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
-                    onAddRecord = onAddRecord,
-                    onEditRecord = onEditRecord,
-                    onOpenCommentaryCandidates = onOpenCommentaryCandidates,
-                    onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
-                    onAddEvent = onAddEvent,
-                    onEditEvent = onEditEvent,
-                    caseNotesDraft = state.caseNotesDraft,
-                    caseNotesSaving = state.caseNotesSaving,
-                    caseNotesSaveError = state.caseNotesSaveError,
-                    caseNotesSaved = state.caseNotesDraft == state.caseNotesSavedDraft,
-                    onOwnerFeedbackChange = onOwnerFeedbackChange,
-                    onMasterCommentaryChange = onMasterCommentaryChange,
-                    onAddNotesTimeline = onAddNotesTimeline,
-                    onNotesTimelineContentChange = onNotesTimelineContentChange,
-                    onSaveCaseNotes = onSaveCaseNotes,
-                    selectedSection = state.detailSection,
-                    mutationSaving = state.mutationSaving,
-                    mutationError = state.mutationError,
-                    fortuneObservationDate = state.fortuneObservationDate,
-                    fortuneObservationTime = state.fortuneObservationTime,
-                    fortunePosition = state.fortunePosition,
-                    professionalFortunePosition = state.professionalFortunePosition,
-                    fortunePositionError = state.fortunePositionError,
-                    onFortuneObservationDateChange = onFortuneObservationDateChange,
-                    onFortuneObservationTimeChange = onFortuneObservationTimeChange,
-                    onFortuneObservationSelect = onFortuneObservationSelect,
-                    onFortuneToday = onFortuneToday,
+                state.detail != null && mountedDetailContentId == state.detail.id ->
+                    ReferenceCaseDetailContent(
+                        case = state.detail,
+                        onEditCase = onEditCase,
+                        onAddBirthTimeCandidate = onAddBirthTimeCandidate,
+                        onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
+                        onAddRecord = onAddRecord,
+                        onEditRecord = onEditRecord,
+                        onOpenCommentaryCandidates = onOpenCommentaryCandidates,
+                        onOpenFeedbackThemeCandidates = onOpenFeedbackThemeCandidates,
+                        onAddEvent = onAddEvent,
+                        onEditEvent = onEditEvent,
+                        caseNotesDraft = state.caseNotesDraft,
+                        caseNotesSaving = state.caseNotesSaving,
+                        caseNotesSaveError = state.caseNotesSaveError,
+                        caseNotesSaved = state.caseNotesDraft == state.caseNotesSavedDraft,
+                        onOwnerFeedbackChange = onOwnerFeedbackChange,
+                        onMasterCommentaryChange = onMasterCommentaryChange,
+                        onAiCommentaryChange = onAiCommentaryChange,
+                        onAddNotesTimeline = onAddNotesTimeline,
+                        onNotesTimelineContentChange = onNotesTimelineContentChange,
+                        onSaveCaseNotes = onSaveCaseNotes,
+                        caseNotesReady = caseNotesReady,
+                        selectedSection = requestedDetailSection,
+                        onDisplayedSectionChanged = { renderedDetailSection = it },
+                        scrollStates = detailScrollStates,
+                        captureRegistry = captureRegistry,
+                        mutationSaving = state.mutationSaving,
+                        mutationError = state.mutationError,
+                        fortuneObservationDate = state.fortuneObservationDate,
+                        fortuneObservationTime = state.fortuneObservationTime,
+                        fortunePosition = state.fortunePosition,
+                        professionalFortunePosition = state.professionalFortunePosition,
+                        fortunePositionError = state.fortunePositionError,
+                        fortunePositionLoading = state.fortunePositionLoading,
+                        onFortuneObservationChange = onFortuneObservationChange,
+                        onFortuneObservationSelect = onFortuneObservationSelect,
+                        onFortuneToday = onFortuneToday,
+                        onAiPromptCopied = onAiPromptCopied,
+                        onOpenAiCommentary = onOpenAiCommentary,
+                    )
+                state.detail != null -> Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            if (requestedDetailSection == CaseDetailSection.FORTUNE) {
+                                MaterialTheme.colorScheme.background
+                            } else {
+                                Color.White
+                            },
+                        ),
                 )
             }
         }
     }
 }
 
-private fun CaseDetailSection.displayName(): String = when (this) {
+internal fun CaseDetailSection.displayName(): String = when (this) {
     CaseDetailSection.BASIC_INFO -> "基本信息"
     CaseDetailSection.BASIC_CHART -> "基本排盘"
     CaseDetailSection.FORTUNE -> "专业细盘"
@@ -8237,6 +9470,7 @@ private fun ZodiacIdentityBadge(
 private enum class CaseNotesMode {
     OWNER_FEEDBACK,
     MASTER_COMMENTARY,
+    AI_COMMENTARY,
 }
 
 @Composable
@@ -8257,10 +9491,15 @@ private fun ReferenceCaseDetailContent(
     caseNotesSaved: Boolean,
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
+    onAiCommentaryChange: (String) -> Unit,
     onAddNotesTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onNotesTimelineContentChange: (String, String) -> Unit,
     onSaveCaseNotes: () -> Unit,
+    caseNotesReady: Boolean,
     selectedSection: CaseDetailSection,
+    onDisplayedSectionChanged: (CaseDetailSection) -> Unit,
+    scrollStates: Map<CaseDetailSection, ScrollState>,
+    captureRegistry: CaseDetailPageCaptureRegistry,
     mutationSaving: Boolean,
     mutationError: String?,
     fortuneObservationDate: String,
@@ -8268,10 +9507,12 @@ private fun ReferenceCaseDetailContent(
     fortunePosition: FortunePosition?,
     professionalFortunePosition: ProfessionalFortunePosition?,
     fortunePositionError: String?,
-    onFortuneObservationDateChange: (String) -> Unit,
-    onFortuneObservationTimeChange: (String) -> Unit,
+    fortunePositionLoading: Boolean,
+    onFortuneObservationChange: (String, String) -> Unit,
     onFortuneObservationSelect: (ProfessionalFortuneSelection) -> Unit,
     onFortuneToday: () -> Unit,
+    onAiPromptCopied: () -> Unit,
+    onOpenAiCommentary: () -> Unit,
 ) {
     val adopted = case.calculationSnapshots.asReversed().firstOrNull { it.adopted }
     var showObservationPicker by rememberSaveable(case.id) { mutableStateOf(false) }
@@ -8293,123 +9534,192 @@ private fun ReferenceCaseDetailContent(
             currentTime = fortuneObservationTime,
             onDismiss = { showObservationPicker = false },
             onConfirm = { date, time ->
-                onFortuneObservationDateChange(date)
-                onFortuneObservationTimeChange(time)
+                onFortuneObservationChange(date, time)
                 showObservationPicker = false
             },
         )
     }
     val wide = LocalConfiguration.current.screenWidthDp >= 840
-    if (selectedSection == CaseDetailSection.RECORDS) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .testTag("case_notes_layout")
-                .padding(
-                    start = if (wide) 28.dp else 10.dp,
-                    top = 6.dp,
-                    end = if (wide) 28.dp else 10.dp,
-                    bottom = 6.dp,
-                ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 10.dp),
-            ) {
-                ReferenceCaseNotes(
-                    case = case,
-                    adopted = adopted,
-                    mode = notesMode,
-                    onModeChange = { notesMode = it },
-                    onEditRecord = onEditRecord,
-                    draft = caseNotesDraft,
-                    onOwnerFeedbackChange = onOwnerFeedbackChange,
-                    onMasterCommentaryChange = onMasterCommentaryChange,
-                    onAddTimeline = onAddNotesTimeline,
-                    onTimelineContentChange = onNotesTimelineContentChange,
-                )
-            }
-            CaseNotesSaveFooter(
-                case = case,
-                saving = caseNotesSaving,
-                saveError = caseNotesSaveError,
-                saved = caseNotesSaved,
-                onSave = onSaveCaseNotes,
-            )
-        }
-        return
+    var retainedSections by remember(case.id) {
+        mutableStateOf(setOf(selectedSection))
     }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .background(
-                color = if (selectedSection == CaseDetailSection.FORTUNE) {
-                    NanfengPageBackground
-                } else {
-                    Color.White
-                },
-                shape = if (selectedSection == CaseDetailSection.BASIC_INFO) {
-                    RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
-                } else {
-                    RoundedCornerShape(0.dp)
-                },
-            )
-            .padding(
-                horizontal = when {
-                    selectedSection == CaseDetailSection.FORTUNE -> 0.dp
-                    wide -> 28.dp
-                    else -> 10.dp
-                },
-                vertical = when (selectedSection) {
-                    CaseDetailSection.BASIC_INFO -> 8.dp
-                    CaseDetailSection.FORTUNE -> 0.dp
-                    else -> 6.dp
-                },
-            ),
-    ) {
-        when (selectedSection) {
-            CaseDetailSection.BASIC_INFO -> ReferenceBasicInfo(
-                case = case,
-                adopted = adopted,
-                onEditCase = onEditCase,
-                onAddBirthTimeCandidate = onAddBirthTimeCandidate,
-                onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
-                mutationSaving = mutationSaving,
-                mutationError = mutationError,
-            )
-
-            CaseDetailSection.BASIC_CHART -> ReferenceBasicChart(
-                case = case,
-                adopted = adopted,
-                professionalFortunePosition = professionalFortunePosition,
-            )
-
-            CaseDetailSection.FORTUNE -> {
-                if (adopted == null) {
-                    ReferenceEmptyText("当前命例没有已采用的计算快照。")
-                } else {
-                    FortuneDetailsView(
-                        calculation = adopted.result,
-                        fortuneObservationDate = fortuneObservationDate,
-                        fortuneObservationTime = fortuneObservationTime,
-                        fortunePosition = fortunePosition,
-                        professionalFortunePosition = professionalFortunePosition,
-                        fortunePositionError = fortunePositionError,
-                        onOpenObservationPicker = { showObservationPicker = true },
-                        onObservationSelect = onFortuneObservationSelect,
-                        onToday = onFortuneToday,
-                    )
+    LaunchedEffect(case.id) {
+        // Let the selected page become fully interactive before doing any
+        // off-screen composition work. This keeps list -> detail entry clean.
+        delay(900L)
+        val selectedIndex = CaseDetailSection.entries.indexOf(selectedSection)
+        CaseDetailSection.entries
+            .filterNot { it == selectedSection }
+            .sortedBy { section ->
+                kotlin.math.abs(CaseDetailSection.entries.indexOf(section) - selectedIndex)
+            }
+            .forEach { section ->
+                // Never compose three dense pages in one frame. Spread the idle warm-up
+                // and keep every finished page resident for layer-only switching.
+                delay(180L)
+                withFrameNanos { }
+                retainedSections = retainedSections + section
+            }
+    }
+    LaunchedEffect(selectedSection) {
+        retainedSections = retainedSections + selectedSection
+        captureRegistry.updateDisplayedSection(selectedSection)
+        onDisplayedSectionChanged(selectedSection)
+    }
+    val sectionsToRender = retainedSections + selectedSection
+    Box(modifier = Modifier.fillMaxSize()) {
+        CaseDetailSection.entries.forEach { pageSection ->
+            if (pageSection !in sectionsToRender) return@forEach
+            val active = pageSection == selectedSection
+            key(pageSection) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(if (active) 1f else 0f)
+                        .graphicsLayer { alpha = if (active) 1f else 0f }
+                        .then(
+                            if (active) Modifier else Modifier.clearAndSetSemantics { },
+                        ),
+                ) {
+                    val pageScrollState = scrollStates.getValue(pageSection)
+                    if (pageSection == CaseDetailSection.RECORDS) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.White)
+                                .testTag("case_notes_layout")
+                                .padding(
+                                    start = if (wide) 28.dp else 10.dp,
+                                    top = 6.dp,
+                                    end = if (wide) 28.dp else 10.dp,
+                                    bottom = 6.dp,
+                                ),
+                        ) {
+                            if (!caseNotesReady) {
+                                LoadingBox("正在校验断事笔记…")
+                            } else {
+                                ReferenceCaseNotes(
+                                    case = case,
+                                    adopted = adopted,
+                                    mode = notesMode,
+                                    captureForLongImage = captureRegistry.notesCaptureActive,
+                                    onModeChange = { notesMode = it },
+                                    onEditRecord = onEditRecord,
+                                    draft = caseNotesDraft,
+                                    onOwnerFeedbackChange = onOwnerFeedbackChange,
+                                    onMasterCommentaryChange = onMasterCommentaryChange,
+                                    onAiCommentaryChange = onAiCommentaryChange,
+                                    onAddTimeline = onAddNotesTimeline,
+                                    onTimelineContentChange = onNotesTimelineContentChange,
+                                    onOpenAiCommentary = onOpenAiCommentary,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                        .registerCaseDetailPageCaptureTarget(
+                                            captureRegistry,
+                                            pageSection,
+                                            pageScrollState,
+                                        )
+                                        .then(
+                                            if (
+                                                notesMode == CaseNotesMode.OWNER_FEEDBACK ||
+                                                captureRegistry.notesCaptureActive
+                                            ) {
+                                                Modifier.verticalScroll(pageScrollState)
+                                            } else {
+                                                Modifier
+                                            },
+                                        )
+                                        .padding(bottom = 10.dp),
+                                )
+                                CaseNotesSaveFooter(
+                                    case = case,
+                                    saving = caseNotesSaving,
+                                    saveError = caseNotesSaveError,
+                                    saved = caseNotesSaved,
+                                    onSave = onSaveCaseNotes,
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .registerCaseDetailPageCaptureTarget(
+                                    captureRegistry,
+                                    pageSection,
+                                    pageScrollState,
+                                )
+                                .verticalScroll(pageScrollState)
+                                .background(
+                                    color = if (pageSection == CaseDetailSection.FORTUNE) {
+                                        MaterialTheme.colorScheme.background
+                                    } else {
+                                        Color.White
+                                    },
+                                    shape = if (pageSection == CaseDetailSection.BASIC_INFO) {
+                                        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+                                    } else {
+                                        RoundedCornerShape(0.dp)
+                                    },
+                                )
+                                .padding(
+                                    horizontal = when {
+                                        pageSection == CaseDetailSection.FORTUNE -> 0.dp
+                                        wide -> 28.dp
+                                        else -> 10.dp
+                                    },
+                                    vertical = when (pageSection) {
+                                        CaseDetailSection.BASIC_INFO -> 8.dp
+                                        CaseDetailSection.FORTUNE -> 0.dp
+                                        else -> 6.dp
+                                    },
+                                ),
+                        ) {
+                            when (pageSection) {
+                                CaseDetailSection.BASIC_INFO -> ReferenceBasicInfo(
+                                    case = case,
+                                    adopted = adopted,
+                                    onEditCase = onEditCase,
+                                    onAddBirthTimeCandidate = onAddBirthTimeCandidate,
+                                    onAdoptBirthTimeCandidate = onAdoptBirthTimeCandidate,
+                                    mutationSaving = mutationSaving,
+                                    mutationError = mutationError,
+                                )
+                                CaseDetailSection.BASIC_CHART -> ReferenceBasicChart(
+                                    case = case,
+                                    adopted = adopted,
+                                    professionalFortunePosition = professionalFortunePosition.takeIf {
+                                        selectedSection == CaseDetailSection.BASIC_CHART
+                                    },
+                                    onAiPromptCopied = onAiPromptCopied,
+                                )
+                                CaseDetailSection.FORTUNE -> {
+                                    if (adopted == null) {
+                                        ReferenceEmptyText("当前命例没有已采用的计算快照。")
+                                    } else {
+                                        FortuneDetailsView(
+                                            calculation = adopted.result,
+                                            fortuneObservationDate = fortuneObservationDate,
+                                            fortuneObservationTime = fortuneObservationTime,
+                                            fortunePosition = fortunePosition,
+                                            professionalFortunePosition = professionalFortunePosition,
+                                            fortunePositionError = fortunePositionError,
+                                            fortunePositionLoading = fortunePositionLoading,
+                                            onOpenObservationPicker = { showObservationPicker = true },
+                                            onObservationSelect = onFortuneObservationSelect,
+                                            onToday = onFortuneToday,
+                                        )
+                                    }
+                                }
+                                CaseDetailSection.RECORDS -> Unit
+                            }
+                            Spacer(Modifier.height(28.dp))
+                        }
+                    }
                 }
             }
-
-            CaseDetailSection.RECORDS -> Unit
         }
-        Spacer(Modifier.height(28.dp))
     }
 }
 
@@ -8567,7 +9877,7 @@ private fun ReferenceBasicInfo(
                     }
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         mutationError?.let { error ->
             Text(
@@ -8585,6 +9895,7 @@ private fun ReferenceBasicChart(
     case: BaziCase,
     adopted: CaseCalculationSnapshot?,
     professionalFortunePosition: ProfessionalFortunePosition?,
+    onAiPromptCopied: () -> Unit,
 ) {
     if (adopted == null) {
         ReferenceEmptyText("当前命例没有已采用的计算快照。")
@@ -8612,6 +9923,7 @@ private fun ReferenceBasicChart(
     BasicChartAiPromptSection(
         case = case,
         observation = professionalFortunePosition,
+        onCopied = onAiPromptCopied,
         modifier = Modifier.padding(top = 18.dp),
     )
 }
@@ -8764,108 +10076,189 @@ private fun ReferenceCaseNotes(
     draft: CaseNotesDraft,
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
+    onAiCommentaryChange: (String) -> Unit,
     onAddTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onTimelineContentChange: (String, String) -> Unit,
+    onOpenAiCommentary: () -> Unit,
+    captureForLongImage: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     var pickerVisible by rememberSaveable(case.id) { mutableStateOf(false) }
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center,
-    ) {
-        val switcherWidth = minOf(maxWidth * 0.54f, 220.dp)
-        Surface(
-            modifier = Modifier
-                .width(switcherWidth)
-                .testTag("notes_mode_switcher"),
-            color = Color.White,
-            shape = RoundedCornerShape(13.dp),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                NanfengGold.copy(alpha = 0.55f),
-            ),
+    Column(modifier = modifier) {
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
         ) {
-            Row(modifier = Modifier.padding(2.dp)) {
-                NotesModeTab(
-                    text = "命主反馈",
-                    selected = mode == CaseNotesMode.OWNER_FEEDBACK,
-                    onClick = { onModeChange(CaseNotesMode.OWNER_FEEDBACK) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("notes_mode_owner"),
-                )
-                NotesModeTab(
-                    text = "师傅点评",
-                    selected = mode == CaseNotesMode.MASTER_COMMENTARY,
-                    onClick = { onModeChange(CaseNotesMode.MASTER_COMMENTARY) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("notes_mode_master"),
-                )
+            val switcherWidth = minOf(maxWidth * 0.82f, 330.dp)
+            val switcherShape = RoundedCornerShape(28.dp)
+            val switcherThemeColor = MaterialTheme.colorScheme.primary
+            Box(
+                modifier = Modifier
+                    .width(switcherWidth)
+                    .height(54.dp)
+                    .clip(switcherShape)
+                    .background(Color.White)
+                    // The outline is deliberately drawn before the segments: the active
+                    // color reaches the shared edge instead of becoming a small pill
+                    // floating inside a white frame.
+                    .drawWithContent {
+                        val stroke = 1.5.dp.toPx()
+                        drawRoundRect(
+                            color = switcherThemeColor,
+                            topLeft = Offset(stroke / 2f, stroke / 2f),
+                            size = Size(size.width - stroke, size.height - stroke),
+                            cornerRadius = CornerRadius(28.dp.toPx()),
+                            style = Stroke(width = stroke),
+                        )
+                        drawContent()
+                    }
+                    .testTag("notes_mode_switcher"),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    NotesModeTab(
+                        text = "命主反馈",
+                        selected = mode == CaseNotesMode.OWNER_FEEDBACK,
+                        groupedPill = true,
+                        onClick = { onModeChange(CaseNotesMode.OWNER_FEEDBACK) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("notes_mode_owner"),
+                    )
+                    NotesModeTab(
+                        text = "师傅点评",
+                        selected = mode == CaseNotesMode.MASTER_COMMENTARY,
+                        groupedPill = true,
+                        onClick = { onModeChange(CaseNotesMode.MASTER_COMMENTARY) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("notes_mode_master"),
+                    )
+                    NotesModeTab(
+                        text = "AI 点评",
+                        selected = mode == CaseNotesMode.AI_COMMENTARY,
+                        groupedPill = true,
+                        onClick = { onModeChange(CaseNotesMode.AI_COMMENTARY) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("notes_mode_ai"),
+                    )
+                }
             }
         }
-    }
-    if (mode == CaseNotesMode.OWNER_FEEDBACK) {
-        ReferenceOwnerProfileSheet(case)
-        WenzhenSectionHeader(
-            title = "命主反馈",
-            modifier = Modifier.padding(top = 18.dp),
-        )
-        CaseNotesTextEditor(
-            value = draft.ownerFeedback,
-            onValueChange = onOwnerFeedbackChange,
-            placeholder = "直接记录命主的反馈信息",
-            enabled = case.deletedAt == null,
-            modifier = Modifier.testTag("owner_feedback_input"),
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        if (captureForLongImage) {
+            WenzhenSectionHeader(
+                title = "命主反馈",
+                modifier = Modifier.padding(top = 18.dp),
+            )
+            CaseNotesTextEditor(
+                value = draft.ownerFeedback,
+                onValueChange = onOwnerFeedbackChange,
+                placeholder = "直接记录命主的反馈信息",
+                enabled = case.deletedAt == null,
+                modifier = Modifier.testTag("owner_feedback_capture"),
+            )
             Text(
                 "关键事件反馈记录",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(top = 18.dp, bottom = 6.dp),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            androidx.compose.material3.IconButton(
-                onClick = { pickerVisible = true },
-                enabled = case.deletedAt == null && adopted != null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .testTag("add_event_button"),
-            ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "添加大运或流年",
-                    tint = NanfengGold,
-                )
-            }
-        }
-        CaseNotesTimeline(
-            draft = draft,
-            calculation = adopted?.result,
-            enabled = case.deletedAt == null,
-            onContentChange = onTimelineContentChange,
-        )
-    } else {
-        WenzhenSectionHeader(
-            title = "师傅点评",
-            modifier = Modifier.padding(top = 18.dp),
-        )
-        CaseNotesTextEditor(
-            value = draft.masterCommentary,
-            onValueChange = onMasterCommentaryChange,
-            placeholder = "直接记录师傅的判断与点评",
-            enabled = case.deletedAt == null,
-            minLines = 8,
-            modifier = Modifier.testTag("master_commentary_input"),
-        )
-    }
+            CaseNotesTimeline(
+                draft = draft,
+                calculation = adopted?.result,
+                enabled = case.deletedAt == null,
+                onContentChange = onTimelineContentChange,
+            )
+            CaseNotesCommentaryHeader(title = "师傅点评", tag = "master_commentary_capture")
+            CaseNotesTextEditor(
+                value = draft.masterCommentary,
+                onValueChange = onMasterCommentaryChange,
+                placeholder = "输入师傅点评",
+                enabled = case.deletedAt == null,
+                modifier = Modifier.testTag("master_commentary_capture"),
+            )
+            AiCommentaryEditor(
+                value = draft.aiCommentary,
+                onValueChange = onAiCommentaryChange,
+                enabled = case.deletedAt == null,
+                onGenerate = onOpenAiCommentary,
+                captureForLongImage = true,
+                modifier = Modifier.testTag("ai_commentary_capture"),
+            )
+        } else if (mode == CaseNotesMode.OWNER_FEEDBACK) {
+            WenzhenSectionHeader(
+                title = "命主反馈",
+                modifier = Modifier.padding(top = 18.dp),
+            )
+            CaseNotesTextEditor(
+                value = draft.ownerFeedback,
+                onValueChange = onOwnerFeedbackChange,
+                placeholder = "直接记录命主的反馈信息",
+                enabled = case.deletedAt == null,
+                modifier = Modifier.testTag("owner_feedback_input"),
+            )
 
-    Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "关键事件反馈记录",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                androidx.compose.material3.IconButton(
+                    onClick = { pickerVisible = true },
+                    enabled = case.deletedAt == null && adopted != null,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("add_event_button"),
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "添加大运或流年",
+                        tint = NanfengGold,
+                    )
+                }
+            }
+            CaseNotesTimeline(
+                draft = draft,
+                calculation = adopted?.result,
+                enabled = case.deletedAt == null,
+                onContentChange = onTimelineContentChange,
+            )
+        } else if (mode == CaseNotesMode.MASTER_COMMENTARY) {
+            CaseNotesCommentaryHeader(
+                title = "师傅点评",
+                tag = "master_commentary_header",
+            )
+            CaseNotesTextEditor(
+                value = draft.masterCommentary,
+                onValueChange = onMasterCommentaryChange,
+                placeholder = "输入师傅点评",
+                enabled = case.deletedAt == null,
+                fillAvailableSpace = !captureForLongImage,
+                modifier = if (captureForLongImage) Modifier else Modifier.weight(1f)
+                    .testTag("master_commentary_input"),
+            )
+        } else {
+            AiCommentaryEditor(
+                value = draft.aiCommentary,
+                onValueChange = onAiCommentaryChange,
+                enabled = case.deletedAt == null,
+                onGenerate = onOpenAiCommentary,
+                captureForLongImage = captureForLongImage,
+                modifier = if (captureForLongImage) Modifier else Modifier.weight(1f),
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+    }
 
     if (pickerVisible && adopted != null) {
         CaseNotesTimePicker(
@@ -8876,6 +10269,103 @@ private fun ReferenceCaseNotes(
                 pickerVisible = false
             },
         )
+    }
+}
+
+@Composable
+private fun AiCommentaryEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    onGenerate: () -> Unit,
+    captureForLongImage: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        CaseNotesCommentaryHeader(
+            title = "AI 点评",
+            tag = "ai_commentary_header",
+            actionLabel = if (value.isBlank()) "生成点评" else "再次生成",
+            actionTag = "open_ai_commentary",
+            enabled = enabled,
+            onAction = onGenerate,
+        )
+        CaseNotesTextEditor(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = "输入或粘贴 AI 点评",
+            enabled = enabled,
+            fillAvailableSpace = !captureForLongImage,
+            modifier = if (captureForLongImage) Modifier else Modifier.weight(1f)
+                .testTag("ai_commentary_input"),
+        )
+    }
+}
+
+/**
+ * 师傅与 AI 点评共享同一标题槽，避免切换模式时正文编辑区发生高度和基线跳动。
+ */
+@Composable
+private fun CaseNotesCommentaryHeader(
+    title: String,
+    tag: String,
+    actionLabel: String? = null,
+    actionTag: String? = null,
+    enabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag(tag)
+            .padding(top = 18.dp, bottom = 8.dp)
+            .height(40.dp),
+    ) {
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(20.dp)
+                    .background(NanfengGold),
+            )
+            Text(
+                title,
+                modifier = Modifier.padding(start = 8.dp),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (actionLabel != null && onAction != null) {
+            Surface(
+                onClick = onAction,
+                enabled = enabled,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .height(36.dp)
+                    .widthIn(min = 76.dp, max = 88.dp)
+                    .testTag(requireNotNull(actionTag)),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        actionLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -8918,7 +10408,10 @@ private fun CaseNotesSaveFooter(
                 .height(48.dp)
                 .testTag("save_case_notes_button"),
             shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
         ) {
             Text(if (saving) "保存中" else "保存", fontWeight = FontWeight.SemiBold)
         }
@@ -8933,24 +10426,99 @@ private fun CaseNotesTextEditor(
     enabled: Boolean,
     modifier: Modifier = Modifier,
     minLines: Int = 4,
+    fillAvailableSpace: Boolean = false,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        enabled = enabled,
+    val editorScrollState = rememberScrollState()
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 2.dp),
-        placeholder = {
-            Text(
-                placeholder,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+    ) {
+        Surface(
+            modifier = if (fillAvailableSpace) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = (minLines * 25).dp + 32.dp)
+            },
+            shape = RoundedCornerShape(14.dp),
+            color = if (enabled) Color.White else MaterialTheme.colorScheme.surfaceVariant,
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (enabled) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant
+                },
+            ),
+        ) {
+            BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            modifier = (if (fillAvailableSpace) {
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(editorScrollState)
+            } else {
+                Modifier.fillMaxSize()
+            })
+                .padding(start = 16.dp, top = 14.dp, end = 18.dp, bottom = 14.dp),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isEmpty()) {
+                        Text(
+                            placeholder,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+                        )
+                    }
+                    innerTextField()
+                }
+            },
             )
-        },
-        minLines = minLines,
-        shape = RoundedCornerShape(14.dp),
-        textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
-    )
+        }
+        if (fillAvailableSpace && editorScrollState.maxValue > 0) {
+            CaseNotesEditorScrollbar(
+                scrollState = editorScrollState,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 14.dp, end = 5.dp, bottom = 14.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CaseNotesEditorScrollbar(
+    scrollState: ScrollState,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .width(4.dp)
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.20f))
+            .testTag("case_notes_editor_scrollbar"),
+    ) {
+        val thumbHeight = maxHeight * 0.24f
+        val progress = if (scrollState.maxValue == 0) {
+            0f
+        } else {
+            scrollState.value.toFloat() / scrollState.maxValue.toFloat()
+        }
+        Box(
+            modifier = Modifier
+                .offset(y = (maxHeight - thumbHeight) * progress)
+                .fillMaxWidth()
+                .height(thumbHeight)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)),
+        )
+    }
 }
 
 @Composable
@@ -9057,7 +10625,8 @@ private fun CaseNotesDecadeGroup(
                     ),
             ) {
                 CaseNotesTimelineLabel(
-                    text = "${entry.year}年  ${entry.stemBranch}",
+                    text = entry.sourceLabel.ifBlank { "${entry.year}年  ${entry.stemBranch}" } +
+                        entry.status.takeIf { it.isNotBlank() }?.let { "  【$it】" }.orEmpty(),
                     parent = false,
                 )
                 CaseNotesTimelineInput(
@@ -9079,7 +10648,8 @@ private fun CaseNotesStandaloneTimelineEntry(
 ) {
     Column(modifier = Modifier.padding(bottom = 14.dp)) {
         CaseNotesTimelineLabel(
-            text = "${entry.year}年  ${entry.stemBranch}" +
+            text = entry.sourceLabel.ifBlank { "${entry.year}年  ${entry.stemBranch}" } +
+                entry.status.takeIf { it.isNotBlank() }?.let { "  【$it】" }.orEmpty() +
                 if (entry.level == CaseEventTimelineLevel.DECADE) "大运" else "",
             parent = entry.level == CaseEventTimelineLevel.DECADE,
         )
@@ -9130,7 +10700,8 @@ private fun CaseNotesTimelineInput(
             .testTag("timeline_event_input")
             .semantics { contentDescription = "时间线事件输入 ${entry.id}" },
         placeholder = { Text("输入这一阶段的关键事件") },
-        minLines = 2,
+        minLines = 1,
+        maxLines = Int.MAX_VALUE,
         shape = RoundedCornerShape(12.dp),
         textStyle = MaterialTheme.typography.bodyMedium,
     )
@@ -9271,43 +10842,10 @@ private fun CaseNotesTimePicker(
                     .height(48.dp)
                     .testTag("notes_time_picker_confirm"),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = NanfengGold),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Text("确定", fontWeight = FontWeight.SemiBold)
             }
-        }
-    }
-}
-
-@Composable
-private fun ReferenceOwnerProfileSheet(case: BaziCase) {
-    val occupation = case.profile.occupation.value
-    val education = case.profile.education.value
-    val finance = case.profile.finance.value
-    val marriage = case.profile.marriage.value
-    val health = case.profile.health.value
-    if (listOf(occupation, education, finance, marriage, health).all { it == null }) return
-    Column(modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) {
-        if (occupation != null || education != null) {
-            WenzhenDualFactRow(
-                "职业",
-                occupation ?: "未填写",
-                "学历",
-                education ?: "未填写",
-                alternate = false,
-            )
-        }
-        if (finance != null || marriage != null) {
-            WenzhenDualFactRow(
-                "财富",
-                finance ?: "未填写",
-                "婚姻",
-                marriage ?: "未填写",
-                alternate = true,
-            )
-        }
-        health?.let {
-            WenzhenFactRow("健康状态", it, alternate = false)
         }
     }
 }
@@ -9343,7 +10881,7 @@ private fun ReferenceOtherNotes(
             )
             Text(record.content, modifier = Modifier.padding(top = 3.dp))
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -9351,20 +10889,46 @@ private fun ReferenceOtherNotes(
 private fun NotesModeTab(
     text: String,
     selected: Boolean,
+    groupedPill: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier
-            .height(48.dp),
-        color = if (selected) NanfengGold else Color.Transparent,
-        shape = RoundedCornerShape(11.dp),
+        modifier = if (groupedPill && selected) {
+            // The outer outline is drawn behind this surface.  Filling the full
+            // track lets an edge selection cover that outline cleanly, matching
+            // the reference segmented pill with no white seam or crossing edge.
+            modifier.fillMaxHeight().zIndex(1f)
+        } else if (groupedPill) {
+            modifier.fillMaxHeight()
+        } else {
+            modifier.height(48.dp)
+        },
+        color = when {
+            groupedPill && selected -> MaterialTheme.colorScheme.primary
+            groupedPill -> Color.Transparent
+            selected -> MaterialTheme.colorScheme.primary
+            else -> Color.Transparent
+        },
+        shape = when {
+            !groupedPill -> RoundedCornerShape(11.dp)
+            // Every selected segment is independently a pill.  The parent clips
+            // only its outside edge, so the active color can meet the outline
+            // without turning its inner edge into a right angle.
+            else -> RoundedCornerShape(24.dp)
+        },
+        shadowElevation = 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text,
-                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = when {
+                    groupedPill && selected -> Color.White
+                    groupedPill -> MaterialTheme.colorScheme.onSurfaceVariant
+                    selected -> Color.White
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -9455,6 +11019,7 @@ private fun CaseDetailContent(
     fortunePosition: FortunePosition?,
     professionalFortunePosition: ProfessionalFortunePosition?,
     fortunePositionError: String?,
+    fortunePositionLoading: Boolean,
     onFortuneObservationDateChange: (String) -> Unit,
     onFortuneObservationTimeChange: (String) -> Unit,
 ) {
@@ -9477,7 +11042,7 @@ private fun CaseDetailContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .background(NanfengPageBackground)
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
         if (selectedSection == CaseDetailSection.BASIC_INFO) {
@@ -9600,7 +11165,7 @@ private fun CaseDetailContent(
                     .heightIn(min = 48.dp)
                     .testTag("export_single_case_button"),
             ) {
-                Text(if (singleCaseExchangeBusy) "正在导出…" else "导出单命例")
+                Text(if (singleCaseExchangeBusy) "正在导出…" else "导出当前命例")
             }
             }
             } else {
@@ -9884,6 +11449,7 @@ private fun CaseDetailContent(
                         fortunePosition = fortunePosition,
                         professionalFortunePosition = professionalFortunePosition,
                         fortunePositionError = fortunePositionError,
+                        fortunePositionLoading = fortunePositionLoading,
                         onOpenObservationPicker = { showObservationPicker = true },
                     )
                 }
@@ -10219,10 +11785,6 @@ private fun DetailSection(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
         shape = RoundedCornerShape(20.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f),
-        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
@@ -10245,6 +11807,7 @@ private fun FortuneDetailsView(
     fortunePosition: FortunePosition?,
     professionalFortunePosition: ProfessionalFortunePosition?,
     fortunePositionError: String?,
+    fortunePositionLoading: Boolean,
     onOpenObservationPicker: () -> Unit,
     onObservationSelect: (ProfessionalFortuneSelection) -> Unit = {},
     onToday: () -> Unit = {},
@@ -10253,12 +11816,18 @@ private fun FortuneDetailsView(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(NanfengPageBackground)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("professional_page_surface")
             .padding(horizontal = 6.dp, vertical = 8.dp),
     ) {
         if (professionalFortunePosition == null) {
-            ReferenceEmptyText(fortunePositionError ?: "正在定位专业岁运…")
+            if (fortunePositionError == null) {
+                ProfessionalFortuneLoading(
+                    loading = fortunePositionLoading,
+                )
+            } else {
+                ReferenceEmptyText(fortunePositionError)
+            }
             return@Column
         }
         ProfessionalPillarMatrix(professionalFortunePosition.pillarColumns)
@@ -10272,39 +11841,8 @@ private fun FortuneDetailsView(
             onOpenPicker = onOpenObservationPicker,
             onToday = onToday,
         )
-        ProfessionalTimelineRow(
-            title = "大运",
-            items = professionalFortunePosition.decadeTimeline,
-            tag = "decade_fortune_details",
-            layer = ProfessionalFortuneLayer.DECADE,
-            onSelect = onObservationSelect,
-        )
-        ProfessionalTimelineRow(
-            title = "流年",
-            items = professionalFortunePosition.annualTimeline,
-            tag = "annual_fortune_details",
-            layer = ProfessionalFortuneLayer.ANNUAL,
-            onSelect = onObservationSelect,
-        )
-        ProfessionalTimelineRow(
-            title = "流月",
-            items = professionalFortunePosition.monthlyTimeline,
-            tag = "monthly_fortune_details",
-            layer = ProfessionalFortuneLayer.MONTHLY,
-            onSelect = onObservationSelect,
-        )
-        ProfessionalTimelineRow(
-            title = "流日",
-            items = professionalFortunePosition.dailyTimeline,
-            tag = "daily_fortune_details",
-            layer = ProfessionalFortuneLayer.DAILY,
-            onSelect = onObservationSelect,
-        )
-        ProfessionalTimelineRow(
-            title = "流时",
-            items = professionalFortunePosition.hourlyTimeline,
-            tag = "hourly_fortune_details",
-            layer = ProfessionalFortuneLayer.HOURLY,
+        ProfessionalTimelineRows(
+            position = professionalFortunePosition,
             onSelect = onObservationSelect,
         )
         ProfessionalTextSections(
@@ -10318,6 +11856,36 @@ private fun FortuneDetailsView(
             tag = "fortune_shensha",
             stackLines = true,
         )
+    }
+}
+
+@Composable
+private fun ProfessionalFortuneLoading(
+    loading: Boolean,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("professional_fortune_warm_start"),
+        color = Color.White,
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 2.dp,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+            Text(
+                if (loading) "正在生成专业细盘…" else "专业细盘正在准备，请稍后重试。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -10354,14 +11922,10 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp)
+            .padding(bottom = 3.dp)
             .testTag("professional_fortune_position"),
         color = Color.White,
         shape = RoundedCornerShape(16.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f),
-        ),
         tonalElevation = 0.dp,
         shadowElevation = 2.dp,
     ) {
@@ -10561,14 +12125,70 @@ private fun ProfessionalTenGodLabel(
 private val ProfessionalPillarGridSurface = Color(0xFFFBFBFA)
 
 @Composable
+private fun ProfessionalTimelineRows(
+    position: ProfessionalFortunePosition,
+    onSelect: (ProfessionalFortuneSelection) -> Unit,
+) {
+    var pendingSelection by remember(position) {
+        mutableStateOf<ProfessionalFortuneSelection?>(null)
+    }
+    val selectImmediately: (ProfessionalFortuneSelection) -> Unit = { selection ->
+        pendingSelection = selection
+        onSelect(selection)
+    }
+    ProfessionalTimelineRow(
+        title = "大运",
+        items = position.decadeTimeline,
+        tag = "decade_fortune_details",
+        layer = ProfessionalFortuneLayer.DECADE,
+        pendingSelection = pendingSelection,
+        onSelect = selectImmediately,
+    )
+    ProfessionalTimelineRow(
+        title = "流年",
+        items = position.annualTimeline,
+        tag = "annual_fortune_details",
+        layer = ProfessionalFortuneLayer.ANNUAL,
+        pendingSelection = pendingSelection,
+        onSelect = selectImmediately,
+    )
+    ProfessionalTimelineRow(
+        title = "流月",
+        items = position.monthlyTimeline,
+        tag = "monthly_fortune_details",
+        layer = ProfessionalFortuneLayer.MONTHLY,
+        pendingSelection = pendingSelection,
+        onSelect = selectImmediately,
+    )
+    ProfessionalTimelineRow(
+        title = "流日",
+        items = position.dailyTimeline,
+        tag = "daily_fortune_details",
+        layer = ProfessionalFortuneLayer.DAILY,
+        pendingSelection = pendingSelection,
+        onSelect = selectImmediately,
+    )
+    ProfessionalTimelineRow(
+        title = "流时",
+        items = position.hourlyTimeline,
+        tag = "hourly_fortune_details",
+        layer = ProfessionalFortuneLayer.HOURLY,
+        pendingSelection = pendingSelection,
+        onSelect = selectImmediately,
+    )
+}
+
+@Composable
 private fun ProfessionalTimelineRow(
     title: String,
     items: List<ProfessionalTimelineItem>,
     tag: String,
     layer: ProfessionalFortuneLayer,
+    pendingSelection: ProfessionalFortuneSelection?,
     onSelect: (ProfessionalFortuneSelection) -> Unit,
 ) {
     if (items.isEmpty()) return
+    val trailingDivider = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -10576,18 +12196,17 @@ private fun ProfessionalTimelineRow(
             .testTag(tag),
         colors = CardDefaults.cardColors(containerColor = professionalTimelineCardColor(title)),
         shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-        ),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ProfessionalTimelineCardHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
                 modifier = Modifier
                     .width(26.dp)
+                    .fillMaxHeight()
                     .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
@@ -10607,21 +12226,44 @@ private fun ProfessionalTimelineRow(
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .fillMaxHeight()
                         .testTag("${tag}_list"),
                     contentPadding = PaddingValues(vertical = 6.dp),
                     horizontalArrangement = Arrangement.Start,
                 ) {
                     itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
+                        val selected = pendingSelection
+                            ?.takeIf { it.layer == layer }
+                            ?.observedAt
+                            ?.let { it == item.observedAt }
+                            ?: item.selected
                         Box(
                             modifier = Modifier
                                 .width(timelineColumnWidth)
-                                .testTag("${tag}_column"),
+                                .testTag("${tag}_column")
+                                .then(
+                                    if (index < items.lastIndex) {
+                                        Modifier.drawWithContent {
+                                            drawContent()
+                                            val dividerStrokeWidth = 1.dp.toPx()
+                                            val dividerX = size.width - dividerStrokeWidth / 2f
+                                            drawLine(
+                                                color = trailingDivider,
+                                                start = Offset(dividerX, 0f),
+                                                end = Offset(dividerX, size.height),
+                                                strokeWidth = dividerStrokeWidth,
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         ) {
                             ProfessionalTimelineCell(
                                 item = item,
+                                selected = selected,
                                 modifier = Modifier.fillMaxWidth(),
                                 compact = true,
-                                showTrailingDivider = index < items.lastIndex,
                                 onClick = {
                                     onSelect(ProfessionalFortuneSelection(layer, item.observedAt))
                                 },
@@ -10635,9 +12277,10 @@ private fun ProfessionalTimelineRow(
 }
 
 private const val PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS = 10
+private val ProfessionalTimelineCardHeight = 104.dp
 
 private val ProfessionalTimelinePrimarySurface = Color.White
-private val ProfessionalTimelineAlternateSurface = Color(0xFFFCFCFB)
+private val ProfessionalTimelineAlternateSurface = Color.White
 
 private fun professionalTimelineCardColor(title: String): Color = when (title) {
     "流年", "流日" -> ProfessionalTimelineAlternateSurface
@@ -10645,47 +12288,45 @@ private fun professionalTimelineCardColor(title: String): Color = when (title) {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun ProfessionalTimelineCell(
     item: ProfessionalTimelineItem,
+    selected: Boolean,
     modifier: Modifier = Modifier,
     compact: Boolean,
-    showTrailingDivider: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val trailingDivider = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
-    Surface(
-        onClick = onClick,
-        modifier = modifier
-            .testTag("timeline_${item.key}")
-            .then(if (item.selected) Modifier.testTag("selected_${item.key}") else Modifier)
-            .then(
-                if (showTrailingDivider) {
-                    Modifier.drawBehind {
-                        val dividerX = size.width - 0.5.dp.toPx()
-                        drawLine(
-                            color = trailingDivider,
-                            start = Offset(dividerX, 0f),
-                            end = Offset(dividerX, size.height),
-                            strokeWidth = 1.dp.toPx(),
-                        )
-                    }
-                } else {
-                    Modifier
-                },
-            ),
-        color = if (item.selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
-        shape = RoundedCornerShape(8.dp),
+    val platformViewConfiguration = LocalViewConfiguration.current
+    val exactCellViewConfiguration = remember(platformViewConfiguration) {
+        object : ViewConfiguration by platformViewConfiguration {
+            override val minimumTouchTargetSize = DpSize(0.dp, 0.dp)
+        }
+    }
+    CompositionLocalProvider(
+        LocalMinimumInteractiveComponentEnforcement provides false,
+        LocalViewConfiguration provides exactCellViewConfiguration,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = if (compact) 0.dp else 2.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Surface(
+            onClick = onClick,
+            modifier = modifier
+                .testTag("timeline_${item.key}")
+                .then(if (selected) Modifier.testTag("selected_${item.key}") else Modifier),
+            color = if (selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
+            shape = RoundedCornerShape(8.dp),
         ) {
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = if (compact) 0.dp else 2.dp,
+                    vertical = 4.dp,
+                ),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
             Text(
                 item.label,
                 modifier = Modifier.testTag("timeline_${item.key}_label"),
                 fontSize = if (compact) 8.sp else 9.sp,
                 lineHeight = if (compact) 9.sp else 11.sp,
-                color = if (item.selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
             val stem = item.pillar.getOrNull(0)
@@ -10713,6 +12354,9 @@ private fun ProfessionalTimelineCell(
                 )
                 ProfessionalTimelineBranchDetail(item, compact)
             } else if (stem != null) {
+                Box(modifier = Modifier.testTag("timeline_${item.key}_stem_detail")) {
+                    ProfessionalTenGodLabel(item.stemTenGod, compact)
+                }
                 Text(
                     stem.toString(),
                     modifier = Modifier.testTag("timeline_${item.key}_stem"),
@@ -10721,9 +12365,6 @@ private fun ProfessionalTimelineCell(
                     lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Box(modifier = Modifier.testTag("timeline_${item.key}_stem_detail")) {
-                    ProfessionalTenGodLabel(item.stemTenGod, compact)
-                }
             }
             if (stageLabel == null && branch != null) {
                 Text(
@@ -10749,6 +12390,7 @@ private fun ProfessionalTimelineCell(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
+            }
         }
     }
 }
@@ -10769,6 +12411,7 @@ private fun ProfessionalTimelineBranchDetail(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun ProfessionalSelectedDateBar(
     calculation: CalculationResult,
     completedAge: Int,
@@ -10786,42 +12429,43 @@ private fun ProfessionalSelectedDateBar(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 1.dp, bottom = 3.dp),
+                .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            Surface(
-                onClick = onOpenPicker,
-                modifier = Modifier
-                    .testTag("fortune_observation_picker")
-                    .heightIn(min = 48.dp)
-                    .semantics { contentDescription = "修改观察时间" },
-                color = Color.White.copy(alpha = 0.76f),
-                shape = RoundedCornerShape(10.dp),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    NanfengGold.copy(alpha = 0.28f),
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+            CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+                Surface(
+                    onClick = onOpenPicker,
+                    modifier = Modifier
+                        .testTag("fortune_observation_picker")
+                        .height(30.dp)
+                        .semantics { contentDescription = "修改观察时间" },
+                    color = Color.White.copy(alpha = 0.76f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        NanfengGold.copy(alpha = 0.28f),
+                    ),
                 ) {
-                    Icon(
-                        Icons.Filled.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = NanfengGold.copy(alpha = 0.72f),
-                    )
-                    Text(
-                        "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
-                        fontSize = 10.sp,
-                        lineHeight = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(10.dp),
+                            tint = NanfengGold.copy(alpha = 0.72f),
+                        )
+                        Text(
+                            "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
@@ -10922,10 +12566,11 @@ private fun ProfessionalTextSections(
     Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(tag)) {
         Text(
             title,
-            modifier = Modifier.fillMaxWidth().background(NanfengControlSurface)
+            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onPrimary,
         )
         groups.forEachIndexed { groupIndex, group ->
             Row(
@@ -10970,7 +12615,7 @@ private fun ProfessionalTextSections(
                     )
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
@@ -11338,6 +12983,7 @@ private fun TimeSourceType.displayName(): String = when (this) {
     TimeSourceType.FAMILY_REPORTED -> "家人提供"
     TimeSourceType.OFFICIAL_RECORD -> "出生证明"
     TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
+    TimeSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
     TimeSourceType.OTHER_RECORD -> "其他资料"
     TimeSourceType.UNKNOWN -> "未说明"
 }
@@ -11351,6 +12997,7 @@ private fun CaseSourceType.displayName(): String = when (this) {
     CaseSourceType.MANUAL -> "手动录入"
     CaseSourceType.CASE_COPY -> "命例复制"
     CaseSourceType.WENZHEN_SCREENSHOT -> "问真截图迁移"
+    CaseSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
     CaseSourceType.BACKUP_RESTORE -> "备份恢复"
 }
 
@@ -11380,6 +13027,7 @@ internal fun TextRecordSourceType.displayName(): String = when (this) {
     TextRecordSourceType.RULE_TEMPLATE -> "规则模板"
     TextRecordSourceType.EXTERNAL_AI -> "外部 AI（手动回填）"
     TextRecordSourceType.IMPORTED_IMAGE -> "图片导入"
+    TextRecordSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
     TextRecordSourceType.LEGACY_UNSPECIFIED -> "历史未标记"
 }
 

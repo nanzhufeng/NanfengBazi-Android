@@ -4,6 +4,8 @@ import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile
+import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import java.time.Clock
@@ -43,7 +45,7 @@ class CreateCaseUseCaseTest {
 
         val result = useCase(validForm())
 
-        assertEquals(CreateCaseResult.Created("case-created"), result)
+        assertEquals("case-created", (result as CreateCaseResult.Created).caseId)
         assertEquals(1, engine.calls)
         assertEquals(null, repository.lastExpectedRevision)
         val saved = repository.stored.getValue("case-created")
@@ -60,6 +62,88 @@ class CreateCaseUseCaseTest {
             saved.calculationSnapshots.single().id,
             saved.birthTimeCandidates.single().calculationSnapshotId,
         )
+    }
+
+    @Test
+    fun `保存已排出的预览不会再次调用排盘引擎`() = runTest {
+        val engine = RecordingEngine()
+        val repository = FakeCaseRepository()
+        val ids = ArrayDeque(listOf("prepared-case", "prepared-snapshot", "prepared-candidate"))
+        val useCase = CreateCaseUseCase(
+            baziEngine = engine,
+            caseRepository = repository,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )
+
+        val preview = useCase.preview(validForm()) as PreviewCaseResult.Calculated
+        val result = useCase.savePrepared(validForm(), preview)
+
+        assertEquals("prepared-case", (result as CreateCaseResult.Created).caseId)
+        assertEquals(1, engine.calls)
+        assertEquals("prepared-case", repository.stored.keys.single())
+    }
+
+    @Test
+    fun `不能保存已被后续输入覆盖的预览`() = runTest {
+        val useCase = CreateCaseUseCase(RecordingEngine(), FakeCaseRepository())
+        val preview = useCase.preview(validForm()) as PreviewCaseResult.Calculated
+
+        val result = useCase.savePrepared(validForm().copy(minute = "38"), preview)
+
+        assertEquals(
+            CreateCaseResult.ValidationFailed("排盘输入已更新，请重新开始排盘后再保存。"),
+            result,
+        )
+    }
+
+    @Test
+    fun `名人录入入口将命例保存到名人案例库`() = runTest {
+        val repository = FakeCaseRepository()
+        val ids = ArrayDeque(listOf("celebrity-case", "celebrity-snapshot", "celebrity-candidate"))
+
+        val result = CreateCaseUseCase(
+            baziEngine = RecordingEngine(),
+            caseRepository = repository,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )(validForm().copy(libraryType = CaseLibraryType.CELEBRITY))
+
+        assertEquals("celebrity-case", (result as CreateCaseResult.Created).caseId)
+        assertEquals(
+            CaseLibraryType.CELEBRITY,
+            repository.stored.getValue("celebrity-case").libraryType,
+        )
+    }
+
+    @Test
+    fun `首页所选分组由仓储目录解析并随命例一次保存`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            groupCatalog += CaseGroup("group-family", "家人")
+        }
+        val ids = ArrayDeque(listOf("grouped-case", "grouped-snapshot", "grouped-candidate"))
+        val result = CreateCaseUseCase(
+            baziEngine = RecordingEngine(),
+            caseRepository = repository,
+            idGenerator = IdGenerator { ids.removeFirst() },
+        )(validForm().copy(groupId = "group-family"))
+
+        assertEquals("grouped-case", (result as CreateCaseResult.Created).caseId)
+        assertEquals(listOf(CaseGroup("group-family", "家人")), repository.stored
+            .getValue("grouped-case").groups)
+    }
+
+    @Test
+    fun `首页所选分组已删除时拒绝保存且不生成孤立关联`() = runTest {
+        val repository = FakeCaseRepository()
+
+        val result = CreateCaseUseCase(RecordingEngine(), repository)(
+            validForm().copy(groupId = "missing-group"),
+        )
+
+        assertEquals(
+            CreateCaseResult.ValidationFailed("所选分组已不存在，请重新选择。"),
+            result,
+        )
+        assertTrue(repository.stored.isEmpty())
     }
 
     @Test
@@ -82,7 +166,7 @@ class CreateCaseUseCaseTest {
             idGenerator = IdGenerator { ids.removeFirst() },
         )(validForm())
 
-        assertEquals(CreateCaseResult.Created("normalized-case"), result)
+        assertEquals("normalized-case", (result as CreateCaseResult.Created).caseId)
         val saved = repository.stored.getValue("normalized-case")
         assertEquals(28_800, saved.birthInput.resolvedUtcOffsetSeconds)
         assertEquals("tzdb:test", saved.birthInput.timeZoneDataVersion)
@@ -212,7 +296,7 @@ class CreateCaseUseCaseTest {
 
         val saved = useCase(validForm(), allowDuplicate = true)
 
-        assertEquals(CreateCaseResult.Created("copy"), saved)
+        assertEquals("copy", (saved as CreateCaseResult.Created).caseId)
         assertEquals(setOf("existing", "copy"), repository.stored.keys)
     }
 }

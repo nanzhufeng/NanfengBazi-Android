@@ -1,6 +1,5 @@
 package com.nanzhufeng.nanfengbazi
 
-import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ContentValues
@@ -25,7 +24,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private var pendingLargeBatchUris: List<Uri>? = null
@@ -87,7 +90,7 @@ class MainActivity : ComponentActivity() {
                     viewModel.clearPendingSingleCaseExport()
                 }
             }
-            val createEncryptedSingleCaseBundleDocument =
+            val createEncryptedSingleCaseDocument =
                 rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument(
                         "application/octet-stream",
@@ -107,6 +110,15 @@ class MainActivity : ComponentActivity() {
                 if (uri != null) {
                     lastSingleCaseUri = uri
                     viewModel.previewSingleCase {
+                        contentResolver.openInputStream(uri)
+                    }
+                }
+            }
+            val openWenzhenImportDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                if (uri != null) {
+                    viewModel.previewWenzhenWebImport {
                         contentResolver.openInputStream(uri)
                     }
                 }
@@ -135,10 +147,9 @@ class MainActivity : ComponentActivity() {
             }
             val shareCaseImage = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.StartActivityForResult(),
-            ) { result ->
-                viewModel.completeCaseImageShare(
-                    cancelled = result.resultCode != Activity.RESULT_OK,
-                )
+            ) {
+                // Third-party share activities do not provide a trustworthy send result.
+                viewModel.completeCaseImageShare(cancelled = true)
             }
             val openFullBackupDocument = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocument(),
@@ -152,13 +163,15 @@ class MainActivity : ComponentActivity() {
             }
             NanfengBaziApp(
                 viewModel = viewModel,
-                onCreateSingleCaseDocument = { fileName ->
-                    when {
-                        fileName.endsWith(".json") ->
-                            createSingleCaseDocument.launch(fileName)
-                        fileName.contains("_加密") ->
-                            createEncryptedSingleCaseBundleDocument.launch(fileName)
-                        else -> createSingleCaseBundleDocument.launch(fileName)
+                onCreateSingleCaseDocument = { request ->
+                    when (request.kind) {
+                        SingleCaseExportDocumentKind.JSON ->
+                            createSingleCaseDocument.launch(request.fileName)
+                        SingleCaseExportDocumentKind.BUNDLE ->
+                            createSingleCaseBundleDocument.launch(request.fileName)
+                        SingleCaseExportDocumentKind.ENCRYPTED_JSON,
+                        SingleCaseExportDocumentKind.ENCRYPTED_BUNDLE,
+                        -> createEncryptedSingleCaseDocument.launch(request.fileName)
                     }
                 },
                 onOpenSingleCaseDocument = {
@@ -171,6 +184,11 @@ class MainActivity : ComponentActivity() {
                         ),
                     )
                 },
+                onOpenWenzhenImportDocument = {
+                    openWenzhenImportDocument.launch(
+                        arrayOf("application/json", "text/plain"),
+                    )
+                },
                 onImportScreenshots = {
                     pickScreenshotImages.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -178,6 +196,10 @@ class MainActivity : ComponentActivity() {
                 },
                 screenshotImportState = screenshotImportState,
                 onRetryScreenshotImport = screenshotImportViewModel::retryRecognition,
+                onConfirmScreenshotAiRecognition =
+                    screenshotImportViewModel::confirmAiModelRecognition,
+                onCancelScreenshotAiRecognition =
+                    screenshotImportViewModel::cancelAiModelRecognition,
                 onDeleteScreenshotImport = screenshotImportViewModel::deleteActiveImport,
                 onSetScreenshotFieldAdopted =
                     screenshotImportViewModel::setFieldAdopted,
@@ -221,36 +243,34 @@ class MainActivity : ComponentActivity() {
                         lastSingleCaseUri?.let(contentResolver::openInputStream)
                     }
                 },
-                onSaveCaseImageToGallery = ::savePreparedCaseImageToGallery,
-                onSharePreparedCaseImage = {
+                onSaveCaseImagesToGallery = ::savePreparedCaseImagesToGallery,
+                onSharePreparedCaseImages = {
                     val shareDirectory = File(cacheDir, CASE_IMAGE_SHARE_DIRECTORY)
-                    val shareFile = File(shareDirectory, CASE_IMAGE_SHARE_FILE_NAME)
+                    val shareFiles = CASE_IMAGE_SHARE_FILE_NAMES.map { File(shareDirectory, it) }
                     val directoryReady = shareDirectory.isDirectory ||
                         shareDirectory.mkdirs()
                     if (!directoryReady) {
                         viewModel.reportCaseImageShareLaunchFailed()
                     } else {
-                        viewModel.copyPreparedCaseImageForShare(
-                            openOutput = { shareFile.outputStream() },
+                        viewModel.copyPreparedCaseImagesForShare(
+                            openOutput = { index -> shareFiles.getOrNull(index)?.outputStream() },
                             onReady = {
-                                val uri = runCatching {
-                                    FileProvider.getUriForFile(
-                                        this,
-                                        "$packageName.fileprovider",
-                                        shareFile,
-                                    )
-                                }.getOrNull()
-                                if (uri == null) {
+                                val uris = shareFiles.mapNotNull { file ->
+                                    runCatching {
+                                        FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+                                    }.getOrNull()
+                                }
+                                if (uris.size != 2) {
                                     viewModel.reportCaseImageShareLaunchFailed()
                                 } else {
-                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    val sendIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                                         type = "image/png"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                                         clipData = ClipData.newUri(
                                             contentResolver,
                                             "南枫八字命盘长图",
-                                            uri,
-                                        )
+                                            uris.first(),
+                                        ).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     val hasTarget = packageManager
@@ -266,9 +286,10 @@ class MainActivity : ComponentActivity() {
                                             shareCaseImage.launch(
                                                 Intent.createChooser(
                                                     sendIntent,
-                                                    "分享命盘长图",
+                                                    "分享两张命盘长图",
                                                 ),
                                             )
+                                            viewModel.markCaseImageShareHandedOff()
                                         }.onFailure {
                                             viewModel.reportCaseImageShareLaunchFailed()
                                         }
@@ -303,42 +324,45 @@ class MainActivity : ComponentActivity() {
         consumeSharedImages(intent)
     }
 
-    private fun savePreparedCaseImageToGallery(fileName: String) {
+    private fun savePreparedCaseImagesToGallery(fileNames: List<String>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             viewModel.reportCaseImageGallerySaveFailed()
             return
         }
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(
-                MediaStore.Images.Media.RELATIVE_PATH,
-                "${Environment.DIRECTORY_PICTURES}/南枫八字",
-            )
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-        val uri = runCatching {
-            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        }.getOrNull()
-        if (uri == null) {
+        if (fileNames.size != 2) {
             viewModel.reportCaseImageGallerySaveFailed()
             return
         }
-        viewModel.exportPreparedCaseImage(
-            openOutput = { contentResolver.openOutputStream(uri, "w") },
+        val uris = fileNames.mapNotNull { fileName ->
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/南枫八字")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            runCatching { contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) }.getOrNull()
+        }
+        if (uris.size != 2) {
+            uris.forEach { uri -> runCatching { contentResolver.delete(uri, null, null) } }
+            viewModel.reportCaseImageGallerySaveFailed()
+            return
+        }
+        viewModel.exportPreparedCaseImages(
+            openOutput = { index -> uris.getOrNull(index)?.let { contentResolver.openOutputStream(it, "w") } },
             onCompleted = { written ->
                 if (!written) {
-                    runCatching { contentResolver.delete(uri, null, null) }
+                    uris.forEach { uri -> runCatching { contentResolver.delete(uri, null, null) } }
                     true
                 } else {
-                    val published = runCatching {
-                        val ready = ContentValues().apply {
-                            put(MediaStore.Images.Media.IS_PENDING, 0)
-                        }
-                        contentResolver.update(uri, ready, null, null) > 0
-                    }.getOrDefault(false)
+                    val published = uris.all { uri ->
+                        runCatching {
+                            contentResolver.update(uri, ContentValues().apply {
+                                put(MediaStore.Images.Media.IS_PENDING, 0)
+                            }, null, null) > 0
+                        }.getOrDefault(false)
+                    }
                     if (!published) {
-                        runCatching { contentResolver.delete(uri, null, null) }
+                        uris.forEach { uri -> runCatching { contentResolver.delete(uri, null, null) } }
                     }
                     published
                 }
@@ -381,7 +405,7 @@ class MainActivity : ComponentActivity() {
             AlertDialog.Builder(this)
                 .setTitle("允许显示长批次识别进度？")
                 .setMessage(
-                    "本次选择了 ${uris.size} 张图片，离线识别可能持续较久。" +
+                    "本次选择了 ${uris.size} 张图片，AI 模型识别可能持续较久。" +
                         "允许通知后可在后台查看进度并取消；不允许也会继续导入。",
                 )
                 .setPositiveButton("允许通知") { _, _ ->
@@ -408,18 +432,22 @@ class MainActivity : ComponentActivity() {
 
     private fun importScreenshotUrisNow(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        val sources = uris.mapNotNull { uri ->
-            runCatching {
-                PendingImportImage(
-                    originalFileName = displayName(uri) ?: "共享图片",
-                    mimeType = contentResolver.getType(uri)
-                        ?.takeIf { it.startsWith("image/") }
-                        ?: "image/unknown",
-                    openInput = { contentResolver.openInputStream(uri) },
-                )
-            }.getOrNull()
+        lifecycleScope.launch {
+            val sources = withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    runCatching {
+                        PendingImportImage(
+                            originalFileName = displayName(uri) ?: "共享图片",
+                            mimeType = contentResolver.getType(uri)
+                                ?.takeIf { it.startsWith("image/") }
+                                ?: "image/unknown",
+                            openInput = { contentResolver.openInputStream(uri) },
+                        )
+                    }.getOrNull()
+                }
+            }
+            screenshotImportViewModel.importImages(sources)
         }
-        screenshotImportViewModel.importImages(sources)
     }
 
     private fun displayName(uri: Uri): String? =
@@ -453,4 +481,7 @@ internal fun shouldRequestLargeBatchNotificationPermission(
 
 private const val POST_NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 private const val CASE_IMAGE_SHARE_DIRECTORY = "case-image-share"
-private const val CASE_IMAGE_SHARE_FILE_NAME = "shared-case-chart.png"
+private val CASE_IMAGE_SHARE_FILE_NAMES = listOf(
+    "shared-case-chart.png",
+    "shared-case-notes.png",
+)

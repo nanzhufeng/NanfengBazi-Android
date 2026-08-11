@@ -37,6 +37,11 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseProtection
 import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.AlmanacContract
 import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
+import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptContract
+import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptRequest
+import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptResult
+import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisTopic
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDate
 import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacError
@@ -47,10 +52,11 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
+import com.nanzhufeng.nanfengbazi.domain.CaseImageExportContract
 import com.nanzhufeng.nanfengbazi.domain.CaseImageExportErrorCode
 import com.nanzhufeng.nanfengbazi.domain.CaseImageExportInput
-import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderResult
-import com.nanzhufeng.nanfengbazi.domain.CaseImageRenderer
+import com.nanzhufeng.nanfengbazi.domain.CaseImageFactsResult
+import com.nanzhufeng.nanfengbazi.domain.CaseImageCaptureFacts
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryContract
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryErrorCode
@@ -61,6 +67,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryResult
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
+import com.nanzhufeng.nanfengbazi.domain.searchCases
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsSearchFilter
 import com.nanzhufeng.nanfengbazi.domain.PillarCharacterFilter
 import com.nanzhufeng.nanfengbazi.domain.CommentaryCandidateRuleEvidence
@@ -108,21 +115,27 @@ import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateFailure
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateSet
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
+import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver
 import com.nanzhufeng.nanfengbazi.domain.RenderedCaseImage
 import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput
+import com.nanzhufeng.nanfengbazi.domain.model.BirthTimeCandidate
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventCategory
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
@@ -141,8 +154,11 @@ import java.time.LocalTime
 import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -150,6 +166,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 sealed interface AppDestination {
     data object CaseList : AppDestination
@@ -202,6 +219,23 @@ data class ExternalAnalysisDraftState(
     val importConfirmed: Boolean = false,
 )
 
+data class AiCommentaryUiState(
+    val dialogVisible: Boolean = false,
+    val serviceMenuVisible: Boolean = false,
+    val settingsVisible: Boolean = false,
+    val historyVisible: Boolean = false,
+    val callRecords: List<AiCommentaryCallRecord> = emptyList(),
+    val configs: Map<AiCommentaryProviderId, AiCommentaryProviderConfig> = emptyMap(),
+    val apiKeys: Map<AiCommentaryProviderId, String> = emptyMap(),
+    val selectedProvider: AiCommentaryProviderId = AiCommentaryProviderId.OPEN_ROUTER,
+    val privacyConfirmed: Boolean = false,
+    val generating: Boolean = false,
+    val saving: Boolean = false,
+    val generatedDraft: AiCommentaryDraft? = null,
+    val editedContent: String = "",
+    val error: String? = null,
+)
+
 class StageTwoNavigator {
     private val stack = mutableListOf<AppDestination>(AppDestination.CreateCase)
     val current: AppDestination
@@ -231,6 +265,16 @@ class StageTwoNavigator {
 
     fun openDetail(caseId: String): AppDestination {
         return push(AppDestination.CaseDetail(caseId))
+    }
+
+    fun replaceCurrentDetail(caseId: String): AppDestination {
+        val destination = AppDestination.CaseDetail(caseId)
+        if (stack.lastOrNull() is AppDestination.CaseDetail) {
+            stack[stack.lastIndex] = destination
+        } else {
+            stack += destination
+        }
+        return current
     }
 
     fun openObjectiveSummary(caseId: String): AppDestination {
@@ -381,19 +425,35 @@ class StageTwoNavigator {
     }
 }
 
+enum class SingleCaseExportDocumentKind {
+    JSON,
+    ENCRYPTED_JSON,
+    BUNDLE,
+    ENCRYPTED_BUNDLE,
+}
+
+data class SingleCaseExportDocumentRequest(
+    val fileName: String,
+    val kind: SingleCaseExportDocumentKind,
+)
+
 data class StageTwoUiState(
     val destination: AppDestination = AppDestination.CreateCase,
     val query: String = "",
     val selectedGroupId: String? = null,
     val selectedTagId: String? = null,
-    val sortOrder: CaseSortOrder = CaseSortOrder.UPDATED_DESC,
+    val sortOrder: CaseSortOrder = CaseSortOrder.NAME_ASC,
     val visibility: CaseVisibility = CaseVisibility.ACTIVE,
+    val libraryType: CaseLibraryType = CaseLibraryType.USER,
     val advancedFilter: CaseAdvancedFilter = CaseAdvancedFilter(),
     val availableGroups: List<CaseGroup> = emptyList(),
     val availableTags: List<CaseTag> = emptyList(),
     val availableBirthRegions: List<String> = emptyList(),
     val availableSeasonalWuxingStates: List<String> = emptyList(),
     val availableShenSha: List<String> = emptyList(),
+    val libraryCaseCounts: Map<CaseLibraryType, Int> = emptyMap(),
+    val trashedCaseCount: Int = 0,
+    val groupCaseCounts: Map<String, Int> = emptyMap(),
     val cases: List<CaseSummary> = emptyList(),
     val batchCases: List<CaseSummary> = emptyList(),
     val recentCases: List<CaseSummary> = emptyList(),
@@ -429,12 +489,15 @@ data class StageTwoUiState(
     val instantCalculation: CalculationResult? = null,
     val duplicateCandidates: List<DuplicateCaseCandidate> = emptyList(),
     val detail: BaziCase? = null,
+    val detailIsTransient: Boolean = false,
+    val detailSavePending: Boolean = false,
     val detailSection: CaseDetailSection = CaseDetailSection.BASIC_INFO,
     val fortuneObservationDate: String = "",
     val fortuneObservationTime: String = "12:00",
     val fortunePosition: FortunePosition? = null,
     val professionalFortunePosition: ProfessionalFortunePosition? = null,
     val fortunePositionError: String? = null,
+    val fortunePositionLoading: Boolean = false,
     val detailLoading: Boolean = false,
     val detailError: String? = null,
     val editForm: CaseFormState = CaseFormState(),
@@ -443,8 +506,11 @@ data class StageTwoUiState(
     val metadataDraft: CaseMetadataDraft = CaseMetadataDraft(),
     val recordDraft: TextRecordDraft = TextRecordDraft(),
     val eventDraft: EventDraft = EventDraft(),
+    val caseNotesCaseId: String? = null,
+    val caseNotesRevision: Long? = null,
     val caseNotesDraft: CaseNotesDraft = CaseNotesDraft(),
     val caseNotesSavedDraft: CaseNotesDraft = CaseNotesDraft(),
+    val caseNotesHydrating: Boolean = false,
     val caseNotesSaving: Boolean = false,
     val caseNotesSaveError: String? = null,
     val caseNotesLastSavedAt: java.time.Instant? = null,
@@ -465,6 +531,7 @@ data class StageTwoUiState(
     val externalAnalysisFailure: ExternalAnalysisBridgeFailure? = null,
     val externalAnalysisCopied: Boolean = false,
     val externalAnalysisSaving: Boolean = false,
+    val aiCommentary: AiCommentaryUiState = AiCommentaryUiState(),
     val commentaryCandidateSet: MasterCommentaryCandidateSet? = null,
     val commentaryCandidateFailure: MasterCommentaryCandidateFailure? = null,
     val commentaryCandidateAdoptionFailure:
@@ -500,7 +567,17 @@ data class StageTwoUiState(
     val fullBackupRestoreConfirmationVisible: Boolean = false,
     val fullBackupRestorePasswordVisible: Boolean = false,
     val fullBackupError: String? = null,
+    val wenzhenImportPreview: WenzhenImportPreview? = null,
+    val wenzhenImportBusy: Boolean = false,
+    val wenzhenImportProgress: WenzhenImportProgress? = null,
+    val wenzhenImportResult: WenzhenImportResult? = null,
+    val wenzhenImportError: String? = null,
     val message: String? = null,
+)
+
+private data class RetainedCaseDetailSnapshot(
+    val case: BaziCase,
+    val notes: CaseNotesDraft,
 )
 
 private sealed interface PendingSingleCaseBundleCommit {
@@ -513,8 +590,38 @@ private sealed interface PendingSingleCaseBundleCommit {
     ) : PendingSingleCaseBundleCommit
 }
 
+private data class CaseListProjection(
+    val catalog: List<CaseSummary>,
+    val groupsByLibrary: Map<CaseLibraryType, List<CaseGroup>>,
+    val cases: List<CaseSummary>,
+    val batchCases: List<CaseSummary>,
+    val recentCases: List<CaseSummary>,
+    val allCasesForControls: List<CaseSummary>,
+    val libraryCaseCounts: Map<CaseLibraryType, Int>,
+    val trashedCaseCount: Int,
+    val groupCaseCounts: Map<String, Int>,
+)
+
+private data class FortunePositionCacheKey(
+    val caseId: String,
+    val calculationSnapshotId: String,
+    val observedAt: CivilDateTime,
+    val selectionLayer: ProfessionalFortuneLayer? = null,
+)
+
+private data class FortunePositionCacheValue(
+    val position: FortunePosition,
+    val professionalPosition: ProfessionalFortunePosition?,
+)
+
+private data class ProfessionalObservationSeed(
+    val observedAt: CivilDateTime,
+    val cached: FortunePositionCacheValue?,
+)
+
 class StageTwoViewModel(
     private val caseRepository: CaseRepository,
+    private val caseCatalogStore: CaseCatalogStore = RepositoryCaseCatalogStore(caseRepository),
     private val createCase: CreateCaseUseCase,
     private val editCase: EditCaseUseCase,
     private val birthTimeCandidates: BirthTimeCandidateUseCase,
@@ -530,7 +637,6 @@ class StageTwoViewModel(
     private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     private val fourPillarsLookup: FourPillarsLookup? = null,
     private val almanacReader: AlmanacReader? = null,
-    private val caseImageRenderer: CaseImageRenderer? = null,
     private val objectiveSummaryGenerator: CaseObjectiveSummaryGenerator =
         CaseObjectiveSummaryContract,
     private val externalAnalysisBridge: ExternalAnalysisBridge =
@@ -547,12 +653,26 @@ class StageTwoViewModel(
     private val backupWorkRoot: Path? = null,
     private val calculationPreferenceStore: CalculationPreferenceStore =
         InMemoryCalculationPreferenceStore(),
+    private val aiCommentarySettings: AiCommentarySettingsStore? = null,
+    private val aiCommentaryGenerator: AiCommentaryGenerator? = null,
+    private val aiCommentaryCallLog: AiCommentaryCallLogStore? = null,
+    private val baziEngine: BaziEngine = BaziEngine { _, _ ->
+        error("当前 ViewModel 未配置批量排盘引擎。")
+    },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val fortuneCalculationDispatcher: CoroutineDispatcher =
+        ioDispatcher.limitedParallelism(1),
+    private val searchDebounceMillis: Long = 180L,
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    restoredUiStateOverride: StageTwoUiState? = null,
 ) : ViewModel() {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val fortunePrefetchDispatcher: CoroutineDispatcher =
+        ioDispatcher.limitedParallelism(1)
     private val restoredStateBundle = savedStateHandle.get<Bundle>(SAVED_UI_STATE_KEY)
     private val mutableState = MutableStateFlow(
-        restoredStateBundle?.toStageTwoUiState() ?: run {
+        restoredUiStateOverride ?: restoredStateBundle?.toStageTwoUiState() ?: run {
             val defaultRule = calculationPreferenceStore.readRatHourRule()
             StageTwoUiState(
                 defaultRatHourRule = defaultRule,
@@ -563,18 +683,126 @@ class StageTwoViewModel(
     )
     val state: StateFlow<StageTwoUiState> = mutableState.asStateFlow()
     private var searchJob: Job? = null
+    private var caseSummaryCatalogCache: List<CaseSummary>? = null
+    private var caseGroupsCache: Map<CaseLibraryType, List<CaseGroup>> = emptyMap()
+    private val retainedCaseDetails = object : LinkedHashMap<String, RetainedCaseDetailSnapshot>(
+        RETAINED_DETAIL_CACHE_SIZE,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, RetainedCaseDetailSnapshot>?,
+        ): Boolean = size > RETAINED_DETAIL_CACHE_SIZE
+    }
+    private val fortunePositionCache = object : LinkedHashMap<
+        FortunePositionCacheKey,
+        FortunePositionCacheValue,
+    >(
+        FORTUNE_POSITION_CACHE_SIZE,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<
+                FortunePositionCacheKey,
+                FortunePositionCacheValue,
+            >?,
+        ): Boolean = size > FORTUNE_POSITION_CACHE_SIZE
+    }
     private var comparisonJob: Job? = null
     private var fourPillarsLookupJob: Job? = null
     private var almanacJob: Job? = null
+    private var detailOpeningJob: Job? = null
+    private val detailPrefetchJobs = LinkedHashMap<String, Job>()
+    private var fortunePositionJob: Job? = null
+    private var fortunePrefetchJob: Job? = null
+    private var fortunePositionRequestId: Long = 0
+    private var saveCaseJob: Job? = null
     private var almanacRequestId: Long = 0
     private var pendingAlmanacQuery: AlmanacMonthQuery? = null
     private var birthPickerTodayJob: Job? = null
     private var caseNotesAutoSaveJob: Job? = null
+    private var caseNotesHydrationJob: Job? = null
     private var pendingExportPassword: CharArray? = null
     private var pendingSingleCaseBundleExport: Boolean = false
     private var pendingSingleCaseBundleCommit: PendingSingleCaseBundleCommit? = null
     private var pendingFullBackupPassword: CharArray? = null
-    private var pendingCaseImage: RenderedCaseImage? = null
+    private var pendingCaseImages: List<RenderedCaseImage> = emptyList()
+    private val pendingCaseImage: RenderedCaseImage? get() = pendingCaseImages.firstOrNull()
+    private var pendingWenzhenImport: WenzhenWebImportPackage? = null
+    private val wenzhenImporter = WenzhenWebImporter(caseRepository, baziEngine, clock)
+
+    private fun retainCaseDetail(case: BaziCase) {
+        synchronized(retainedCaseDetails) {
+            retainedCaseDetails[case.id] = RetainedCaseDetailSnapshot(
+                case = case,
+                notes = case.toCaseNotesDraft(),
+            )
+        }
+    }
+
+    private fun retainedCaseDetail(caseId: String): BaziCase? =
+        synchronized(retainedCaseDetails) { retainedCaseDetails[caseId]?.case }
+
+    private fun retainedCaseNotes(caseId: String): CaseNotesDraft? =
+        synchronized(retainedCaseDetails) { retainedCaseDetails[caseId]?.notes }
+
+    private fun activeDetailPrefetchJob(caseId: String): Job? =
+        synchronized(detailPrefetchJobs) { detailPrefetchJobs[caseId] }
+
+    fun prefetchCaseDetail(caseId: String) {
+        if (retainedCaseDetail(caseId) != null || activeDetailPrefetchJob(caseId) != null) return
+        lateinit var prefetchJob: Job
+        prefetchJob = viewModelScope.launch(ioDispatcher, start = CoroutineStart.LAZY) {
+            try {
+                val detail = caseRepository.findById(caseId) ?: return@launch
+                retainCaseDetail(detail)
+                // The full detail is now available for an immediate tap. Professional
+                // positioning continues independently and never delays the list itself.
+                viewModelScope.launch {
+                    prewarmProfessionalFortune(detail)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Prefetch is opportunistic. The normal detail load owns user-visible errors.
+            } finally {
+                synchronized(detailPrefetchJobs) {
+                    if (detailPrefetchJobs[caseId] === prefetchJob) {
+                        detailPrefetchJobs.remove(caseId)
+                    }
+                }
+            }
+        }
+        val shouldStart = synchronized(detailPrefetchJobs) {
+            if (detailPrefetchJobs.containsKey(caseId) || retainedCaseDetail(caseId) != null) {
+                false
+            } else {
+                while (detailPrefetchJobs.size >= RETAINED_DETAIL_CACHE_SIZE) {
+                    val oldest = detailPrefetchJobs.entries.first()
+                    detailPrefetchJobs.remove(oldest.key)
+                    oldest.value.cancel()
+                }
+                detailPrefetchJobs[caseId] = prefetchJob
+                true
+            }
+        }
+        if (shouldStart) prefetchJob.start() else prefetchJob.cancel()
+    }
+
+    private fun cachedFortunePosition(
+        key: FortunePositionCacheKey,
+    ): FortunePositionCacheValue? =
+        synchronized(fortunePositionCache) { fortunePositionCache[key] }
+
+    private fun retainFortunePosition(
+        key: FortunePositionCacheKey,
+        value: FortunePositionCacheValue,
+    ) {
+        synchronized(fortunePositionCache) {
+            fortunePositionCache[key] = value
+        }
+    }
 
     init {
         if (restoredStateBundle != null) {
@@ -624,6 +852,15 @@ class StageTwoViewModel(
                 throw cancelled
             } catch (_: Exception) {
                 null
+            }
+            if (
+                restoredCase != null &&
+                    mutableState.value.destination is AppDestination.CaseDetail &&
+                    mutableState.value.detailSection == CaseDetailSection.FORTUNE
+            ) {
+                // A process restore must follow the same finished-first contract as
+                // opening a record from the list.
+                prewarmProfessionalFortune(restoredCase)
             }
             val summaryResult = if (
                 restoredCase != null &&
@@ -704,6 +941,13 @@ class StageTwoViewModel(
                     it.copy(
                         destination = navigator.backToList(),
                         detail = null,
+                        caseNotesCaseId = null,
+                        caseNotesRevision = null,
+                        caseNotesDraft = CaseNotesDraft(),
+                        caseNotesSavedDraft = CaseNotesDraft(),
+                        caseNotesHydrating = false,
+                        caseNotesSaving = false,
+                        caseNotesSaveError = null,
                         detailLoading = false,
                         detailError = null,
                         objectiveSummary = null,
@@ -723,11 +967,21 @@ class StageTwoViewModel(
                         message = "上次打开的命例无法恢复，已返回命例列表。",
                     )
                 } else {
+                    val restoredNotesDraft = restoredCase.toCaseNotesDraft()
+                    val restoredState = it.copy(
+                        detail = restoredCase,
+                        caseNotesCaseId = restoredCase.id,
+                        caseNotesRevision = restoredCase.revision,
+                        caseNotesDraft = restoredNotesDraft,
+                        caseNotesSavedDraft = restoredNotesDraft,
+                        caseNotesHydrating = false,
+                        caseNotesSaving = false,
+                        caseNotesSaveError = null,
+                        detailLoading = false,
+                        detailError = null,
+                    )
                     when {
-                        externalSummaryResult is CaseObjectiveSummaryResult.Rejected -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        externalSummaryResult is CaseObjectiveSummaryResult.Rejected -> restoredState.copy(
                             objectiveSummary = null,
                             externalAnalysisPayload = null,
                             externalAnalysisFailure = ExternalAnalysisBridgeFailure(
@@ -736,10 +990,7 @@ class StageTwoViewModel(
                             ),
                             externalAnalysisSaving = false,
                         )
-                        externalExportResult is ExternalAnalysisExportResult.Success -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        externalExportResult is ExternalAnalysisExportResult.Success -> restoredState.copy(
                             objectiveSummary =
                                 (externalSummaryResult as CaseObjectiveSummaryResult.Success)
                                     .summary,
@@ -752,10 +1003,7 @@ class StageTwoViewModel(
                                 importConfirmed = false,
                             ),
                         )
-                        externalExportResult is ExternalAnalysisExportResult.Rejected -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        externalExportResult is ExternalAnalysisExportResult.Rejected -> restoredState.copy(
                             objectiveSummary =
                                 (externalSummaryResult as CaseObjectiveSummaryResult.Success)
                                     .summary,
@@ -763,27 +1011,18 @@ class StageTwoViewModel(
                             externalAnalysisFailure = externalExportResult.failure,
                             externalAnalysisSaving = false,
                         )
-                        summaryResult is CaseObjectiveSummaryResult.Success -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        summaryResult is CaseObjectiveSummaryResult.Success -> restoredState.copy(
                             objectiveSummary = summaryResult.summary,
                             objectiveSummaryLoading = false,
                             objectiveSummaryFailure = null,
                         )
-                        summaryResult is CaseObjectiveSummaryResult.Rejected -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        summaryResult is CaseObjectiveSummaryResult.Rejected -> restoredState.copy(
                             objectiveSummary = null,
                             objectiveSummaryLoading = false,
                             objectiveSummaryFailure = summaryResult.failure,
                         )
                         candidateResult is
-                            MasterCommentaryCandidateExtractionResult.Success -> it.copy(
-                                detail = restoredCase,
-                                detailLoading = false,
-                                detailError = null,
+                            MasterCommentaryCandidateExtractionResult.Success -> restoredState.copy(
                                 commentaryCandidateSet = candidateResult.candidateSet
                                     .mergeDecisionsFrom(it.commentaryCandidateSet),
                                 commentaryCandidateFailure = null,
@@ -791,19 +1030,13 @@ class StageTwoViewModel(
                                 commentaryCandidateSavingId = null,
                             )
                         candidateResult is
-                            MasterCommentaryCandidateExtractionResult.Failure -> it.copy(
-                                detail = restoredCase,
-                                detailLoading = false,
-                                detailError = null,
+                            MasterCommentaryCandidateExtractionResult.Failure -> restoredState.copy(
                                 commentaryCandidateSet = null,
                                 commentaryCandidateFailure = candidateResult.failure,
                                 commentaryCandidateAdoptionFailure = null,
                                 commentaryCandidateSavingId = null,
                             )
-                        candidateDestination != null -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        candidateDestination != null -> restoredState.copy(
                             commentaryCandidateSet = null,
                             commentaryCandidateFailure = null,
                             commentaryCandidateAdoptionFailure =
@@ -814,10 +1047,7 @@ class StageTwoViewModel(
                             commentaryCandidateSavingId = null,
                         )
                         feedbackResult is FeedbackThemeCandidateExtractionResult.Success ->
-                            it.copy(
-                                detail = restoredCase,
-                                detailLoading = false,
-                                detailError = null,
+                            restoredState.copy(
                                 feedbackThemeCandidateSet = feedbackResult.candidateSet
                                     .mergeDecisionsFrom(it.feedbackThemeCandidateSet),
                                 feedbackThemeCandidateFailure = null,
@@ -825,19 +1055,13 @@ class StageTwoViewModel(
                                 feedbackThemeSavingId = null,
                             )
                         feedbackResult is FeedbackThemeCandidateExtractionResult.Failure ->
-                            it.copy(
-                                detail = restoredCase,
-                                detailLoading = false,
-                                detailError = null,
+                            restoredState.copy(
                                 feedbackThemeCandidateSet = null,
                                 feedbackThemeCandidateFailure = feedbackResult.failure,
                                 feedbackThemeAdoptionFailure = null,
                                 feedbackThemeSavingId = null,
                             )
-                        feedbackDestination != null -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
+                        feedbackDestination != null -> restoredState.copy(
                             feedbackThemeCandidateSet = null,
                             feedbackThemeCandidateFailure = null,
                             feedbackThemeAdoptionFailure = FeedbackThemeAdoptionFailure(
@@ -846,11 +1070,7 @@ class StageTwoViewModel(
                             ),
                             feedbackThemeSavingId = null,
                         )
-                        else -> it.copy(
-                            detail = restoredCase,
-                            detailLoading = false,
-                            detailError = null,
-                        )
+                        else -> restoredState
                     }
                 }
             }
@@ -858,6 +1078,9 @@ class StageTwoViewModel(
                 mutableState.value.detailSection == CaseDetailSection.FORTUNE ||
                 mutableState.value.detailSection == CaseDetailSection.BASIC_CHART
             ) {
+                if (mutableState.value.detailSection == CaseDetailSection.FORTUNE) {
+                    mutableState.value.detail?.let(::resetProfessionalObservation)
+                }
                 resolveFortunePosition()
             }
         }
@@ -903,6 +1126,42 @@ class StageTwoViewModel(
     }
 
     fun refreshCases() {
+        refreshCases(delayMillis = 0L, forceCatalogReload = true)
+    }
+
+    private fun refreshCasesFromCache(delayMillis: Long = 0L) {
+        refreshCases(delayMillis = delayMillis, forceCatalogReload = false)
+    }
+
+    /**
+     * 创建页的分组目录必须与表单的案例库归属同步，不能借用上一个记录列表的展示投影。
+     * 目录缓存未就绪时只返回空列表；后续由 [refreshCasesFromCache] 从同一目录读取链路补齐。
+     */
+    private fun cachedGroupsForLibrary(libraryType: CaseLibraryType): List<CaseGroup> =
+        caseGroupsCache[libraryType]
+            ?: caseCatalogStore.cached()?.groupsByLibrary?.get(libraryType)
+            ?: emptyList()
+
+    private fun refreshCreateGroupsIfCatalogUnavailable() {
+        if (caseGroupsCache.isEmpty() && caseCatalogStore.cached() == null) {
+            refreshCasesFromCache()
+        }
+    }
+
+    private suspend fun updateCachedCaseCatalog(
+        transform: (List<CaseSummary>) -> List<CaseSummary>,
+    ): Boolean {
+        val catalog = caseSummaryCatalogCache ?: caseCatalogStore.cached()?.cases ?: return false
+        val updatedCatalog = transform(catalog)
+        caseSummaryCatalogCache = updatedCatalog
+        caseCatalogStore.replaceCachedCases(updatedCatalog)
+        return true
+    }
+
+    private fun refreshCases(
+        delayMillis: Long,
+        forceCatalogReload: Boolean,
+    ) {
         searchJob?.cancel()
         val current = mutableState.value
         val request = CaseSearchRequest(
@@ -911,65 +1170,177 @@ class StageTwoViewModel(
             tagId = current.selectedTagId,
             sortOrder = current.sortOrder,
             visibility = current.visibility,
+            libraryType = current.libraryType.takeIf {
+                current.visibility == CaseVisibility.ACTIVE
+            },
             advancedFilter = current.advancedFilter,
         )
+        val sharedCache = caseCatalogStore.cached()
+        val cachedCatalog = caseSummaryCatalogCache ?: sharedCache?.cases
+        val cachedGroups = caseGroupsCache.takeIf { it.isNotEmpty() }
+            ?: sharedCache?.groupsByLibrary.orEmpty()
+        val needsCatalogLoad = forceCatalogReload || cachedCatalog == null
         searchJob = viewModelScope.launch {
-            mutableState.update { it.copy(listLoading = true, listError = null) }
-            try {
-                val recentCases = caseRepository.search(
-                    CaseSearchRequest(
-                        sortOrder = CaseSortOrder.LAST_VIEWED_DESC,
-                        visibility = CaseVisibility.ACTIVE,
-                    ),
-                ).filter { it.lastViewedAt != null }
-                    .take(3)
-                val catalogRequest = CaseSearchRequest(visibility = current.visibility)
-                val allCases = caseRepository.search(catalogRequest)
-                val batchCases = caseRepository.search(
-                    CaseSearchRequest(
-                        sortOrder = CaseSortOrder.NAME_ASC,
-                        visibility = CaseVisibility.ACTIVE,
-                    ),
-                )
-                val groups = caseRepository.listGroups()
-                val cases = if (request == catalogRequest) {
-                    allCases
-                } else {
-                    caseRepository.search(request)
-                }
+            if (delayMillis > 0L) delay(delayMillis)
+            if (cachedCatalog == null) {
                 mutableState.update {
                     it.copy(
-                        cases = cases,
-                        batchCases = batchCases,
-                        recentCases = recentCases,
-                        availableGroups = groups,
-                        availableTags = allCases.flatMap { item -> item.tags }
-                            .distinctBy { tag -> tag.id }
-                            .sortedBy { tag -> tag.name },
-                        availableBirthRegions = allCases.mapNotNull { item ->
-                            item.birthInput.locationName?.trim()?.takeIf(String::isNotEmpty)
-                        }.distinct().sorted(),
-                        availableSeasonalWuxingStates = allCases
-                            .flatMap { item -> item.seasonalWuxingStates }
-                            .distinct()
-                            .sorted(),
-                        availableShenSha = allCases.flatMap { item -> item.shenShaNames }
-                            .distinct()
-                            .sorted(),
-                        listLoading = false,
+                        listLoading = true,
                         listError = null,
                     )
                 }
+            } else {
+                mutableState.update { it.copy(listError = null) }
+            }
+            try {
+                cachedCatalog?.let { catalog ->
+                    publishCaseProjection(
+                        projection = withContext(ioDispatcher) {
+                            projectCaseList(catalog, cachedGroups, current, request)
+                        },
+                        current = current,
+                        clearMissingFormGroup = !needsCatalogLoad,
+                    )
+                }
+                if (!needsCatalogLoad) return@launch
+
+                if (cachedCatalog == null) {
+                    val bootstrap = caseCatalogStore.bootstrap()
+                    publishCaseProjection(
+                        projection = withContext(ioDispatcher) {
+                            projectCaseList(
+                                bootstrap.snapshot.cases,
+                                bootstrap.snapshot.groupsByLibrary,
+                                current,
+                                request,
+                            )
+                        },
+                        current = current,
+                        clearMissingFormGroup = !bootstrap.fromPersistentCache,
+                    )
+                    if (!bootstrap.fromPersistentCache) return@launch
+                }
+
+                val refreshed = caseCatalogStore.load(forceRefresh = true)
+                publishCaseProjection(
+                    projection = withContext(ioDispatcher) {
+                        projectCaseList(
+                            refreshed.cases,
+                            refreshed.groupsByLibrary,
+                            current,
+                            request,
+                        )
+                    },
+                    current = current,
+                    clearMissingFormGroup = true,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 mutableState.update {
-                    it.copy(
-                        listLoading = false,
-                        listError = "命例列表读取失败，请点击重试。",
-                    )
+                    if (it.cases.isNotEmpty() || cachedCatalog != null) {
+                        it.copy(listLoading = false)
+                    } else {
+                        it.copy(
+                            listLoading = false,
+                            listError = "命例列表读取失败，请点击重试。",
+                        )
+                    }
                 }
             }
+        }
+    }
+
+    private fun projectCaseList(
+        catalog: List<CaseSummary>,
+        groupsByLibrary: Map<CaseLibraryType, List<CaseGroup>>,
+        current: StageTwoUiState,
+        request: CaseSearchRequest,
+    ): CaseListProjection {
+        val allCasesForControls = catalog.searchCases(
+            CaseSearchRequest(
+                visibility = current.visibility,
+                libraryType = current.libraryType.takeIf {
+                    current.visibility == CaseVisibility.ACTIVE
+                },
+            ),
+        )
+        val activeCases = catalog.filter { it.deletedAt == null }
+        return CaseListProjection(
+            catalog = catalog,
+            groupsByLibrary = groupsByLibrary,
+            cases = catalog.searchCases(request),
+            batchCases = catalog.searchCases(
+                CaseSearchRequest(
+                    sortOrder = CaseSortOrder.NAME_ASC,
+                    visibility = CaseVisibility.ACTIVE,
+                    libraryType = current.libraryType,
+                ),
+            ),
+            recentCases = catalog.searchCases(
+                CaseSearchRequest(
+                    sortOrder = CaseSortOrder.LAST_VIEWED_DESC,
+                    visibility = CaseVisibility.ACTIVE,
+                    libraryType = CaseLibraryType.USER,
+                ),
+            ).filter { it.lastViewedAt != null }.take(3),
+            allCasesForControls = allCasesForControls,
+            libraryCaseCounts = CaseLibraryType.entries.associateWith { libraryType ->
+                activeCases.count { it.libraryType == libraryType }
+            },
+            trashedCaseCount = catalog.count { it.deletedAt != null },
+            groupCaseCounts = allCasesForControls
+                .asSequence()
+                .flatMap { it.groups.asSequence() }
+                .groupingBy { it.id }
+                .eachCount(),
+        )
+    }
+
+    private fun publishCaseProjection(
+        projection: CaseListProjection,
+        current: StageTwoUiState,
+        clearMissingFormGroup: Boolean,
+    ) {
+        caseSummaryCatalogCache = projection.catalog
+        caseGroupsCache = projection.groupsByLibrary
+        val groups = projection.groupsByLibrary[current.libraryType].orEmpty()
+        mutableState.update {
+            it.copy(
+                cases = projection.cases,
+                batchCases = projection.batchCases,
+                recentCases = projection.recentCases,
+                availableGroups = groups,
+                form = if (
+                    clearMissingFormGroup &&
+                    it.form.groupId != null && groups.none { group ->
+                        group.id == it.form.groupId
+                    }
+                ) {
+                    it.form.copy(groupId = null)
+                } else {
+                    it.form
+                },
+                availableTags = projection.allCasesForControls.flatMap { item -> item.tags }
+                    .distinctBy { tag -> tag.id }
+                    .sortedBy { tag -> tag.name },
+                availableBirthRegions = projection.allCasesForControls.mapNotNull { item ->
+                    item.birthInput.locationName?.trim()?.takeIf(String::isNotEmpty)
+                }.distinct().sorted(),
+                availableSeasonalWuxingStates = projection.allCasesForControls
+                    .flatMap { item -> item.seasonalWuxingStates }
+                    .distinct()
+                    .sorted(),
+                availableShenSha = projection.allCasesForControls
+                    .flatMap { item -> item.shenShaNames }
+                    .distinct()
+                    .sorted(),
+                libraryCaseCounts = projection.libraryCaseCounts,
+                trashedCaseCount = projection.trashedCaseCount,
+                groupCaseCounts = projection.groupCaseCounts,
+                listLoading = false,
+                listError = null,
+            )
         }
     }
 
@@ -1028,6 +1399,7 @@ class StageTwoViewModel(
         pendingFullBackupPassword = null
         mutableState.update {
             it.copy(
+                fullBackupExportConfirmationVisible = true,
                 fullBackupPasswordExportVisible = false,
                 fullBackupPasswordError = null,
             )
@@ -1036,19 +1408,16 @@ class StageTwoViewModel(
 
     fun confirmPasswordFullBackupExport(
         password: CharArray,
-        confirmation: CharArray,
     ): String? {
         val service = caseBackupService
         if (service == null || backupAttachmentRoot == null) {
             password.fill('\u0000')
-            confirmation.fill('\u0000')
             mutableState.update {
                 it.copy(fullBackupError = "完整备份服务尚未就绪（BACKUP_SERVICE_UNAVAILABLE）。")
             }
             return null
         }
-        val error = validateExportPassword(password, confirmation)
-        confirmation.fill('\u0000')
+        val error = validateExportPassword(password)
         if (error != null) {
             password.fill('\u0000')
             mutableState.update { it.copy(fullBackupPasswordError = error) }
@@ -1593,7 +1962,7 @@ class StageTwoViewModel(
 
     fun requestCaseImageDelivery(mode: CaseImageDeliveryMode) {
         val detail = mutableState.value.detail
-        if (detail == null || mutableState.value.caseImageBusy) return
+        if (detail == null || detail.deletedAt != null || mutableState.value.caseImageBusy) return
         mutableState.update {
             it.copy(
                 caseImageConfirmationMode = mode,
@@ -1608,19 +1977,21 @@ class StageTwoViewModel(
     }
 
     fun confirmCaseImageDelivery(
-        onPrepared: (CaseImageDeliveryMode, String) -> Unit,
+        onCaptureRequired: (CaseImageDeliveryMode, CaseImageCaptureFacts, List<String>) -> Unit,
     ) {
         val current = mutableState.value
         val detail = current.detail ?: return
-        val mode = current.caseImageConfirmationMode ?: return
-        val renderer = caseImageRenderer
-        if (renderer == null) {
-            setCaseImageFailure(
-                CaseImageExportErrorCode.RENDER_FAILED,
-                "当前环境未配置命盘图片渲染器。",
-            )
+        if (detail.deletedAt != null) {
+            cancelCaseImageConfirmation()
             return
         }
+        val mode = current.caseImageConfirmationMode ?: return
+        val prepared = CaseImageExportContract.prepare(CaseImageExportInput(detail))
+        if (prepared is CaseImageFactsResult.Rejected) {
+            setCaseImageFailure(prepared.failure.code, prepared.failure.message)
+            return
+        }
+        val facts = (prepared as CaseImageFactsResult.Prepared).facts
         mutableState.update {
             it.copy(
                 caseImageConfirmationMode = null,
@@ -1629,36 +2000,71 @@ class StageTwoViewModel(
                 caseImageLastResultCode = null,
             )
         }
-        viewModelScope.launch {
-            val cached = pendingCaseImage?.takeIf { image ->
-                image.facts.caseId == detail.id &&
-                    image.facts.caseRevision == detail.revision &&
-                    detail.calculationSnapshots.any {
-                        it.adopted && it.id == image.facts.adoptedSnapshotId
-                    }
-            }
-            val result = if (cached != null) {
-                CaseImageRenderResult.Success(cached)
-            } else {
-                renderer.render(CaseImageExportInput(detail))
-            }
-            when (result) {
-                is CaseImageRenderResult.Success -> {
-                    pendingCaseImage = result.image
-                    mutableState.update { it.copy(caseImageBusy = false) }
-                    onPrepared(
-                        mode,
-                        result.image.facts.suggestedFileStem.toSafeImageFileName(),
-                    )
-                }
+        onCaptureRequired(mode, facts, facts.suggestedFileStem.toSafeImageFileNames())
+    }
 
-                is CaseImageRenderResult.Rejected ->
-                    setCaseImageFailure(
-                        result.failure.code,
-                        result.failure.message,
-                    )
-            }
+    internal fun completeCaseDetailPageCapture(
+        mode: CaseImageDeliveryMode,
+        facts: CaseImageCaptureFacts,
+        fileName: String,
+        captured: CapturedCaseDetailLongImage,
+        onPrepared: (CaseImageDeliveryMode, String) -> Unit,
+    ) {
+        completeCaseDetailPageCapture(
+            mode = mode,
+            facts = facts,
+            fileNames = listOf(fileName, fileName),
+            captured = CapturedCaseDetailLongImages(captured, captured),
+        ) { completedMode, completedFileNames ->
+            onPrepared(completedMode, completedFileNames.first())
         }
+    }
+
+    internal fun completeCaseDetailPageCapture(
+        mode: CaseImageDeliveryMode,
+        facts: CaseImageCaptureFacts,
+        fileNames: List<String>,
+        captured: CapturedCaseDetailLongImages,
+        onPrepared: (CaseImageDeliveryMode, List<String>) -> Unit,
+    ) {
+        val detail = mutableState.value.detail
+        val factsStillCurrent = detail != null &&
+            detail.id == facts.caseId &&
+            detail.revision == facts.caseRevision &&
+            detail.calculationSnapshots.any { snapshot ->
+                snapshot.adopted && snapshot.id == facts.adoptedSnapshotId
+            }
+        if (!factsStillCurrent) {
+            setCaseImageFailure(
+                CaseImageExportErrorCode.RENDER_FAILED,
+                "截图期间命例内容已更新，请重新生成当前页面长图。",
+            )
+            return
+        }
+        if (fileNames.size != 2) {
+            setCaseImageFailure(CaseImageExportErrorCode.RENDER_FAILED, "命盘图片文件名不完整，请重新生成。")
+            return
+        }
+        pendingCaseImages = listOf(captured.chart, captured.notes).map { image ->
+            RenderedCaseImage(
+                facts = facts,
+                mimeType = "image/png",
+                fileExtension = "png",
+                bytes = image.bytes,
+                widthPixels = image.widthPixels,
+                heightPixels = image.heightPixels,
+                sha256 = image.sha256,
+            )
+        }
+        mutableState.update { it.copy(caseImageBusy = false) }
+        onPrepared(mode, fileNames)
+    }
+
+    fun reportCaseDetailPageCaptureFailed(message: String) {
+        setCaseImageFailure(
+            CaseImageExportErrorCode.RENDER_FAILED,
+            message,
+        )
     }
 
     fun exportPreparedCaseImage(
@@ -1695,6 +2101,32 @@ class StageTwoViewModel(
         }
     }
 
+    fun exportPreparedCaseImages(
+        openOutput: (Int) -> OutputStream?,
+        onCompleted: (Boolean) -> Boolean = { true },
+    ) {
+        if (pendingCaseImages.size != 2) {
+            setCaseImageFailure(CaseImageExportErrorCode.RENDER_FAILED, "已生成的两张命盘图片已失效，请重新选择导出。")
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(caseImageBusy = true, caseImageError = null) }
+            val failure = writeCaseImageBytes(pendingCaseImages, openOutput)
+            if (failure == null) {
+                if (!onCompleted(true)) {
+                    reportCaseImageGallerySaveFailed()
+                    return@launch
+                }
+                mutableState.update {
+                    it.copy(caseImageBusy = false, caseImageLastResultCode = null, message = "两张命盘长图已保存到手机图库。")
+                }
+            } else {
+                onCompleted(false)
+                setCaseImageFailure(failure.code, failure.message)
+            }
+        }
+    }
+
     fun copyPreparedCaseImageForShare(
         openOutput: () -> OutputStream?,
         onReady: () -> Unit,
@@ -1715,6 +2147,21 @@ class StageTwoViewModel(
             } else {
                 setCaseImageFailure(failure.code, failure.message)
             }
+        }
+    }
+
+    fun copyPreparedCaseImagesForShare(
+        openOutput: (Int) -> OutputStream?,
+        onReady: () -> Unit,
+    ) {
+        if (pendingCaseImages.size != 2) {
+            setCaseImageFailure(CaseImageExportErrorCode.RENDER_FAILED, "已生成的两张命盘图片已失效，请重新选择分享。")
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(caseImageBusy = true, caseImageError = null) }
+            val failure = writeCaseImageBytes(pendingCaseImages, openOutput)
+            if (failure == null) onReady() else setCaseImageFailure(failure.code, failure.message)
         }
     }
 
@@ -1747,6 +2194,21 @@ class StageTwoViewModel(
         )
     }
 
+    /**
+     * Android does not expose whether a third-party app eventually sent the images.
+     * Only acknowledge the hand-off to the system chooser, never the external send.
+     */
+    fun markCaseImageShareHandedOff() {
+        mutableState.update {
+            it.copy(
+                caseImageBusy = false,
+                caseImageError = null,
+                caseImageLastResultCode = null,
+                message = "已打开系统分享面板，请在目标应用内确认发送。",
+            )
+        }
+    }
+
     fun reportCaseImageGallerySaveFailed() {
         setCaseImageFailure(
             CaseImageExportErrorCode.WRITE_FAILED,
@@ -1756,6 +2218,8 @@ class StageTwoViewModel(
 
     fun completeCaseImageShare(cancelled: Boolean) {
         mutableState.update {
+            // A late chooser callback must not overwrite a real launch/copy failure.
+            if (it.caseImageError != null) return@update it
             it.copy(
                 caseImageBusy = false,
                 caseImageLastResultCode =
@@ -1763,7 +2227,7 @@ class StageTwoViewModel(
                 message = if (cancelled) {
                     "分享面板已关闭；南枫八字无法证明图片已由目标应用发送。"
                 } else {
-                    "图片已交给目标应用；是否实际发送以目标应用状态为准。"
+                    "分享面板已关闭；是否实际发送请以目标应用状态为准。"
                 },
             )
         }
@@ -1798,6 +2262,30 @@ class StageTwoViewModel(
         )
     }
 
+    private suspend fun writeCaseImageBytes(
+        images: List<RenderedCaseImage>,
+        openOutput: (Int) -> OutputStream?,
+    ) = try {
+        withContext(ioDispatcher) {
+            images.forEachIndexed { index, image ->
+                val output = openOutput(index)
+                    ?: return@withContext com.nanzhufeng.nanfengbazi.domain.CaseImageExportFailure(
+                        CaseImageExportErrorCode.OUTPUT_UNAVAILABLE,
+                        "无法打开第 ${index + 1} 张命盘图片的目标文件。",
+                    )
+                output.use { it.write(image.bytes); it.flush() }
+            }
+            null
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        com.nanzhufeng.nanfengbazi.domain.CaseImageExportFailure(
+            CaseImageExportErrorCode.WRITE_FAILED,
+            "命盘图片写入失败；当前详情和已生成图片仍保留。",
+        )
+    }
+
     private fun setCaseImageFailure(
         code: CaseImageExportErrorCode,
         message: String,
@@ -1814,11 +2302,11 @@ class StageTwoViewModel(
 
     fun requestSingleCaseExport() {
         val detail = mutableState.value.detail
-        if (detail == null || mutableState.value.singleCaseExchangeBusy) return
+        if (detail == null || detail.deletedAt != null || mutableState.value.singleCaseExchangeBusy) return
         mutableState.update {
             it.copy(
                 singleCaseExportConfirmationVisible = true,
-                singleCaseExportIncludesAttachments = detail.attachments.isNotEmpty(),
+                singleCaseExportIncludesAttachments = false,
                 singleCaseExchangeError = null,
             )
         }
@@ -1826,7 +2314,7 @@ class StageTwoViewModel(
 
     fun chooseSingleCaseExportAttachments(include: Boolean) {
         val detail = mutableState.value.detail ?: return
-        if (mutableState.value.singleCaseExchangeBusy) return
+        if (detail.deletedAt != null || mutableState.value.singleCaseExchangeBusy) return
         mutableState.update {
             it.copy(
                 singleCaseExportIncludesAttachments =
@@ -1845,8 +2333,12 @@ class StageTwoViewModel(
         }
     }
 
-    fun confirmSingleCaseExport(): String? {
+    fun confirmSingleCaseExport(): SingleCaseExportDocumentRequest? {
         val detail = mutableState.value.detail ?: return null
+        if (detail.deletedAt != null) {
+            cancelSingleCaseExport()
+            return null
+        }
         pendingExportPassword?.fill('\u0000')
         pendingExportPassword = null
         pendingSingleCaseBundleExport =
@@ -1861,14 +2353,23 @@ class StageTwoViewModel(
             )
         }
         return if (pendingSingleCaseBundleExport) {
-            singleCaseBundleService?.suggestedFileName(detail)
+            singleCaseBundleService?.suggestedFileName(detail)?.let { fileName ->
+                SingleCaseExportDocumentRequest(
+                    fileName = fileName,
+                    kind = SingleCaseExportDocumentKind.BUNDLE,
+                )
+            }
         } else {
-            singleCaseExchange.suggestedFileName(detail)
+            SingleCaseExportDocumentRequest(
+                fileName = singleCaseExchange.suggestedFileName(detail),
+                kind = SingleCaseExportDocumentKind.JSON,
+            )
         }
     }
 
     fun requestPasswordSingleCaseExport() {
-        if (mutableState.value.detail == null || mutableState.value.singleCaseExchangeBusy) return
+        val detail = mutableState.value.detail
+        if (detail == null || detail.deletedAt != null || mutableState.value.singleCaseExchangeBusy) return
         mutableState.update {
             it.copy(
                 singleCaseExportConfirmationVisible = false,
@@ -1883,6 +2384,7 @@ class StageTwoViewModel(
         pendingExportPassword = null
         mutableState.update {
             it.copy(
+                singleCaseExportConfirmationVisible = true,
                 singleCasePasswordExportVisible = false,
                 singleCasePasswordError = null,
             )
@@ -1891,12 +2393,10 @@ class StageTwoViewModel(
 
     fun confirmPasswordSingleCaseExport(
         password: CharArray,
-        confirmation: CharArray,
-    ): String? {
+    ): SingleCaseExportDocumentRequest? {
         val detail = mutableState.value.detail
         if (detail == null) {
             password.fill('\u0000')
-            confirmation.fill('\u0000')
             return null
         }
         val error = when {
@@ -1904,10 +2404,8 @@ class StageTwoViewModel(
                 "密码至少需要 $MIN_EXPORT_PASSWORD_LENGTH 个字符。"
             password.size > MAX_EXPORT_PASSWORD_LENGTH ->
                 "密码不能超过 $MAX_EXPORT_PASSWORD_LENGTH 个字符。"
-            !password.contentEquals(confirmation) -> "两次输入的密码不一致。"
             else -> null
         }
-        confirmation.fill('\u0000')
         if (error != null) {
             password.fill('\u0000')
             mutableState.update { it.copy(singleCasePasswordError = error) }
@@ -1927,9 +2425,17 @@ class StageTwoViewModel(
             )
         }
         return if (pendingSingleCaseBundleExport) {
-            singleCaseBundleService?.suggestedEncryptedFileName(detail)
+            singleCaseBundleService?.suggestedEncryptedFileName(detail)?.let { fileName ->
+                SingleCaseExportDocumentRequest(
+                    fileName = fileName,
+                    kind = SingleCaseExportDocumentKind.ENCRYPTED_BUNDLE,
+                )
+            }
         } else {
-            singleCaseExchange.suggestedEncryptedFileName(detail)
+            SingleCaseExportDocumentRequest(
+                fileName = singleCaseExchange.suggestedEncryptedFileName(detail),
+                kind = SingleCaseExportDocumentKind.ENCRYPTED_JSON,
+            )
         }
     }
 
@@ -2624,26 +3130,53 @@ class StageTwoViewModel(
 
     fun updateQuery(query: String) {
         mutableState.update { it.copy(query = query) }
-        refreshCases()
+        refreshCasesFromCache(delayMillis = searchDebounceMillis)
     }
 
     fun selectGroup(groupId: String?) {
         mutableState.update {
             it.copy(selectedGroupId = groupId, listError = null)
         }
-        refreshCases()
+        refreshCasesFromCache()
     }
 
     fun createCaseGroup(name: String) {
         if (mutableState.value.mutationSaving) return
         viewModelScope.launch {
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            val created = caseRepository.createGroup(name)
+            val created = caseRepository.createGroup(name, mutableState.value.libraryType)
             mutableState.update {
                 it.copy(
                     mutationSaving = false,
                     mutationError = if (created == null) "分组名称为空或已经存在。" else null,
                     message = if (created != null) "分组已添加。" else it.message,
+                )
+            }
+            if (created != null) refreshCases()
+        }
+    }
+
+    fun createAndSelectCaseGroup(name: String) {
+        if (mutableState.value.mutationSaving) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            val created = try {
+                caseRepository.createGroup(name, mutableState.value.form.libraryType)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            mutableState.update {
+                it.copy(
+                    form = if (created == null) it.form else it.form.copy(groupId = created.id),
+                    mutationSaving = false,
+                    mutationError = if (created == null) {
+                        "分组名称为空、已经存在或保存失败。"
+                    } else {
+                        null
+                    },
+                    message = if (created != null) "新分组已创建并选中。" else it.message,
                 )
             }
             if (created != null) refreshCases()
@@ -2669,7 +3202,7 @@ class StageTwoViewModel(
     fun reorderCaseGroups(groupIds: List<String>) {
         if (mutableState.value.mutationSaving) return
         viewModelScope.launch {
-            val saved = caseRepository.reorderGroups(groupIds)
+            val saved = caseRepository.reorderGroups(groupIds, mutableState.value.libraryType)
             mutableState.update {
                 it.copy(
                     mutationError = if (saved) null else "分组顺序保存失败。",
@@ -2714,7 +3247,29 @@ class StageTwoViewModel(
                     message = "已更新 $changed 个命例的星标置顶状态。",
                 )
             }
-            refreshCases()
+            val expectedChanges = toPin.size + toUnpin.size
+            val cacheUpdated = updateCachedCaseCatalog { catalog ->
+                catalog.map { summary ->
+                    when (summary.id) {
+                        in toPin -> summary.copy(
+                            isPinned = true,
+                            updatedAt = now,
+                            revision = summary.revision + 1,
+                        )
+                        in toUnpin -> summary.copy(
+                            isPinned = false,
+                            updatedAt = now,
+                            revision = summary.revision + 1,
+                        )
+                        else -> summary
+                    }
+                }
+            }
+            if (cacheUpdated && changed == expectedChanges) {
+                refreshCasesFromCache()
+            } else {
+                refreshCases()
+            }
         }
     }
 
@@ -2726,18 +3281,106 @@ class StageTwoViewModel(
         updatePinnedCases(pinnedIds)
     }
 
-    fun batchMoveCasesToTrash(caseIds: Set<String>) {
-        if (caseIds.isEmpty() || mutableState.value.mutationSaving) return
-        viewModelScope.launch {
-            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            val changed = caseRepository.moveCasesToTrash(caseIds, clock.instant())
-            mutableState.update {
-                it.copy(
-                    mutationSaving = false,
-                    message = "已将 $changed 个命例移入回收站，可在回收站恢复。",
-                )
+    fun batchDeleteCases(caseIds: Set<String>) {
+        if (caseIds.isEmpty()) return
+        val permanentlyDelete = mutableState.value.visibility == CaseVisibility.TRASHED
+        val changedAt = clock.instant()
+        val catalogBeforeDelete = caseSummaryCatalogCache
+        val expectedChanges = catalogBeforeDelete.orEmpty().count { summary ->
+            summary.id in caseIds && if (permanentlyDelete) {
+                summary.deletedAt != null
+            } else {
+                summary.deletedAt == null
             }
-            refreshCases()
+        }
+        val optimisticCatalog = catalogBeforeDelete?.let { catalog ->
+            if (permanentlyDelete) {
+                catalog.filterNot { summary ->
+                    summary.id in caseIds && summary.deletedAt != null
+                }
+            } else {
+                catalog.map { summary ->
+                    if (summary.id in caseIds && summary.deletedAt == null) {
+                        summary.copy(
+                            deletedAt = changedAt,
+                            updatedAt = changedAt,
+                            revision = summary.revision + 1,
+                        )
+                    } else {
+                        summary
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            if (optimisticCatalog != null) {
+                caseSummaryCatalogCache = optimisticCatalog
+                caseCatalogStore.replaceCachedCases(optimisticCatalog)
+                refreshCasesFromCache()
+            }
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
+            try {
+                val changed = withContext(ioDispatcher) {
+                    if (permanentlyDelete) {
+                        caseRepository.deleteTrashedCasesPermanently(caseIds)
+                    } else {
+                        caseRepository.moveCasesToTrash(caseIds, changedAt)
+                    }
+                }
+                mutableState.update {
+                    it.copy(
+                        mutationSaving = false,
+                        message = if (permanentlyDelete) {
+                            "已永久删除 $changed 个命例。"
+                        } else {
+                            "已将 $changed 个命例移入回收站，可在回收站恢复。"
+                        },
+                    )
+                }
+                if (optimisticCatalog == null || changed != expectedChanges) {
+                    refreshCases()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (catalogBeforeDelete != null) {
+                    caseSummaryCatalogCache = catalogBeforeDelete
+                    caseCatalogStore.replaceCachedCases(catalogBeforeDelete)
+                    val current = mutableState.value
+                    val restoreRequest = CaseSearchRequest(
+                        query = current.query,
+                        groupId = current.selectedGroupId,
+                        tagId = current.selectedTagId,
+                        sortOrder = current.sortOrder,
+                        visibility = current.visibility,
+                        libraryType = current.libraryType.takeIf {
+                            current.visibility == CaseVisibility.ACTIVE
+                        },
+                        advancedFilter = current.advancedFilter,
+                    )
+                    publishCaseProjection(
+                        projection = withContext(ioDispatcher) {
+                            projectCaseList(
+                                catalogBeforeDelete,
+                                caseGroupsCache,
+                                current,
+                                restoreRequest,
+                            )
+                        },
+                        current = current,
+                        clearMissingFormGroup = false,
+                    )
+                } else {
+                    refreshCases()
+                }
+                mutableState.update {
+                    it.copy(
+                        mutationSaving = false,
+                        mutationError = "删除失败，列表已恢复，请稍后重试。",
+                        message = "删除失败，未更改案例数据。",
+                    )
+                }
+            }
         }
     }
 
@@ -2745,19 +3388,19 @@ class StageTwoViewModel(
         mutableState.update {
             it.copy(selectedTagId = tagId, listError = null)
         }
-        refreshCases()
+        refreshCasesFromCache()
     }
 
     fun selectSortOrder(sortOrder: CaseSortOrder) {
         mutableState.update {
             it.copy(sortOrder = sortOrder, listError = null)
         }
-        refreshCases()
+        refreshCasesFromCache()
     }
 
     fun applyAdvancedFilter(filter: CaseAdvancedFilter) {
         mutableState.update { it.copy(advancedFilter = filter, listError = null) }
-        refreshCases()
+        refreshCasesFromCache()
     }
 
     fun clearCaseFilters() {
@@ -2769,7 +3412,7 @@ class StageTwoViewModel(
                 listError = null,
             )
         }
-        refreshCases()
+        refreshCasesFromCache()
     }
 
     fun selectVisibility(visibility: CaseVisibility) {
@@ -2782,21 +3425,70 @@ class StageTwoViewModel(
                 listError = null,
             )
         }
-        refreshCases()
+        refreshCasesFromCache()
     }
 
-    fun openCreate() {
+    fun selectCaseLibrary(libraryType: CaseLibraryType) {
+        mutableState.update {
+            it.copy(
+                visibility = CaseVisibility.ACTIVE,
+                libraryType = libraryType,
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                listError = null,
+            )
+        }
+        refreshCasesFromCache()
+    }
+
+    fun openCreateCelebrityCase() {
+        val groups = cachedGroupsForLibrary(CaseLibraryType.CELEBRITY)
         mutableState.update {
             it.copy(
                 destination = navigator.openCreate(),
+                visibility = CaseVisibility.ACTIVE,
+                libraryType = CaseLibraryType.CELEBRITY,
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                availableGroups = groups,
+                form = CaseFormState(
+                    ratHourRule = it.defaultRatHourRule,
+                    libraryType = CaseLibraryType.CELEBRITY,
+                ),
                 formError = null,
                 duplicateCandidates = emptyList(),
                 previewing = false,
                 instantCalculation = null,
+                mutationError = null,
                 message = null,
             )
         }
-        refreshCases()
+        refreshCreateGroupsIfCatalogUnavailable()
+    }
+
+    fun openCreate() {
+        val groups = cachedGroupsForLibrary(CaseLibraryType.USER)
+        mutableState.update {
+            it.copy(
+                destination = navigator.openCreate(),
+                visibility = CaseVisibility.ACTIVE,
+                libraryType = CaseLibraryType.USER,
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                availableGroups = groups,
+                form = it.form.copy(libraryType = CaseLibraryType.USER),
+                formError = null,
+                duplicateCandidates = emptyList(),
+                previewing = false,
+                instantCalculation = null,
+                mutationError = null,
+                message = null,
+            )
+        }
+        refreshCreateGroupsIfCatalogUnavailable()
     }
 
     fun openRecordHub() {
@@ -2806,20 +3498,20 @@ class StageTwoViewModel(
                 message = null,
             )
         }
-        refreshCases()
     }
 
     fun openCaseComparison() {
+        val cachedReady = mutableState.value.comparisonCandidates.size >= 2 &&
+            mutableState.value.comparisonReport != null
         mutableState.update {
             it.copy(
                 destination = navigator.openCaseComparison(),
-                comparisonLoading = true,
+                comparisonLoading = !cachedReady,
                 comparisonError = null,
-                comparisonReport = null,
                 message = null,
             )
         }
-        loadComparisonWorkspace()
+        if (!cachedReady) loadComparisonWorkspace()
     }
 
     fun openFourPillarsLookup(pillars: List<String> = emptyList()) {
@@ -2937,16 +3629,14 @@ class StageTwoViewModel(
     }
 
     fun showTodayInAlmanac() {
-        val today = LocalDate.now(observationClock)
+        val now = LocalDateTime.now(observationClock)
         val state = mutableState.value
-        val baseQuery = pendingAlmanacQuery ?: state.almanacView?.query
         loadAlmanac(
             AlmanacMonthQuery(
-                year = today.year,
-                month = today.monthValue,
-                selectedDay = today.dayOfMonth,
-                selectedDoubleHourIndex = baseQuery?.selectedDoubleHourIndex
-                    ?: state.almanacSelectedDoubleHourIndex,
+                year = now.year,
+                month = now.monthValue,
+                selectedDay = now.dayOfMonth,
+                selectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(now.hour),
                 ratHourRule = state.defaultRatHourRule,
             ),
             preserveVisibleContent = true,
@@ -3011,26 +3701,118 @@ class StageTwoViewModel(
 
     fun useAlmanacDateForChart() {
         val state = mutableState.value
+        if (state.previewing) return
         val selected = state.almanacView?.selected?.date
             ?: AlmanacDate(state.almanacYear, state.almanacMonth, state.almanacSelectedDay)
         val selectedHour = AlmanacDoubleHours
             .fromIndex(state.almanacSelectedDoubleHourIndex)
             .representativeHour
-        mutableState.update {
-            it.copy(
-                destination = navigator.openCreate(),
-                form = it.form.copy(
-                    calendarSystem = CalendarSystem.SOLAR,
-                    year = selected.year.toString(),
-                    month = selected.month.toString(),
-                    day = selected.day.toString(),
-                    hour = selectedHour.toString(),
-                    minute = "0",
-                    second = "0",
-                    isLeapMonth = false,
-                ).clearTimeZoneResolution(),
-                message = null,
-            )
+        val instantForm = state.form.copy(
+            alias = "即时排盘案例",
+            name = "",
+            calendarSystem = CalendarSystem.SOLAR,
+            year = selected.year.toString(),
+            month = selected.month.toString(),
+            day = selected.day.toString(),
+            hour = selectedHour.toString(),
+            minute = "0",
+            second = "0",
+            isLeapMonth = false,
+            timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+        ).clearTimeZoneResolution()
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    form = instantForm,
+                    previewing = true,
+                    formError = null,
+                    message = null,
+                )
+            }
+            when (val result = withContext(ioDispatcher) { createCase.preview(instantForm) }) {
+                is PreviewCaseResult.Calculated -> {
+                    val now = clock.instant()
+                    val caseId = "instant-almanac-preview"
+                    val candidateId = "$caseId-candidate"
+                    val snapshotId = "$caseId-snapshot"
+                    val previewCase = BaziCase(
+                        id = caseId,
+                        alias = "即时排盘案例",
+                        name = ExplicitText.absent(),
+                        sexForFortuneDirection = result.calculation.normalizedInput
+                            .sexForFortuneDirection,
+                        sourceType = CaseSourceType.MANUAL,
+                        birthInput = result.calculation.normalizedInput,
+                        libraryType = CaseLibraryType.USER,
+                        birthTimeCandidates = listOf(
+                            BirthTimeCandidate(
+                                id = candidateId,
+                                label = "采用时间",
+                                birthInput = result.calculation.normalizedInput,
+                                calculationSnapshotId = snapshotId,
+                                adopted = true,
+                                createdAt = now,
+                            ),
+                        ),
+                        calculationSnapshots = listOf(
+                            CaseCalculationSnapshot(
+                                id = snapshotId,
+                                result = result.calculation,
+                                adopted = true,
+                                birthTimeCandidateId = candidateId,
+                                createdAt = now,
+                            ),
+                        ),
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                    mutableState.update {
+                        it.copy(
+                            destination = navigator.openDetail(caseId),
+                            previewing = false,
+                            detail = previewCase,
+                            caseNotesCaseId = previewCase.id,
+                            caseNotesRevision = previewCase.revision,
+                            caseNotesDraft = CaseNotesDraft(),
+                            caseNotesSavedDraft = CaseNotesDraft(),
+                            caseNotesHydrating = false,
+                            detailIsTransient = true,
+                            detailSection = CaseDetailSection.FORTUNE,
+                            detailLoading = false,
+                            detailError = null,
+                            instantCalculation = result.calculation,
+                            message = "即时排盘仅供查看，未保存到案例库。",
+                        )
+                    }
+                    resetProfessionalObservation(previewCase)
+                    resolveFortunePosition()
+                }
+                is PreviewCaseResult.ValidationFailed -> mutableState.update {
+                    it.copy(
+                        previewing = false,
+                        formError = result.message,
+                        message = "无法即时排盘：${result.message}",
+                    )
+                }
+                is PreviewCaseResult.CalculationFailed -> mutableState.update {
+                    it.copy(
+                        previewing = false,
+                        formError = "排盘失败：${result.message}",
+                        message = "排盘失败：${result.message}",
+                    )
+                }
+                is PreviewCaseResult.TimeZoneChoiceRequired -> mutableState.update {
+                    it.copy(
+                        previewing = false,
+                        form = it.form.copy(
+                            resolvedUtcOffsetSeconds = null,
+                            availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                        ),
+                        formError = "该时间在 ${result.timeZoneId} 出现两次，请先返回排盘页选择实际 UTC offset。",
+                        message = "该时间存在两个 UTC offset，需先返回排盘页确认。",
+                    )
+                }
+            }
         }
     }
 
@@ -3470,15 +4252,39 @@ class StageTwoViewModel(
                     instantCalculation = null,
                 )
             }
-            when (val result = createCase.preview(form)) {
-                is PreviewCaseResult.Calculated -> mutableState.update {
-                    if (it.form == form && it.destination == AppDestination.CreateCase) {
-                        it.copy(
-                            previewing = false,
-                            instantCalculation = result.calculation,
-                        )
-                    } else {
-                        it.copy(previewing = false)
+            when (val result = withContext(ioDispatcher) { createCase.preview(form) }) {
+                is PreviewCaseResult.Calculated -> {
+                    val previewCase = result.toTransientCase(
+                        caseId = "instant-manual-preview",
+                        fallbackAlias = "即时排盘案例",
+                        libraryType = form.libraryType,
+                        now = clock.instant(),
+                    )
+                    mutableState.update {
+                        if (it.form == form && it.destination == AppDestination.CreateCase) {
+                            it.copy(
+                                destination = navigator.openDetail(previewCase.id),
+                                previewing = false,
+                                instantCalculation = result.calculation,
+                                detail = previewCase,
+                                caseNotesCaseId = previewCase.id,
+                                caseNotesRevision = previewCase.revision,
+                                caseNotesDraft = CaseNotesDraft(),
+                                caseNotesSavedDraft = CaseNotesDraft(),
+                                caseNotesHydrating = false,
+                                detailIsTransient = true,
+                                detailSection = CaseDetailSection.FORTUNE,
+                                detailLoading = false,
+                                detailError = null,
+                                message = "即时排盘仅供查看，未保存到案例库。",
+                            )
+                        } else {
+                            it.copy(previewing = false)
+                        }
+                    }
+                    if (mutableState.value.detail?.id == previewCase.id) {
+                        resetProfessionalObservation(previewCase)
+                        resolveFortunePosition()
                     }
                 }
                 is PreviewCaseResult.ValidationFailed -> mutableState.update {
@@ -3523,78 +4329,317 @@ class StageTwoViewModel(
         val form = mutableState.value.form
         viewModelScope.launch {
             mutableState.update { it.copy(saving = true, formError = null) }
-            when (val result = createCase(form, allowDuplicate)) {
-                is CreateCaseResult.Created -> {
+            when (val preview = withContext(ioDispatcher) { createCase.previewForSave(form) }) {
+                is PreviewCaseResult.Calculated -> {
+                    val pendingCase = preview.toTransientCase(
+                        caseId = "pending-manual-save",
+                        fallbackAlias = "即时排盘案例",
+                        libraryType = form.libraryType,
+                        now = clock.instant(),
+                    )
+                    // The chart is already calculated at this point. Prepare the first
+                    // professional position before navigation, then let duplicate checks
+                    // and database persistence continue behind the detail screen.
+                    prewarmProfessionalFortune(pendingCase)
                     mutableState.update {
-                        it.copy(
-                            destination = navigator.backToList(),
-                            query = "",
-                            form = CaseFormState(),
-                            saving = false,
-                            instantCalculation = null,
-                            duplicateCandidates = emptyList(),
-                            message = "命例已完成排盘并保存。",
-                        )
+                        if (it.form == form && it.destination == AppDestination.CreateCase) {
+                            it.copy(
+                                destination = navigator.openDetail(pendingCase.id),
+                                saving = true,
+                                instantCalculation = preview.calculation,
+                                duplicateCandidates = emptyList(),
+                                detail = pendingCase,
+                                caseNotesCaseId = pendingCase.id,
+                                caseNotesRevision = pendingCase.revision,
+                                caseNotesDraft = CaseNotesDraft(),
+                                caseNotesSavedDraft = CaseNotesDraft(),
+                                caseNotesHydrating = false,
+                                detailIsTransient = true,
+                                detailSavePending = true,
+                                detailSection = CaseDetailSection.FORTUNE,
+                                detailLoading = false,
+                                detailError = null,
+                                message = null,
+                            )
+                        } else {
+                            it.copy(saving = false)
+                        }
                     }
-                    refreshCases()
+                    if (mutableState.value.detail?.id == pendingCase.id) {
+                        resetProfessionalObservation(pendingCase)
+                        resolveFortunePosition()
+                        saveCaseJob = viewModelScope.launch {
+                            val result = withContext(ioDispatcher) {
+                                createCase.savePrepared(form, preview, allowDuplicate)
+                            }
+                            finishPreparedCaseSave(pendingCase, form, result)
+                        }
+                    }
                 }
-                is CreateCaseResult.ValidationFailed -> mutableState.update {
-                    it.copy(saving = false, formError = result.message)
+                is PreviewCaseResult.ValidationFailed -> mutableState.update {
+                    it.copy(saving = false, formError = preview.message)
                 }
-                is CreateCaseResult.TimeZoneChoiceRequired -> mutableState.update {
+                is PreviewCaseResult.TimeZoneChoiceRequired -> mutableState.update {
                     it.copy(
                         form = it.form.copy(
                             resolvedUtcOffsetSeconds = null,
-                            availableUtcOffsetSeconds = result.validUtcOffsetSeconds,
+                            availableUtcOffsetSeconds = preview.validUtcOffsetSeconds,
                         ),
                         saving = false,
-                        formError = "该出生时间在 ${result.timeZoneId} 出现两次。" +
+                        formError = "该出生时间在 ${preview.timeZoneId} 出现两次。" +
                             "请选择实际 UTC offset 后再次保存。",
                     )
                 }
-                is CreateCaseResult.CalculationFailed -> mutableState.update {
+                is PreviewCaseResult.CalculationFailed -> mutableState.update {
                     it.copy(
                         saving = false,
-                        formError = "排盘失败：${result.message} 输入内容已保留，可修改后重试。",
+                        formError = "排盘失败：${preview.message} 输入内容已保留，可修改后重试。",
                     )
-                }
-                is CreateCaseResult.DuplicateCandidates -> mutableState.update {
-                    it.copy(
-                        saving = false,
-                        duplicateCandidates = result.candidates,
-                        formError = "发现疑似重复命例。请先核对；确认仍需保留两份时可继续保存。",
-                    )
-                }
-                is CreateCaseResult.AlreadyExists -> mutableState.update {
-                    it.copy(
-                        saving = false,
-                        formError = "保存冲突：该命例已经存在，未覆盖原记录。",
-                    )
-                }
-                is CreateCaseResult.RevisionConflict -> mutableState.update {
-                    it.copy(
-                        saving = false,
-                        formError = "保存冲突：命例已被更新，未覆盖较新的记录。",
-                    )
-                }
-                is CreateCaseResult.StorageFailed -> mutableState.update {
-                    it.copy(saving = false, formError = result.message)
                 }
             }
         }
     }
 
-    fun openDetail(caseId: String) {
-        if (pendingCaseImage?.facts?.caseId != caseId) {
-            pendingCaseImage = null
+    private suspend fun finishPreparedCaseSave(
+        pendingCase: BaziCase,
+        form: CaseFormState,
+        result: CreateCaseResult,
+    ) {
+        when (result) {
+            is CreateCaseResult.Created -> {
+                retainCaseDetail(result.case)
+                prewarmProfessionalFortune(result.case)
+                updateCachedCaseCatalog { catalog ->
+                    catalog.filterNot { it.id == result.caseId } + result.case.toCaseSummary()
+                }
+                mutableState.update {
+                    val showingPendingDetail =
+                        it.destination == AppDestination.CaseDetail(pendingCase.id) &&
+                            it.detail?.id == pendingCase.id &&
+                            it.form == form
+                    val stillOnCreatePage =
+                        it.destination == AppDestination.CreateCase && it.form == form
+                    val shouldOpenSavedCase = showingPendingDetail || stillOnCreatePage
+                    it.copy(
+                        destination = if (shouldOpenSavedCase) {
+                            if (showingPendingDetail) {
+                                navigator.replaceCurrentDetail(result.caseId)
+                            } else {
+                                navigator.openDetail(result.caseId)
+                            }
+                        } else {
+                            it.destination
+                        },
+                        query = "",
+                        form = if (it.form == form) CaseFormState() else it.form,
+                        saving = false,
+                        instantCalculation = if (shouldOpenSavedCase) null else it.instantCalculation,
+                        duplicateCandidates = emptyList(),
+                        detail = if (shouldOpenSavedCase) result.case else it.detail,
+                        caseNotesCaseId = if (shouldOpenSavedCase) {
+                            result.case.id
+                        } else {
+                            it.caseNotesCaseId
+                        },
+                        caseNotesRevision = if (shouldOpenSavedCase) {
+                            result.case.revision
+                        } else {
+                            it.caseNotesRevision
+                        },
+                        caseNotesDraft = if (shouldOpenSavedCase) {
+                            result.case.toCaseNotesDraft()
+                        } else {
+                            it.caseNotesDraft
+                        },
+                        caseNotesSavedDraft = if (shouldOpenSavedCase) {
+                            result.case.toCaseNotesDraft()
+                        } else {
+                            it.caseNotesSavedDraft
+                        },
+                        caseNotesHydrating = false,
+                        detailIsTransient = if (shouldOpenSavedCase) false else it.detailIsTransient,
+                        detailSavePending = false,
+                        detailSection = if (shouldOpenSavedCase) {
+                            CaseDetailSection.FORTUNE
+                        } else {
+                            it.detailSection
+                        },
+                        detailLoading = false,
+                        detailError = null,
+                        message = "命例已完成排盘并保存。",
+                    )
+                }
+                refreshCasesFromCache()
+            }
+            else -> returnPendingSaveToForm(pendingCase, result)
         }
+    }
+
+    private fun returnPendingSaveToForm(
+        pendingCase: BaziCase,
+        result: CreateCaseResult,
+    ) {
+        val showingPendingDetail = mutableState.value.detail?.id == pendingCase.id
+        val destination = if (showingPendingDetail) navigator.back() else mutableState.value.destination
         mutableState.update {
+            when (result) {
+                is CreateCaseResult.ValidationFailed -> it.copy(
+                    destination = destination,
+                    saving = false,
+                    detail = if (showingPendingDetail) null else it.detail,
+                    detailIsTransient = false,
+                    detailSavePending = false,
+                    detailLoading = false,
+                    instantCalculation = null,
+                    formError = result.message,
+                )
+                is CreateCaseResult.DuplicateCandidates -> it.copy(
+                    destination = destination,
+                    saving = false,
+                    detail = if (showingPendingDetail) null else it.detail,
+                    detailIsTransient = false,
+                    detailSavePending = false,
+                    detailLoading = false,
+                    instantCalculation = null,
+                    duplicateCandidates = result.candidates,
+                    formError = "发现疑似重复命例。请先核对；确认仍需保留两份时可继续保存。",
+                )
+                is CreateCaseResult.AlreadyExists -> it.copy(
+                    destination = destination,
+                    saving = false,
+                    detail = if (showingPendingDetail) null else it.detail,
+                    detailIsTransient = false,
+                    detailSavePending = false,
+                    detailLoading = false,
+                    instantCalculation = null,
+                    formError = "保存冲突：该命例已经存在，未覆盖原记录。",
+                )
+                is CreateCaseResult.RevisionConflict -> it.copy(
+                    destination = destination,
+                    saving = false,
+                    detail = if (showingPendingDetail) null else it.detail,
+                    detailIsTransient = false,
+                    detailSavePending = false,
+                    detailLoading = false,
+                    instantCalculation = null,
+                    formError = "保存冲突：命例已被更新，未覆盖较新的记录。",
+                )
+                is CreateCaseResult.StorageFailed -> it.copy(
+                    destination = destination,
+                    saving = false,
+                    detail = if (showingPendingDetail) null else it.detail,
+                    detailIsTransient = false,
+                    detailSavePending = false,
+                    detailLoading = false,
+                    instantCalculation = null,
+                    formError = result.message,
+                )
+                is CreateCaseResult.TimeZoneChoiceRequired,
+                is CreateCaseResult.CalculationFailed,
+                is CreateCaseResult.Created,
+                -> it
+            }
+        }
+    }
+
+    fun openDetail(caseId: String) {
+        openDetail(caseId, CaseDetailSection.BASIC_INFO)
+    }
+
+    fun openDetailFromList(caseId: String) {
+        // Navigation is the user's foreground action. Detail refresh, viewed-at writes,
+        // and professional positioning must never hold the list on screen.
+        openDetail(caseId, CaseDetailSection.FORTUNE)
+    }
+
+    private suspend fun prewarmProfessionalFortune(detail: BaziCase) {
+        val snapshot = detail.calculationSnapshots.asReversed().firstOrNull { it.adopted }
+            ?: return
+        val observedAt = detail.defaultProfessionalObservation(
+            now = LocalDateTime.now(observationClock),
+        ).copy(second = 0)
+        val cacheKey = FortunePositionCacheKey(
+            caseId = detail.id,
+            calculationSnapshotId = snapshot.id,
+            observedAt = observedAt,
+        )
+        if (cachedFortunePosition(cacheKey)?.professionalPosition != null) return
+        val resolved = try {
+            withTimeout(FORTUNE_POSITION_TIMEOUT_MILLIS) {
+                withContext(fortuneCalculationDispatcher) {
+                    val professional = professionalFortuneResolver?.locate(snapshot.result, observedAt)
+                        ?: return@withContext null
+                    professional.position to professional
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        resolved?.let { (basic, professional) ->
+            retainFortunePosition(
+                cacheKey,
+                FortunePositionCacheValue(basic, professional),
+            )
+        }
+    }
+
+    private fun openDetail(caseId: String, initialSection: CaseDetailSection) {
+        detailOpeningJob?.cancel()
+        caseNotesAutoSaveJob?.cancel()
+        caseNotesHydrationJob?.cancel()
+        if (pendingCaseImage?.facts?.caseId != caseId) {
+            pendingCaseImages = emptyList()
+        }
+        val retainedDetail = retainedCaseDetail(caseId)
+        val retainedNotesDraft = retainedCaseNotes(caseId)
+        val retainedObservation = retainedDetail
+            ?.takeIf { initialSection == CaseDetailSection.FORTUNE }
+            ?.let(::professionalObservationSeed)
+        mutableState.update {
+            val preserveUnsavedDraft = retainedDetail != null &&
+                it.caseNotesCaseId == caseId &&
+                it.caseNotesRevision == retainedDetail.revision &&
+                it.caseNotesDraft != it.caseNotesSavedDraft
+            val savedNotesDraft = retainedNotesDraft
+                ?: if (it.caseNotesCaseId == caseId) it.caseNotesSavedDraft else CaseNotesDraft()
             it.copy(
                 destination = navigator.openDetail(caseId),
-                detail = null,
-                detailSection = CaseDetailSection.BASIC_INFO,
-                detailLoading = true,
+                detail = retainedDetail,
+                detailIsTransient = false,
+                detailSection = initialSection,
+                detailLoading = retainedDetail == null,
                 detailError = null,
+                caseNotesCaseId = caseId,
+                caseNotesRevision = retainedDetail?.revision,
+                caseNotesDraft = if (preserveUnsavedDraft) {
+                    it.caseNotesDraft
+                } else {
+                    retainedNotesDraft ?: CaseNotesDraft()
+                },
+                caseNotesSavedDraft = savedNotesDraft,
+                // An empty retained draft is never trusted as proof that the database
+                // has no notes. Keep the notes page guarded until the canonical Room
+                // aggregate has been read again.
+                caseNotesHydrating = retainedDetail == null ||
+                    retainedNotesDraft?.isEffectivelyEmpty() != false,
+                caseNotesSaving = false,
+                caseNotesSaveError = null,
+                fortuneObservationDate = retainedObservation?.observedAt?.let { observedAt ->
+                    "%04d-%02d-%02d".format(observedAt.year, observedAt.month, observedAt.day)
+                } ?: it.fortuneObservationDate,
+                fortuneObservationTime = retainedObservation?.observedAt?.let { observedAt ->
+                    "%02d:%02d".format(observedAt.hour, observedAt.minute)
+                } ?: it.fortuneObservationTime,
+                fortunePosition = retainedObservation?.cached?.position,
+                professionalFortunePosition = retainedObservation?.cached?.professionalPosition,
+                fortunePositionError = null,
+                fortunePositionLoading = when (initialSection) {
+                    CaseDetailSection.FORTUNE -> retainedObservation?.cached == null
+                    CaseDetailSection.BASIC_CHART -> true
+                    else -> false
+                },
                 caseImageConfirmationMode = null,
                 caseImageBusy = false,
                 caseImageError = null,
@@ -3614,13 +4659,77 @@ class StageTwoViewModel(
                 message = null,
             )
         }
-        viewModelScope.launch {
+        if (retainedDetail != null && initialSection == CaseDetailSection.FORTUNE) {
+            if (retainedObservation?.cached == null) resolveFortunePosition()
+        }
+        detailOpeningJob = viewModelScope.launch(ioDispatcher) {
             try {
+                if (retainedCaseDetail(caseId) == null) {
+                    activeDetailPrefetchJob(caseId)?.join()
+                }
+                val prefetchedDetail = retainedCaseDetail(caseId)
+                if (retainedDetail == null && prefetchedDetail != null) {
+                    val prefetchedObservation = if (initialSection == CaseDetailSection.FORTUNE) {
+                        professionalObservationSeed(prefetchedDetail)
+                    } else {
+                        null
+                    }
+                    mutableState.update {
+                        if (it.destination == AppDestination.CaseDetail(caseId)) {
+                            val notesDraft = prefetchedDetail.toCaseNotesDraft()
+                            it.copy(
+                                detail = prefetchedDetail,
+                                detailLoading = false,
+                                detailError = null,
+                                caseNotesCaseId = caseId,
+                                caseNotesRevision = prefetchedDetail.revision,
+                                caseNotesDraft = notesDraft,
+                                caseNotesSavedDraft = notesDraft,
+                                caseNotesHydrating = notesDraft.isEffectivelyEmpty(),
+                                fortuneObservationDate = prefetchedObservation?.observedAt?.let {
+                                    observedAt ->
+                                    "%04d-%02d-%02d".format(
+                                        observedAt.year,
+                                        observedAt.month,
+                                        observedAt.day,
+                                    )
+                                } ?: it.fortuneObservationDate,
+                                fortuneObservationTime = prefetchedObservation?.observedAt?.let {
+                                    observedAt ->
+                                    "%02d:%02d".format(observedAt.hour, observedAt.minute)
+                                } ?: it.fortuneObservationTime,
+                                fortunePosition = prefetchedObservation?.cached?.position,
+                                professionalFortunePosition =
+                                    prefetchedObservation?.cached?.professionalPosition,
+                                fortunePositionLoading = initialSection == CaseDetailSection.FORTUNE &&
+                                    prefetchedObservation?.cached == null,
+                            )
+                        } else {
+                            it
+                        }
+                    }
+                    if (initialSection == CaseDetailSection.FORTUNE) {
+                        if (prefetchedObservation?.cached == null) resolveFortunePosition()
+                    }
+                }
+                // Retained/prefetched content is the fast first frame, not the source of
+                // truth for refresh. Always re-read so deletion/restoration and revisions
+                // cannot be hidden by a stale cache entry.
                 var detail = caseRepository.findById(caseId)
-                val viewWarning = if (detail?.deletedAt == null) {
+                val viewWarning = if (detail != null && detail.deletedAt == null) {
                     try {
-                        if (caseRepository.markViewed(caseId, clock.instant())) {
-                            detail = caseRepository.findById(caseId)
+                        val viewedAt = clock.instant()
+                        if (caseRepository.markViewed(caseId, viewedAt)) {
+                            detail = detail.copy(lastViewedAt = viewedAt)
+                            updateCachedCaseCatalog { catalog ->
+                                catalog.map { summary ->
+                                    if (summary.id == caseId) {
+                                        summary.copy(lastViewedAt = viewedAt)
+                                    } else {
+                                        summary
+                                    }
+                                }
+                            }
                             null
                         } else {
                             "详情已打开，但最近查看时间未能记录。"
@@ -3633,33 +4742,117 @@ class StageTwoViewModel(
                 } else {
                     null
                 }
+                detail?.let(::retainCaseDetail)
+                val refreshedObservation = detail
+                    ?.takeIf { initialSection == CaseDetailSection.FORTUNE }
+                    ?.let(::professionalObservationSeed)
                 mutableState.update {
-                    if (detail == null) {
+                    if (it.destination != AppDestination.CaseDetail(caseId)) {
+                        it
+                    } else if (detail == null) {
                         it.copy(
                             detailLoading = false,
                             detailError = "未找到该命例，记录可能已被移除。",
                         )
                     } else {
+                        val sameRevision = it.detail?.let { currentDetail ->
+                            currentDetail.id == detail.id &&
+                                currentDetail.revision == detail.revision &&
+                                currentDetail.updatedAt == detail.updatedAt &&
+                                currentDetail.deletedAt == detail.deletedAt
+                        } == true
                         val notesDraft = detail.toCaseNotesDraft()
+                        val preserveUnsavedDraft = it.caseNotesCaseId == caseId &&
+                            it.caseNotesRevision == detail.revision &&
+                            it.caseNotesDraft != it.caseNotesSavedDraft
                         it.copy(
+                            // Revision equality only covers the parent case row. Child
+                            // text/event rows can differ, so the fresh aggregate must win.
                             detail = detail,
                             detailLoading = false,
-                            caseNotesDraft = notesDraft,
+                            caseNotesCaseId = caseId,
+                            caseNotesRevision = detail.revision,
+                            caseNotesDraft = if (preserveUnsavedDraft) {
+                                it.caseNotesDraft
+                            } else {
+                                notesDraft
+                            },
                             caseNotesSavedDraft = notesDraft,
+                            caseNotesHydrating = false,
                             caseNotesSaving = false,
                             caseNotesSaveError = null,
+                            fortuneObservationDate = if (!sameRevision) {
+                                refreshedObservation?.observedAt?.let { observedAt ->
+                                    "%04d-%02d-%02d".format(
+                                        observedAt.year,
+                                        observedAt.month,
+                                        observedAt.day,
+                                    )
+                                } ?: it.fortuneObservationDate
+                            } else {
+                                it.fortuneObservationDate
+                            },
+                            fortuneObservationTime = if (!sameRevision) {
+                                refreshedObservation?.observedAt?.let { observedAt ->
+                                    "%02d:%02d".format(observedAt.hour, observedAt.minute)
+                                } ?: it.fortuneObservationTime
+                            } else {
+                                it.fortuneObservationTime
+                            },
+                            fortunePosition = if (!sameRevision) {
+                                refreshedObservation?.cached?.position
+                            } else {
+                                it.fortunePosition
+                            },
+                            professionalFortunePosition = if (!sameRevision) {
+                                refreshedObservation?.cached?.professionalPosition
+                            } else {
+                                it.professionalFortunePosition
+                            },
+                            fortunePositionLoading = if (
+                                !sameRevision && initialSection == CaseDetailSection.FORTUNE
+                            ) {
+                                refreshedObservation?.cached == null
+                            } else {
+                                it.fortunePositionLoading
+                            },
                             message = viewWarning,
                         )
+                    }
+                }
+                if (
+                    detail != null &&
+                    mutableState.value.destination == AppDestination.CaseDetail(caseId) &&
+                    initialSection in setOf(
+                        CaseDetailSection.BASIC_CHART,
+                        CaseDetailSection.FORTUNE,
+                    )
+                ) {
+                    if (
+                        initialSection != CaseDetailSection.FORTUNE ||
+                        mutableState.value.professionalFortunePosition == null
+                    ) {
+                        resolveFortunePosition()
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 mutableState.update {
-                    it.copy(
-                        detailLoading = false,
-                        detailError = "命例详情读取失败，请返回列表后重试。",
-                    )
+                    if (it.destination != AppDestination.CaseDetail(caseId)) {
+                        it
+                    } else if (it.detail?.id == caseId) {
+                        it.copy(
+                            detailLoading = false,
+                            detailError = null,
+                            message = "详情刷新失败，已保留上次打开的内容。",
+                        )
+                    } else {
+                        it.copy(
+                            detailLoading = false,
+                            detailError = "命例详情读取失败，请返回列表后重试。",
+                        )
+                    }
                 }
             }
         }
@@ -3670,7 +4863,6 @@ class StageTwoViewModel(
         mutableState.update {
             it.copy(
                 destination = navigator.openObjectiveSummary(detail.id),
-                objectiveSummary = null,
                 objectiveSummaryLoading = true,
                 objectiveSummaryFailure = null,
                 objectiveSummaryCopied = false,
@@ -3743,38 +4935,45 @@ class StageTwoViewModel(
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
         val record = detail.textRecords.firstOrNull { it.id == recordId } ?: return
-        val result = commentaryCandidateExtractor.extract(
-            MasterCommentaryCandidateExtractionInput(
-                sourceRecordId = record.id,
-                sourceRecordType = record.type,
-                sourceContent = record.content,
-                sourceRevision = detail.sourceRecordRevision(record.id),
-            ),
-        )
         mutableState.update {
-            when (result) {
-                is MasterCommentaryCandidateExtractionResult.Success -> it.copy(
-                    destination = navigator.openMasterCommentaryCandidates(
+            it.copy(
+                destination = navigator.openMasterCommentaryCandidates(detail.id, record.id),
+                commentaryCandidateSet = null,
+                commentaryCandidateFailure = null,
+                commentaryCandidateAdoptionFailure = null,
+                commentaryCandidateSavingId = null,
+                message = null,
+            )
+        }
+        viewModelScope.launch(ioDispatcher) {
+            val result = commentaryCandidateExtractor.extract(
+                MasterCommentaryCandidateExtractionInput(
+                    sourceRecordId = record.id,
+                    sourceRecordType = record.type,
+                    sourceContent = record.content,
+                    sourceRevision = detail.sourceRecordRevision(record.id),
+                ),
+            )
+            mutableState.update {
+                if (
+                    it.destination != AppDestination.MasterCommentaryCandidates(
                         detail.id,
                         record.id,
-                    ),
-                    commentaryCandidateSet = result.candidateSet,
-                    commentaryCandidateFailure = null,
-                    commentaryCandidateAdoptionFailure = null,
-                    commentaryCandidateSavingId = null,
-                    message = null,
-                )
-                is MasterCommentaryCandidateExtractionResult.Failure -> it.copy(
-                    destination = navigator.openMasterCommentaryCandidates(
-                        detail.id,
-                        record.id,
-                    ),
-                    commentaryCandidateSet = null,
-                    commentaryCandidateFailure = result.failure,
-                    commentaryCandidateAdoptionFailure = null,
-                    commentaryCandidateSavingId = null,
-                    message = null,
-                )
+                    )
+                ) {
+                    it
+                } else {
+                    when (result) {
+                        is MasterCommentaryCandidateExtractionResult.Success -> it.copy(
+                            commentaryCandidateSet = result.candidateSet,
+                            commentaryCandidateFailure = null,
+                        )
+                        is MasterCommentaryCandidateExtractionResult.Failure -> it.copy(
+                            commentaryCandidateSet = null,
+                            commentaryCandidateFailure = result.failure,
+                        )
+                    }
+                }
             }
         }
     }
@@ -3920,32 +5119,45 @@ class StageTwoViewModel(
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
         val record = detail.textRecords.firstOrNull { it.id == recordId } ?: return
-        val result = feedbackThemeCandidateExtractor.extract(
-            FeedbackThemeCandidateExtractionInput(
-                sourceRecordId = record.id,
-                sourceRecordType = record.type,
-                sourceContent = record.content,
-                sourceRevision = detail.sourceRecordRevision(record.id),
-            ),
-        )
         mutableState.update {
-            when (result) {
-                is FeedbackThemeCandidateExtractionResult.Success -> it.copy(
-                    destination = navigator.openFeedbackThemeCandidates(detail.id, record.id),
-                    feedbackThemeCandidateSet = result.candidateSet,
-                    feedbackThemeCandidateFailure = null,
-                    feedbackThemeAdoptionFailure = null,
-                    feedbackThemeSavingId = null,
-                    message = null,
-                )
-                is FeedbackThemeCandidateExtractionResult.Failure -> it.copy(
-                    destination = navigator.openFeedbackThemeCandidates(detail.id, record.id),
-                    feedbackThemeCandidateSet = null,
-                    feedbackThemeCandidateFailure = result.failure,
-                    feedbackThemeAdoptionFailure = null,
-                    feedbackThemeSavingId = null,
-                    message = null,
-                )
+            it.copy(
+                destination = navigator.openFeedbackThemeCandidates(detail.id, record.id),
+                feedbackThemeCandidateSet = null,
+                feedbackThemeCandidateFailure = null,
+                feedbackThemeAdoptionFailure = null,
+                feedbackThemeSavingId = null,
+                message = null,
+            )
+        }
+        viewModelScope.launch(ioDispatcher) {
+            val result = feedbackThemeCandidateExtractor.extract(
+                FeedbackThemeCandidateExtractionInput(
+                    sourceRecordId = record.id,
+                    sourceRecordType = record.type,
+                    sourceContent = record.content,
+                    sourceRevision = detail.sourceRecordRevision(record.id),
+                ),
+            )
+            mutableState.update {
+                if (
+                    it.destination != AppDestination.FeedbackThemeCandidates(
+                        detail.id,
+                        record.id,
+                    )
+                ) {
+                    it
+                } else {
+                    when (result) {
+                        is FeedbackThemeCandidateExtractionResult.Success -> it.copy(
+                            feedbackThemeCandidateSet = result.candidateSet,
+                            feedbackThemeCandidateFailure = null,
+                        )
+                        is FeedbackThemeCandidateExtractionResult.Failure -> it.copy(
+                            feedbackThemeCandidateSet = null,
+                            feedbackThemeCandidateFailure = result.failure,
+                        )
+                    }
+                }
             }
         }
     }
@@ -4073,18 +5285,20 @@ class StageTwoViewModel(
     private fun loadObjectiveSummary(caseId: String) {
         viewModelScope.launch {
             val result = try {
-                val current = caseRepository.findById(caseId)
-                if (current == null) {
-                    CaseObjectiveSummaryResult.Rejected(
-                        CaseObjectiveSummaryFailure(
-                            CaseObjectiveSummaryErrorCode.SUMMARY_UNAVAILABLE,
-                            "未找到该命例，无法生成客观摘要。",
-                        ),
-                    )
-                } else {
-                    objectiveSummaryGenerator.generate(
-                        CaseObjectiveSummaryInput(current),
-                    )
+                withContext(ioDispatcher) {
+                    val current = caseRepository.findById(caseId)
+                    if (current == null) {
+                        CaseObjectiveSummaryResult.Rejected(
+                            CaseObjectiveSummaryFailure(
+                                CaseObjectiveSummaryErrorCode.SUMMARY_UNAVAILABLE,
+                                "未找到该命例，无法生成客观摘要。",
+                            ),
+                        )
+                    } else {
+                        objectiveSummaryGenerator.generate(
+                            CaseObjectiveSummaryInput(current),
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -4474,6 +5688,10 @@ class StageTwoViewModel(
     }
 
     fun selectDetailSection(section: CaseDetailSection) {
+        if (mutableState.value.detailSection == section) return
+        if (section == CaseDetailSection.FORTUNE) {
+            mutableState.value.detail?.let(::resetProfessionalObservation)
+        }
         mutableState.update {
             it.copy(detailSection = section)
         }
@@ -4493,6 +5711,24 @@ class StageTwoViewModel(
                 fortunePosition = null,
                 professionalFortunePosition = null,
                 fortunePositionError = null,
+                fortunePositionLoading = true,
+            )
+        }
+        resolveFortunePosition()
+    }
+
+    fun updateFortuneObservation(
+        date: String,
+        time: String,
+    ) {
+        if (date.length > 10 || date.any { !it.isDigit() && it != '-' }) return
+        if (time.length > 5 || time.any { !it.isDigit() && it != ':' }) return
+        mutableState.update {
+            it.copy(
+                fortuneObservationDate = date,
+                fortuneObservationTime = time,
+                fortunePositionError = null,
+                fortunePositionLoading = true,
             )
         }
         resolveFortunePosition()
@@ -4506,6 +5742,7 @@ class StageTwoViewModel(
                 fortunePosition = null,
                 professionalFortunePosition = null,
                 fortunePositionError = null,
+                fortunePositionLoading = true,
             )
         }
         resolveFortunePosition()
@@ -4550,21 +5787,68 @@ class StageTwoViewModel(
         )
     }
 
+    /**
+     * 专业细盘每次进入都从一个可解释的默认观察时刻开始，不能继承上一命例或上次页面的选择。
+     * 已故和跨越百年的历史命例不以“今天”制造无意义的超长岁运，固定落在周岁 36。
+     */
+    private fun resetProfessionalObservation(case: BaziCase) {
+        val seed = professionalObservationSeed(case)
+        val observedAt = seed.observedAt
+        val cached = seed.cached
+        mutableState.update {
+            it.copy(
+                fortuneObservationDate = "%04d-%02d-%02d".format(
+                    observedAt.year,
+                    observedAt.month,
+                    observedAt.day,
+                ),
+                fortuneObservationTime = "%02d:%02d".format(observedAt.hour, observedAt.minute),
+                fortunePosition = cached?.position,
+                professionalFortunePosition = cached?.professionalPosition,
+                fortunePositionError = null,
+                fortunePositionLoading = cached == null,
+            )
+        }
+    }
+
+    private fun professionalObservationSeed(case: BaziCase): ProfessionalObservationSeed {
+        val observedAt = case.defaultProfessionalObservation(
+            now = LocalDateTime.now(observationClock),
+        ).copy(second = 0)
+        val cached = case.calculationSnapshots
+            .asReversed()
+            .firstOrNull { it.adopted }
+            ?.let { snapshot ->
+                cachedFortunePosition(
+                    FortunePositionCacheKey(
+                        caseId = case.id,
+                        calculationSnapshotId = snapshot.id,
+                        observedAt = observedAt,
+                    ),
+                )
+            }
+        return ProfessionalObservationSeed(observedAt, cached)
+    }
+
     private fun resolveFortunePosition(
         selection: ProfessionalFortuneSelection? = null,
     ) {
         val current = mutableState.value
-        val result = current.detail
+        val requestId = ++fortunePositionRequestId
+        fortunePositionJob?.cancel()
+        val detail = current.detail
+        val adoptedSnapshot = detail
             ?.calculationSnapshots
             ?.asReversed()
             ?.firstOrNull { it.adopted }
-            ?.result
-        if (result == null) {
+        val result = adoptedSnapshot?.result
+        if (detail == null || adoptedSnapshot == null || result == null) {
             mutableState.update {
                 it.copy(
                     fortunePosition = null,
                     professionalFortunePosition = null,
                     fortunePositionError = "当前命例没有已采用的计算快照。",
+                    fortunePositionLoading = false,
                 )
             }
             return
@@ -4575,6 +5859,7 @@ class StageTwoViewModel(
                     fortunePosition = null,
                     professionalFortunePosition = null,
                     fortunePositionError = "当前运行环境未配置岁运定位器。",
+                    fortunePositionLoading = false,
                 )
             }
             return
@@ -4588,6 +5873,7 @@ class StageTwoViewModel(
                     fortunePosition = null,
                     professionalFortunePosition = null,
                     fortunePositionError = "观察日期请按 YYYY-MM-DD 填写。",
+                    fortunePositionLoading = false,
                 )
             }
             return
@@ -4601,6 +5887,7 @@ class StageTwoViewModel(
                     fortunePosition = null,
                     professionalFortunePosition = null,
                     fortunePositionError = "观察时间请按 HH:mm 填写。",
+                    fortunePositionLoading = false,
                 )
             }
             return
@@ -4614,49 +5901,183 @@ class StageTwoViewModel(
                 minute = time.minute,
                 second = 0,
             )
-        val position = runCatching {
-            val professional = professionalFortuneResolver?.let { resolver ->
-                val currentProfessional = current.professionalFortunePosition
-                if (selection != null && currentProfessional != null) {
-                    resolver.select(result, currentProfessional, selection)
-                } else {
-                    resolver.locate(result, observedAt)
+        val cacheKey = FortunePositionCacheKey(
+            caseId = detail.id,
+            calculationSnapshotId = adoptedSnapshot.id,
+            observedAt = observedAt,
+            selectionLayer = selection?.layer,
+        )
+        cachedFortunePosition(cacheKey)?.let { cached ->
+            mutableState.update {
+                it.copy(
+                    fortuneObservationDate = "%04d-%02d-%02d".format(
+                        observedAt.year,
+                        observedAt.month,
+                        observedAt.day,
+                    ),
+                    fortuneObservationTime = "%02d:%02d".format(
+                        observedAt.hour,
+                        observedAt.minute,
+                    ),
+                    fortunePosition = cached.position,
+                    professionalFortunePosition = cached.professionalPosition,
+                    fortunePositionError = null,
+                    fortunePositionLoading = false,
+                )
+            }
+            cached.professionalPosition?.let { professional ->
+                prefetchProfessionalFortuneSelections(
+                    cacheKey = cacheKey,
+                    result = result,
+                    current = professional,
+                )
+            }
+            return
+        }
+        fortunePrefetchJob?.cancel()
+        mutableState.update { it.copy(fortunePositionLoading = true) }
+        fortunePositionJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            if (selection != null) {
+                // 连续横向点选时先让最新选中态完成一帧，再只计算最终落点，避免 CPU 任务堆叠。
+                delay(PROFESSIONAL_SELECTION_SETTLE_MILLIS)
+            }
+            val position = try {
+                Result.success(
+                    withTimeout(FORTUNE_POSITION_TIMEOUT_MILLIS) {
+                        withContext(fortuneCalculationDispatcher) {
+                            val professional = professionalFortuneResolver?.let { resolver ->
+                                val currentProfessional = current.professionalFortunePosition
+                                if (selection != null && currentProfessional != null) {
+                                    resolver.select(result, currentProfessional, selection)
+                                } else {
+                                    resolver.locate(result, observedAt)
+                                }
+                            }
+                            val basic = professional?.position
+                                ?: requireNotNull(fortunePositionResolver) {
+                                    "当前运行环境未配置岁运定位器。"
+                                }.locate(result, observedAt)
+                            basic to professional
+                        }
+                    },
+                )
+            } catch (timeout: TimeoutCancellationException) {
+                Result.failure(IllegalStateException("专业细盘生成超时，请返回后重试。", timeout))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+            mutableState.update {
+                position.fold(
+                    onSuccess = { (resolved, professional) ->
+                        retainFortunePosition(
+                            cacheKey,
+                            FortunePositionCacheValue(resolved, professional),
+                        )
+                        if (
+                            requestId != fortunePositionRequestId ||
+                            !it.matchesFortuneRequest(cacheKey)
+                        ) {
+                            it
+                        } else {
+                            it.copy(
+                                fortuneObservationDate = "%04d-%02d-%02d".format(
+                                    observedAt.year,
+                                    observedAt.month,
+                                    observedAt.day,
+                                ),
+                                fortuneObservationTime = "%02d:%02d".format(
+                                    observedAt.hour,
+                                    observedAt.minute,
+                                ),
+                                fortunePosition = resolved,
+                                professionalFortunePosition = professional,
+                                fortunePositionError = null,
+                                fortunePositionLoading = false,
+                            )
+                        }
+                    },
+                    onFailure = { error ->
+                        if (
+                            requestId != fortunePositionRequestId ||
+                            !it.matchesFortuneRequest(cacheKey)
+                        ) {
+                            it
+                        } else {
+                            it.copy(
+                                fortunePosition =
+                                    if (selection == null) null else it.fortunePosition,
+                                professionalFortunePosition =
+                                    if (selection == null) null else it.professionalFortunePosition,
+                                fortunePositionError =
+                                    error.message ?: "岁运定位失败，请核对观察日期与时间。",
+                                fortunePositionLoading = false,
+                            )
+                        }
+                    },
+                )
+            }
+            position.getOrNull()?.second?.let { professional ->
+                if (
+                    requestId == fortunePositionRequestId &&
+                    mutableState.value.matchesFortuneRequest(cacheKey)
+                ) {
+                    prefetchProfessionalFortuneSelections(
+                        cacheKey = cacheKey,
+                        result = result,
+                        current = professional,
+                    )
                 }
             }
-            val basic = professional?.position
-                ?: requireNotNull(fortunePositionResolver) {
-                    "当前运行环境未配置岁运定位器。"
-                }.locate(result, observedAt)
-            basic to professional
         }
-        mutableState.update {
-            position.fold(
-                onSuccess = { (resolved, professional) ->
-                    it.copy(
-                        fortuneObservationDate = "%04d-%02d-%02d".format(
-                            observedAt.year,
-                            observedAt.month,
-                            observedAt.day,
-                        ),
-                        fortuneObservationTime = "%02d:%02d".format(
-                            observedAt.hour,
-                            observedAt.minute,
-                        ),
-                        fortunePosition = resolved,
-                        professionalFortunePosition = professional,
-                        fortunePositionError = null,
-                    )
-                },
-                onFailure = { error ->
-                    it.copy(
-                        fortunePosition = if (selection == null) null else it.fortunePosition,
-                        professionalFortunePosition =
-                            if (selection == null) null else it.professionalFortunePosition,
-                        fortunePositionError =
-                            error.message ?: "岁运定位失败，请核对观察日期与时间。",
-                    )
-                },
-            )
+    }
+
+    private fun prefetchProfessionalFortuneSelections(
+        cacheKey: FortunePositionCacheKey,
+        result: CalculationResult,
+        current: ProfessionalFortunePosition,
+    ) {
+        val resolver = professionalFortuneResolver ?: return
+        if (PREFETCH_ITEMS_PER_FORTUNE_LAYER == 0) return
+        val timelines = listOf(
+            ProfessionalFortuneLayer.HOURLY to current.hourlyTimeline,
+            ProfessionalFortuneLayer.DAILY to current.dailyTimeline,
+            ProfessionalFortuneLayer.MONTHLY to current.monthlyTimeline,
+            ProfessionalFortuneLayer.ANNUAL to current.annualTimeline,
+            ProfessionalFortuneLayer.DECADE to current.decadeTimeline,
+        )
+        val selections = buildList {
+            repeat(PREFETCH_ITEMS_PER_FORTUNE_LAYER) { index ->
+                timelines.forEach { (layer, items) ->
+                    items.getOrNull(index)?.let { item ->
+                        add(ProfessionalFortuneSelection(layer, item.observedAt))
+                    }
+                }
+            }
+        }.distinctBy { it.layer to it.observedAt }
+        fortunePrefetchJob?.cancel()
+        fortunePrefetchJob = viewModelScope.launch(fortunePrefetchDispatcher) {
+            delay(FORTUNE_PREFETCH_DELAY_MILLIS)
+            selections.forEach { selection ->
+                val itemKey = cacheKey.copy(
+                    observedAt = selection.observedAt,
+                    selectionLayer = selection.layer,
+                )
+                if (cachedFortunePosition(itemKey) == null) {
+                    try {
+                        val prefetched = resolver.select(result, current, selection)
+                        retainFortunePosition(
+                            itemKey,
+                            FortunePositionCacheValue(prefetched.position, prefetched),
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // 预取失败不影响当前真实结果，点击时仍可正常计算。
+                    }
+                }
+            }
         }
     }
 
@@ -4738,12 +6159,14 @@ class StageTwoViewModel(
         )
         viewModelScope.launch {
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            val result = birthTimeCandidates.add(
-                caseId = detail.id,
-                expectedRevision = detail.revision,
-                label = label,
-                form = form,
-            )
+            val result = withContext(ioDispatcher) {
+                birthTimeCandidates.add(
+                    caseId = detail.id,
+                    expectedRevision = detail.revision,
+                    label = label,
+                    form = form,
+                )
+            }
             finishBirthTimeCandidateMutation(
                 result = result,
                 caseId = detail.id,
@@ -4758,11 +6181,13 @@ class StageTwoViewModel(
         if (detail.deletedAt != null || mutableState.value.mutationSaving) return
         viewModelScope.launch {
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            val result = birthTimeCandidates.adopt(
-                caseId = detail.id,
-                expectedRevision = detail.revision,
-                candidateId = candidateId,
-            )
+            val result = withContext(ioDispatcher) {
+                birthTimeCandidates.adopt(
+                    caseId = detail.id,
+                    expectedRevision = detail.revision,
+                    candidateId = candidateId,
+                )
+            }
             finishBirthTimeCandidateMutation(
                 result = result,
                 caseId = detail.id,
@@ -4827,7 +6252,9 @@ class StageTwoViewModel(
         val form = mutableState.value.editForm
         viewModelScope.launch {
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            val result = editCase(detail.id, detail.revision, form, allowDuplicate)
+            val result = withContext(ioDispatcher) {
+                editCase(detail.id, detail.revision, form, allowDuplicate)
+            }
             finishMutation(
                 result = result,
                 caseId = detail.id,
@@ -4841,7 +6268,11 @@ class StageTwoViewModel(
         val form = mutableState.value.editForm
         viewModelScope.launch {
             mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
-            when (val result = createCase(form, allowDuplicate = true)) {
+            when (
+                val result = withContext(ioDispatcher) {
+                    createCase(form, allowDuplicate = true)
+                }
+            ) {
                 is CreateCaseResult.Created -> {
                     navigator.backToList()
                     mutableState.update {
@@ -4982,6 +6413,505 @@ class StageTwoViewModel(
         updateCaseNotesDraft { it.copy(masterCommentary = value) }
     }
 
+    fun updateManualAiCommentary(value: String) {
+        updateCaseNotesDraft { it.copy(aiCommentary = value) }
+    }
+
+    /**
+     * Runtime ownership guard for the notes aggregate. A notes draft is renderable only
+     * when both its case id and parent revision match the mounted detail. Any mismatch is
+     * rehydrated as one aggregate instead of exposing an empty or cross-case draft.
+     */
+    fun ensureCaseNotesHydrated() {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        val detailDraft = detail.toCaseNotesDraft()
+        val suspiciousEmptySnapshot = current.caseNotesDraft.isEffectivelyEmpty() &&
+            current.caseNotesSavedDraft.isEffectivelyEmpty() &&
+            !detailDraft.isEffectivelyEmpty()
+        val snapshotMatches = current.caseNotesCaseId == detail.id &&
+            current.caseNotesRevision == detail.revision &&
+            !suspiciousEmptySnapshot
+        if (snapshotMatches || current.caseNotesHydrating) return
+
+        caseNotesAutoSaveJob?.cancel()
+        caseNotesHydrationJob?.cancel()
+        if (current.detailIsTransient) {
+            mutableState.update {
+                if (it.detail?.id != detail.id) {
+                    it
+                } else {
+                    it.copy(
+                        caseNotesCaseId = detail.id,
+                        caseNotesRevision = detail.revision,
+                        caseNotesDraft = detailDraft,
+                        caseNotesSavedDraft = detailDraft,
+                        caseNotesHydrating = false,
+                        caseNotesSaving = false,
+                        caseNotesSaveError = null,
+                    )
+                }
+            }
+            return
+        }
+
+        mutableState.update {
+            if (it.detail?.id == detail.id) {
+                it.copy(
+                    caseNotesHydrating = true,
+                    caseNotesSaving = false,
+                    caseNotesSaveError = null,
+                )
+            } else {
+                it
+            }
+        }
+        caseNotesHydrationJob = viewModelScope.launch(ioDispatcher) {
+            val refreshed = try {
+                caseRepository.findById(detail.id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (refreshed != null) retainCaseDetail(refreshed)
+            mutableState.update {
+                if (it.detail?.id != detail.id) {
+                    it
+                } else if (refreshed == null) {
+                    it.copy(
+                        caseNotesHydrating = false,
+                        caseNotesSaveError = "断事笔记读取失败，请返回后重新打开命例。",
+                    )
+                } else {
+                    val refreshedDraft = refreshed.toCaseNotesDraft()
+                    it.copy(
+                        detail = refreshed,
+                        caseNotesCaseId = refreshed.id,
+                        caseNotesRevision = refreshed.revision,
+                        caseNotesDraft = refreshedDraft,
+                        caseNotesSavedDraft = refreshedDraft,
+                        caseNotesHydrating = false,
+                        caseNotesSaving = false,
+                        caseNotesSaveError = null,
+                    )
+                }
+            }
+        }
+    }
+
+    fun openAiCommentary() {
+        val detail = mutableState.value.detail ?: return
+        if (detail.deletedAt != null) return
+        val settings = aiCommentarySettings
+        if (settings == null || aiCommentaryGenerator == null) {
+            mutableState.update {
+                it.copy(message = "当前构建未提供 AI 点评服务。")
+            }
+            return
+        }
+        mutableState.update {
+            it.copy(
+                aiCommentary = AiCommentaryUiState(
+                    dialogVisible = true,
+                    configs = settings.configs(),
+                    selectedProvider = settings.selectedProvider(),
+                ),
+            )
+        }
+    }
+
+    fun dismissAiCommentary() {
+        if (mutableState.value.aiCommentary.generating || mutableState.value.aiCommentary.saving) return
+        mutableState.update { it.copy(aiCommentary = AiCommentaryUiState()) }
+    }
+
+    fun openAiServiceMenu() {
+        val settings = aiCommentarySettings ?: return
+        mutableState.update {
+            it.copy(
+                aiCommentary = AiCommentaryUiState(
+                    serviceMenuVisible = true,
+                    configs = settings.configs(),
+                    selectedProvider = settings.selectedProvider(),
+                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
+                ),
+            )
+        }
+    }
+
+    fun openAiServicePage() {
+        val settings = aiCommentarySettings ?: return
+        mutableState.update {
+            it.copy(
+                aiCommentary = AiCommentaryUiState(
+                    configs = settings.configs(),
+                    selectedProvider = settings.selectedProvider(),
+                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
+                ),
+            )
+        }
+    }
+
+    fun closeAiServiceMenu() {
+        mutableState.update { it.copy(aiCommentary = AiCommentaryUiState()) }
+    }
+
+    fun openAiCallHistory() {
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    serviceMenuVisible = false,
+                    historyVisible = true,
+                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
+                    error = null,
+                ),
+            )
+        }
+    }
+
+    fun closeAiCallHistory() {
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    historyVisible = false,
+                    serviceMenuVisible = false,
+                ),
+            )
+        }
+    }
+
+    fun openAiCommentarySettings() {
+        val settings = aiCommentarySettings ?: return
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    serviceMenuVisible = false,
+                    settingsVisible = true,
+                    configs = settings.configs(),
+                    apiKeys = AiCommentaryProviderPresets.providerIds.associateWith { providerId ->
+                        settings.apiKey(providerId).orEmpty()
+                    },
+                    selectedProvider = settings.selectedProvider(),
+                    error = null,
+                ),
+            )
+        }
+    }
+
+    fun closeAiCommentarySettings() {
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    settingsVisible = false,
+                    serviceMenuVisible = false,
+                    apiKeys = emptyMap(),
+                ),
+            )
+        }
+    }
+
+    fun saveAiCommentaryProvider(
+        config: AiCommentaryProviderConfig,
+        apiKey: String?,
+    ) {
+        val settings = aiCommentarySettings ?: return
+        if (config.baseUrl.isBlank() || config.model.isBlank()) {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        error = "模型名称和接口地址不能为空。",
+                    ),
+                )
+            }
+            return
+        }
+        runCatching {
+            settings.saveConfig(config, apiKey?.takeIf(String::isNotBlank))
+            if (config.enabled) settings.selectProvider(config.providerId)
+        }.onSuccess {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        configs = settings.configs(),
+                        apiKeys = emptyMap(),
+                        selectedProvider = settings.selectedProvider(),
+                        settingsVisible = false,
+                        serviceMenuVisible = it.aiCommentary.dialogVisible.not(),
+                        error = null,
+                    ),
+                    message = "${config.providerId.displayName} 配置已安全保存在本机。",
+                )
+            }
+        }.onFailure {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        error = "模型配置保存失败，请重试。",
+                    ),
+                )
+            }
+        }
+    }
+
+    fun selectAiCommentaryProvider(providerId: AiCommentaryProviderId) {
+        val settings = aiCommentarySettings ?: return
+        settings.selectProvider(providerId)
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    selectedProvider = providerId,
+                    generatedDraft = null,
+                    editedContent = "",
+                    error = null,
+                ),
+            )
+        }
+    }
+
+    fun setAiCommentaryPrivacyConfirmed(confirmed: Boolean) {
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    privacyConfirmed = confirmed,
+                    error = null,
+                ),
+            )
+        }
+    }
+
+    fun generateAiCommentary() {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        if (current.caseNotesCaseId != detail.id) return
+        val feature = current.aiCommentary
+        val settings = aiCommentarySettings ?: return
+        val generator = aiCommentaryGenerator ?: return
+        if (feature.generating || feature.saving) return
+        if (current.caseNotesDraft != current.caseNotesSavedDraft) {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        error = "断事笔记还有未保存修改，请先保存后再生成 AI 点评。",
+                    ),
+                )
+            }
+            return
+        }
+        if (!feature.privacyConfirmed) {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        error = "请先确认将脱敏命盘资料及命主反馈（如有）发送给所选模型服务。",
+                    ),
+                )
+            }
+            return
+        }
+        val config = feature.configs[feature.selectedProvider]
+        if (config == null || !config.enabled || !config.hasApiKey) {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        settingsVisible = true,
+                        error = "请先启用所选服务并填写 API Key。",
+                    ),
+                )
+            }
+            return
+        }
+        val summary = when (
+            val result = objectiveSummaryGenerator.generate(CaseObjectiveSummaryInput(detail))
+        ) {
+            is CaseObjectiveSummaryResult.Success -> result.summary
+            is CaseObjectiveSummaryResult.Rejected -> {
+                mutableState.update {
+                    it.copy(
+                        aiCommentary = it.aiCommentary.copy(error = result.failure.message),
+                    )
+                }
+                return
+            }
+        }
+        val prompt = when (
+            val result = BaziAiAnalysisPromptContract.prepare(
+                BaziAiAnalysisPromptRequest(
+                    summary = summary,
+                    topic = BaziAiAnalysisTopic.ALL,
+                    referenceDate = LocalDate.now(observationClock),
+                    hideIdentityAndLocation = true,
+                    ownerFeedback = detail.toAiAnalysisOwnerFeedback(),
+                ),
+            )
+        ) {
+            is BaziAiAnalysisPromptResult.Success -> result.prompt
+            is BaziAiAnalysisPromptResult.Rejected -> {
+                mutableState.update {
+                    it.copy(
+                        aiCommentary = it.aiCommentary.copy(error = result.failure.message),
+                    )
+                }
+                return
+            }
+        }
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    aiCommentary = it.aiCommentary.copy(
+                        generating = true,
+                        generatedDraft = null,
+                        editedContent = "",
+                        error = null,
+                    ),
+                )
+            }
+            val requestedAt = clock.instant()
+            val startedAtNanos = System.nanoTime()
+            val result = generator.generate(
+                AiCommentaryGenerationRequest(
+                    provider = config,
+                    apiKey = settings.apiKey(config.providerId),
+                    promptId = prompt.id,
+                    promptText = prompt.copyText,
+                ),
+            )
+            val durationMillis = ((System.nanoTime() - startedAtNanos) / 1_000_000L).coerceAtLeast(0L)
+            val callRecord = when (result) {
+                is AiCommentaryGenerationResult.Success -> AiCommentaryCallRecord(
+                    id = java.util.UUID.randomUUID().toString(),
+                    requestedAtEpochMillis = requestedAt.toEpochMilli(),
+                    durationMillis = durationMillis,
+                    providerName = result.draft.providerName,
+                    model = result.draft.model,
+                    succeeded = true,
+                    inputTokens = result.draft.inputTokens,
+                    outputTokens = result.draft.outputTokens,
+                )
+                is AiCommentaryGenerationResult.Failure -> AiCommentaryCallRecord(
+                    id = java.util.UUID.randomUUID().toString(),
+                    requestedAtEpochMillis = requestedAt.toEpochMilli(),
+                    durationMillis = durationMillis,
+                    providerName = config.providerId.displayName,
+                    model = config.model,
+                    succeeded = false,
+                    errorSummary = result.message.trim().take(180),
+                )
+            }
+            runCatching { aiCommentaryCallLog?.append(callRecord) }
+            mutableState.update {
+                when (result) {
+                    is AiCommentaryGenerationResult.Success -> it.copy(
+                        aiCommentary = it.aiCommentary.copy(
+                            generating = false,
+                            generatedDraft = result.draft,
+                            editedContent = result.draft.content,
+                            error = null,
+                        ),
+                    )
+                    is AiCommentaryGenerationResult.Failure -> it.copy(
+                        aiCommentary = it.aiCommentary.copy(
+                            generating = false,
+                            error = result.message,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateAiCommentaryContent(value: String) {
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(editedContent = value, error = null),
+            )
+        }
+    }
+
+    fun saveAiCommentary() {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        val draft = current.aiCommentary.generatedDraft ?: return
+        val edited = current.aiCommentary.editedContent.trim()
+        if (edited.isEmpty()) {
+            mutableState.update {
+                it.copy(aiCommentary = it.aiCommentary.copy(error = "AI 点评内容不能为空。"))
+            }
+            return
+        }
+        if (current.aiCommentary.saving) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(aiCommentary = it.aiCommentary.copy(saving = true, error = null))
+            }
+            when (
+                val result = textRecords.save(
+                    caseId = detail.id,
+                    expectedRevision = detail.revision,
+                    recordId = null,
+                    draft = TextRecordDraft(
+                        type = CaseTextRecordType.ANALYSIS,
+                        content = draft.toRecordContent(edited),
+                        analysisCategory = AnalysisCategory.GENERAL,
+                        sourceType = TextRecordSourceType.EXTERNAL_AI,
+                    ),
+                )
+            ) {
+                is CaseMutationResult.Saved -> {
+                    val refreshed = runCatching { caseRepository.findById(detail.id) }.getOrNull()
+                    mutableState.update {
+                        if (refreshed == null) {
+                            it.copy(
+                                aiCommentary = it.aiCommentary.copy(
+                                    saving = false,
+                                    error = "点评已保存，但详情刷新失败，请重新打开命例。",
+                                ),
+                            )
+                        } else {
+                            val notesDraft = refreshed.toCaseNotesDraft()
+                            it.copy(
+                                detail = refreshed,
+                                caseNotesCaseId = refreshed.id,
+                                caseNotesRevision = refreshed.revision,
+                                caseNotesDraft = notesDraft,
+                                caseNotesSavedDraft = notesDraft,
+                                caseNotesHydrating = false,
+                                aiCommentary = AiCommentaryUiState(),
+                                message = "AI 点评已保存，可在断事笔记的 AI 点评中查看。",
+                            )
+                        }
+                    }
+                    refreshCases()
+                }
+                is CaseMutationResult.RevisionConflict -> mutableState.update {
+                    it.copy(
+                        aiCommentary = it.aiCommentary.copy(
+                            saving = false,
+                            error = "命例已发生变化，请关闭后重新生成或保存。",
+                        ),
+                    )
+                }
+                is CaseMutationResult.ValidationFailed -> mutableState.update {
+                    it.copy(
+                        aiCommentary = it.aiCommentary.copy(saving = false, error = result.message),
+                    )
+                }
+                CaseMutationResult.NotFound -> mutableState.update {
+                    it.copy(
+                        aiCommentary = it.aiCommentary.copy(saving = false, error = "命例已不存在。"),
+                    )
+                }
+                else -> mutableState.update {
+                    it.copy(
+                        aiCommentary = it.aiCommentary.copy(
+                            saving = false,
+                            error = "AI 点评保存失败，当前草稿仍保留。",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     fun addCaseNotesTimeline(
         level: CaseEventTimelineLevel,
         year: Int,
@@ -5020,7 +6950,17 @@ class StageTwoViewModel(
     }
 
     private fun updateCaseNotesDraft(transform: (CaseNotesDraft) -> CaseNotesDraft) {
-        if (mutableState.value.detail?.deletedAt != null) return
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        if (
+            detail.deletedAt != null ||
+            current.caseNotesCaseId != detail.id ||
+            current.caseNotesRevision != detail.revision ||
+            current.caseNotesHydrating
+        ) {
+            ensureCaseNotesHydrated()
+            return
+        }
         mutableState.update {
             it.copy(
                 caseNotesDraft = transform(it.caseNotesDraft),
@@ -5040,13 +6980,38 @@ class StageTwoViewModel(
     }
 
     private fun persistCaseNotes(manual: Boolean) {
-        val detail = mutableState.value.detail ?: return
-        if (mutableState.value.caseNotesSaving) return
-        val submitted = mutableState.value.caseNotesDraft
-        if (!manual && submitted == mutableState.value.caseNotesSavedDraft) return
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        if (
+            current.caseNotesCaseId != detail.id ||
+            current.caseNotesRevision != detail.revision ||
+            current.caseNotesHydrating ||
+            current.caseNotesSaving
+        ) {
+            ensureCaseNotesHydrated()
+            return
+        }
+        val submitted = current.caseNotesDraft
+        val canonical = detail.toCaseNotesDraft()
+        if (
+            submitted.isEffectivelyEmpty() &&
+            current.caseNotesSavedDraft.isEffectivelyEmpty() &&
+            !canonical.isEffectivelyEmpty()
+        ) {
+            mutableState.update {
+                it.copy(caseNotesSaveError = "检测到笔记内存状态异常，已阻止空内容覆盖并重新读取。")
+            }
+            ensureCaseNotesHydrated()
+            return
+        }
+        if (!manual && submitted == current.caseNotesSavedDraft) return
         viewModelScope.launch {
             mutableState.update {
-                it.copy(caseNotesSaving = true, caseNotesSaveError = null)
+                if (it.detail?.id == detail.id && it.caseNotesCaseId == detail.id) {
+                    it.copy(caseNotesSaving = true, caseNotesSaveError = null)
+                } else {
+                    it
+                }
             }
             val result = caseNotesEditor.save(detail.id, detail.revision, submitted)
             when (result) {
@@ -5060,17 +7025,28 @@ class StageTwoViewModel(
                     }
                     if (refreshed == null) {
                         mutableState.update {
-                            it.copy(
+                            if (it.detail?.id != detail.id || it.caseNotesCaseId != detail.id) {
+                                it
+                            } else it.copy(
                                 caseNotesSaving = false,
                                 caseNotesSaveError = "内容已写入，但详情刷新失败。",
                             )
                         }
                     } else {
-                        val stillCurrent = mutableState.value.caseNotesDraft == submitted
+                        retainCaseDetail(refreshed)
+                        val currentAfterSave = mutableState.value
+                        val stillCurrent = currentAfterSave.detail?.id == detail.id &&
+                            currentAfterSave.caseNotesCaseId == detail.id &&
+                            currentAfterSave.caseNotesRevision == detail.revision &&
+                            currentAfterSave.caseNotesDraft == submitted
                         val refreshedDraft = refreshed.toCaseNotesDraft()
                         mutableState.update {
-                            it.copy(
+                            if (it.detail?.id != detail.id || it.caseNotesCaseId != detail.id) {
+                                it
+                            } else it.copy(
                                 detail = refreshed,
+                                caseNotesCaseId = refreshed.id,
+                                caseNotesRevision = refreshed.revision,
                                 caseNotesDraft = if (stillCurrent) refreshedDraft else it.caseNotesDraft,
                                 caseNotesSavedDraft = if (stillCurrent) refreshedDraft else submitted,
                                 caseNotesSaving = false,
@@ -5084,32 +7060,37 @@ class StageTwoViewModel(
                     }
                 }
                 is CaseMutationResult.ValidationFailed -> mutableState.update {
-                    it.copy(caseNotesSaving = false, caseNotesSaveError = result.message)
+                    if (it.detail?.id == detail.id && it.caseNotesCaseId == detail.id) {
+                        it.copy(caseNotesSaving = false, caseNotesSaveError = result.message)
+                    } else it
                 }
                 is CaseMutationResult.RevisionConflict -> {
-                    val refreshed = try {
-                        caseRepository.findById(detail.id)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        null
-                    }
                     mutableState.update {
-                        it.copy(
-                            detail = refreshed ?: it.detail,
+                        if (it.detail?.id != detail.id || it.caseNotesCaseId != detail.id) {
+                            it
+                        } else it.copy(
                             caseNotesSaving = false,
-                            caseNotesSaveError = "命例已在别处更新，当前输入仍保留，请再次保存。",
+                            caseNotesSaveError = "命例已在别处更新，当前输入未覆盖数据库；请重新打开后核对。",
                         )
                     }
                 }
                 CaseMutationResult.NotFound -> mutableState.update {
-                    it.copy(caseNotesSaving = false, caseNotesSaveError = "命例已不存在。")
+                    if (it.detail?.id == detail.id && it.caseNotesCaseId == detail.id) {
+                        it.copy(caseNotesSaving = false, caseNotesSaveError = "命例已不存在。")
+                    } else it
                 }
                 is CaseMutationResult.StorageFailed -> mutableState.update {
-                    it.copy(caseNotesSaving = false, caseNotesSaveError = result.message)
+                    if (it.detail?.id == detail.id && it.caseNotesCaseId == detail.id) {
+                        it.copy(caseNotesSaving = false, caseNotesSaveError = result.message)
+                    } else it
                 }
                 else -> mutableState.update {
-                    it.copy(caseNotesSaving = false, caseNotesSaveError = "断事笔记保存失败，请重试。")
+                    if (it.detail?.id == detail.id && it.caseNotesCaseId == detail.id) {
+                        it.copy(
+                            caseNotesSaving = false,
+                            caseNotesSaveError = "断事笔记保存失败，请重试。",
+                        )
+                    } else it
                 }
             }
         }
@@ -5273,14 +7254,49 @@ class StageTwoViewModel(
         }
     }
 
+    fun closeTransientDetail() {
+        if (!mutableState.value.detailIsTransient) {
+            backToList()
+            return
+        }
+        if (mutableState.value.detailSavePending) {
+            saveCaseJob?.cancel()
+        }
+        fortunePositionJob?.cancel()
+        fortunePrefetchJob?.cancel()
+        fortunePositionRequestId += 1
+        mutableState.update {
+            it.copy(
+                destination = navigator.back(),
+                detail = null,
+                detailIsTransient = false,
+                detailSavePending = false,
+                detailError = null,
+                detailLoading = false,
+                saving = false,
+                instantCalculation = null,
+                fortunePosition = null,
+                professionalFortunePosition = null,
+                fortunePositionError = null,
+                message = null,
+            )
+        }
+    }
+
     fun backToList() {
         caseNotesAutoSaveJob?.cancel()
+        if (mutableState.value.detailSavePending) {
+            saveCaseJob?.cancel()
+        }
         mutableState.update {
             it.copy(
                 destination = navigator.backToList(),
                 detail = null,
+                detailIsTransient = false,
+                detailSavePending = false,
                 detailError = null,
                 formError = null,
+                saving = false,
                 previewing = false,
                 instantCalculation = null,
                 objectiveSummary = null,
@@ -5461,6 +7477,109 @@ class StageTwoViewModel(
         }
     }
 
+    fun previewWenzhenWebImport(openInput: () -> InputStream?) {
+        if (mutableState.value.wenzhenImportBusy) return
+        viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    wenzhenImportBusy = true,
+                    wenzhenImportError = null,
+                    wenzhenImportResult = null,
+                )
+            }
+            val decoded = try {
+                withContext(ioDispatcher) {
+                    val raw = openInput()?.bufferedReader()?.use { it.readText() }
+                        ?: error("无法读取所选文件。")
+                    require(raw.length <= WENZHEN_IMPORT_MAX_CHARACTERS) {
+                        "问真数据包体积异常，已停止读取。"
+                    }
+                    wenzhenImporter.decode(raw)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                pendingWenzhenImport = null
+                mutableState.update {
+                    it.copy(
+                        wenzhenImportBusy = false,
+                        wenzhenImportPreview = null,
+                        wenzhenImportError = error.message ?: "问真数据包检查失败。",
+                    )
+                }
+                return@launch
+            }
+            pendingWenzhenImport = decoded
+            mutableState.update {
+                it.copy(
+                    wenzhenImportBusy = false,
+                    wenzhenImportPreview = wenzhenImporter.preview(decoded),
+                    wenzhenImportProgress = null,
+                )
+            }
+        }
+    }
+
+    fun cancelWenzhenWebImport() {
+        if (mutableState.value.wenzhenImportBusy) return
+        pendingWenzhenImport = null
+        mutableState.update {
+            it.copy(wenzhenImportPreview = null, wenzhenImportError = null)
+        }
+    }
+
+    fun executeWenzhenWebImport() {
+        val data = pendingWenzhenImport ?: return
+        if (mutableState.value.wenzhenImportBusy) return
+        viewModelScope.launch {
+            val total = data.userCases.size + data.celebrityCases.size
+            mutableState.update {
+                it.copy(
+                    wenzhenImportBusy = true,
+                    wenzhenImportPreview = null,
+                    wenzhenImportProgress = WenzhenImportProgress(0, total, "准备导入"),
+                    wenzhenImportError = null,
+                )
+            }
+            val result = try {
+                withContext(ioDispatcher) {
+                    wenzhenImporter.import(data) { progress ->
+                        if (progress.completed % 10 == 0 || progress.completed == progress.total) {
+                            mutableState.update { it.copy(wenzhenImportProgress = progress) }
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                mutableState.update {
+                    it.copy(
+                        wenzhenImportBusy = false,
+                        wenzhenImportProgress = null,
+                        wenzhenImportError = error.message ?: "问真案例导入失败，可重新选择同一数据包续传。",
+                    )
+                }
+                return@launch
+            }
+            pendingWenzhenImport = null
+            mutableState.update {
+                it.copy(
+                    wenzhenImportBusy = false,
+                    wenzhenImportProgress = null,
+                    wenzhenImportResult = result,
+                    message = "问真案例导入完成：新增 ${result.created}，已存在 ${result.skipped}。",
+                )
+            }
+            refreshCases()
+        }
+    }
+
+    fun dismissWenzhenImportResult() {
+        mutableState.update {
+            it.copy(wenzhenImportResult = null, wenzhenImportError = null)
+        }
+    }
+
     fun consumeMessage() {
         mutableState.update { it.copy(message = null) }
     }
@@ -5483,6 +7602,7 @@ class StageTwoViewModel(
             )
             return StageTwoViewModel(
                 caseRepository = container.caseRepository,
+                caseCatalogStore = container.caseCatalogStore,
                 createCase = useCase,
                 editCase = EditCaseUseCase(
                     baziEngine = container.baziEngine,
@@ -5502,12 +7622,15 @@ class StageTwoViewModel(
                     com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
                 fourPillarsLookup = container.fourPillarsLookup,
                 almanacReader = container.almanacReader,
-                caseImageRenderer = container.caseImageRenderer,
                 singleCaseBundleService = container.singleCaseBundleService,
                 caseBackupService = container.caseBackupService,
                 backupAttachmentRoot = container.backupAttachmentRoot,
                 backupWorkRoot = container.backupWorkRoot,
                 calculationPreferenceStore = container.calculationPreferenceStore,
+                aiCommentarySettings = container.aiCommentarySettings,
+                aiCommentaryGenerator = container.aiCommentaryGenerator,
+                aiCommentaryCallLog = container.aiCommentaryCallLog,
+                baziEngine = container.baziEngine,
                 savedStateHandle = extras.createSavedStateHandle(),
             ) as T
         }
@@ -5515,23 +7638,150 @@ class StageTwoViewModel(
 
     private companion object {
         const val SAVED_UI_STATE_KEY = "stage_two_ui_state"
-        const val MIN_EXPORT_PASSWORD_LENGTH = 8
+        const val MIN_EXPORT_PASSWORD_LENGTH = 6
         const val MAX_EXPORT_PASSWORD_LENGTH = 256
         const val SINGLE_CASE_FORMAT_PROBE_BYTES = 64
         const val CASE_NOTES_AUTO_SAVE_DELAY_MILLIS = 2_000L
+        const val WENZHEN_IMPORT_MAX_CHARACTERS = 8_000_000
+        const val RETAINED_DETAIL_CACHE_SIZE = 12
+        const val FORTUNE_POSITION_CACHE_SIZE = 96
+        const val PREFETCH_ITEMS_PER_FORTUNE_LAYER = 1
+        const val FORTUNE_PREFETCH_DELAY_MILLIS = 1_200L
+        const val FORTUNE_POSITION_TIMEOUT_MILLIS = 8_000L
+        const val PROFESSIONAL_SELECTION_SETTLE_MILLIS = 20L
     }
 
-    private fun validateExportPassword(
-        password: CharArray,
-        confirmation: CharArray,
-    ): String? = when {
+    private fun validateExportPassword(password: CharArray): String? = when {
         password.size < MIN_EXPORT_PASSWORD_LENGTH ->
             "密码至少需要 $MIN_EXPORT_PASSWORD_LENGTH 个字符。"
         password.size > MAX_EXPORT_PASSWORD_LENGTH ->
             "密码不能超过 $MAX_EXPORT_PASSWORD_LENGTH 个字符。"
-        !password.contentEquals(confirmation) -> "两次输入的密码不一致。"
         else -> null
     }
+}
+
+private fun StageTwoUiState.matchesFortuneRequest(
+    key: FortunePositionCacheKey,
+): Boolean {
+    if (detail?.id != key.caseId) return false
+    return detail.calculationSnapshots
+        .asReversed()
+        .firstOrNull { it.adopted }
+        ?.id == key.calculationSnapshotId
+}
+
+private fun PreviewCaseResult.Calculated.toTransientCase(
+    caseId: String,
+    fallbackAlias: String,
+    libraryType: CaseLibraryType,
+    now: java.time.Instant,
+): BaziCase {
+    val candidateId = "$caseId-candidate"
+    val snapshotId = "$caseId-snapshot"
+    return BaziCase(
+        id = caseId,
+        alias = alias.ifBlank { fallbackAlias },
+        name = name?.let(ExplicitText::present) ?: ExplicitText.absent(),
+        sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
+        sourceType = CaseSourceType.MANUAL,
+        birthInput = calculation.normalizedInput,
+        libraryType = libraryType,
+        birthTimeCandidates = listOf(
+            BirthTimeCandidate(
+                id = candidateId,
+                label = "采用时间",
+                birthInput = calculation.normalizedInput,
+                calculationSnapshotId = snapshotId,
+                adopted = true,
+                createdAt = now,
+            ),
+        ),
+        calculationSnapshots = listOf(
+            CaseCalculationSnapshot(
+                id = snapshotId,
+                result = calculation,
+                adopted = true,
+                birthTimeCandidateId = candidateId,
+                createdAt = now,
+            ),
+        ),
+        createdAt = now,
+        updatedAt = now,
+    )
+}
+
+private fun BaziCase.toCaseSummary(): CaseSummary {
+    val adopted = calculationSnapshots.asReversed().firstOrNull { it.adopted }?.result
+    return CaseSummary(
+        id = id,
+        alias = alias,
+        name = name,
+        sexForFortuneDirection = sexForFortuneDirection,
+        sourceType = sourceType,
+        birthInput = birthInput,
+        libraryType = libraryType,
+        fourPillars = adopted?.fourPillars,
+        groups = groups,
+        tags = tags,
+        isFavorite = isFavorite,
+        isPinned = isPinned,
+        copiedFromCaseId = copiedFromCaseId,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        lastViewedAt = lastViewedAt,
+        deletedAt = deletedAt,
+        revision = revision,
+        canonicalSolarDateTime = adopted?.calendarConversion?.solarDateTime,
+    )
+}
+
+private fun BaziCase.defaultProfessionalObservation(
+    now: LocalDateTime,
+): com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime {
+    val current = com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
+        year = now.year,
+        month = now.monthValue,
+        day = now.dayOfMonth,
+        hour = now.hour,
+        minute = now.minute,
+        second = 0,
+    )
+    val adopted = calculationSnapshots.asReversed().firstOrNull { it.adopted }?.result
+        ?: return current
+    val birth = adopted.calendarConversion?.solarDateTime
+        ?: (adopted.normalizedInput.calendarInput as?
+            com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)
+            ?.dateTime
+        ?: return current
+    val birthDateTime = runCatching {
+        LocalDateTime.of(
+            birth.year,
+            birth.month,
+            birth.day,
+            birth.hour,
+            birth.minute,
+            birth.second,
+        )
+    }.getOrNull() ?: return current
+    val bornMoreThanOneCenturyAgo = birthDateTime.toLocalDate()
+        .isBefore(now.toLocalDate().minusYears(100))
+    if (!bornMoreThanOneCenturyAgo && !profile.isExplicitlyDeceased()) return current
+    val ageThirtySix = birthDateTime.plusYears(36)
+    return com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(
+        year = ageThirtySix.year,
+        month = ageThirtySix.monthValue,
+        day = ageThirtySix.dayOfMonth,
+        hour = ageThirtySix.hour,
+        minute = ageThirtySix.minute,
+        second = ageThirtySix.second,
+    )
+}
+
+/** 只识别明确的已故状态，不把“预测某年去世”之类的资料误判为死亡。 */
+private fun com.nanzhufeng.nanfengbazi.domain.model.CaseProfile.isExplicitlyDeceased(): Boolean {
+    val healthText = health.value?.replace(Regex("\\s+"), "") ?: return false
+    return listOf("已故", "已逝", "已去世", "已离世", "已身故", "逝世", "身故", "去世于", "卒于")
+        .any(healthText::contains)
 }
 
 private fun BaziCase.toCaseNotesDraft(): CaseNotesDraft {
@@ -5561,15 +7811,28 @@ private fun BaziCase.toCaseNotesDraft(): CaseNotesDraft {
             level = level,
             year = year,
             stemBranch = stemBranch,
+            sourceLabel = event.title.orEmpty(),
+            status = event.status.orEmpty(),
             content = event.rawText,
         )
     }
+    val latestAiCommentary = textRecords
+        .filter { it.isAiCommentaryRecord() }
+        .maxByOrNull { it.updatedAt }
     return CaseNotesDraft(
         ownerFeedback = recordBody(CaseTextRecordType.OWNER_FEEDBACK),
         masterCommentary = recordBody(CaseTextRecordType.MASTER_COMMENTARY),
+        aiCommentary = latestAiCommentary?.aiCommentaryBody().orEmpty(),
+        aiCommentaryRecordId = latestAiCommentary?.id,
         timeline = timeline,
     )
 }
+
+private fun CaseNotesDraft.isEffectivelyEmpty(): Boolean =
+    ownerFeedback.isBlank() &&
+        masterCommentary.isBlank() &&
+        aiCommentary.isBlank() &&
+        timeline.isEmpty()
 
 private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.CaseDetail -> caseId
@@ -5602,7 +7865,10 @@ private fun AlmanacError.toAlmanacUserMessage(): String = when (this) {
 }
 
 private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
-    putBundle("destination", destination.toSavedStateBundle())
+    putBundle(
+        "destination",
+        (if (detailIsTransient) AppDestination.Almanac else destination).toSavedStateBundle(),
+    )
     putString("query", query)
     putString("selectedGroupId", selectedGroupId)
     putString("selectedTagId", selectedTagId)
@@ -5620,6 +7886,7 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("defaultRatHourRule", defaultRatHourRule.name)
     putString("sortOrder", sortOrder.name)
     putString("visibility", visibility.name)
+    putString("libraryType", libraryType.name)
     putString("filterSex", advancedFilter.sex?.name)
     putString("filterGanZhi", advancedFilter.ganZhi.joinToString(""))
     putString("filterBirthRegion", advancedFilter.birthRegion)
@@ -5712,11 +7979,15 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         ),
         sortOrder = enumValueOrDefault(
             getString("sortOrder"),
-            CaseSortOrder.UPDATED_DESC,
+            CaseSortOrder.NAME_ASC,
         ),
         visibility = enumValueOrDefault(
             getString("visibility"),
             CaseVisibility.ACTIVE,
+        ),
+        libraryType = enumValueOrDefault(
+            getString("libraryType"),
+            CaseLibraryType.USER,
         ),
         form = getBundle("form")?.toCaseFormState() ?: CaseFormState(),
         detailSection = enumValueOrDefault(
@@ -6155,6 +8426,8 @@ private fun CaseFormState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("timePrecision", timePrecision.name)
     putString("timeSourceType", timeSourceType.name)
     putString("sourceNote", sourceNote)
+    putString("groupId", groupId)
+    putString("libraryType", libraryType.name)
 }
 
 private fun Bundle.toCaseFormState(): CaseFormState = CaseFormState(
@@ -6197,6 +8470,11 @@ private fun Bundle.toCaseFormState(): CaseFormState = CaseFormState(
         TimeSourceType.UNKNOWN,
     ),
     sourceNote = getString("sourceNote").orEmpty(),
+    groupId = getString("groupId"),
+    libraryType = enumValueOrDefault(
+        getString("libraryType"),
+        CaseLibraryType.USER,
+    ),
 )
 
 private fun CaseMetadataDraft.toSavedStateBundle(): Bundle = Bundle().apply {
@@ -6289,13 +8567,18 @@ private inline fun <reified T : Enum<T>> enumValueOrNull(value: String?): T? =
         enumValues<T>().firstOrNull { it.name == candidate }
     }
 
-private fun String.toSafeImageFileName(): String {
+private fun String.toSafeImageFileName(): String = toSafeImageFileNames().first()
+
+private fun String.toSafeImageFileNames(): List<String> {
     val safeStem = trim()
         .replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_")
         .trim('.', ' ')
         .take(48)
         .ifBlank { "命例" }
-    return "${safeStem}_南枫八字命盘.png"
+    return listOf(
+        "${safeStem}_南枫八字命盘.png",
+        "${safeStem}_南枫八字断事笔记.png",
+    )
 }
 
 private inline fun <reified T : Enum<T>> enumValueOrDefault(
@@ -6344,5 +8627,6 @@ private fun BaziCase.toEditableForm(): CaseFormState {
         timePrecision = birthInput.timePrecision,
         timeSourceType = birthInput.timeSourceType,
         sourceNote = birthInput.sourceNote.orEmpty(),
+        libraryType = libraryType,
     )
 }

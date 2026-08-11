@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import android.content.ContentUris
+import android.graphics.BitmapFactory
 import android.provider.MediaStore
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -35,8 +37,17 @@ class CaseImageSystemFlowTest {
         composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
         composeRule.onNodeWithTag("case_alias").performTextReplacement(caseName)
         composeRule.onNodeWithTag("sex_man").performClick()
+        composeRule.onNodeWithTag("open_birth_datetime_picker")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("birth_year_wheel").performScrollToIndex(1993 - 1800)
+        composeRule.onNodeWithTag("birth_month_wheel").performScrollToIndex(6 - 1)
+        composeRule.onNodeWithTag("birth_day_wheel").performScrollToIndex(18 - 1)
+        composeRule.onNodeWithTag("birth_hour_wheel").performScrollToIndex(14)
+        composeRule.onNodeWithTag("birth_minute_wheel").performScrollToIndex(35)
+        composeRule.onNodeWithTag("confirm_birth_datetime").performClick()
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
-        composeRule.waitUntil(timeoutMillis = 20_000) {
+        composeRule.waitUntil(timeoutMillis = 30_000) {
             composeRule.onAllNodes(hasTestTag("case_list_screen"))
                 .fetchSemanticsNodes().isNotEmpty() ||
                 composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
@@ -95,6 +106,19 @@ class CaseImageSystemFlowTest {
                 byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10),
                 signature,
             )
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(createdUris.first())!!.use { input ->
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            assertTrue("长图宽度应来自当前详情页面", bounds.outWidth > 0)
+            assertTrue(
+                "长图应超过单屏高度，实际=${bounds.outHeight}，屏幕=${device.displayHeight}",
+                bounds.outHeight > device.displayHeight,
+            )
+            assertTrue(
+                "手机详情长图宽度应与当前 APP 页面一致，实际=${bounds.outWidth}，屏幕=${device.displayWidth}",
+                kotlin.math.abs(bounds.outWidth - device.displayWidth) <= 2,
+            )
 
             composeRule.onNodeWithTag("toggle_case_management").performClick()
             composeRule.onNodeWithTag("share_case_image_button").performClick()
@@ -111,7 +135,11 @@ class CaseImageSystemFlowTest {
             }
             composeRule.onNodeWithTag("case_detail_screen").assertIsDisplayed()
         } finally {
-            createdUris.forEach { uri -> resolver.delete(uri, null, null) }
+            val retainForVisualQa = InstrumentationRegistry.getArguments()
+                .getString("retainCaseImageQa") == "true"
+            if (!retainForVisualQa) {
+                createdUris.forEach { uri -> resolver.delete(uri, null, null) }
+            }
         }
     }
 

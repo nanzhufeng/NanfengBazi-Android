@@ -19,6 +19,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalendarConversionResult
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEventRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordRevision
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
@@ -128,6 +129,36 @@ class RoomCaseRepositoryTest {
         assertTrue(nameResults.single().isPinned)
         assertEquals(source.groups, nameResults.single().groups)
         assertEquals(source.tags, nameResults.single().tags)
+
+        val batchRequests = listOf(
+            CaseSearchRequest(query = "测试甲"),
+            CaseSearchRequest(groupId = source.groups.single().id),
+            CaseSearchRequest(sortOrder = CaseSortOrder.NAME_ASC),
+        )
+        assertEquals(
+            batchRequests.map { request -> repository.search(request) },
+            repository.searchBatch(batchRequests),
+        )
+    }
+
+    @Test
+    fun `名人案例类型完整往返且不会混入用户列表`() = runTest {
+        val source = sampleCase().copy(libraryType = CaseLibraryType.CELEBRITY)
+
+        repository.save(source, null)
+
+        assertEquals(CaseLibraryType.CELEBRITY, repository.findById(source.id)?.libraryType)
+        assertTrue(
+            repository.search(
+                CaseSearchRequest(libraryType = CaseLibraryType.USER),
+            ).isEmpty(),
+        )
+        assertEquals(
+            listOf(source.id),
+            repository.search(
+                CaseSearchRequest(libraryType = CaseLibraryType.CELEBRITY),
+            ).map { it.id },
+        )
     }
 
     @Test
@@ -295,7 +326,7 @@ class RoomCaseRepositoryTest {
             ).map { it.id },
         )
         assertEquals(
-            listOf("case-2", "case-1"),
+            listOf("case-1", "case-2"),
             repository.search(CaseSearchRequest(sortOrder = CaseSortOrder.NAME_ASC)).map { it.id },
         )
     }
@@ -338,6 +369,61 @@ class RoomCaseRepositoryTest {
         )
         assertTrue(repository.deleteGroup(first.id))
         assertEquals(listOf("墨墨"), repository.listGroups().map { it.name })
+    }
+
+    @Test
+    fun `永久删除只清除已在回收站的案例并级联清理子数据`() = runTest {
+        repository.save(sampleCase(), null)
+        repository.save(
+            sampleCase().copy(
+                id = "case-active",
+                alias = "保留案例",
+                birthTimeCandidates = emptyList(),
+                calculationSnapshots = emptyList(),
+                textRecords = emptyList(),
+                textRecordRevisions = emptyList(),
+                events = emptyList(),
+                eventRevisions = emptyList(),
+                attachments = emptyList(),
+                fieldEvidence = emptyList(),
+                groups = emptyList(),
+                tags = emptyList(),
+            ),
+            null,
+        )
+        repository.moveCasesToTrash(setOf("case-1"), FixtureInstant.plusSeconds(20))
+
+        assertEquals(
+            1,
+            repository.deleteTrashedCasesPermanently(setOf("case-1", "case-active")),
+        )
+
+        assertNull(repository.findById("case-1"))
+        assertEquals("保留案例", repository.findById("case-active")?.alias)
+        assertTrue(
+            repository.search(CaseSearchRequest(visibility = CaseVisibility.TRASHED)).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `用户与名人分组目录相互隔离且允许同名`() = runTest {
+        val userGroup = requireNotNull(
+            repository.createGroup("名人", CaseLibraryType.USER),
+        )
+        val celebrityGroup = requireNotNull(
+            repository.createGroup("名人", CaseLibraryType.CELEBRITY),
+        )
+
+        assertEquals(
+            listOf(userGroup.id),
+            repository.listGroups(CaseLibraryType.USER).map { it.id },
+        )
+        assertEquals(
+            listOf(celebrityGroup.id),
+            repository.listGroups(CaseLibraryType.CELEBRITY).map { it.id },
+        )
+        assertEquals(CaseLibraryType.USER, userGroup.libraryType)
+        assertEquals(CaseLibraryType.CELEBRITY, celebrityGroup.libraryType)
     }
 
     @Test

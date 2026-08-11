@@ -247,6 +247,7 @@ private fun CaseSourceType.display(): String = when (this) {
     CaseSourceType.MANUAL -> "手工录入"
     CaseSourceType.CASE_COPY -> "命例副本"
     CaseSourceType.WENZHEN_SCREENSHOT -> "问真截图"
+    CaseSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
     CaseSourceType.BACKUP_RESTORE -> "备份恢复"
 }
 

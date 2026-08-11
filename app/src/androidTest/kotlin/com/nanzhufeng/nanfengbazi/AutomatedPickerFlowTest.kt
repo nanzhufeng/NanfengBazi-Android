@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.unit.dp
@@ -81,6 +82,23 @@ class AutomatedPickerFlowTest {
         composeRule.onNodeWithTag("birthplace_region_wheel").performScrollToIndex(2)
         composeRule.onNodeWithTag("birthplace_picker_sheet").assertIsDisplayed()
         composeRule.onNodeWithTag("confirm_birthplace").performClick()
+
+        val groupName = "自动分组-${System.currentTimeMillis()}"
+        composeRule.onNodeWithTag("open_case_group_picker")
+            .performScrollTo()
+            .performClick()
+        composeRule.onNodeWithTag("home_group_picker_dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("home_group_option_none").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "已选中"),
+        )
+        composeRule.onNodeWithTag("home_group_create_and_select").assertIsDisplayed()
+        composeRule.onNodeWithTag("home_group_new_name").performTextInput(groupName)
+        composeRule.onNodeWithTag("home_group_create_and_select").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText(groupName).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("完成").performClick()
+        composeRule.onNodeWithText(groupName).assertIsDisplayed()
     }
 
     @Test
@@ -176,16 +194,28 @@ class AutomatedPickerFlowTest {
         composeRule.onNodeWithTag("almanac_eight_character_table")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("almanac_hour_pillar_rail")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("almanac_double_hour_子").assertIsDisplayed()
         composeRule.onNodeWithText("十神").assertIsDisplayed()
         composeRule.onNodeWithText("神煞").assertIsDisplayed()
+        composeRule.onNodeWithTag("almanac_shensha_row")
+            .assertHeightIsAtLeast(90.dp)
         composeRule.onAllNodesWithText("建除").assertCountEquals(0)
         composeRule.onAllNodesWithText("值神").assertCountEquals(0)
         composeRule.onAllNodesWithText("星宿").assertCountEquals(0)
         composeRule.onAllNodesWithText("胎神").assertCountEquals(0)
         composeRule.onNodeWithTag("use_almanac_date_for_chart")
-            .performScrollTo()
             .performClick()
 
-        composeRule.onNodeWithTag("create_case_screen").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("case_detail_screen")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("detail_tab_fortune").assertIsDisplayed()
+        composeRule.onNodeWithText("即时排盘案例").assertIsDisplayed()
+        composeRule.onNodeWithText("未保存").assertIsDisplayed()
     }
 }

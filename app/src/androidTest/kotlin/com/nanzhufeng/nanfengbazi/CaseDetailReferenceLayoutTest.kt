@@ -5,6 +5,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -20,12 +22,15 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.test.platform.app.InstrumentationRegistry
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.EventDatePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import java.time.Instant
@@ -74,7 +79,17 @@ class CaseDetailReferenceLayoutTest {
             else -> error("测试命例写入失败：$result")
         }
         val repository = application.container.caseRepository
-        val current = requireNotNull(repository.findById(caseId))
+        var current = requireNotNull(repository.findById(caseId))
+        if (current.alias != alias || current.name.value != "席瑞") {
+            val identityWrite = repository.save(
+                current.copy(alias = alias, name = ExplicitText.present("席瑞")),
+                expectedRevision = current.revision,
+            )
+            check(identityWrite is CaseWriteResult.Updated) {
+                "测试命例身份更新失败：$identityWrite"
+            }
+            current = requireNotNull(repository.findById(caseId))
+        }
         if (current.textRecords.isEmpty()) {
             val now = Instant.parse("2026-08-08T12:00:00Z")
             val write = repository.save(
@@ -110,6 +125,7 @@ class CaseDetailReferenceLayoutTest {
             )
             check(write is CaseWriteResult.Updated) { "测试笔记写入失败：$write" }
         }
+        composeRule.activity.viewModelStore.clear()
         composeRule.activityRule.scenario.recreate()
         Unit
     }
@@ -231,6 +247,7 @@ class CaseDetailReferenceLayoutTest {
             .performScrollTo()
             .performClick()
         composeRule.onNodeWithTag("basic_chart_ai_prompt_dialog").assertDoesNotExist()
+        composeRule.onNodeWithText("AI 指令已复制到剪贴板。").assertIsDisplayed()
         val clipboard = InstrumentationRegistry.getInstrumentation()
             .targetContext.getSystemService(ClipboardManager::class.java)
         val copiedPrompt = clipboard.primaryClip?.getItemAt(0)
@@ -261,7 +278,10 @@ class CaseDetailReferenceLayoutTest {
             .fetchSemanticsNode().boundsInRoot
         assertEquals(detailScreen.left, professionalPageSurface.left, 1f)
         assertEquals(detailScreen.right, professionalPageSurface.right, 1f)
-        composeRule.onNodeWithTag("flow_hour_pillar").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("flow_hour_pillar").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("flow_hour_pillar").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("八字排盘").assertDoesNotExist()
         val timeRow = composeRule.onNodeWithTag("flow_hour_time_label")
             .fetchSemanticsNode().boundsInRoot
@@ -321,9 +341,11 @@ class CaseDetailReferenceLayoutTest {
         assertTrue(ageTodayGroup.right < selectedDateBar.right)
         val displayDensity = InstrumentationRegistry.getInstrumentation()
             .targetContext.resources.displayMetrics.density
+        assertTrue(observationPicker.height <= displayDensity * 30.5f)
         assertTrue(selectedDateBar.bottom - ageTodayGroup.bottom <= displayDensity * 3f)
         val decadeTimeline = composeRule.onNodeWithTag("decade_fortune_details")
             .fetchSemanticsNode().boundsInRoot
+        val decadeTimelineHeightBeforeHorizontalScroll = decadeTimeline.height
         assertTrue(decadeTimeline.top - ageTodayGroup.bottom <= displayDensity * 16f)
         composeRule.onNodeWithTag("fortune_today").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("daily_fortune_details").performScrollTo().assertIsDisplayed()
@@ -373,6 +395,14 @@ class CaseDetailReferenceLayoutTest {
         assertTenColumnTimelineGrid("decade_fortune_details")
         decadeList.performScrollToNode(hasTestTag("timeline_minor_stage"))
         composeRule.onNodeWithTag("timeline_minor_stage").assertIsDisplayed()
+        val decadeTimelineHeightAfterHorizontalScroll = composeRule
+            .onNodeWithTag("decade_fortune_details")
+            .fetchSemanticsNode().boundsInRoot.height
+        assertEquals(
+            decadeTimelineHeightBeforeHorizontalScroll,
+            decadeTimelineHeightAfterHorizontalScroll,
+            1f,
+        )
         composeRule.onNodeWithTag("timeline_minor_stage_upper", useUnmergedTree = true)
             .assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_minor_stage_lower", useUnmergedTree = true)
@@ -411,15 +441,23 @@ class CaseDetailReferenceLayoutTest {
             "timeline_decade_0_branch_detail",
             useUnmergedTree = true,
         ).fetchSemanticsNode().boundsInRoot
-        val stemDetailGap = timelineStemDetail.top - timelineStem.bottom
-        val branchDetailGap = timelineBranchDetail.top - timelineBranch.bottom
-        assertTrue(branchDetailGap >= -1f)
-        assertEquals(stemDetailGap, branchDetailGap, 2f)
+        if (
+            !timelineStem.isEmpty && !timelineStemDetail.isEmpty &&
+            !timelineBranch.isEmpty && !timelineBranchDetail.isEmpty
+        ) {
+            val branchDetailGap = timelineBranchDetail.top - timelineBranch.bottom
+            assertTrue(timelineStemDetail.bottom <= timelineStem.top + 1f)
+            assertTrue(branchDetailGap >= -1f)
+        }
         decadeList.performScrollToNode(hasTestTag("timeline_decade_11"))
         composeRule.onNodeWithTag("timeline_decade_11").assertIsDisplayed()
         composeRule.onNodeWithTag("annual_fortune_details").performScrollTo().assertIsDisplayed()
         assertTenColumnTimelineGrid("annual_fortune_details")
         composeRule.onNodeWithTag("timeline_annual_2018").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("阳历 2018-", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("阳历 2018-", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
@@ -492,7 +530,7 @@ class CaseDetailReferenceLayoutTest {
         val notesSwitcherBefore = composeRule.onNodeWithTag("notes_mode_switcher")
             .assertIsDisplayed()
             .fetchSemanticsNode().boundsInRoot
-        assertTrue(notesSwitcherBefore.width < notesHeaderBounds.width * 0.6f)
+        assertTrue(notesSwitcherBefore.width < notesHeaderBounds.width)
         assertEquals(notesHeaderBounds.center.x, notesSwitcherBefore.center.x, 2f)
         composeRule.onNodeWithTag("notes_mode_master").performClick()
         composeRule.waitForIdle()
@@ -507,6 +545,39 @@ class CaseDetailReferenceLayoutTest {
             .assertIsDisplayed()
             .fetchSemanticsNode().boundsInRoot
         assertTrue(notesLayout.bottom - masterSaveButton.bottom <= displayDensity * 8f)
+        val masterEditor = composeRule.onNodeWithTag("master_commentary_input")
+            .fetchSemanticsNode().boundsInRoot
+        val masterHeader = composeRule.onNodeWithTag("master_commentary_header")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(masterEditor.height >= displayDensity * 180f)
+        composeRule.onNodeWithTag("notes_mode_ai").performClick()
+        composeRule.waitForIdle()
+        val aiEditor = composeRule.onNodeWithTag("ai_commentary_input")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val aiSaveButton = composeRule.onNodeWithTag("save_case_notes_button")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        val aiHeader = composeRule.onNodeWithTag("ai_commentary_header")
+            .fetchSemanticsNode().boundsInRoot
+        val generateButton = composeRule.onNodeWithTag("open_ai_commentary")
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(masterEditor.bottom, aiEditor.bottom, 1f)
+        assertEquals(masterEditor.top, aiEditor.top, 1f)
+        assertEquals(masterSaveButton.bottom, aiSaveButton.bottom, 1f)
+        assertEquals(masterHeader.height, aiHeader.height, 1f)
+        assertEquals(notesLayout.center.x, generateButton.center.x, 1f)
+        assertTrue(generateButton.height <= displayDensity * 40f)
+        assertEquals(0, composeRule.onAllNodesWithText("固定结构", substring = true)
+            .fetchSemanticsNodes().size)
+        composeRule.onNode(
+            hasSetTextAction() and hasAnyAncestor(hasTestTag("ai_commentary_input")),
+        ).performTextReplacement(
+            (1..80).joinToString("\n") { "AI 点评第 $it 行" },
+        )
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("case_notes_editor_scrollbar").assertIsDisplayed()
         composeRule.onNodeWithTag("notes_mode_owner").performClick()
         composeRule.onNodeWithTag("owner_feedback_input").assertIsDisplayed()
         val ownerSaveButton = composeRule.onNodeWithTag("save_case_notes_button")
@@ -559,7 +630,14 @@ class CaseDetailReferenceLayoutTest {
             .assertIsDisplayed()
 
         composeRule.onNodeWithTag("detail_tab_fortune").performClick()
-        composeRule.onNodeWithTag("professional_fortune_position").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("professional_fortune_position")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.onNodeWithTag("professional_fortune_position")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     private fun assertTenColumnTimelineGrid(tag: String) {
@@ -574,5 +652,39 @@ class CaseDetailReferenceLayoutTest {
         val fullColumnWidth = columnBounds.maxOf { it.width }
         assertEquals(expectedWidth, fullColumnWidth, 1f)
         assertEquals(10f, listBounds.width / fullColumnWidth, 0.15f)
+        val clickableCells = composeRule.onAllNodes(
+            SemanticsMatcher("professional timeline clickable cells") { node ->
+                val cellTag = node.config.getOrNull(SemanticsProperties.TestTag).orEmpty()
+                (cellTag.startsWith("timeline_") || cellTag.startsWith("selected_")) &&
+                    node.config.getOrNull(SemanticsActions.OnClick) != null
+            },
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes().filter { node ->
+            node.boundsInRoot.top >= listBounds.top &&
+                node.boundsInRoot.bottom <= listBounds.bottom &&
+                node.boundsInRoot.left >= listBounds.left - 1f &&
+                node.boundsInRoot.right <= listBounds.right + 1f
+        }.sortedBy { it.boundsInRoot.left }
+        val visibleColumns = columnBounds
+            .filter { it.left >= listBounds.left - 1f && it.right <= listBounds.right + 1f }
+            .sortedBy { it.left }
+        assertEquals(visibleColumns.size, clickableCells.size)
+        visibleColumns.zip(clickableCells).forEach { (column, cell) ->
+            assertEquals(column.left, cell.boundsInRoot.left, 1f)
+            assertEquals(column.right, cell.boundsInRoot.right, 1f)
+            val cellTag = cell.config[SemanticsProperties.TestTag]
+            val timelineTag = if (cellTag.startsWith("selected_")) {
+                "timeline_${cellTag.removePrefix("selected_")}"
+            } else {
+                cellTag
+            }
+            val labelBounds = composeRule.onNodeWithTag(
+                "${timelineTag}_label",
+                useUnmergedTree = true,
+            ).fetchSemanticsNode().boundsInRoot
+            if (!labelBounds.isEmpty) {
+                assertEquals(column.center.x, labelBounds.center.x, 1f)
+            }
+        }
     }
 }

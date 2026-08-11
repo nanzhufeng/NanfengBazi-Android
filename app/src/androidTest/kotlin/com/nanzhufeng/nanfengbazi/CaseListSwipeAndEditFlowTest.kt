@@ -1,7 +1,10 @@
 package com.nanzhufeng.nanfengbazi
 
+import android.os.SystemClock
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -13,8 +16,11 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.semantics.SemanticsProperties
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class CaseListSwipeAndEditFlowTest {
     @get:Rule
@@ -25,6 +31,32 @@ class CaseListSwipeAndEditFlowTest {
         val suffix = System.currentTimeMillis().toString()
         val originalName = "$ORIGINAL_NAME-$suffix"
         createCase(originalName)
+
+        composeRule.onNodeWithTag("record_more").performClick()
+        composeRule.onNodeWithTag("record_more_delete").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("record_batch_select_all").assertIsEnabled()
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("record_batch_select_all").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("record_batch_confirm").assertIsEnabled()
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("record_batch_confirm").assertIsEnabled()
+        composeRule.onNodeWithTag("record_batch_cancel").performClick()
+
+        composeRule.onNodeWithTag("record_search_delete").performClick()
+        composeRule.onNodeWithTag("case_search").assertTextEquals(originalName.dropLast(1))
+        composeRule.onNodeWithTag("record_search_delete").performTouchInput { longClick() }
+        assertEquals(
+            "",
+            composeRule.onNodeWithTag("case_search")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
+        )
+        filterCases(originalName)
 
         swipeCase(originalName)
         composeRule.onNodeWithContentDescription("左滑操作：编辑").assertIsDisplayed()
@@ -45,6 +77,7 @@ class CaseListSwipeAndEditFlowTest {
 
         swipeCase(originalName)
         composeRule.onNodeWithContentDescription("左滑操作：置顶").performClick()
+        composeRule.onAllNodesWithText("正在读取命例…").assertCountEquals(0)
         filterCases("")
         filterCases(originalName)
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -68,7 +101,7 @@ class CaseListSwipeAndEditFlowTest {
         composeRule.onNodeWithTag("sex_man").performClick()
         composeRule.onNodeWithTag("save_case").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule.onAllNodes(hasTestTag("case_list_screen"))
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
                 .fetchSemanticsNodes().isNotEmpty() ||
                 composeRule.onAllNodes(hasTestTag("duplicate_candidates"))
                     .fetchSemanticsNodes().isNotEmpty()
@@ -78,8 +111,13 @@ class CaseListSwipeAndEditFlowTest {
                 .fetchSemanticsNodes().isNotEmpty()
         ) {
             composeRule.onNodeWithTag("confirm_duplicate_save").performClick()
-            waitForList()
         }
+        composeRule.waitUntil(timeoutMillis = 20_000) {
+            composeRule.onAllNodes(hasTestTag("case_detail_screen"))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription("返回").performClick()
+        waitForList()
         filterCases(name)
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodes(
@@ -91,6 +129,10 @@ class CaseListSwipeAndEditFlowTest {
 
     private fun filterCases(query: String) {
         composeRule.onNodeWithTag("case_search").performTextReplacement(query)
+        val debounceFinishedAt = SystemClock.uptimeMillis() + 350L
+        composeRule.waitUntil(timeoutMillis = 2_000) {
+            SystemClock.uptimeMillis() >= debounceFinishedAt
+        }
         composeRule.waitForIdle()
     }
 

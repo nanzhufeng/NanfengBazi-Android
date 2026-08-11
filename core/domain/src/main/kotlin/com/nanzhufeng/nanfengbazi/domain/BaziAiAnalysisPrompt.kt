@@ -27,8 +27,44 @@ data class BaziAiAnalysisPromptRequest(
     val topic: BaziAiAnalysisTopic = BaziAiAnalysisTopic.ALL,
     val referenceDate: LocalDate,
     val hideIdentityAndLocation: Boolean = true,
+    val ownerFeedback: BaziAiAnalysisOwnerFeedback = BaziAiAnalysisOwnerFeedback(),
     val promptVersion: Int = BAZI_AI_ANALYSIS_PROMPT_VERSION,
 )
+
+/** 命主已保存的主观反馈；它与排盘资料分开传入，避免被误作命盘事实。 */
+data class BaziAiAnalysisOwnerFeedback(
+    val summary: String = "",
+    val timeline: List<BaziAiAnalysisTimelineEvent> = emptyList(),
+) {
+    internal fun normalized(): BaziAiAnalysisOwnerFeedback = copy(
+        summary = summary.trim(),
+        timeline = timeline.mapNotNull { event ->
+            event.normalizedOrNull()
+        },
+    )
+
+    internal fun hasContent(): Boolean = summary.isNotBlank() || timeline.isNotEmpty()
+}
+
+data class BaziAiAnalysisTimelineEvent(
+    val timeLabel: String,
+    val content: String,
+    val title: String = "",
+    val stemBranch: String = "",
+    val status: String = "",
+) {
+    internal fun normalizedOrNull(): BaziAiAnalysisTimelineEvent? {
+        val normalizedContent = content.trim()
+        if (normalizedContent.isEmpty()) return null
+        return copy(
+            timeLabel = timeLabel.trim().ifEmpty { "时间未详" },
+            content = normalizedContent,
+            title = title.trim(),
+            stemBranch = stemBranch.trim(),
+            status = status.trim(),
+        )
+    }
+}
 
 data class BaziAiAnalysisPrompt(
     val version: Int,
@@ -92,6 +128,7 @@ object BaziAiAnalysisPromptContract : BaziAiAnalysisPromptBuilder {
             )
         }
         val hiddenCount = fields.count { it.sensitivity in hiddenSensitivities }
+        val ownerFeedback = request.ownerFeedback.normalized()
         val identity = listOf(
             request.promptVersion.toString(),
             request.summary.caseId,
@@ -102,6 +139,10 @@ object BaziAiAnalysisPromptContract : BaziAiAnalysisPromptBuilder {
             request.hideIdentityAndLocation.toString(),
             visibleFields.joinToString("\u0000") {
                 "${it.label}|${it.value}|${it.source}|${it.sensitivity}"
+            },
+            ownerFeedback.summary,
+            ownerFeedback.timeline.joinToString("\u0000") {
+                "${it.timeLabel}|${it.title}|${it.stemBranch}|${it.status}|${it.content}"
             },
         ).joinToString("\u0001")
         val promptId = "ai-prompt-${identity.sha256().take(16)}"
@@ -118,6 +159,7 @@ object BaziAiAnalysisPromptContract : BaziAiAnalysisPromptBuilder {
                     promptId,
                     sectionsById,
                     hiddenSensitivities,
+                    ownerFeedback,
                 ),
             ),
         )
@@ -134,6 +176,7 @@ private fun buildPromptText(
     promptId: String,
     sectionsById: Map<String, CaseObjectiveSummarySection>,
     hiddenSensitivities: Set<CaseObjectiveSummarySensitivity>,
+    ownerFeedback: BaziAiAnalysisOwnerFeedback,
 ): String = buildString {
     val startYear = request.referenceDate.year - 5
     val endYear = request.referenceDate.year + 5
@@ -160,6 +203,28 @@ private fun buildPromptText(
             appendLine("- ${field.label}：${field.value}")
         }
     }
+    if (ownerFeedback.hasContent()) {
+        appendLine()
+        appendLine("# 命主反馈依据")
+        appendLine("以下为命主提供的主观反馈与已记录时间线事件，仅用于回看和辅助核验；它们不是命盘客观输入，可能存在回忆偏差。请单独判断哪些命理推演能够解释、哪些不能解释，不得倒推成命盘既有事实。")
+        if (ownerFeedback.summary.isNotBlank()) {
+            appendLine()
+            appendLine("## 命主反馈总结")
+            appendLine(ownerFeedback.summary)
+        }
+        if (ownerFeedback.timeline.isNotEmpty()) {
+            appendLine()
+            appendLine("## 已记录时间线事件")
+            ownerFeedback.timeline.forEach { event ->
+                val metadata = listOf(event.title, event.stemBranch, event.status)
+                    .filter(String::isNotBlank)
+                    .joinToString("｜")
+                appendLine(
+                    "- ${event.timeLabel}${metadata.takeIf(String::isNotEmpty)?.let { "（$it）" }.orEmpty()}：${event.content}",
+                )
+            }
+        }
+    }
     appendLine()
     appendLine("# 本次任务")
     appendLine("重点分析：${request.topic.taskText}。")
@@ -168,15 +233,19 @@ private fun buildPromptText(
     appendLine("# 输出格式")
     appendLine("1. 输入事实核对：简要复述采用的四柱、日主、十神、藏干、起运和大运资料，并列出缺失项。")
     appendLine("2. 命盘技法解读：先单列“盲派断事观察”，再写“子平格局与现代方法交叉核对”；涵盖五行生克、十神组合、月令旺相、格局／身强身弱／调候用神／喜用忌神，并明确区分事实与推演。")
-    if (request.topic == BaziAiAnalysisTopic.ALL) {
-        appendLine("3. 命盘事项解读：依次分析事业、财运、婚恋、子女、六亲、健康和学业。")
-    } else {
-        appendLine("3. ${request.topic.displayName}专题解读：现状倾向、优势、风险、适配方向和可执行建议。")
+    if (ownerFeedback.hasContent()) {
+        appendLine("3. 命主反馈核验：把反馈总结和时间线逐项与命盘、岁运推演交叉核验，明确已吻合、待验证和无法由当前资料支持的部分；不得将反馈补写成命盘事实。")
     }
-    appendLine("4. $startYear—$endYear 走势：按年份列出主题、依据、喜忌属性、影响程度和不确定性。")
-    appendLine("5. 核心建议与风险规避：区分近期行动、长期方向和需结合现实核验的事项。")
-    appendLine("6. 结尾再次提醒：传统命理分析仅供文化娱乐参考，不构成医疗、法律、投资、婚姻或职业决策依据。")
-    appendLine("7. 最后一行提示：如需继续提问，请说明具体问题，并继续只依据本命盘资料分析。")
+    if (request.topic == BaziAiAnalysisTopic.ALL) {
+        appendLine("${if (ownerFeedback.hasContent()) 4 else 3}. 命盘事项解读：依次分析事业、财运、婚恋、子女、六亲、健康和学业。")
+    } else {
+        appendLine("${if (ownerFeedback.hasContent()) 4 else 3}. ${request.topic.displayName}专题解读：现状倾向、优势、风险、适配方向和可执行建议。")
+    }
+    val laterStart = if (ownerFeedback.hasContent()) 5 else 4
+    appendLine("$laterStart. $startYear—$endYear 走势：按年份列出主题、依据、喜忌属性、影响程度和不确定性。")
+    appendLine("${laterStart + 1}. 核心建议与风险规避：区分近期行动、长期方向和需结合现实核验的事项。")
+    appendLine("${laterStart + 2}. 结尾再次提醒：传统命理分析仅供文化娱乐参考，不构成医疗、法律、投资、婚姻或职业决策依据。")
+    appendLine("${laterStart + 3}. 最后一行提示：如需继续提问，请说明具体问题，并继续只依据本命盘资料分析。")
 }
 
 private fun String.sha256(): String =

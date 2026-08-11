@@ -20,6 +20,14 @@ class AnchorBasedWenzhenPageClassifier : WenzhenPageClassifier {
     override val classifierVersion: String = "wenzhen-anchor-v1"
 
     override fun classify(document: OcrDocument): PageClassification {
+        document.rawText.visionPageTypeHint()?.let { pageType ->
+            return PageClassification(
+                pageType = pageType,
+                confidence = 0.99f,
+                matchedAnchors = setOf("ai-vision-page-type"),
+                classifierVersion = "$classifierVersion+ai-vision-hint-v1",
+            )
+        }
         val text = document.rawText.normalizedForAnchors()
         val candidates = templates.mapNotNull { template ->
             val primary = template.primary.firstOrNull(text::contains) ?: return@mapNotNull null
@@ -47,6 +55,15 @@ class AnchorBasedWenzhenPageClassifier : WenzhenPageClassifier {
         replace(Regex("\\s+"), "")
             .map { character -> TRADITIONAL_ANCHOR_NORMALIZATION[character] ?: character }
             .joinToString("")
+
+    private fun String.visionPageTypeHint(): WenzhenPageType? {
+        val value = Regex("^\\[\\[WENZHEN_PAGE:([A-Z_]+)]]")
+            .find(this)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return null
+        return runCatching { WenzhenPageType.valueOf(value) }.getOrNull()
+    }
 
     private data class Template(
         val pageType: WenzhenPageType,

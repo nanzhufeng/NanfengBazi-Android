@@ -7,11 +7,13 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.NetworkType
 import androidx.work.workDataOf
 import com.nanzhufeng.nanfengbazi.domain.ImportSessionRepository
 import com.nanzhufeng.nanfengbazi.domain.model.ImportImageRef
@@ -41,6 +43,11 @@ class WorkManagerScreenshotRecognitionScheduler(
     override suspend fun recognize(sessionId: String): RecognitionRunResult {
         val request = OneTimeWorkRequestBuilder<ScreenshotRecognitionWorker>()
             .setInputData(workDataOf(ScreenshotRecognitionWorker.SESSION_ID_KEY to sessionId))
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build(),
+            )
             .addTag(WORK_TAG)
             .build()
         workManager.enqueueUniqueWork(
@@ -99,10 +106,10 @@ class ScreenshotRecognitionWorker(
         notificationManager.createNotificationChannel(
             NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "问真截图离线识别",
+                "问真截图 AI 识别",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "仅在较大批次或超长截图识别期间显示"
+                description = "仅在较大批次或超长截图由已确认的模型识别期间显示"
             },
         )
         val cancelIntent = WorkManager.getInstance(applicationContext)
@@ -112,7 +119,7 @@ class ScreenshotRecognitionWorker(
             NOTIFICATION_CHANNEL_ID,
         )
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("正在离线识别问真截图")
+            .setContentTitle("正在由 AI 模型识别问真截图")
             .setContentText("$imageCount 张图片 · 可返回应用查看进度")
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setOngoing(true)

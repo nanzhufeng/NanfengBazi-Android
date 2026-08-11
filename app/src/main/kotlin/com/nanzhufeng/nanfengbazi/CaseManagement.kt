@@ -1,6 +1,8 @@
 package com.nanzhufeng.nanfengbazi
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisOwnerFeedback
+import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisTimelineEvent
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -38,6 +40,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import java.time.Clock
 import java.time.DateTimeException
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
@@ -987,14 +990,76 @@ data class CaseNotesTimelineDraft(
     val level: CaseEventTimelineLevel,
     val year: Int,
     val stemBranch: String,
+    val sourceLabel: String = "",
+    val status: String = "",
     val content: String = "",
 )
 
 data class CaseNotesDraft(
     val ownerFeedback: String = "",
     val masterCommentary: String = "",
+    val aiCommentary: String = "",
+    val aiCommentaryRecordId: String? = null,
     val timeline: List<CaseNotesTimelineDraft> = emptyList(),
 )
+
+/**
+ * 供 AI 点评和 AI 指令共用的反馈上下文：命主总结与有明确年份的时间线事件。
+ * 反馈保持独立于客观命盘摘要，避免模型将回忆记录误判为排盘事实。
+ */
+internal fun BaziCase.toAiAnalysisOwnerFeedback(): BaziAiAnalysisOwnerFeedback {
+    val summary = textRecords
+        .asSequence()
+        .filter { it.type == CaseTextRecordType.OWNER_FEEDBACK }
+        .map { it.content.trim() }
+        .filter(String::isNotEmpty)
+        .joinToString("\n\n")
+    val timeline = events
+        .asSequence()
+        .filter { it.year != null && it.rawText.isNotBlank() }
+        .sortedWith(
+            compareBy<CaseEvent> { it.year ?: Int.MAX_VALUE }
+                .thenBy { it.month ?: 0 }
+                .thenBy { it.day ?: 0 }
+                .thenBy { it.createdAt },
+        )
+        .map { event ->
+            BaziAiAnalysisTimelineEvent(
+                timeLabel = event.timeLabel(),
+                title = event.title.orEmpty(),
+                stemBranch = event.stemBranch.orEmpty(),
+                status = event.status.orEmpty(),
+                content = event.rawText,
+            )
+        }
+        .toList()
+    return BaziAiAnalysisOwnerFeedback(summary = summary, timeline = timeline)
+}
+
+private fun CaseEvent.timeLabel(): String {
+    val eventYear = year ?: return "时间未详"
+    return buildString {
+        append(eventYear)
+        append('年')
+        month?.let { append("%02d月".format(it)) }
+        day?.let { append("%02d日".format(it)) }
+    }
+}
+
+internal fun CaseTextRecord.isAiCommentaryRecord(): Boolean =
+    type == CaseTextRecordType.ANALYSIS && content.startsWith(AI_COMMENTARY_MARKER)
+
+internal fun CaseTextRecord.aiCommentaryBody(): String {
+    val payload = content.removePrefix(AI_COMMENTARY_MARKER).trimStart()
+    return payload.substringAfter("\n\n", missingDelimiterValue = payload).trim()
+}
+
+private fun CaseTextRecord.withAiCommentaryBody(body: String, updatedAt: Instant): CaseTextRecord {
+    val header = content.substringBefore("\n\n").trimEnd()
+        .takeIf { it.startsWith(AI_COMMENTARY_MARKER) }
+        ?: AI_COMMENTARY_MARKER
+    return copy(content = "$header\n\n${body.trim()}", updatedAt = updatedAt)
+}
 
 class CaseNotesEditorUseCase(
     private val caseRepository: CaseRepository,
@@ -1070,6 +1135,52 @@ class CaseNotesEditorUseCase(
         replaceRecordBody(CaseTextRecordType.OWNER_FEEDBACK, draft.ownerFeedback)
         replaceRecordBody(CaseTextRecordType.MASTER_COMMENTARY, draft.masterCommentary)
 
+        val currentAiCommentary = draft.aiCommentaryRecordId?.let { recordId ->
+            records.firstOrNull { it.id == recordId && it.isAiCommentaryRecord() }
+        }
+        val aiCommentaryBody = draft.aiCommentary.trim()
+        if (aiCommentaryBody.isEmpty()) {
+            currentAiCommentary?.let { record ->
+                recordHistory = recordHistory
+                    .ensureRecordBaseline(record)
+                    .appendRecordRevision(record, RecordChangeType.DELETED, now)
+                records = records.filterNot { it.id == record.id }
+            }
+        } else {
+            val nextAiCommentary = currentAiCommentary?.withAiCommentaryBody(
+                body = aiCommentaryBody,
+                updatedAt = now,
+            ) ?: CaseTextRecord(
+                id = idGenerator.nextId(),
+                type = CaseTextRecordType.ANALYSIS,
+                content = "$AI_COMMENTARY_MARKER\n\n$aiCommentaryBody",
+                analysisCategory = AnalysisCategory.GENERAL,
+                sourceType = TextRecordSourceType.USER,
+                createdAt = now,
+                updatedAt = now,
+            )
+            if (currentAiCommentary == null || currentAiCommentary.content != nextAiCommentary.content) {
+                recordHistory = recordHistory
+                    .ensureRecordBaseline(currentAiCommentary)
+                    .appendRecordRevision(
+                        nextAiCommentary,
+                        if (currentAiCommentary == null) {
+                            RecordChangeType.CREATED
+                        } else {
+                            RecordChangeType.UPDATED
+                        },
+                        now,
+                    )
+                records = if (currentAiCommentary == null) {
+                    records + nextAiCommentary
+                } else {
+                    records.map { record ->
+                        if (record.id == currentAiCommentary.id) nextAiCommentary else record
+                    }
+                }
+            }
+        }
+
         val existingById = existing.events.associateBy { it.id }
         var eventHistory = existing.eventRevisions
         val timelineEvents = draft.timeline.map { item ->
@@ -1080,6 +1191,7 @@ class CaseNotesEditorUseCase(
                     year = item.year,
                     datePrecision = EventDatePrecision.YEAR,
                     stemBranch = item.stemBranch.trim(),
+                    status = item.status.trim().ifBlank { null },
                     timelineLevel = item.level,
                     rawText = item.content.trim(),
                     createdAt = now,
@@ -1091,6 +1203,7 @@ class CaseNotesEditorUseCase(
                     day = null,
                     datePrecision = EventDatePrecision.YEAR,
                     stemBranch = item.stemBranch.trim(),
+                    status = item.status.trim().ifBlank { null },
                     timelineLevel = item.level,
                     rawText = item.content.trim(),
                 )

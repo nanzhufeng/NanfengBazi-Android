@@ -953,6 +953,7 @@ private fun TimeSourceType.displayName(): String = when (this) {
     TimeSourceType.FAMILY_REPORTED -> "家人提供"
     TimeSourceType.OFFICIAL_RECORD -> "正式记录"
     TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
+    TimeSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
     TimeSourceType.OTHER_RECORD -> "其他记录"
     TimeSourceType.UNKNOWN -> "未知"
 }

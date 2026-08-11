@@ -15,6 +15,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CalculationResult
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.CoordinateSource
 import com.nanzhufeng.nanfengbazi.domain.model.ExplicitText
@@ -53,6 +54,8 @@ data class CaseFormState(
     val timePrecision: TimePrecision = TimePrecision.EXACT_TO_MINUTE,
     val timeSourceType: TimeSourceType = TimeSourceType.UNKNOWN,
     val sourceNote: String = "",
+    val groupId: String? = null,
+    val libraryType: CaseLibraryType = CaseLibraryType.USER,
 )
 
 internal fun CaseFormState.clearTimeZoneResolution(): CaseFormState = copy(
@@ -228,7 +231,10 @@ object CaseFormValidator {
 }
 
 sealed interface CreateCaseResult {
-    data class Created(val caseId: String) : CreateCaseResult
+    data class Created(
+        val caseId: String,
+        val case: BaziCase,
+    ) : CreateCaseResult
     data class DuplicateCandidates(
         val candidates: List<DuplicateCaseCandidate>,
     ) : CreateCaseResult
@@ -249,6 +255,8 @@ sealed interface PreviewCaseResult {
         val alias: String,
         val name: String?,
         val calculation: CalculationResult,
+        /** The exact form that produced [calculation], used to prevent saving stale previews. */
+        val sourceForm: CaseFormState,
     ) : PreviewCaseResult
 
     data class TimeZoneChoiceRequired(
@@ -278,11 +286,14 @@ class CreateCaseUseCase(
     suspend fun preview(form: CaseFormState): PreviewCaseResult =
         calculate(form = form, requireAlias = false)
 
+    suspend fun previewForSave(form: CaseFormState): PreviewCaseResult =
+        calculate(form = form, requireAlias = true)
+
     suspend operator fun invoke(
         form: CaseFormState,
         allowDuplicate: Boolean = false,
     ): CreateCaseResult {
-        val prepared = when (val preview = calculate(form = form, requireAlias = true)) {
+        val preview = when (val preview = previewForSave(form)) {
             is PreviewCaseResult.Calculated -> preview
             is PreviewCaseResult.ValidationFailed -> {
                 return CreateCaseResult.ValidationFailed(preview.message)
@@ -298,7 +309,52 @@ class CreateCaseUseCase(
                 )
             }
         }
-        val calculation = prepared.calculation
+        return savePrepared(
+            form = form,
+            preview = preview,
+            allowDuplicate = allowDuplicate,
+        )
+    }
+
+    /**
+     * Persists an already calculated preview without asking the calculation engine to run again.
+     *
+     * The home screen uses this after it has shown the same preview in the professional detail
+     * page, so database work cannot hold that first screen hostage.
+     */
+    suspend fun savePrepared(
+        form: CaseFormState,
+        preview: PreviewCaseResult.Calculated,
+        allowDuplicate: Boolean = false,
+    ): CreateCaseResult {
+        if (preview.sourceForm != form) {
+            return CreateCaseResult.ValidationFailed("排盘输入已更新，请重新开始排盘后再保存。")
+        }
+        val prepared = when (
+            val validation = CaseFormValidator.validate(form = form, requireAlias = true)
+        ) {
+            is CaseFormValidation.Invalid -> {
+                return CreateCaseResult.ValidationFailed(validation.message)
+            }
+            is CaseFormValidation.Valid -> validation
+        }
+        val calculation = preview.calculation
+        val selectedGroups = form.groupId?.let { groupId ->
+            val groups = try {
+                caseRepository.listGroups(form.libraryType)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return CreateCaseResult.StorageFailed(
+                    "无法读取分组目录，未保存任何内容。输入仍保留，可稍后重试。",
+                )
+            }
+            val group = groups.firstOrNull { it.id == groupId }
+                ?: return CreateCaseResult.ValidationFailed(
+                    "所选分组已不存在，请重新选择。",
+                )
+            listOf(group)
+        }.orEmpty()
         if (!allowDuplicate) {
             val candidates = try {
                 caseRepository.findDuplicateCandidates(
@@ -328,6 +384,7 @@ class CreateCaseUseCase(
             sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
             sourceType = CaseSourceType.MANUAL,
             birthInput = calculation.normalizedInput,
+            libraryType = form.libraryType,
             birthTimeCandidates = listOf(
                 BirthTimeCandidate(
                     id = candidateId,
@@ -347,13 +404,20 @@ class CreateCaseUseCase(
                     createdAt = now,
                 ),
             ),
+            groups = selectedGroups,
             createdAt = now,
             updatedAt = now,
         )
         return try {
             when (val write = caseRepository.save(case, expectedRevision = null)) {
-                is CaseWriteResult.Created -> CreateCaseResult.Created(write.caseId)
-                is CaseWriteResult.Updated -> CreateCaseResult.Created(write.caseId)
+                is CaseWriteResult.Created -> CreateCaseResult.Created(
+                    caseId = write.caseId,
+                    case = case.copy(revision = write.revision),
+                )
+                is CaseWriteResult.Updated -> CreateCaseResult.Created(
+                    caseId = write.caseId,
+                    case = case.copy(revision = write.revision),
+                )
                 is CaseWriteResult.AlreadyExists -> CreateCaseResult.AlreadyExists(write.caseId)
                 is CaseWriteResult.RevisionConflict ->
                     CreateCaseResult.RevisionConflict(write.caseId)
@@ -414,6 +478,7 @@ class CreateCaseUseCase(
             alias = valid.alias,
             name = valid.name,
             calculation = calculation,
+            sourceForm = form,
         )
     }
 }
