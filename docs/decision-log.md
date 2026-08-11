@@ -1587,3 +1587,8 @@
 - 决策：云快照不再对整张表构建 `String`／`ByteArray`。每个 JSON ZIP 条目按单行记录流式编码：先流式计数并计算 SHA-256 生成 manifest，再以同一确定性编码写入 ZIP；最大短暂 JSON 仅为单条记录。快照捕获切到 IO 调度器；取消必须向上原样传播，不能落入“网络失败”。
 - 恢复：云端笔记条目允许到 64 MiB，并仍受 ZIP 总量、单项上限、manifest SHA-256 和独立临时数据库预检保护，保证当前千例规模可恢复而不取消安全校验。
 - 验证：新增超过 16 MiB 的断事笔记云快照生成与空库恢复回归；定向 `CaseBackupServiceTest` 通过。真实云端上传/覆盖未执行，等待用户明确授权。
+
+## D-164 增量 checkpoint 与经验审计必须分层冻结
+
+- 决策：长期、多模块 Android 迭代以经过全量门禁的 Git checkpoint 冻结代码、测试、迁移和项目规则；`tmp/` 中的生成任务记录不进入代码基线。项目事实与验证等级写入 `project-context.md`、增量经验矩阵写入 `app-experience-audit.md`，不复制已有功能的历史复盘。
+- 证据：当前 checkpoint `b16a14c` 已通过 `test + assembleDebug + lintDebug`；同签名 OPPO 覆盖安装保持数据库、WAL、SHM 数据指纹不变。安装/构建不能替代云端上传、回读或跨设备恢复验收。

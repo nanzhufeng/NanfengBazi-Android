@@ -463,6 +463,12 @@
 - 云端恢复 JSON 单项上限由 16 MiB 提升到 64 MiB，仍保留 ZIP 路径、总量、单项、manifest 哈希及独立临时数据库验证。新增 >16 MiB 断事笔记快照的生成、恢复回归。
 - 定向 `:core:data:testDebugUnitTest --tests CaseBackupServiceTest` 已通过；尚未触发任何真实上传、覆盖或恢复，待用户单独授权后做 OPPO 端同步验收。
 
+### 6.23 checkpoint 与增量经验审计（2026-08-12）
+
+- 已冻结 checkpoint `b16a14c`：98 个交付文件涵盖当前代码、测试、数据库 schema、皮肤资源、脚本和项目规则；`tmp/imagegen/` 的生成过程记录未纳入 Git。
+- 最终门禁 `test + assembleDebug + lintDebug` 通过（253 项 Gradle 任务），Debug APK SHA-256 `f1282c80af15da73d0287ae1c4e567d8ae404537698706b39d1f6c15a697852a`。OPPO 已同签名覆盖但未启动应用、未触发真实同步；数据库/WAL/SHM 指纹保持不变。
+- 增量经验和证据分层见 `docs/project-context.md`、`docs/app-experience-audit.md`；只新增缓存所有权、流式快照和取消语义的通用规则，不重复此前已完成的视觉、导出与菜单迭代。
+
 ## 7. 下一轮默认动作
 
 1. 完成第 2 节的最小读取和只读现场核对。
