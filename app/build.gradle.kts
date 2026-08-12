@@ -17,6 +17,17 @@ fun localValue(name: String): String = localProperties.getProperty(name)?.trim()
 fun quotedBuildConfig(value: String): String =
     "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+val releaseStoreFile = localValue("nanfeng.release.storeFile")
+val releaseStorePassword = localValue("nanfeng.release.storePassword")
+val releaseKeyAlias = localValue("nanfeng.release.keyAlias")
+val releaseKeyPassword = localValue("nanfeng.release.keyPassword")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all(String::isNotBlank)
+
 android {
     namespace = "com.nanzhufeng.nanfengbazi"
     compileSdk = 35
@@ -25,8 +36,8 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 84
-        versionName = "0.3.0-alpha83"
+        versionCode = 10000
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "NANFENG_CLOUD_URL", quotedBuildConfig(localValue("nanfeng.cloud.url")))
         buildConfigField(
@@ -41,9 +52,26 @@ android {
         )
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("nanzhufengRelease") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("nanzhufengRelease")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -74,7 +102,7 @@ android {
 }
 
 base {
-    archivesName.set("NanfengBazi-Android-v0.3.0-alpha83")
+    archivesName.set("NanfengBazi-Android-v1.0.0")
 }
 
 dependencies {
