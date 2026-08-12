@@ -506,6 +506,11 @@ class CaseDetailReferenceLayoutTest {
         }
         val notesHeaderBounds = composeRule.onNodeWithTag("notes_identity_header")
             .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("detail_tab_fortune").performClick()
+        val fortuneHeaderBounds = composeRule.onNodeWithTag("case_identity_header")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(fortuneHeaderBounds.height, notesHeaderBounds.height, 1f)
+        composeRule.onNodeWithTag("detail_tab_records").performClick()
         val pillarsGrid = composeRule.onNodeWithTag("notes_identity_four_pillars")
             .fetchSemanticsNode().boundsInRoot
         assertEquals(notesHeaderBounds.center.x, pillarsGrid.center.x, 2f)
@@ -532,6 +537,10 @@ class CaseDetailReferenceLayoutTest {
             .fetchSemanticsNode().boundsInRoot
         assertTrue(notesSwitcherBefore.width < notesHeaderBounds.width)
         assertEquals(notesHeaderBounds.center.x, notesSwitcherBefore.center.x, 2f)
+        assertEquals(displayDensity * 36f, notesSwitcherBefore.height, 1f)
+        val notesModeTouchTarget = composeRule.onNodeWithTag("notes_mode_master")
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(displayDensity * 48f, notesModeTouchTarget.height, 1f)
         composeRule.onNodeWithTag("notes_mode_master").performClick()
         composeRule.waitForIdle()
         val notesSwitcherAfter = composeRule.onNodeWithTag("notes_mode_switcher")

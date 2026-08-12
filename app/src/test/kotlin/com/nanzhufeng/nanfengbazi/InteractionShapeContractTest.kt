@@ -351,6 +351,26 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun directAiProviderModelMenusStayBelowTheirSelectedModelSurface() {
+        val theme = File(locateSourceRoot(), "NanfengBaziTheme.kt").readText()
+        val dialogs = File(locateSourceRoot(), "AiCommentaryDialogs.kt").readText()
+        val picker = dialogs.substringAfter("testTag(\"ai_model_picker\")")
+            .substringBefore("OutlinedTextField(")
+        val vendorStyle = dialogs.substringAfter("private fun aiModelVendorStyle(")
+
+        assertTrue(theme.contains("enum class NanfengPopupPlacement"))
+        assertTrue(theme.contains("placement == NanfengPopupPlacement.BELOW_ANCHOR -> below"))
+        assertTrue(theme.contains("alignment = Alignment.TopEnd"))
+        assertTrue(theme.contains("offset = IntOffset(0, anchorBounds.height + menuGapPx)"))
+        assertTrue(picker.contains("providerId == AiCommentaryProviderId.OPEN_ROUTER"))
+        assertTrue(picker.contains("NanfengPopupPlacement.BELOW_ANCHOR"))
+        assertTrue(vendorStyle.contains("preset.model.startsWith(\"deepseek-\")"))
+        assertTrue(vendorStyle.contains("preset.model.startsWith(\"qwen\")"))
+        assertTrue(vendorStyle.contains("container = Color(0xFFEDF3FC)"))
+        assertTrue(vendorStyle.contains("container = Color(0xFFF3F0FA)"))
+    }
+
+    @Test
     fun manualClickablesAreEitherShapeClippedOrExplicitRectangularRegions() {
         val sourceRoot = locateSourceRoot()
         val expectedDirectClickables = mapOf(
@@ -367,6 +387,7 @@ class InteractionShapeContractTest {
                 "RecordSortDialog",
                 "RecordGroupEditorDialog",
                 "RecordCaseSelectionDialog",
+                "NotesModeTab",
                 "ReferenceOtherNotes",
                 "ReferenceEventTimelineItem",
             ),
@@ -436,6 +457,31 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun compactNotesModePressFeedbackStaysInsideTheVisibleRail() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val tab = source.substringAfter("private fun NotesModeTab(")
+            .substringBefore("private fun ReferenceEventTimelineItem(")
+
+        assertTrue(tab.contains("collectIsPressedAsState()"))
+        assertTrue(tab.contains("indication = null"))
+        assertTrue(tab.contains("val visualShape = RoundedCornerShape(18.dp)"))
+        assertTrue(tab.contains(".clip(visualShape)"))
+        assertTrue(tab.contains("Color.Black.copy(alpha = if (selected) 0.13f else 0.08f)"))
+    }
+
+    @Test
+    fun professionalSectionTitlesUseTheSkinGrayBackgroundInsteadOfButtonPrimary() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val sections = source.substringAfter("private fun ProfessionalTextSections(")
+            .substringBefore("private fun DecadeFortuneDetailsView(")
+
+        assertTrue(sections.contains("val themeBackground = LocalBaziSkinTokens.current.background"))
+        assertTrue(sections.contains("background(themeBackground)"))
+        assertTrue(sections.contains("val themeText = LocalBaziSkinTokens.current.textPrimary"))
+        assertTrue(!sections.contains("background(MaterialTheme.colorScheme.primary)"))
+    }
+
+    @Test
     fun almanacShenShaAreaReservesFiveCompactRows() {
         val almanac = locateSourceRoot().resolve("AlmanacFeature.kt").readText()
 
@@ -474,6 +520,25 @@ class InteractionShapeContractTest {
         assertTrue(screens.indexOf("SettingsGroupTitle(\"皮肤\")") <
             screens.indexOf("SettingsGroupTitle(\"南枫云\")"))
         assertTrue(screens.contains("Modifier.testTag(\"home_skin_header\")"))
+    }
+
+    @Test
+    fun homeSkinHeaderUsesAClippedTapAndDragFiveElementFlowInsteadOfStaticDecoration() {
+        val picker = File(locateSourceRoot(), "BaziSkinPicker.kt").readText()
+        val header = picker.substringAfter("internal fun BaziHomeSkinHeader(")
+            .substringBefore("internal fun BaziSkinSettingRow(")
+
+        assertTrue(header.contains("Surface(\n        onClick = activateFlow"))
+        assertTrue(header.contains("BaziHomeSkinHeaderShape"))
+        assertTrue(header.contains("detectHorizontalDragGestures"))
+        assertTrue(header.contains("flowProgress.animateTo("))
+        assertTrue(header.contains("BaziHomeFlowOverlay("))
+        assertTrue(header.contains("BaziHomeHeaderArtworkOverscan"))
+        assertTrue(header.contains("点击或左右滑动可查看五行流转效果"))
+        assertTrue(picker.contains("private fun BaziHomeFlowOverlay("))
+        assertTrue(picker.contains("Canvas(modifier = modifier)"))
+        assertTrue(picker.contains("Brush.linearGradient("))
+        assertTrue(picker.contains("drawPath("))
     }
 
     private fun sharedOverflowMenuItemSource(): String =

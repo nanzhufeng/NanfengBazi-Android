@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,6 +65,11 @@ internal val NanfengGoldText = Color(0xFF856526)
 internal val NanfengGoldLight = Color(0xFFF0D7A4)
 internal val NanfengWarmTint = Color(0xFFF8F5EF)
 internal val NanfengControlSurface = Color(0xFFF3F3F2)
+
+internal enum class NanfengPopupPlacement {
+    AUTO,
+    BELOW_ANCHOR,
+}
 
 internal val LocalBaziSkin = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART }
 internal val LocalBaziSkinTokens = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.tokens }
@@ -167,6 +173,7 @@ internal fun NanfengBaziTheme(
 internal fun BoxScope.NanfengWhiteDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
+    placement: NanfengPopupPlacement = NanfengPopupPlacement.AUTO,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -186,7 +193,22 @@ internal fun BoxScope.NanfengWhiteDropdownMenu(
     )
     if (!expanded || anchorBounds.width == 0 || anchorBounds.height == 0) return
     val menuGapPx = with(LocalDensity.current) { 4.dp.roundToPx() }
-    var popupOriginInWindow by remember { mutableStateOf(IntOffset.Zero) }
+    if (placement == NanfengPopupPlacement.BELOW_ANCHOR) {
+        Popup(
+            alignment = Alignment.TopEnd,
+            offset = IntOffset(0, anchorBounds.height + menuGapPx),
+            onDismissRequest = onDismissRequest,
+            properties = PopupProperties(
+                focusable = true,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                clippingEnabled = true,
+            ),
+        ) {
+            NanfengWhitePopupSurface(modifier = modifier, content = content)
+        }
+        return
+    }
     Popup(
         popupPositionProvider = FullScreenPopupPositionProvider,
         onDismissRequest = onDismissRequest,
@@ -200,31 +222,11 @@ internal fun BoxScope.NanfengWhiteDropdownMenu(
         Layout(
             modifier = Modifier
                 .fillMaxSize()
-                .onGloballyPositioned { coordinates ->
-                    val bounds = coordinates.boundsInWindow()
-                    popupOriginInWindow = IntOffset(
-                        bounds.left.roundToInt(),
-                        bounds.top.roundToInt(),
-                    )
-                }
                 .pointerInput(onDismissRequest) {
                     detectTapGestures(onTap = { onDismissRequest() })
                 },
             content = {
-                Surface(
-                    modifier = modifier
-                        .width(IntrinsicSize.Max)
-                        .widthIn(min = 112.dp, max = 280.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color.White,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 6.dp,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        content = content,
-                    )
-                }
+                NanfengWhitePopupSurface(modifier = modifier, content = content)
             },
         ) { measurables, constraints ->
             val menu = measurables.single().measure(
@@ -236,14 +238,39 @@ internal fun BoxScope.NanfengWhiteDropdownMenu(
                 layoutDirection = layoutDirection,
                 menuSize = IntSize(menu.width, menu.height),
                 gapPx = menuGapPx,
+                placement = placement,
             )
             layout(constraints.maxWidth, constraints.maxHeight) {
                 menu.place(
-                    x = position.x - popupOriginInWindow.x,
-                    y = position.y - popupOriginInWindow.y,
+                    // anchorBounds and the full-screen Popup layout use the same window
+                    // coordinate system. Subtracting the dialog's origin here shifted a
+                    // supposedly-below menu upward and over its own selection surface.
+                    x = position.x,
+                    y = position.y,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun NanfengWhitePopupSurface(
+    modifier: Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier
+            .width(IntrinsicSize.Max)
+            .widthIn(min = 112.dp, max = 280.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 8.dp),
+            content = content,
+        )
     }
 }
 
@@ -287,6 +314,7 @@ private fun anchoredMenuPosition(
     layoutDirection: LayoutDirection,
     menuSize: IntSize,
     gapPx: Int,
+    placement: NanfengPopupPlacement = NanfengPopupPlacement.AUTO,
 ): IntOffset {
     val preferredX = if (layoutDirection == LayoutDirection.Ltr) {
         anchorBounds.right - menuSize.width
@@ -299,6 +327,10 @@ private fun anchoredMenuPosition(
     val below = anchorBounds.bottom + gapPx
     val above = anchorBounds.top - menuSize.height - gapPx
     val maxY = (windowSize.height - menuSize.height - gapPx).coerceAtLeast(gapPx)
-    val y = if (below <= maxY) below else above.coerceIn(gapPx, maxY)
+    val y = when {
+        placement == NanfengPopupPlacement.BELOW_ANCHOR -> below
+        below <= maxY -> below
+        else -> above.coerceIn(gapPx, maxY)
+    }
     return IntOffset(x, y)
 }

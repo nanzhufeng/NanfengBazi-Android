@@ -5,6 +5,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +25,11 @@ import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -36,10 +43,17 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -50,10 +64,15 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
+import kotlin.math.cos
+import kotlin.math.sin
 
 private val BaziSkinPickerShape = RoundedCornerShape(20.dp)
 private val BaziSkinPickerCardHeight = 84.dp
 private val BaziSkinPickerTrackHeight = 252.dp
+private val BaziHomeSkinHeaderShape = RoundedCornerShape(24.dp)
+private val BaziHomeHeaderEaseOut = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
+private const val BaziHomeHeaderArtworkOverscan = 1.06f
 
 @Composable
 internal fun BaziSkinArtwork(
@@ -76,16 +95,83 @@ internal fun BaziHomeSkinHeader(
 ) {
     val recipe = skin.visualRecipe
     val tokens = skin.tokens
+    val scope = rememberCoroutineScope()
+    val flowProgress = remember(skin.id) { Animatable(0f) }
+    val pulseProgress = remember(skin.id) { Animatable(0f) }
+    val density = LocalDensity.current
+    val artworkTravelPx = with(density) { 14.dp.toPx() }
+    val textTravelPx = with(density) { 6.dp.toPx() }
+    val activateFlow: () -> Unit = {
+        scope.launch {
+            pulseProgress.stop()
+            pulseProgress.snapTo(0f)
+            pulseProgress.animateTo(1f, tween(durationMillis = 150, easing = BaziHomeHeaderEaseOut))
+            pulseProgress.animateTo(0f, tween(durationMillis = 260, easing = BaziHomeHeaderEaseOut))
+        }
+        Unit
+    }
     Surface(
+        onClick = activateFlow,
         modifier = modifier
             .fillMaxWidth()
-            .height(148.dp),
-        shape = RoundedCornerShape(24.dp),
+            .height(148.dp)
+            .semantics {
+                contentDescription = "${skin.displayName}互动头图，点击或左右滑动可查看五行流转效果"
+            },
+        shape = BaziHomeSkinHeaderShape,
         color = Color.Transparent,
         shadowElevation = 4.dp,
     ) {
-        Box {
-            BaziSkinArtwork(recipe, Modifier.fillMaxSize())
+        Box(
+            modifier = Modifier.pointerInput(skin.id) {
+                detectHorizontalDragGestures(
+                    onDragStart = { activateFlow() },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        scope.launch {
+                            flowProgress.snapTo(
+                                (flowProgress.value + dragAmount / 280f).coerceIn(-1f, 1f),
+                            )
+                        }
+                    },
+                    onDragEnd = {
+                        if (flowProgress.value.absoluteValue >= 0.08f) activateFlow()
+                        scope.launch {
+                            flowProgress.animateTo(
+                                0f,
+                                spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                ),
+                            )
+                        }
+                    },
+                    onDragCancel = {
+                        scope.launch {
+                            flowProgress.animateTo(
+                                0f,
+                                spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMedium,
+                                ),
+                            )
+                        }
+                    },
+                )
+            },
+        ) {
+            BaziSkinArtwork(
+                recipe,
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = flowProgress.value * artworkTravelPx
+                        // 画面先统一外扩，再跟手移动，六套皮肤在左右流转时都不会露出裁切边缘。
+                        scaleX = BaziHomeHeaderArtworkOverscan +
+                            (flowProgress.value.absoluteValue + pulseProgress.value) * 0.014f
+                        scaleY = 1.035f + pulseProgress.value * 0.01f
+                    },
+            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -99,10 +185,25 @@ internal fun BaziHomeSkinHeader(
                         ),
                     ),
             )
+            BaziHomeFlowOverlay(
+                primary = tokens.primary,
+                secondary = tokens.secondary,
+                highlight = recipe.headerContentColor,
+                progress = pulseProgress.value,
+                horizontalFlow = flowProgress.value,
+                modifier = Modifier.fillMaxSize(),
+            )
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(horizontal = 17.dp),
+                    .padding(horizontal = 17.dp)
+                    .graphicsLayer {
+                        translationX = -flowProgress.value * textTravelPx
+                        translationY = -pulseProgress.value * with(density) { 4.dp.toPx() }
+                        scaleX = 1f + pulseProgress.value * 0.035f
+                        scaleY = 1f + pulseProgress.value * 0.035f
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    },
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
@@ -130,12 +231,143 @@ internal fun BaziHomeSkinHeader(
                     .padding(14.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(tokens.surface.copy(alpha = 0.22f))
-                    .padding(horizontal = 11.dp, vertical = 6.dp),
+                    .padding(horizontal = 11.dp, vertical = 6.dp)
+                    .graphicsLayer {
+                        scaleX = 1f + pulseProgress.value * 0.065f
+                        scaleY = 1f + pulseProgress.value * 0.065f
+                        rotationZ = flowProgress.value * 5f + pulseProgress.value * 2f
+                        transformOrigin = TransformOrigin(1f, 1f)
+                    },
                 color = recipe.headerContentColor,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
             )
         }
+    }
+}
+
+@Composable
+private fun BaziHomeFlowOverlay(
+    primary: Color,
+    secondary: Color,
+    highlight: Color,
+    progress: Float,
+    horizontalFlow: Float,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        val energy = maxOf(progress, horizontalFlow.absoluteValue)
+        if (energy < 0.015f) return@Canvas
+
+        val center = Offset(
+            x = size.width * (0.73f + horizontalFlow * 0.025f),
+            y = size.height * 0.5f,
+        )
+        val orbitWidth = size.minDimension * 0.32f
+        val orbitHeight = orbitWidth * 0.66f
+        val orbitTopLeft = Offset(center.x - orbitWidth / 2f, center.y - orbitHeight / 2f)
+        val orbitSize = Size(orbitWidth, orbitHeight)
+        val sweepCenter = size.width * (0.18f + progress * 0.50f + horizontalFlow * 0.18f)
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    highlight.copy(alpha = 0.12f * energy),
+                    Color.Transparent,
+                ),
+                start = Offset(sweepCenter - size.width * 0.18f, 0f),
+                end = Offset(sweepCenter + size.width * 0.18f, size.height),
+            ),
+            size = size,
+        )
+        val ribbonBaseY = size.height * 0.70f
+        repeat(3) { index ->
+            val ribbonOffset = index * size.height * 0.075f
+            val ribbon = Path().apply {
+                moveTo(size.width * 0.06f, ribbonBaseY + ribbonOffset)
+                cubicTo(
+                    size.width * 0.28f,
+                    ribbonBaseY - size.height * (0.24f + index * 0.035f) + ribbonOffset,
+                    size.width * 0.47f,
+                    ribbonBaseY + size.height * (0.19f + index * 0.04f) + ribbonOffset,
+                    center.x,
+                    center.y + (index - 0.5f) * size.height * 0.16f,
+                )
+            }
+            drawPath(
+                path = ribbon,
+                color = if (index == 0) primary else secondary,
+                style = Stroke(width = 1.3f + energy * (2.6f - index * 0.25f)),
+                alpha = 0.18f + energy * (0.32f - index * 0.035f),
+            )
+        }
+        val arcAlpha = 0.14f + energy * 0.30f
+
+        repeat(3) { index ->
+            val phase = index * 72f + horizontalFlow * 28f + progress * 36f
+            drawArc(
+                color = primary.copy(alpha = arcAlpha * (1f - index * 0.14f)),
+                startAngle = -76f + phase,
+                sweepAngle = 158f,
+                useCenter = false,
+                topLeft = orbitTopLeft,
+                size = orbitSize,
+                style = Stroke(width = 1.1f + energy * 1.3f),
+            )
+        }
+        repeat(5) { index ->
+            val particleAngle = Math.toRadians(
+                (-42f + index * 74f + horizontalFlow * 82f + progress * 128f).toDouble(),
+            )
+            val particleCenter = Offset(
+                x = center.x + cos(particleAngle).toFloat() * orbitWidth * (0.24f + index * 0.045f),
+                y = center.y + sin(particleAngle).toFloat() * orbitHeight * (0.24f + index * 0.045f),
+            )
+            drawCircle(
+                color = if (index % 2 == 1) secondary else primary,
+                radius = 11f + energy * 19f,
+                center = particleCenter,
+                alpha = 0.11f + energy * 0.15f,
+            )
+            drawCircle(
+                color = highlight,
+                radius = 2.6f + energy * 2.7f,
+                center = particleCenter,
+                alpha = 0.52f + energy * 0.24f,
+            )
+        }
+        val particleAngle = Math.toRadians((-42f + horizontalFlow * 82f + progress * 128f).toDouble())
+        val particleCenter = Offset(
+            x = center.x + cos(particleAngle).toFloat() * orbitWidth * 0.43f,
+            y = center.y + sin(particleAngle).toFloat() * orbitHeight * 0.43f,
+        )
+        drawCircle(
+            color = secondary.copy(alpha = 0.16f + energy * 0.22f),
+            radius = 18f + energy * 24f,
+            center = particleCenter,
+        )
+        drawCircle(
+            color = highlight.copy(alpha = 0.64f + energy * 0.26f),
+            radius = 3.8f + energy * 2.8f,
+            center = particleCenter,
+        )
+        val sealCenter = Offset(size.width * 0.89f, size.height * 0.78f)
+        drawCircle(
+            color = primary,
+            radius = 25f + energy * 14f,
+            center = sealCenter,
+            alpha = 0.04f + energy * 0.12f,
+        )
+        drawArc(
+            color = secondary,
+            startAngle = -94f + progress * 86f + horizontalFlow * 22f,
+            sweepAngle = 164f,
+            useCenter = false,
+            topLeft = Offset(sealCenter.x - 30f, sealCenter.y - 30f),
+            size = Size(60f, 60f),
+            style = Stroke(width = 1.4f + energy * 1.8f),
+            alpha = 0.20f + energy * 0.36f,
+        )
     }
 }
 

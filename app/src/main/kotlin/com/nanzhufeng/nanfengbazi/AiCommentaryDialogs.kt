@@ -487,7 +487,7 @@ private fun AiCommentarySettingsDialog(
             modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 640.dp)
                 .testTag("ai_commentary_settings_dialog"),
             shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = Color.White,
             shadowElevation = 18.dp,
         ) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -540,7 +540,7 @@ private fun AiCommentarySettingsDialog(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
                             .testTag("ai_model_picker"),
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surface,
+                        color = Color(0xFFFAFBFA),
                         shadowElevation = 1.dp,
                     ) {
                         Row(
@@ -568,6 +568,13 @@ private fun AiCommentarySettingsDialog(
                     NanfengWhiteDropdownMenu(
                         expanded = modelPickerExpanded,
                         onDismissRequest = { modelPickerExpanded = false },
+                        placement = if (providerId == AiCommentaryProviderId.OPEN_ROUTER) {
+                            NanfengPopupPlacement.AUTO
+                        } else {
+                            // The direct-provider lists are deliberately short. Keep them
+                            // below the chosen-model surface so that surface remains visible.
+                            NanfengPopupPlacement.BELOW_ANCHOR
+                        },
                     ) {
                         AiCommentaryProviderPresets.models(providerId).forEach { preset ->
                             val vendorStyle = aiModelVendorStyle(preset)
@@ -683,17 +690,38 @@ private data class AiModelVendorStyle(
 )
 
 private fun aiModelVendorStyle(preset: AiCommentaryModelPreset): AiModelVendorStyle {
-    val base = when {
-        preset.model.startsWith("openai/") -> Color(0xFF167A57)
-        preset.model.startsWith("anthropic/") -> Color(0xFFB55325)
-        preset.model.startsWith("deepseek/") -> Color(0xFF3568C8)
-        preset.model.startsWith("qwen/") -> Color(0xFF7651B8)
-        else -> NanfengGold
+    // Keep the model picker visually calm on its pure-white dialog surface. The colored
+    // rail identifies a provider; the pale card must never compete with the model label.
+    return when {
+        preset.model.startsWith("openai/") -> AiModelVendorStyle(
+            container = Color(0xFFEAF5F2),
+            accent = Color(0xFF22966F),
+            title = Color(0xFF23745A),
+            summary = Color(0xFF5B9785),
+        )
+        preset.model.startsWith("anthropic/") -> AiModelVendorStyle(
+            container = Color(0xFFF9EDE8),
+            accent = Color(0xFFC26738),
+            title = Color(0xFF9B512F),
+            summary = Color(0xFFB57960),
+        )
+        preset.model.startsWith("deepseek/") || preset.model.startsWith("deepseek-") -> AiModelVendorStyle(
+            container = Color(0xFFEDF3FC),
+            accent = Color(0xFF4775C7),
+            title = Color(0xFF3B619F),
+            summary = Color(0xFF718BBC),
+        )
+        preset.model.startsWith("qwen/") || preset.model.startsWith("qwen") -> AiModelVendorStyle(
+            container = Color(0xFFF3F0FA),
+            accent = Color(0xFF875AC3),
+            title = Color(0xFF6C4B99),
+            summary = Color(0xFF9275B3),
+        )
+        else -> AiModelVendorStyle(
+            container = Color(0xFFF8F2E8),
+            accent = Color(0xFFC7A35E),
+            title = Color(0xFF92783E),
+            summary = Color(0xFFA59166),
+        )
     }
-    return AiModelVendorStyle(
-        container = base.copy(alpha = 0.10f),
-        accent = base,
-        title = base.copy(alpha = 0.96f),
-        summary = base.copy(alpha = 0.76f),
-    )
 }

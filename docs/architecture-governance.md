@@ -261,7 +261,7 @@
 | 专业岁运即时切换 | `ProfessionalTimelineRows` 局部选中态 → `StageTwoViewModel` 版本化缓存 → `ProfessionalFortuneResolver` | 点击先由时间轴局部状态即时高亮，不写全局页面状态；缓存键由命例 id、已采用快照 id、观察时刻和选择层组成。96 项 LRU 保留最近结果，五层首屏各 10 项按逐索引交错顺序在单通道调度器预取，流日／流时不得因大运优先而饥饿。首次计算保留原局四柱稳定首帧；只有最后请求可替换真实结果 |
 | 页面导航与原子输入 | `RootNavigationBar` 局部选中态 → `StageTwoNavigator` / `StageTwoViewModel` | 排盘、记录、设置先在触摸帧内只更新导航胶囊，下一帧再提交唯一最终目的地；根导航不得触发无关命例目录重投影。日期与时间确认作为一次原子输入，不允许“新日期＋旧时间”和“新日期＋新时间”连续重算 |
 | 页面重访与长文本派生 | `StageTwoViewModel` 轻量 LRU 详情缓存 / `ioDispatcher` | 最近命例详情先呈现再静默校准 Room；师傅点评句段、反馈主题和客观摘要的提取不得在 Compose UI 线程同步执行。已有可用内容在后台刷新时保持可见 |
-| 列表进入详情 | `CaseListScreen` 可见项预取 → `StageTwoViewModel.openDetailFromList()` | 可见命例在 IO 线程受限预取；点击先立即提交专业细盘目的地，账号头、四标签与身份摘要先完成首帧，密集盘体下一帧加入。预取的默认观察时刻与岁运缓存必须在同一次状态提交中呈现；Room 校准及 `markViewed` 不得用仅查看时间的变化重组整页。连续点击只允许最后一个案例回写 |
+| 列表进入详情 | `CaseListScreen` 可见项预取 → `RetainedCaseDetailSnapshot` → `StageTwoViewModel.openDetailFromList()` | 可见命例在 IO／单通道岁运线程中预取，“详情聚合 + 默认观察时刻 + 专业结果”必须由同一个受跟踪任务完成后才标记为就绪，不得另起脱离所有权的计算协程。点击立即提交专业细盘目的地并取消其他案例的推测计算，目标案例优先复用完整快照；账号头、四标签与身份摘要先完成首帧，密集盘体下一帧加入。Room 校准保证子记录最新，但 `markViewed` 仅更新目录元数据，不得替换已渲染详情或专业结果。连续点击只允许最后一个案例回写 |
 | 详情分页驻留 | `CaseDetailScreen` 局部标签态 → `ReferenceCaseDetailContent` / `CaseDetailPageCaptureRegistry` | 标签胶囊先在触摸帧内切换，下一帧只提交最终标签；当前页先完成首帧，其余页在首屏稳定后错峰预组合并驻留复用，切换不得销毁后重组合整页。每页拥有独立滚动状态和长图捕获目标，驻留不得破坏四页长图顺序 |
 
 ## alpha83 列表批量写入与点评编辑边界

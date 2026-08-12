@@ -655,7 +655,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `列表点击立即进入专业细盘且不等待仓储读取`() = runTest {
+    fun `列表点击不等待数据库和岁运计算立即进入专业细盘`() = runTest {
         val readGate = CompletableDeferred<Unit>()
         val repository = FakeCaseRepository().apply {
             stored["case-immediate"] = sampleStoredCase("case-immediate")
@@ -663,7 +663,12 @@ class StageTwoViewModelTest {
                 if (id == "case-immediate") readGate.await()
             }
         }
-        val viewModel = createViewModel(repository)
+        val viewModel = createViewModel(
+            repository = repository,
+            professionalFortuneResolver =
+                com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
+        )
+        viewModel.backToList()
 
         viewModel.openDetailFromList("case-immediate")
 
@@ -676,8 +681,58 @@ class StageTwoViewModelTest {
 
         readGate.complete(Unit)
 
+        assertEquals(
+            AppDestination.CaseDetail("case-immediate"),
+            viewModel.state.value.destination,
+        )
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
         assertEquals("case-immediate", viewModel.state.value.detail?.id)
         assertFalse(viewModel.state.value.detailLoading)
+        assertNotNull(viewModel.state.value.professionalFortunePosition)
+        assertFalse(viewModel.state.value.fortunePositionLoading)
+    }
+
+    @Test
+    fun `列表完整预热命中后首帧直接显示且最近查看校准不替换整页`() = runTest {
+        val refreshGate = CompletableDeferred<Unit>()
+        var readCount = 0
+        val repository = FakeCaseRepository().apply {
+            stored["case-prepared"] = sampleStoredCase("case-prepared")
+            beforeFindById = { id ->
+                if (id == "case-prepared") {
+                    readCount += 1
+                    if (readCount == 2) refreshGate.await()
+                }
+            }
+        }
+        val viewModel = createViewModel(
+            repository = repository,
+            professionalFortuneResolver =
+                com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver(),
+        )
+        viewModel.backToList()
+        viewModel.prefetchCaseDetail("case-prepared")
+
+        assertEquals(listOf("case-prepared"), repository.findByIdRequests)
+
+        viewModel.openDetailFromList("case-prepared")
+
+        val firstFrameDetail = viewModel.state.value.detail
+        val firstFramePosition = viewModel.state.value.professionalFortunePosition
+        assertEquals(
+            AppDestination.CaseDetail("case-prepared"),
+            viewModel.state.value.destination,
+        )
+        assertNotNull(firstFrameDetail)
+        assertNotNull(firstFramePosition)
+        assertFalse(viewModel.state.value.detailLoading)
+        assertFalse(viewModel.state.value.fortunePositionLoading)
+
+        refreshGate.complete(Unit)
+
+        assertTrue(firstFrameDetail === viewModel.state.value.detail)
+        assertTrue(firstFramePosition === viewModel.state.value.professionalFortunePosition)
+        assertEquals(2, repository.findByIdRequests.size)
     }
 
     @Test
@@ -711,7 +766,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `专业细盘进入默认定位当前时刻，已故或百年命例定位三十六岁`() = runTest {
+    fun `打开不同命例建立默认定位，标签切换保留用户选择`() = runTest {
         val currentCase = sampleStoredCase("current")
         val historicalInput = BirthInput(
             calendarInput = BirthCalendarInput.Solar(CivilDateTime(1920, 3, 4, 5, 6, 0)),
@@ -745,7 +800,7 @@ class StageTwoViewModelTest {
         viewModel.updateFortuneObservationDate("2001-01-01")
         viewModel.selectDetailSection(CaseDetailSection.BASIC_INFO)
         viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
-        assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
+        assertEquals("2001-01-01", viewModel.state.value.fortuneObservationDate)
         assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
 
         viewModel.openDetailFromList(historicalCase.id)
@@ -1564,9 +1619,40 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `重复候选原位提示且明确确认后才保存`() = runTest {
+    fun `重复候选保留在已生成命盘中且确认保存不重复排盘`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["existing"] = sampleStoredCase("existing")
+        }
+        val engine = RecordingEngine()
+        val viewModel = createViewModel(repository, engine = engine)
+        viewModel.openCreate()
+        viewModel.updateForm { validForm() }
+
+        viewModel.submitCase()
+
+        assertEquals(AppDestination.CaseDetail("pending-manual-save"), viewModel.state.value.destination)
+        assertTrue(viewModel.state.value.detailIsTransient)
+        assertFalse(viewModel.state.value.detailSavePending)
+        assertEquals(1, viewModel.state.value.duplicateCandidates.size)
+        assertEquals(
+            "发现疑似重复命例。请核对后决定是否仍保留两份。",
+            viewModel.state.value.detailSaveError,
+        )
+        assertEquals(setOf("existing"), repository.stored.keys)
+        assertEquals(1, engine.calls)
+
+        viewModel.retryPreparedCaseSave(allowDuplicate = true)
+
+        assertTrue(viewModel.state.value.destination is AppDestination.CaseDetail)
+        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
+        assertEquals(2, repository.stored.size)
+        assertEquals(1, engine.calls)
+    }
+
+    @Test
+    fun `暂时写库失败不把用户送回案例录入且可原位重试`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            saveFailure = IllegalStateException("test storage unavailable")
         }
         val viewModel = createViewModel(repository)
         viewModel.openCreate()
@@ -1574,15 +1660,22 @@ class StageTwoViewModelTest {
 
         viewModel.submitCase()
 
-        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
-        assertEquals(1, viewModel.state.value.duplicateCandidates.size)
-        assertEquals(setOf("existing"), repository.stored.keys)
+        assertEquals(AppDestination.CaseDetail("pending-manual-save"), viewModel.state.value.destination)
+        assertTrue(viewModel.state.value.detailIsTransient)
+        assertFalse(viewModel.state.value.detailSavePending)
+        assertEquals(
+            "命例未保存，数据库暂时不可用。请稍后重试；原始输入仍保留在当前页面。",
+            viewModel.state.value.detailSaveError,
+        )
+        assertTrue(repository.stored.isEmpty())
 
-        viewModel.submitCase(allowDuplicate = true)
+        repository.saveFailure = null
+        viewModel.retryPreparedCaseSave()
 
         assertTrue(viewModel.state.value.destination is AppDestination.CaseDetail)
-        assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
-        assertEquals(2, repository.stored.size)
+        assertFalse(viewModel.state.value.detailIsTransient)
+        assertNull(viewModel.state.value.detailSaveError)
+        assertEquals(1, repository.stored.size)
     }
 
     @Test
@@ -2057,40 +2150,73 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `专业细盘反复切换复用默认定位结果且不重新计算`() = runTest {
+    fun `四个详情标签往返保留已完成的专业细盘且不重新生成`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-fortune-cache"] = sampleStoredCase("case-fortune-cache")
         }
-        var resolveCount = 0
-        val resolver = FortunePositionResolver { result, observedAt ->
-            resolveCount += 1
-            FortunePosition(
-                observedAt = observedAt,
-                annualFortune = AnnualFortune(
-                    name = "丙午年",
-                    calendarYear = observedAt.year,
-                    nominalAge = observedAt.year - 1999,
-                    decadeIndex = 0,
-                    decadeName = result.decadeFortunes.first().name,
-                ),
-                decadeFortune = result.decadeFortunes.first(),
-                status = FortunePositionStatus.WITHIN_DECADE,
-            )
+        var professionalResolveCount = 0
+        val resolver = object : com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver {
+            override fun locate(
+                result: com.nanzhufeng.nanfengbazi.domain.model.CalculationResult,
+                observedAt: com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime,
+            ): com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition {
+                professionalResolveCount += 1
+                return com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition(
+                    position = FortunePosition(
+                        observedAt = observedAt,
+                        annualFortune = AnnualFortune(
+                            name = "丙午年",
+                            calendarYear = observedAt.year,
+                            nominalAge = observedAt.year - 1999,
+                            decadeIndex = 0,
+                            decadeName = result.decadeFortunes.first().name,
+                        ),
+                        decadeFortune = result.decadeFortunes.first(),
+                        status = FortunePositionStatus.WITHIN_DECADE,
+                    ),
+                    flowPillars = com.nanzhufeng.nanfengbazi.domain.model.FourPillars(
+                        "丙午", "乙未", "甲午", "丙子",
+                    ),
+                    previousSolarTerm = com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint(
+                        name = "小暑",
+                        type = com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.JIE,
+                        at = observedAt,
+                    ),
+                    nextSolarTerm = com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint(
+                        name = "立秋",
+                        type = com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.JIE,
+                        at = observedAt,
+                    ),
+                    observationTimeMode = com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode.CIVIL_TIME,
+                    profileId = result.profile.id,
+                    ruleVersion = result.profile.ruleVersion,
+                )
+            }
+
+            override fun select(
+                result: com.nanzhufeng.nanfengbazi.domain.model.CalculationResult,
+                current: com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition,
+                selection: com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection,
+            ) = current
         }
         val viewModel = createViewModel(
             repository = repository,
-            fortunePositionResolver = resolver,
+            professionalFortuneResolver = resolver,
         )
 
         viewModel.openDetailFromList("case-fortune-cache")
-        assertEquals(1, resolveCount)
-        assertNotNull(viewModel.state.value.fortunePosition)
+        val completedPosition = requireNotNull(viewModel.state.value.professionalFortunePosition)
+        assertEquals(1, professionalResolveCount)
+        assertFalse(viewModel.state.value.fortunePositionLoading)
 
         viewModel.selectDetailSection(CaseDetailSection.BASIC_INFO)
+        viewModel.selectDetailSection(CaseDetailSection.BASIC_CHART)
+        viewModel.selectDetailSection(CaseDetailSection.RECORDS)
         viewModel.selectDetailSection(CaseDetailSection.FORTUNE)
 
-        assertEquals(1, resolveCount)
-        assertNotNull(viewModel.state.value.fortunePosition)
+        assertEquals(1, professionalResolveCount)
+        assertTrue(completedPosition === viewModel.state.value.professionalFortunePosition)
+        assertFalse(viewModel.state.value.fortunePositionLoading)
         assertEquals("2026-07-30", viewModel.state.value.fortuneObservationDate)
         assertEquals("08:00", viewModel.state.value.fortuneObservationTime)
     }
@@ -2556,6 +2682,8 @@ class StageTwoViewModelTest {
         backupRoot: Path? = null,
         engine: BaziEngine = RecordingEngine(),
         fortunePositionResolver: FortunePositionResolver? = null,
+        professionalFortuneResolver:
+            com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
         almanacReader: AlmanacReader? = null,
         calculationPreferenceStore: CalculationPreferenceStore =
@@ -2611,6 +2739,7 @@ class StageTwoViewModelTest {
             clock = fixedClock,
             observationClock = fixedClock,
             fortunePositionResolver = fortunePositionResolver,
+            professionalFortuneResolver = professionalFortuneResolver,
             fourPillarsLookup = fourPillarsLookup,
             almanacReader = almanacReader,
             singleCaseExchange = SingleCaseExchangeService(

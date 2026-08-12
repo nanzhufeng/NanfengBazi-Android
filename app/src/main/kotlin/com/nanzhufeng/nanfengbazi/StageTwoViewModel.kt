@@ -491,6 +491,12 @@ data class StageTwoUiState(
     val detail: BaziCase? = null,
     val detailIsTransient: Boolean = false,
     val detailSavePending: Boolean = false,
+    /**
+     * Saving starts after the chart is already visible.  A later duplicate or storage result
+     * belongs to that same chart and must never force the user back to the entry page.
+     */
+    val detailSaveError: String? = null,
+    val detailSaveDialogVisible: Boolean = false,
     val detailSection: CaseDetailSection = CaseDetailSection.BASIC_INFO,
     val fortuneObservationDate: String = "",
     val fortuneObservationTime: String = "12:00",
@@ -578,6 +584,14 @@ data class StageTwoUiState(
 private data class RetainedCaseDetailSnapshot(
     val case: BaziCase,
     val notes: CaseNotesDraft,
+    val professionalObservation: ProfessionalObservationSeed? = null,
+)
+
+private data class PreparedCaseSaveAttempt(
+    val pendingCase: BaziCase,
+    val form: CaseFormState,
+    val preview: PreviewCaseResult.Calculated,
+    val allowDuplicate: Boolean,
 )
 
 private sealed interface PendingSingleCaseBundleCommit {
@@ -615,6 +629,7 @@ private data class FortunePositionCacheValue(
 )
 
 private data class ProfessionalObservationSeed(
+    val calculationSnapshotId: String?,
     val observedAt: CivilDateTime,
     val cached: FortunePositionCacheValue?,
 )
@@ -667,9 +682,9 @@ class StageTwoViewModel(
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     restoredUiStateOverride: StageTwoUiState? = null,
 ) : ViewModel() {
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val fortunePrefetchDispatcher: CoroutineDispatcher =
-        ioDispatcher.limitedParallelism(1)
+    // Timeline speculation and the selected case share one calculation lane. This keeps
+    // cancellation/priority deterministic and avoids wrapping an injected dispatcher again.
+    private val fortunePrefetchDispatcher: CoroutineDispatcher = fortuneCalculationDispatcher
     private val restoredStateBundle = savedStateHandle.get<Bundle>(SAVED_UI_STATE_KEY)
     private val mutableState = MutableStateFlow(
         restoredUiStateOverride ?: restoredStateBundle?.toStageTwoUiState() ?: run {
@@ -718,6 +733,7 @@ class StageTwoViewModel(
     private var fortunePrefetchJob: Job? = null
     private var fortunePositionRequestId: Long = 0
     private var saveCaseJob: Job? = null
+    private var preparedCaseSaveAttempt: PreparedCaseSaveAttempt? = null
     private var almanacRequestId: Long = 0
     private var pendingAlmanacQuery: AlmanacMonthQuery? = null
     private var birthPickerTodayJob: Job? = null
@@ -732,14 +748,29 @@ class StageTwoViewModel(
     private var pendingWenzhenImport: WenzhenWebImportPackage? = null
     private val wenzhenImporter = WenzhenWebImporter(caseRepository, baziEngine, clock)
 
-    private fun retainCaseDetail(case: BaziCase) {
+    private fun retainCaseDetail(
+        case: BaziCase,
+        professionalObservation: ProfessionalObservationSeed? = null,
+    ) {
         synchronized(retainedCaseDetails) {
+            val previous = retainedCaseDetails[case.id]
+            val adoptedSnapshotId = case.calculationSnapshots
+                .asReversed()
+                .firstOrNull { it.adopted }
+                ?.id
+            val reusableObservation = previous
+                ?.professionalObservation
+                ?.takeIf { it.calculationSnapshotId == adoptedSnapshotId }
             retainedCaseDetails[case.id] = RetainedCaseDetailSnapshot(
                 case = case,
                 notes = case.toCaseNotesDraft(),
+                professionalObservation = professionalObservation ?: reusableObservation,
             )
         }
     }
+
+    private fun retainedCaseDetailSnapshot(caseId: String): RetainedCaseDetailSnapshot? =
+        synchronized(retainedCaseDetails) { retainedCaseDetails[caseId] }
 
     private fun retainedCaseDetail(caseId: String): BaziCase? =
         synchronized(retainedCaseDetails) { retainedCaseDetails[caseId]?.case }
@@ -747,21 +778,42 @@ class StageTwoViewModel(
     private fun retainedCaseNotes(caseId: String): CaseNotesDraft? =
         synchronized(retainedCaseDetails) { retainedCaseDetails[caseId]?.notes }
 
+    private fun retainedProfessionalObservation(
+        case: BaziCase,
+    ): ProfessionalObservationSeed? {
+        val snapshot = retainedCaseDetailSnapshot(case.id) ?: return null
+        val adoptedSnapshotId = case.calculationSnapshots
+            .asReversed()
+            .firstOrNull { it.adopted }
+            ?.id
+        val expectedObservedAt = case.defaultProfessionalObservation(
+            now = LocalDateTime.now(observationClock),
+        ).copy(second = 0)
+        return snapshot.professionalObservation?.takeIf { seed ->
+            seed.calculationSnapshotId == adoptedSnapshotId &&
+                seed.observedAt == expectedObservedAt &&
+                seed.cached?.professionalPosition != null
+        }
+    }
+
     private fun activeDetailPrefetchJob(caseId: String): Job? =
         synchronized(detailPrefetchJobs) { detailPrefetchJobs[caseId] }
 
     fun prefetchCaseDetail(caseId: String) {
-        if (retainedCaseDetail(caseId) != null || activeDetailPrefetchJob(caseId) != null) return
+        val retained = retainedCaseDetail(caseId)
+        if (
+            activeDetailPrefetchJob(caseId) != null ||
+            (retained != null && retainedProfessionalObservation(retained) != null)
+        ) return
         lateinit var prefetchJob: Job
         prefetchJob = viewModelScope.launch(ioDispatcher, start = CoroutineStart.LAZY) {
             try {
                 val detail = caseRepository.findById(caseId) ?: return@launch
                 retainCaseDetail(detail)
-                // The full detail is now available for an immediate tap. Professional
-                // positioning continues independently and never delays the list itself.
-                viewModelScope.launch {
-                    prewarmProfessionalFortune(detail)
-                }
+                // Read + professional positioning are one tracked prefetch transaction.
+                // A cache entry is considered ready only after the complete screen seed exists.
+                val observation = prewarmProfessionalFortune(detail)
+                retainCaseDetail(detail, observation)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -775,7 +827,12 @@ class StageTwoViewModel(
             }
         }
         val shouldStart = synchronized(detailPrefetchJobs) {
-            if (detailPrefetchJobs.containsKey(caseId) || retainedCaseDetail(caseId) != null) {
+            val currentRetained = retainedCaseDetail(caseId)
+            if (
+                detailPrefetchJobs.containsKey(caseId) ||
+                (currentRetained != null &&
+                    retainedProfessionalObservation(currentRetained) != null)
+            ) {
                 false
             } else {
                 while (detailPrefetchJobs.size >= RETAINED_DETAIL_CACHE_SIZE) {
@@ -3766,6 +3823,7 @@ class StageTwoViewModel(
                         createdAt = now,
                         updatedAt = now,
                     )
+                    val initialObservation = prewarmProfessionalFortune(previewCase)
                     mutableState.update {
                         it.copy(
                             destination = navigator.openDetail(caseId),
@@ -3778,14 +3836,26 @@ class StageTwoViewModel(
                             caseNotesHydrating = false,
                             detailIsTransient = true,
                             detailSection = CaseDetailSection.FORTUNE,
+                            fortuneObservationDate = "%04d-%02d-%02d".format(
+                                initialObservation.observedAt.year,
+                                initialObservation.observedAt.month,
+                                initialObservation.observedAt.day,
+                            ),
+                            fortuneObservationTime = "%02d:%02d".format(
+                                initialObservation.observedAt.hour,
+                                initialObservation.observedAt.minute,
+                            ),
+                            fortunePosition = initialObservation.cached?.position,
+                            professionalFortunePosition =
+                                initialObservation.cached?.professionalPosition,
+                            fortunePositionError = null,
+                            fortunePositionLoading = initialObservation.cached == null,
                             detailLoading = false,
                             detailError = null,
                             instantCalculation = result.calculation,
                             message = "即时排盘仅供查看，未保存到案例库。",
                         )
                     }
-                    resetProfessionalObservation(previewCase)
-                    resolveFortunePosition()
                 }
                 is PreviewCaseResult.ValidationFailed -> mutableState.update {
                     it.copy(
@@ -4260,6 +4330,7 @@ class StageTwoViewModel(
                         libraryType = form.libraryType,
                         now = clock.instant(),
                     )
+                    val initialObservation = prewarmProfessionalFortune(previewCase)
                     mutableState.update {
                         if (it.form == form && it.destination == AppDestination.CreateCase) {
                             it.copy(
@@ -4274,6 +4345,20 @@ class StageTwoViewModel(
                                 caseNotesHydrating = false,
                                 detailIsTransient = true,
                                 detailSection = CaseDetailSection.FORTUNE,
+                                fortuneObservationDate = "%04d-%02d-%02d".format(
+                                    initialObservation.observedAt.year,
+                                    initialObservation.observedAt.month,
+                                    initialObservation.observedAt.day,
+                                ),
+                                fortuneObservationTime = "%02d:%02d".format(
+                                    initialObservation.observedAt.hour,
+                                    initialObservation.observedAt.minute,
+                                ),
+                                fortunePosition = initialObservation.cached?.position,
+                                professionalFortunePosition =
+                                    initialObservation.cached?.professionalPosition,
+                                fortunePositionError = null,
+                                fortunePositionLoading = initialObservation.cached == null,
                                 detailLoading = false,
                                 detailError = null,
                                 message = "即时排盘仅供查看，未保存到案例库。",
@@ -4281,10 +4366,6 @@ class StageTwoViewModel(
                         } else {
                             it.copy(previewing = false)
                         }
-                    }
-                    if (mutableState.value.detail?.id == previewCase.id) {
-                        resetProfessionalObservation(previewCase)
-                        resolveFortunePosition()
                     }
                 }
                 is PreviewCaseResult.ValidationFailed -> mutableState.update {
@@ -4337,10 +4418,17 @@ class StageTwoViewModel(
                         libraryType = form.libraryType,
                         now = clock.instant(),
                     )
+                    val saveAttempt = PreparedCaseSaveAttempt(
+                        pendingCase = pendingCase,
+                        form = form,
+                        preview = preview,
+                        allowDuplicate = allowDuplicate,
+                    )
+                    preparedCaseSaveAttempt = saveAttempt
                     // The chart is already calculated at this point. Prepare the first
                     // professional position before navigation, then let duplicate checks
                     // and database persistence continue behind the detail screen.
-                    prewarmProfessionalFortune(pendingCase)
+                    val initialObservation = prewarmProfessionalFortune(pendingCase)
                     mutableState.update {
                         if (it.form == form && it.destination == AppDestination.CreateCase) {
                             it.copy(
@@ -4356,7 +4444,23 @@ class StageTwoViewModel(
                                 caseNotesHydrating = false,
                                 detailIsTransient = true,
                                 detailSavePending = true,
+                                detailSaveError = null,
+                                detailSaveDialogVisible = false,
                                 detailSection = CaseDetailSection.FORTUNE,
+                                fortuneObservationDate = "%04d-%02d-%02d".format(
+                                    initialObservation.observedAt.year,
+                                    initialObservation.observedAt.month,
+                                    initialObservation.observedAt.day,
+                                ),
+                                fortuneObservationTime = "%02d:%02d".format(
+                                    initialObservation.observedAt.hour,
+                                    initialObservation.observedAt.minute,
+                                ),
+                                fortunePosition = initialObservation.cached?.position,
+                                professionalFortunePosition =
+                                    initialObservation.cached?.professionalPosition,
+                                fortunePositionError = null,
+                                fortunePositionLoading = initialObservation.cached == null,
                                 detailLoading = false,
                                 detailError = null,
                                 message = null,
@@ -4366,13 +4470,11 @@ class StageTwoViewModel(
                         }
                     }
                     if (mutableState.value.detail?.id == pendingCase.id) {
-                        resetProfessionalObservation(pendingCase)
-                        resolveFortunePosition()
                         saveCaseJob = viewModelScope.launch {
                             val result = withContext(ioDispatcher) {
                                 createCase.savePrepared(form, preview, allowDuplicate)
                             }
-                            finishPreparedCaseSave(pendingCase, form, result)
+                            finishPreparedCaseSave(saveAttempt, result)
                         }
                     }
                 }
@@ -4401,14 +4503,16 @@ class StageTwoViewModel(
     }
 
     private suspend fun finishPreparedCaseSave(
-        pendingCase: BaziCase,
-        form: CaseFormState,
+        attempt: PreparedCaseSaveAttempt,
         result: CreateCaseResult,
     ) {
+        val pendingCase = attempt.pendingCase
+        val form = attempt.form
         when (result) {
             is CreateCaseResult.Created -> {
+                preparedCaseSaveAttempt = null
                 retainCaseDetail(result.case)
-                prewarmProfessionalFortune(result.case)
+                val savedObservation = prewarmProfessionalFortune(result.case)
                 updateCachedCaseCatalog { catalog ->
                     catalog.filterNot { it.id == result.caseId } + result.case.toCaseSummary()
                 }
@@ -4459,10 +4563,45 @@ class StageTwoViewModel(
                         caseNotesHydrating = false,
                         detailIsTransient = if (shouldOpenSavedCase) false else it.detailIsTransient,
                         detailSavePending = false,
+                        detailSaveError = null,
+                        detailSaveDialogVisible = false,
                         detailSection = if (shouldOpenSavedCase) {
                             CaseDetailSection.FORTUNE
                         } else {
                             it.detailSection
+                        },
+                        fortuneObservationDate = if (shouldOpenSavedCase) {
+                            "%04d-%02d-%02d".format(
+                                savedObservation.observedAt.year,
+                                savedObservation.observedAt.month,
+                                savedObservation.observedAt.day,
+                            )
+                        } else {
+                            it.fortuneObservationDate
+                        },
+                        fortuneObservationTime = if (shouldOpenSavedCase) {
+                            "%02d:%02d".format(
+                                savedObservation.observedAt.hour,
+                                savedObservation.observedAt.minute,
+                            )
+                        } else {
+                            it.fortuneObservationTime
+                        },
+                        fortunePosition = if (shouldOpenSavedCase) {
+                            savedObservation.cached?.position
+                        } else {
+                            it.fortunePosition
+                        },
+                        professionalFortunePosition = if (shouldOpenSavedCase) {
+                            savedObservation.cached?.professionalPosition
+                        } else {
+                            it.professionalFortunePosition
+                        },
+                        fortunePositionError = if (shouldOpenSavedCase) null else it.fortunePositionError,
+                        fortunePositionLoading = if (shouldOpenSavedCase) {
+                            savedObservation.cached == null
+                        } else {
+                            it.fortunePositionLoading
                         },
                         detailLoading = false,
                         detailError = null,
@@ -4471,68 +4610,56 @@ class StageTwoViewModel(
                 }
                 refreshCasesFromCache()
             }
-            else -> returnPendingSaveToForm(pendingCase, result)
+            else -> showPreparedCaseSaveFailure(attempt, result)
         }
     }
 
-    private fun returnPendingSaveToForm(
-        pendingCase: BaziCase,
+    private fun showPreparedCaseSaveFailure(
+        attempt: PreparedCaseSaveAttempt,
         result: CreateCaseResult,
     ) {
-        val showingPendingDetail = mutableState.value.detail?.id == pendingCase.id
-        val destination = if (showingPendingDetail) navigator.back() else mutableState.value.destination
         mutableState.update {
+            val showingPendingDetail =
+                it.destination == AppDestination.CaseDetail(attempt.pendingCase.id) &&
+                    it.detail?.id == attempt.pendingCase.id &&
+                    it.detailIsTransient
+            if (!showingPendingDetail) return@update it.copy(saving = false)
             when (result) {
                 is CreateCaseResult.ValidationFailed -> it.copy(
-                    destination = destination,
                     saving = false,
-                    detail = if (showingPendingDetail) null else it.detail,
-                    detailIsTransient = false,
+                    detailSaveError = result.message,
+                    detailSaveDialogVisible = true,
                     detailSavePending = false,
                     detailLoading = false,
-                    instantCalculation = null,
-                    formError = result.message,
                 )
                 is CreateCaseResult.DuplicateCandidates -> it.copy(
-                    destination = destination,
                     saving = false,
-                    detail = if (showingPendingDetail) null else it.detail,
-                    detailIsTransient = false,
+                    detailSaveError = "发现疑似重复命例。请核对后决定是否仍保留两份。",
+                    detailSaveDialogVisible = true,
                     detailSavePending = false,
                     detailLoading = false,
-                    instantCalculation = null,
                     duplicateCandidates = result.candidates,
-                    formError = "发现疑似重复命例。请先核对；确认仍需保留两份时可继续保存。",
                 )
                 is CreateCaseResult.AlreadyExists -> it.copy(
-                    destination = destination,
                     saving = false,
-                    detail = if (showingPendingDetail) null else it.detail,
-                    detailIsTransient = false,
+                    detailSaveError = "保存冲突：该命例已经存在，未覆盖原记录。",
+                    detailSaveDialogVisible = true,
                     detailSavePending = false,
                     detailLoading = false,
-                    instantCalculation = null,
-                    formError = "保存冲突：该命例已经存在，未覆盖原记录。",
                 )
                 is CreateCaseResult.RevisionConflict -> it.copy(
-                    destination = destination,
                     saving = false,
-                    detail = if (showingPendingDetail) null else it.detail,
-                    detailIsTransient = false,
+                    detailSaveError = "保存冲突：命例已被更新，未覆盖较新的记录。",
+                    detailSaveDialogVisible = true,
                     detailSavePending = false,
                     detailLoading = false,
-                    instantCalculation = null,
-                    formError = "保存冲突：命例已被更新，未覆盖较新的记录。",
                 )
                 is CreateCaseResult.StorageFailed -> it.copy(
-                    destination = destination,
                     saving = false,
-                    detail = if (showingPendingDetail) null else it.detail,
-                    detailIsTransient = false,
+                    detailSaveError = result.message,
+                    detailSaveDialogVisible = true,
                     detailSavePending = false,
                     detailLoading = false,
-                    instantCalculation = null,
-                    formError = result.message,
                 )
                 is CreateCaseResult.TimeZoneChoiceRequired,
                 is CreateCaseResult.CalculationFailed,
@@ -4542,19 +4669,111 @@ class StageTwoViewModel(
         }
     }
 
+    fun retryPreparedCaseSave(allowDuplicate: Boolean = false) {
+        if (mutableState.value.saving || mutableState.value.detailSavePending) return
+        val attempt = preparedCaseSaveAttempt ?: return
+        if (
+            mutableState.value.destination != AppDestination.CaseDetail(attempt.pendingCase.id) ||
+            mutableState.value.detail?.id != attempt.pendingCase.id ||
+            !mutableState.value.detailIsTransient
+        ) return
+        val retry = attempt.copy(allowDuplicate = allowDuplicate)
+        preparedCaseSaveAttempt = retry
+        mutableState.update {
+            it.copy(
+                saving = true,
+                detailSavePending = true,
+                detailSaveError = null,
+                detailSaveDialogVisible = false,
+                duplicateCandidates = emptyList(),
+            )
+        }
+        saveCaseJob = viewModelScope.launch {
+            val result = withContext(ioDispatcher) {
+                createCase.savePrepared(retry.form, retry.preview, retry.allowDuplicate)
+            }
+            finishPreparedCaseSave(retry, result)
+        }
+    }
+
+    fun returnToPreparedCaseForm() {
+        val attempt = preparedCaseSaveAttempt ?: return
+        val current = mutableState.value
+        if (
+            current.destination != AppDestination.CaseDetail(attempt.pendingCase.id) ||
+            current.detail?.id != attempt.pendingCase.id ||
+            !current.detailIsTransient ||
+            current.detailSavePending
+        ) return
+        preparedCaseSaveAttempt = null
+        fortunePositionJob?.cancel()
+        fortunePrefetchJob?.cancel()
+        fortunePositionRequestId += 1
+        mutableState.update {
+            it.copy(
+                destination = navigator.back(),
+                detail = null,
+                detailIsTransient = false,
+                detailSavePending = false,
+                detailSaveError = null,
+                detailSaveDialogVisible = false,
+                detailLoading = false,
+                saving = false,
+                instantCalculation = null,
+                fortunePosition = null,
+                professionalFortunePosition = null,
+                fortunePositionError = null,
+            )
+        }
+    }
+
+    fun dismissPreparedSaveDialog() {
+        mutableState.update {
+            if (!it.detailIsTransient || it.detailSaveError == null) it else {
+                it.copy(detailSaveDialogVisible = false)
+            }
+        }
+    }
+
+    fun showPreparedSaveDialog() {
+        mutableState.update {
+            if (!it.detailIsTransient || it.detailSaveError == null) it else {
+                it.copy(detailSaveDialogVisible = true)
+            }
+        }
+    }
+
     fun openDetail(caseId: String) {
         openDetail(caseId, CaseDetailSection.BASIC_INFO)
     }
 
     fun openDetailFromList(caseId: String) {
-        // Navigation is the user's foreground action. Detail refresh, viewed-at writes,
-        // and professional positioning must never hold the list on screen.
+        // Navigation is foreground work and must never wait behind Room or fortune
+        // calculations. Cancel unrelated speculative work so the selected case owns the
+        // calculation lane, then enter immediately and adopt its tracked prefetch snapshot.
+        val obsoletePrefetches = synchronized(detailPrefetchJobs) {
+            detailPrefetchJobs
+                .filterKeys { it != caseId }
+                .values
+                .also { jobs ->
+                    detailPrefetchJobs.keys.retainAll(setOf(caseId))
+                }
+        }
+        obsoletePrefetches.forEach(Job::cancel)
         openDetail(caseId, CaseDetailSection.FORTUNE)
     }
 
-    private suspend fun prewarmProfessionalFortune(detail: BaziCase) {
+    private suspend fun prewarmProfessionalFortune(
+        detail: BaziCase,
+    ): ProfessionalObservationSeed {
         val snapshot = detail.calculationSnapshots.asReversed().firstOrNull { it.adopted }
-            ?: return
+            ?: return ProfessionalObservationSeed(
+                calculationSnapshotId = null,
+                observedAt = detail.defaultProfessionalObservation(
+                    now = LocalDateTime.now(observationClock),
+                ).copy(second = 0),
+                cached = null,
+            )
         val observedAt = detail.defaultProfessionalObservation(
             now = LocalDateTime.now(observationClock),
         ).copy(second = 0)
@@ -4563,7 +4782,11 @@ class StageTwoViewModel(
             calculationSnapshotId = snapshot.id,
             observedAt = observedAt,
         )
-        if (cachedFortunePosition(cacheKey)?.professionalPosition != null) return
+        cachedFortunePosition(cacheKey)?.let { cached ->
+            if (cached.professionalPosition != null) {
+                return ProfessionalObservationSeed(snapshot.id, observedAt, cached)
+            }
+        }
         val resolved = try {
             withTimeout(FORTUNE_POSITION_TIMEOUT_MILLIS) {
                 withContext(fortuneCalculationDispatcher) {
@@ -4583,6 +4806,11 @@ class StageTwoViewModel(
                 FortunePositionCacheValue(basic, professional),
             )
         }
+        return ProfessionalObservationSeed(
+            calculationSnapshotId = snapshot.id,
+            observedAt = observedAt,
+            cached = cachedFortunePosition(cacheKey),
+        )
     }
 
     private fun openDetail(caseId: String, initialSection: CaseDetailSection) {
@@ -4594,9 +4822,14 @@ class StageTwoViewModel(
         }
         val retainedDetail = retainedCaseDetail(caseId)
         val retainedNotesDraft = retainedCaseNotes(caseId)
-        val retainedObservation = retainedDetail
-            ?.takeIf { initialSection == CaseDetailSection.FORTUNE }
-            ?.let(::professionalObservationSeed)
+        val targetPrefetchJob = activeDetailPrefetchJob(caseId)
+        // Opening a case establishes its single default observation context before any of
+        // the four pages can ask for a fortune result.  It must not depend on which tab is
+        // initially visible, otherwise Basic chart -> Professional chart starts from a stale
+        // form default and invites a second visible refresh.
+        val retainedObservation = retainedDetail?.let { detail ->
+            retainedProfessionalObservation(detail) ?: professionalObservationSeed(detail)
+        }
         mutableState.update {
             val preserveUnsavedDraft = retainedDetail != null &&
                 it.caseNotesCaseId == caseId &&
@@ -4635,11 +4868,10 @@ class StageTwoViewModel(
                 fortunePosition = retainedObservation?.cached?.position,
                 professionalFortunePosition = retainedObservation?.cached?.professionalPosition,
                 fortunePositionError = null,
-                fortunePositionLoading = when (initialSection) {
-                    CaseDetailSection.FORTUNE -> retainedObservation?.cached == null
-                    CaseDetailSection.BASIC_CHART -> true
-                    else -> false
-                },
+                fortunePositionLoading = initialSection in setOf(
+                    CaseDetailSection.BASIC_CHART,
+                    CaseDetailSection.FORTUNE,
+                ) && retainedObservation?.cached == null,
                 caseImageConfirmationMode = null,
                 caseImageBusy = false,
                 caseImageError = null,
@@ -4660,56 +4892,89 @@ class StageTwoViewModel(
             )
         }
         if (retainedDetail != null && initialSection == CaseDetailSection.FORTUNE) {
-            if (retainedObservation?.cached == null) resolveFortunePosition()
+            if (retainedObservation?.cached == null && targetPrefetchJob == null) {
+                resolveFortunePosition()
+            }
         }
         detailOpeningJob = viewModelScope.launch(ioDispatcher) {
             try {
-                if (retainedCaseDetail(caseId) == null) {
-                    activeDetailPrefetchJob(caseId)?.join()
-                }
-                val prefetchedDetail = retainedCaseDetail(caseId)
-                if (retainedDetail == null && prefetchedDetail != null) {
-                    val prefetchedObservation = if (initialSection == CaseDetailSection.FORTUNE) {
-                        professionalObservationSeed(prefetchedDetail)
-                    } else {
-                        null
-                    }
+                targetPrefetchJob?.join()
+                val prefetchedSnapshot = retainedCaseDetailSnapshot(caseId)
+                val prefetchedDetail = prefetchedSnapshot?.case
+                if (prefetchedDetail != null) {
+                    val prefetchedObservation = retainedProfessionalObservation(prefetchedDetail)
+                        ?: professionalObservationSeed(prefetchedDetail)
                     mutableState.update {
                         if (it.destination == AppDestination.CaseDetail(caseId)) {
                             val notesDraft = prefetchedDetail.toCaseNotesDraft()
+                            val adoptDetail = it.detail?.id != caseId
+                            val adoptObservation =
+                                prefetchedObservation.cached?.professionalPosition != null &&
+                                    it.professionalFortunePosition == null
                             it.copy(
-                                detail = prefetchedDetail,
+                                detail = if (adoptDetail) prefetchedDetail else it.detail,
                                 detailLoading = false,
                                 detailError = null,
                                 caseNotesCaseId = caseId,
                                 caseNotesRevision = prefetchedDetail.revision,
-                                caseNotesDraft = notesDraft,
-                                caseNotesSavedDraft = notesDraft,
-                                caseNotesHydrating = notesDraft.isEffectivelyEmpty(),
-                                fortuneObservationDate = prefetchedObservation?.observedAt?.let {
-                                    observedAt ->
+                                caseNotesDraft = if (adoptDetail) notesDraft else it.caseNotesDraft,
+                                caseNotesSavedDraft = if (adoptDetail) {
+                                    notesDraft
+                                } else {
+                                    it.caseNotesSavedDraft
+                                },
+                                caseNotesHydrating = if (adoptDetail) {
+                                    notesDraft.isEffectivelyEmpty()
+                                } else {
+                                    it.caseNotesHydrating
+                                },
+                                fortuneObservationDate = if (adoptObservation) {
+                                    prefetchedObservation.observedAt.let { observedAt ->
                                     "%04d-%02d-%02d".format(
                                         observedAt.year,
                                         observedAt.month,
                                         observedAt.day,
                                     )
-                                } ?: it.fortuneObservationDate,
-                                fortuneObservationTime = prefetchedObservation?.observedAt?.let {
-                                    observedAt ->
+                                    }
+                                } else {
+                                    it.fortuneObservationDate
+                                },
+                                fortuneObservationTime = if (adoptObservation) {
+                                    prefetchedObservation.observedAt.let { observedAt ->
                                     "%02d:%02d".format(observedAt.hour, observedAt.minute)
-                                } ?: it.fortuneObservationTime,
-                                fortunePosition = prefetchedObservation?.cached?.position,
-                                professionalFortunePosition =
-                                    prefetchedObservation?.cached?.professionalPosition,
+                                    }
+                                } else {
+                                    it.fortuneObservationTime
+                                },
+                                fortunePosition = if (adoptObservation) {
+                                    prefetchedObservation.cached?.position
+                                } else {
+                                    it.fortunePosition
+                                },
+                                professionalFortunePosition = if (adoptObservation) {
+                                    prefetchedObservation.cached?.professionalPosition
+                                } else {
+                                    it.professionalFortunePosition
+                                },
                                 fortunePositionLoading = initialSection == CaseDetailSection.FORTUNE &&
-                                    prefetchedObservation?.cached == null,
+                                    !adoptObservation &&
+                                    it.professionalFortunePosition == null,
                             )
                         } else {
                             it
                         }
                     }
-                    if (initialSection == CaseDetailSection.FORTUNE) {
-                        if (prefetchedObservation?.cached == null) resolveFortunePosition()
+                    if (initialSection in setOf(
+                            CaseDetailSection.BASIC_CHART,
+                            CaseDetailSection.FORTUNE,
+                        )
+                    ) {
+                        if (
+                            prefetchedObservation.cached == null &&
+                            fortunePositionJob?.isActive != true
+                        ) {
+                            resolveFortunePosition()
+                        }
                     }
                 }
                 // Retained/prefetched content is the fast first frame, not the source of
@@ -4743,9 +5008,7 @@ class StageTwoViewModel(
                     null
                 }
                 detail?.let(::retainCaseDetail)
-                val refreshedObservation = detail
-                    ?.takeIf { initialSection == CaseDetailSection.FORTUNE }
-                    ?.let(::professionalObservationSeed)
+                val refreshedObservation = detail?.let(::professionalObservationSeed)
                 mutableState.update {
                     if (it.destination != AppDestination.CaseDetail(caseId)) {
                         it
@@ -4755,20 +5018,27 @@ class StageTwoViewModel(
                             detailError = "未找到该命例，记录可能已被移除。",
                         )
                     } else {
+                        val currentDetail = it.detail
                         val sameRevision = it.detail?.let { currentDetail ->
                             currentDetail.id == detail.id &&
                                 currentDetail.revision == detail.revision &&
                                 currentDetail.updatedAt == detail.updatedAt &&
                                 currentDetail.deletedAt == detail.deletedAt
                         } == true
+                        val sameAggregateIgnoringViewedAt = currentDetail?.let { current ->
+                            current.id == detail.id &&
+                                current.copy(lastViewedAt = detail.lastViewedAt) == detail
+                        } == true
                         val notesDraft = detail.toCaseNotesDraft()
                         val preserveUnsavedDraft = it.caseNotesCaseId == caseId &&
                             it.caseNotesRevision == detail.revision &&
                             it.caseNotesDraft != it.caseNotesSavedDraft
                         it.copy(
-                            // Revision equality only covers the parent case row. Child
-                            // text/event rows can differ, so the fresh aggregate must win.
-                            detail = detail,
+                            // markViewed changes list metadata only. Replacing the complete
+                            // aggregate for that write caused the already-rendered detail page
+                            // to recompose and visibly jump. A genuine child/parent change still
+                            // replaces the aggregate; a lastViewedAt-only delta does not.
+                            detail = if (sameAggregateIgnoringViewedAt) currentDetail else detail,
                             detailLoading = false,
                             caseNotesCaseId = caseId,
                             caseNotesRevision = detail.revision,
@@ -4830,7 +5100,10 @@ class StageTwoViewModel(
                 ) {
                     if (
                         initialSection != CaseDetailSection.FORTUNE ||
-                        mutableState.value.professionalFortunePosition == null
+                        (
+                            mutableState.value.professionalFortunePosition == null &&
+                                fortunePositionJob?.isActive != true
+                        )
                     ) {
                         resolveFortunePosition()
                     }
@@ -5689,15 +5962,17 @@ class StageTwoViewModel(
 
     fun selectDetailSection(section: CaseDetailSection) {
         if (mutableState.value.detailSection == section) return
-        if (section == CaseDetailSection.FORTUNE) {
-            mutableState.value.detail?.let(::resetProfessionalObservation)
-        }
         mutableState.update {
             it.copy(detailSection = section)
         }
+        // A tab switch is presentation-only.  Resetting the professional observation here
+        // discarded an already rendered chart whenever the user returned from another tab,
+        // then re-entered the loading card while the same chart was calculated again.  The
+        // default observation is established only when a different case is opened (or when
+        // the user explicitly chooses a new time), never while moving among its four pages.
         if (
-            section == CaseDetailSection.FORTUNE ||
-            section == CaseDetailSection.BASIC_CHART
+            section == CaseDetailSection.BASIC_CHART &&
+            mutableState.value.fortunePosition == null
         ) {
             resolveFortunePosition()
         }
@@ -5815,9 +6090,10 @@ class StageTwoViewModel(
         val observedAt = case.defaultProfessionalObservation(
             now = LocalDateTime.now(observationClock),
         ).copy(second = 0)
-        val cached = case.calculationSnapshots
+        val adoptedSnapshot = case.calculationSnapshots
             .asReversed()
             .firstOrNull { it.adopted }
+        val cached = adoptedSnapshot
             ?.let { snapshot ->
                 cachedFortunePosition(
                     FortunePositionCacheKey(
@@ -5827,7 +6103,7 @@ class StageTwoViewModel(
                     ),
                 )
             }
-        return ProfessionalObservationSeed(observedAt, cached)
+        return ProfessionalObservationSeed(adoptedSnapshot?.id, observedAt, cached)
     }
 
     private fun resolveFortunePosition(
@@ -7262,6 +7538,7 @@ class StageTwoViewModel(
         if (mutableState.value.detailSavePending) {
             saveCaseJob?.cancel()
         }
+        preparedCaseSaveAttempt = null
         fortunePositionJob?.cancel()
         fortunePrefetchJob?.cancel()
         fortunePositionRequestId += 1
@@ -7271,6 +7548,8 @@ class StageTwoViewModel(
                 detail = null,
                 detailIsTransient = false,
                 detailSavePending = false,
+                detailSaveError = null,
+                detailSaveDialogVisible = false,
                 detailError = null,
                 detailLoading = false,
                 saving = false,
@@ -7288,12 +7567,15 @@ class StageTwoViewModel(
         if (mutableState.value.detailSavePending) {
             saveCaseJob?.cancel()
         }
+        preparedCaseSaveAttempt = null
         mutableState.update {
             it.copy(
                 destination = navigator.backToList(),
                 detail = null,
                 detailIsTransient = false,
                 detailSavePending = false,
+                detailSaveError = null,
+                detailSaveDialogVisible = false,
                 detailError = null,
                 formError = null,
                 saving = false,

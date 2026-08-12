@@ -16,6 +16,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -613,6 +615,10 @@ fun NanfengBaziApp(
                                     viewModel::updateCaseNotesTimelineContent,
                                 onSaveCaseNotes = viewModel::saveCaseNotes,
                                 onEnsureCaseNotesHydrated = viewModel::ensureCaseNotesHydrated,
+                                onRetryPreparedSave = viewModel::retryPreparedCaseSave,
+                                onReturnToPreparedSaveForm = viewModel::returnToPreparedCaseForm,
+                                onDismissPreparedSaveDialog = viewModel::dismissPreparedSaveDialog,
+                                onShowPreparedSaveDialog = viewModel::showPreparedSaveDialog,
                                 onDuplicate = viewModel::duplicateCase,
                                 onExportSingleCase = viewModel::requestSingleCaseExport,
                                 onOpenObjectiveSummary = viewModel::openObjectiveSummary,
@@ -8895,6 +8901,10 @@ private fun CaseDetailScreen(
     onNotesTimelineContentChange: (String, String) -> Unit,
     onSaveCaseNotes: () -> Unit,
     onEnsureCaseNotesHydrated: () -> Unit,
+    onRetryPreparedSave: (Boolean) -> Unit,
+    onReturnToPreparedSaveForm: () -> Unit,
+    onDismissPreparedSaveDialog: () -> Unit,
+    onShowPreparedSaveDialog: () -> Unit,
     onDuplicate: () -> Unit,
     onExportSingleCase: () -> Unit,
     onOpenObjectiveSummary: () -> Unit,
@@ -8911,6 +8921,71 @@ private fun CaseDetailScreen(
     onOpenAiCommentary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val pendingSaveNeedsDuplicateDecision =
+        state.detailIsTransient &&
+            !state.detailSavePending &&
+            state.detailSaveDialogVisible &&
+            state.duplicateCandidates.isNotEmpty()
+    val pendingSaveNeedsRetry =
+        state.detailIsTransient &&
+            !state.detailSavePending &&
+            state.detailSaveDialogVisible &&
+            state.detailSaveError != null &&
+            !pendingSaveNeedsDuplicateDecision
+    if (pendingSaveNeedsDuplicateDecision) {
+        AlertDialog(
+            onDismissRequest = onDismissPreparedSaveDialog,
+            title = { Text("发现疑似重复命例") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("命盘已生成，但尚未写入案例库。系统不会自动覆盖或合并已有命例。")
+                    state.duplicateCandidates.take(5).forEach { candidate ->
+                        Text(
+                            "• ${candidate.summary.alias}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    Text(
+                        "可返回修改出生资料，或确认仍保留两份。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onRetryPreparedSave(true) },
+                    modifier = Modifier.testTag("confirm_duplicate_save_from_detail"),
+                ) { Text("仍然保存") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = onReturnToPreparedSaveForm,
+                    modifier = Modifier.testTag("return_to_case_form_from_detail"),
+                ) { Text("返回修改") }
+            },
+        )
+    } else if (pendingSaveNeedsRetry) {
+        AlertDialog(
+            onDismissRequest = onDismissPreparedSaveDialog,
+            title = { Text("命例尚未保存") },
+            text = {
+                Text(requireNotNull(state.detailSaveError))
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onRetryPreparedSave(false) },
+                    modifier = Modifier.testTag("retry_prepared_case_save"),
+                ) { Text("重试保存") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = onReturnToPreparedSaveForm,
+                    modifier = Modifier.testTag("return_to_case_form_from_save_error"),
+                ) { Text("返回修改") }
+            },
+        )
+    }
     var managementMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var requestedDetailSection by remember(state.detail?.id) {
         mutableStateOf(state.detailSection)
@@ -8990,12 +9065,31 @@ private fun CaseDetailScreen(
             },
             actions = {
                 if (state.detailIsTransient) {
-                    Text(
-                        if (state.detailSavePending) "正在保存" else "未保存",
-                        modifier = Modifier.padding(end = 12.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    val label = when {
+                        state.detailSavePending -> "正在保存"
+                        state.detailSaveError != null -> "保存未完成"
+                        else -> "未保存"
+                    }
+                    val labelColor = if (state.detailSaveError != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    }
+                    if (state.detailSaveError != null) {
+                        TextButton(
+                            onClick = onShowPreparedSaveDialog,
+                            modifier = Modifier.testTag("open_prepared_case_save_action"),
+                        ) {
+                            Text(label, style = MaterialTheme.typography.labelLarge, color = labelColor)
+                        }
+                    } else {
+                        Text(
+                            label,
+                            modifier = Modifier.padding(end = 12.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = labelColor,
+                        )
+                    }
                 } else Box {
                     androidx.compose.material3.IconButton(
                         onClick = { managementMenuExpanded = true },
@@ -9272,15 +9366,18 @@ private fun WenzhenCaseIdentityHeader(
                 val solar = result?.calendarConversion?.solarDateTime
                 val lunar = result?.calendarConversion?.lunarDateTime
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(DetailIdentityHeaderHeight)
+                        .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     ZodiacIdentityBadge(
                         westernZodiac = westernZodiac,
                         iconRes = iconRes,
-                        size = 46.dp,
-                        iconSize = 17.dp,
+                        size = 50.dp,
+                        iconSize = 18.dp,
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -9334,8 +9431,10 @@ private fun WenzhenCaseIdentityHeader(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .height(DetailIdentityHeaderHeight)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                         .testTag("notes_identity_header"),
+                    verticalArrangement = Arrangement.Center,
                 ) {
                     val pillars = result?.fourPillars?.let {
                         listOf(it.year, it.month, it.day, it.hour)
@@ -9343,17 +9442,17 @@ private fun WenzhenCaseIdentityHeader(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(58.dp),
+                            .height(40.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             case.sexForFortuneDirection.chartTypeName(),
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .offset(x = (-122).dp)
+                                .offset(x = (-102).dp)
                                 .testTag("notes_identity_chart_type"),
                             color = NanfengGoldLight,
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
                         if (pillars.isEmpty()) {
@@ -9365,27 +9464,27 @@ private fun WenzhenCaseIdentityHeader(
                         } else {
                             Row(
                                 modifier = Modifier.testTag("notes_identity_four_pillars"),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 pillars.forEachIndexed { index, pillar ->
                                     Column(
-                                        modifier = Modifier.width(32.dp),
+                                        modifier = Modifier.width(28.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         Text(
                                             pillar.take(1),
                                             modifier = Modifier.testTag("notes_identity_stem_$index"),
                                             color = Color.White,
-                                            fontSize = 18.sp,
-                                            lineHeight = 22.sp,
+                                            fontSize = 16.sp,
+                                            lineHeight = 18.sp,
                                             fontWeight = FontWeight.Medium,
                                         )
                                         Text(
                                             pillar.drop(1).take(1),
                                             modifier = Modifier.testTag("notes_identity_branch_$index"),
                                             color = Color.White,
-                                            fontSize = 18.sp,
-                                            lineHeight = 22.sp,
+                                            fontSize = 16.sp,
+                                            lineHeight = 18.sp,
                                             fontWeight = FontWeight.Medium,
                                         )
                                     }
@@ -9394,7 +9493,7 @@ private fun WenzhenCaseIdentityHeader(
                         }
                     }
                     HorizontalDivider(
-                        modifier = Modifier.padding(top = 2.dp, bottom = 7.dp),
+                        modifier = Modifier.padding(top = 1.dp, bottom = 3.dp),
                         color = Color.White.copy(alpha = 0.12f),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -9403,6 +9502,7 @@ private fun WenzhenCaseIdentityHeader(
                             modifier = Modifier.width(34.dp),
                             color = NanfengGold,
                             fontSize = 10.sp,
+                            lineHeight = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
                         result?.decadeFortunes?.take(10)?.forEachIndexed { index, decade ->
@@ -9413,7 +9513,7 @@ private fun WenzhenCaseIdentityHeader(
                                     .testTag("notes_decade_$index"),
                                 color = Color.White,
                                 fontSize = 10.sp,
-                                lineHeight = 13.sp,
+                                lineHeight = 12.sp,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
                             )
@@ -9424,6 +9524,11 @@ private fun WenzhenCaseIdentityHeader(
         }
     }
 }
+
+// Basic chart, professional chart and notes are one detail-header family. 78dp preserves
+// the notes page's four pillars and decade rail at readable sizes while giving the two
+// chart pages enough vertical breathing room for the identity information.
+private val DetailIdentityHeaderHeight = 78.dp
 
 @Composable
 private fun ZodiacIdentityBadge(
@@ -10090,30 +10195,38 @@ private fun ReferenceCaseNotes(
             contentAlignment = Alignment.Center,
         ) {
             val switcherWidth = minOf(maxWidth * 0.82f, 330.dp)
-            val switcherShape = RoundedCornerShape(28.dp)
+            val switcherShape = RoundedCornerShape(18.dp)
             val switcherThemeColor = MaterialTheme.colorScheme.primary
             Box(
                 modifier = Modifier
                     .width(switcherWidth)
-                    .height(54.dp)
-                    .clip(switcherShape)
-                    .background(Color.White)
-                    // The outline is deliberately drawn before the segments: the active
-                    // color reaches the shared edge instead of becoming a small pill
-                    // floating inside a white frame.
-                    .drawWithContent {
-                        val stroke = 1.5.dp.toPx()
-                        drawRoundRect(
-                            color = switcherThemeColor,
-                            topLeft = Offset(stroke / 2f, stroke / 2f),
-                            size = Size(size.width - stroke, size.height - stroke),
-                            cornerRadius = CornerRadius(28.dp.toPx()),
-                            style = Stroke(width = stroke),
-                        )
-                        drawContent()
-                    }
-                    .testTag("notes_mode_switcher"),
+                    // The visible rail is intentionally compact, but the transparent
+                    // segment surfaces below retain a full 48dp touch target.
+                    .height(48.dp),
             ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .clip(switcherShape)
+                        .background(Color.White)
+                        // The outline is deliberately drawn before the segments: the active
+                        // color reaches the shared edge instead of becoming a small pill
+                        // floating inside a white frame.
+                        .drawWithContent {
+                            val stroke = 1.5.dp.toPx()
+                            drawRoundRect(
+                                color = switcherThemeColor,
+                                topLeft = Offset(stroke / 2f, stroke / 2f),
+                                size = Size(size.width - stroke, size.height - stroke),
+                                cornerRadius = CornerRadius(18.dp.toPx()),
+                                style = Stroke(width = stroke),
+                            )
+                            drawContent()
+                        }
+                        .testTag("notes_mode_switcher"),
+                )
                 Row(
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -10893,39 +11006,66 @@ private fun NotesModeTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (groupedPill) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val pressed by interactionSource.collectIsPressedAsState()
+        val visualShape = RoundedCornerShape(18.dp)
+        Box(
+            modifier = modifier
+                .fillMaxHeight()
+                // The outer layer is intentionally larger for touch. Its system indication
+                // is disabled because a rectangular ripple would not match the compact rail.
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    role = Role.Tab,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(visualShape)
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    ),
+            ) {
+                if (pressed) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Color.Black.copy(alpha = if (selected) 0.13f else 0.08f),
+                            ),
+                    )
+                }
+            }
+            Text(
+                text,
+                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+        return
+    }
     Surface(
         onClick = onClick,
-        modifier = if (groupedPill && selected) {
-            // The outer outline is drawn behind this surface.  Filling the full
-            // track lets an edge selection cover that outline cleanly, matching
-            // the reference segmented pill with no white seam or crossing edge.
-            modifier.fillMaxHeight().zIndex(1f)
-        } else if (groupedPill) {
-            modifier.fillMaxHeight()
-        } else {
-            modifier.height(48.dp)
-        },
-        color = when {
-            groupedPill && selected -> MaterialTheme.colorScheme.primary
-            groupedPill -> Color.Transparent
-            selected -> MaterialTheme.colorScheme.primary
-            else -> Color.Transparent
-        },
-        shape = when {
-            !groupedPill -> RoundedCornerShape(11.dp)
-            // Every selected segment is independently a pill.  The parent clips
-            // only its outside edge, so the active color can meet the outline
-            // without turning its inner edge into a right angle.
-            else -> RoundedCornerShape(24.dp)
-        },
+        modifier = modifier.height(48.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        shape = RoundedCornerShape(11.dp),
         shadowElevation = 0.dp,
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text,
                 color = when {
-                    groupedPill && selected -> Color.White
-                    groupedPill -> MaterialTheme.colorScheme.onSurfaceVariant
                     selected -> Color.White
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
@@ -12563,14 +12703,16 @@ private fun ProfessionalTextSections(
     stackLines: Boolean = false,
 ) {
     if (groups.isEmpty()) return
+    val themeBackground = LocalBaziSkinTokens.current.background
+    val themeText = LocalBaziSkinTokens.current.textPrimary
     Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(tag)) {
         Text(
             title,
-            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary)
+            modifier = Modifier.fillMaxWidth().background(themeBackground)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = themeText,
         )
         groups.forEachIndexed { groupIndex, group ->
             Row(
