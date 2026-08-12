@@ -695,6 +695,49 @@ class CaseManagementTest {
     }
 
     @Test
+    fun `切换编辑某个模型点评不会覆盖其他模型版本`() = runTest {
+        val deepSeek = CaseTextRecord(
+            id = "ai-deepseek",
+            type = CaseTextRecordType.ANALYSIS,
+            content = "${AI_COMMENTARY_MARKER}\n服务：DeepSeek\n模型：deepseek-v4-pro\n\nDeepSeek 原点评",
+            analysisCategory = AnalysisCategory.GENERAL,
+            sourceType = TextRecordSourceType.EXTERNAL_AI,
+            createdAt = FixedInstant,
+            updatedAt = FixedInstant,
+        )
+        val qwen = deepSeek.copy(
+            id = "ai-qwen",
+            content = "${AI_COMMENTARY_MARKER}\n服务：千问\n模型：qwen3.7-max\n\n千问原点评",
+        )
+        val repository = FakeCaseRepository().apply {
+            stored["case-ai-versions"] = sampleStoredCase("case-ai-versions").copy(
+                textRecords = listOf(deepSeek, qwen),
+            )
+        }
+        val useCase = CaseNotesEditorUseCase(
+            caseRepository = repository,
+            clock = fixedClock,
+            idGenerator = IdGenerator { error("编辑既有版本不应创建新记录") },
+        )
+
+        val result = useCase.save(
+            caseId = "case-ai-versions",
+            expectedRevision = 1,
+            draft = CaseNotesDraft(
+                aiCommentary = "千问修订后的点评",
+                aiCommentaryRecordId = qwen.id,
+            ),
+        )
+
+        assertEquals(CaseMutationResult.Saved("case-ai-versions", 2), result)
+        val records = repository.stored.getValue("case-ai-versions").textRecords.associateBy { it.id }
+        assertEquals("DeepSeek 原点评", records.getValue(deepSeek.id).aiCommentaryBody())
+        assertEquals("千问修订后的点评", records.getValue(qwen.id).aiCommentaryBody())
+        assertEquals("DeepSeek · V4 Pro", records.getValue(deepSeek.id).aiCommentaryVersionLabel())
+        assertEquals("千问 · 3.7 Max", records.getValue(qwen.id).aiCommentaryVersionLabel())
+    }
+
+    @Test
     fun `读取数据库异常不会被误报为记录不存在`() = runTest {
         val repository = FakeCaseRepository().apply {
             readFailure = IllegalStateException("database closed")

@@ -457,6 +457,36 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun aiCommentaryVersionsAreSelectableAndLongImageKeepsEveryModel() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val editor = source.substringAfter("private fun AiCommentaryEditor(")
+            .substringBefore("private fun AiCommentaryVersionSelector(")
+        val selector = source.substringAfter("private fun AiCommentaryVersionSelector(")
+            .substringBefore("private fun CaseNotesCommentaryHeader(")
+
+        assertTrue(editor.contains("versions.asReversed().forEach"))
+        assertTrue(editor.contains("ai_commentary_capture_"))
+        assertTrue(selector.contains("ai_commentary_version_selector"))
+        assertTrue(selector.contains("Surface("))
+        assertTrue(selector.contains("RoundedCornerShape(14.dp)"))
+        assertTrue(selector.contains("contentAlignment = Alignment.Center"))
+        assertTrue(selector.contains("textAlign = TextAlign.Center"))
+        assertTrue(selector.contains("widthIn(max = 156.dp)"))
+    }
+
+    @Test
+    fun notesFooterHidesRoutineAutosaveHintsButKeepsRealErrors() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val footer = source.substringAfter("private fun CaseNotesSaveFooter(")
+            .substringBefore("private fun CaseNotesTextEditor(")
+
+        assertTrue(footer.contains("if (saveError != null)"))
+        assertTrue(!footer.contains("已自动保存"))
+        assertTrue(!footer.contains("编辑中，将自动保存"))
+        assertTrue(!footer.contains("正在保存…"))
+    }
+
+    @Test
     fun compactNotesModePressFeedbackStaysInsideTheVisibleRail() {
         val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
         val tab = source.substringAfter("private fun NotesModeTab(")

@@ -1000,7 +1000,20 @@ data class CaseNotesDraft(
     val masterCommentary: String = "",
     val aiCommentary: String = "",
     val aiCommentaryRecordId: String? = null,
+    val aiCommentaryVersions: List<AiCommentaryVersion> = emptyList(),
     val timeline: List<CaseNotesTimelineDraft> = emptyList(),
+)
+
+/**
+ * 一份可切换查看的 AI 点评版本。
+ *
+ * AI 生成记录始终以独立 ANALYSIS 文本记录追加保存；这里仅为断事笔记提供稳定的
+ * 选择索引，不把不同模型的正文拼接或覆盖为一份。
+ */
+data class AiCommentaryVersion(
+    val recordId: String,
+    val label: String,
+    val body: String,
 )
 
 /**
@@ -1052,6 +1065,63 @@ internal fun CaseTextRecord.isAiCommentaryRecord(): Boolean =
 internal fun CaseTextRecord.aiCommentaryBody(): String {
     val payload = content.removePrefix(AI_COMMENTARY_MARKER).trimStart()
     return payload.substringAfter("\n\n", missingDelimiterValue = payload).trim()
+}
+
+/**
+ * 生成记录有服务与模型元信息；历史手动记录保留为可识别的独立版本。
+ * 完整型号保留在正文元信息中，切换条只使用可扫读的短标签，避免多模型时挤压正文。
+ */
+internal fun CaseTextRecord.aiCommentaryVersionLabel(): String {
+    val metadata = content.removePrefix(AI_COMMENTARY_MARKER)
+        .trimStart()
+        .substringBefore("\n\n")
+        .lineSequence()
+        .map(String::trim)
+        .toList()
+    fun valueAfter(prefix: String): String = metadata
+        .firstOrNull { it.startsWith(prefix) }
+        ?.removePrefix(prefix)
+        ?.trim()
+        .orEmpty()
+    val provider = valueAfter("服务：")
+    val model = valueAfter("模型：")
+    if (provider.isBlank() && model.isBlank()) return "手动整理"
+    val normalizedModel = model.lowercase()
+    val compactProvider = when {
+        normalizedModel.contains("deepseek") -> "DeepSeek"
+        normalizedModel.contains("qwen") -> "千问"
+        normalizedModel.contains("gpt") || normalizedModel.contains("openai") -> "OpenAI"
+        normalizedModel.contains("claude") || normalizedModel.contains("anthropic") -> "Claude"
+        else -> provider.ifBlank { "模型" }
+    }
+    val compactModel = when {
+        normalizedModel == "openrouter/auto" || normalizedModel == "auto" -> "自动"
+        normalizedModel.contains("deepseek") -> compactModelSuffix(model, "deepseek")
+        normalizedModel.contains("qwen") -> compactModelSuffix(model, "qwen")
+        normalizedModel.contains("gpt") -> compactModelSuffix(model, "gpt")
+        normalizedModel.contains("claude") -> compactModelSuffix(model, "claude")
+        else -> model
+    }
+    return listOf(compactProvider, compactModel)
+        .filter(String::isNotBlank)
+        .joinToString(" · ")
+}
+
+private fun compactModelSuffix(model: String, family: String): String {
+    val suffix = model.substringAfterLast('/').lowercase()
+        .removePrefix("$family-")
+        .removePrefix(family)
+        .trimStart('-', '_')
+    return suffix.split('-', '_')
+        .filter(String::isNotBlank)
+        .joinToString(" ") { token ->
+            if (token.firstOrNull()?.isLetter() == true) {
+                token.replaceFirstChar { it.uppercaseChar() }
+            } else {
+                token
+            }
+        }
+        .ifBlank { model }
 }
 
 private fun CaseTextRecord.withAiCommentaryBody(body: String, updatedAt: Instant): CaseTextRecord {

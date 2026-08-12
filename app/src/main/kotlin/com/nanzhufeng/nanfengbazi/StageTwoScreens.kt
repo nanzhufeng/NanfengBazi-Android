@@ -610,6 +610,7 @@ fun NanfengBaziApp(
                                 onOwnerFeedbackChange = viewModel::updateOwnerFeedback,
                                 onMasterCommentaryChange = viewModel::updateMasterCommentary,
                                 onAiCommentaryChange = viewModel::updateManualAiCommentary,
+                                onSelectAiCommentaryVersion = viewModel::selectAiCommentaryVersion,
                                 onAddNotesTimeline = viewModel::addCaseNotesTimeline,
                                 onNotesTimelineContentChange =
                                     viewModel::updateCaseNotesTimelineContent,
@@ -8897,6 +8898,7 @@ private fun CaseDetailScreen(
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
     onAiCommentaryChange: (String) -> Unit,
+    onSelectAiCommentaryVersion: (String) -> Unit,
     onAddNotesTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onNotesTimelineContentChange: (String, String) -> Unit,
     onSaveCaseNotes: () -> Unit,
@@ -9213,10 +9215,10 @@ private fun CaseDetailScreen(
                         caseNotesDraft = state.caseNotesDraft,
                         caseNotesSaving = state.caseNotesSaving,
                         caseNotesSaveError = state.caseNotesSaveError,
-                        caseNotesSaved = state.caseNotesDraft == state.caseNotesSavedDraft,
                         onOwnerFeedbackChange = onOwnerFeedbackChange,
                         onMasterCommentaryChange = onMasterCommentaryChange,
                         onAiCommentaryChange = onAiCommentaryChange,
+                        onSelectAiCommentaryVersion = onSelectAiCommentaryVersion,
                         onAddNotesTimeline = onAddNotesTimeline,
                         onNotesTimelineContentChange = onNotesTimelineContentChange,
                         onSaveCaseNotes = onSaveCaseNotes,
@@ -9593,10 +9595,10 @@ private fun ReferenceCaseDetailContent(
     caseNotesDraft: CaseNotesDraft,
     caseNotesSaving: Boolean,
     caseNotesSaveError: String?,
-    caseNotesSaved: Boolean,
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
     onAiCommentaryChange: (String) -> Unit,
+    onSelectAiCommentaryVersion: (String) -> Unit,
     onAddNotesTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onNotesTimelineContentChange: (String, String) -> Unit,
     onSaveCaseNotes: () -> Unit,
@@ -9714,6 +9716,7 @@ private fun ReferenceCaseDetailContent(
                                     onOwnerFeedbackChange = onOwnerFeedbackChange,
                                     onMasterCommentaryChange = onMasterCommentaryChange,
                                     onAiCommentaryChange = onAiCommentaryChange,
+                                    onSelectAiCommentaryVersion = onSelectAiCommentaryVersion,
                                     onAddTimeline = onAddNotesTimeline,
                                     onTimelineContentChange = onNotesTimelineContentChange,
                                     onOpenAiCommentary = onOpenAiCommentary,
@@ -9741,7 +9744,6 @@ private fun ReferenceCaseDetailContent(
                                     case = case,
                                     saving = caseNotesSaving,
                                     saveError = caseNotesSaveError,
-                                    saved = caseNotesSaved,
                                     onSave = onSaveCaseNotes,
                                 )
                             }
@@ -10182,6 +10184,7 @@ private fun ReferenceCaseNotes(
     onOwnerFeedbackChange: (String) -> Unit,
     onMasterCommentaryChange: (String) -> Unit,
     onAiCommentaryChange: (String) -> Unit,
+    onSelectAiCommentaryVersion: (String) -> Unit,
     onAddTimeline: (CaseEventTimelineLevel, Int, String) -> Unit,
     onTimelineContentChange: (String, String) -> Unit,
     onOpenAiCommentary: () -> Unit,
@@ -10294,7 +10297,10 @@ private fun ReferenceCaseNotes(
             )
             AiCommentaryEditor(
                 value = draft.aiCommentary,
+                versions = draft.aiCommentaryVersions,
+                selectedRecordId = draft.aiCommentaryRecordId,
                 onValueChange = onAiCommentaryChange,
+                onSelectVersion = onSelectAiCommentaryVersion,
                 enabled = case.deletedAt == null,
                 onGenerate = onOpenAiCommentary,
                 captureForLongImage = true,
@@ -10362,7 +10368,10 @@ private fun ReferenceCaseNotes(
         } else {
             AiCommentaryEditor(
                 value = draft.aiCommentary,
+                versions = draft.aiCommentaryVersions,
+                selectedRecordId = draft.aiCommentaryRecordId,
                 onValueChange = onAiCommentaryChange,
+                onSelectVersion = onSelectAiCommentaryVersion,
                 enabled = case.deletedAt == null,
                 onGenerate = onOpenAiCommentary,
                 captureForLongImage = captureForLongImage,
@@ -10388,7 +10397,10 @@ private fun ReferenceCaseNotes(
 @Composable
 private fun AiCommentaryEditor(
     value: String,
+    versions: List<AiCommentaryVersion>,
+    selectedRecordId: String?,
     onValueChange: (String) -> Unit,
+    onSelectVersion: (String) -> Unit,
     enabled: Boolean,
     onGenerate: () -> Unit,
     captureForLongImage: Boolean,
@@ -10403,15 +10415,98 @@ private fun AiCommentaryEditor(
             enabled = enabled,
             onAction = onGenerate,
         )
-        CaseNotesTextEditor(
-            value = value,
-            onValueChange = onValueChange,
-            placeholder = "输入或粘贴 AI 点评",
-            enabled = enabled,
-            fillAvailableSpace = !captureForLongImage,
-            modifier = if (captureForLongImage) Modifier else Modifier.weight(1f)
-                .testTag("ai_commentary_input"),
-        )
+        if (captureForLongImage && versions.size > 1) {
+            // 长图是可离线留存的完整视图，因此顺序呈现全部模型版本，不能只导出当前一份。
+            versions.asReversed().forEach { version ->
+                val versionValue = if (version.recordId == selectedRecordId) value else version.body
+                Text(
+                    version.label,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                CaseNotesTextEditor(
+                    value = versionValue,
+                    onValueChange = onValueChange,
+                    placeholder = "输入或粘贴 AI 点评",
+                    enabled = enabled,
+                    modifier = Modifier.testTag("ai_commentary_capture_${version.recordId}"),
+                )
+            }
+        } else {
+            AiCommentaryVersionSelector(
+                versions = versions,
+                selectedRecordId = selectedRecordId,
+                enabled = enabled,
+                onSelectVersion = onSelectVersion,
+            )
+            CaseNotesTextEditor(
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = "输入或粘贴 AI 点评",
+                enabled = enabled,
+                fillAvailableSpace = !captureForLongImage,
+                modifier = if (captureForLongImage) Modifier else Modifier.weight(1f)
+                    .testTag("ai_commentary_input"),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AiCommentaryVersionSelector(
+    versions: List<AiCommentaryVersion>,
+    selectedRecordId: String?,
+    enabled: Boolean,
+    onSelectVersion: (String) -> Unit,
+) {
+    if (versions.size <= 1) return
+    LazyRow(
+        modifier = Modifier
+            .padding(bottom = 8.dp)
+            .testTag("ai_commentary_version_selector"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(versions, key = { it.recordId }) { version ->
+            val selected = version.recordId == selectedRecordId
+            Surface(
+                onClick = { onSelectVersion(version.recordId) },
+                enabled = enabled && !selected,
+                shape = RoundedCornerShape(14.dp),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f)
+                },
+                contentColor = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .height(36.dp)
+                    .testTag("ai_commentary_version_${version.recordId}"),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .widthIn(max = 156.dp)
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        version.label,
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -10487,7 +10582,6 @@ private fun CaseNotesSaveFooter(
     case: BaziCase,
     saving: Boolean,
     saveError: String?,
-    saved: Boolean,
     onSave: () -> Unit,
 ) {
     Column(
@@ -10495,24 +10589,19 @@ private fun CaseNotesSaveFooter(
             .fillMaxWidth()
             .testTag("case_notes_save_footer"),
     ) {
-        Text(
-            when {
-                saveError != null -> saveError
-                saving -> "正在保存…"
-                saved -> "已自动保存"
-                else -> "编辑中，将自动保存"
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(22.dp),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (saveError != null) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-            },
-        )
+        // 正常状态不占用一行提示；按钮自身已经承担“保存中”的即时反馈。
+        // 仅在确有错误时显示可行动的异常信息，避免把“已保存”一类重复状态堆在正文下方。
+        if (saveError != null) {
+            Text(
+                saveError,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
         Button(
             onClick = onSave,
             enabled = case.deletedAt == null && !saving,
