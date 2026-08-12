@@ -5029,7 +5029,14 @@ class StageTwoViewModel(
                             current.id == detail.id &&
                                 current.copy(lastViewedAt = detail.lastViewedAt) == detail
                         } == true
-                        val notesDraft = detail.toCaseNotesDraft()
+                        // 保留用户刚选择的模型版本；标记已查看等后台刷新不能把阅读位置
+                        // 悄悄切回最新一份，避免详情页出现可见跳变。
+                        val preferredAiCommentaryRecordId = if (it.caseNotesCaseId == caseId) {
+                            it.caseNotesDraft.aiCommentaryRecordId
+                        } else {
+                            null
+                        }
+                        val notesDraft = detail.toCaseNotesDraft(preferredAiCommentaryRecordId)
                         val preserveUnsavedDraft = it.caseNotesCaseId == caseId &&
                             it.caseNotesRevision == detail.revision &&
                             it.caseNotesDraft != it.caseNotesSavedDraft
@@ -6694,6 +6701,47 @@ class StageTwoViewModel(
     }
 
     /**
+     * 只切换当前阅读/编辑的版本，不写数据库，也不把不同模型的内容互相覆盖。
+     * 若当前文本仍有未保存修改，先要求完成保存，避免切换时静默丢字。
+     */
+    fun selectAiCommentaryVersion(recordId: String) {
+        val current = mutableState.value
+        val detail = current.detail ?: return
+        if (
+            current.caseNotesCaseId != detail.id ||
+            current.caseNotesRevision != detail.revision ||
+            current.caseNotesHydrating
+        ) {
+            ensureCaseNotesHydrated()
+            return
+        }
+        if (current.caseNotesSaving || current.caseNotesDraft != current.caseNotesSavedDraft) {
+            mutableState.update {
+                it.copy(caseNotesSaveError = "当前版本仍在编辑，请先保存后再切换模型点评。")
+            }
+            return
+        }
+        val selected = current.caseNotesDraft.aiCommentaryVersions
+            .firstOrNull { it.recordId == recordId }
+            ?: return
+        if (selected.recordId == current.caseNotesDraft.aiCommentaryRecordId) return
+        mutableState.update {
+            val switched = it.caseNotesDraft.copy(
+                aiCommentary = selected.body,
+                aiCommentaryRecordId = selected.recordId,
+            )
+            it.copy(
+                caseNotesDraft = switched,
+                caseNotesSavedDraft = it.caseNotesSavedDraft.copy(
+                    aiCommentary = selected.body,
+                    aiCommentaryRecordId = selected.recordId,
+                ),
+                caseNotesSaveError = null,
+            )
+        }
+    }
+
+    /**
      * Runtime ownership guard for the notes aggregate. A notes draft is renderable only
      * when both its case id and parent revision match the mounted detail. Any mismatch is
      * rehydrated as one aggregate instead of exposing an empty or cross-case draft.
@@ -6701,7 +6749,7 @@ class StageTwoViewModel(
     fun ensureCaseNotesHydrated() {
         val current = mutableState.value
         val detail = current.detail ?: return
-        val detailDraft = detail.toCaseNotesDraft()
+        val detailDraft = detail.toCaseNotesDraft(current.caseNotesDraft.aiCommentaryRecordId)
         val suspiciousEmptySnapshot = current.caseNotesDraft.isEffectivelyEmpty() &&
             current.caseNotesSavedDraft.isEffectivelyEmpty() &&
             !detailDraft.isEffectivelyEmpty()
@@ -6760,7 +6808,9 @@ class StageTwoViewModel(
                         caseNotesSaveError = "断事笔记读取失败，请返回后重新打开命例。",
                     )
                 } else {
-                    val refreshedDraft = refreshed.toCaseNotesDraft()
+                    val refreshedDraft = refreshed.toCaseNotesDraft(
+                        current.caseNotesDraft.aiCommentaryRecordId,
+                    )
                     it.copy(
                         detail = refreshed,
                         caseNotesCaseId = refreshed.id,
@@ -7152,7 +7202,7 @@ class StageTwoViewModel(
                                 caseNotesSavedDraft = notesDraft,
                                 caseNotesHydrating = false,
                                 aiCommentary = AiCommentaryUiState(),
-                                message = "AI 点评已保存，可在断事笔记的 AI 点评中查看。",
+                                message = "AI 点评已保存，可在断事笔记中切换模型版本对比。",
                             )
                         }
                     }
@@ -7315,7 +7365,9 @@ class StageTwoViewModel(
                             currentAfterSave.caseNotesCaseId == detail.id &&
                             currentAfterSave.caseNotesRevision == detail.revision &&
                             currentAfterSave.caseNotesDraft == submitted
-                        val refreshedDraft = refreshed.toCaseNotesDraft()
+                        val refreshedDraft = refreshed.toCaseNotesDraft(
+                            submitted.aiCommentaryRecordId,
+                        )
                         mutableState.update {
                             if (it.detail?.id != detail.id || it.caseNotesCaseId != detail.id) {
                                 it
@@ -8066,7 +8118,9 @@ private fun com.nanzhufeng.nanfengbazi.domain.model.CaseProfile.isExplicitlyDece
         .any(healthText::contains)
 }
 
-private fun BaziCase.toCaseNotesDraft(): CaseNotesDraft {
+private fun BaziCase.toCaseNotesDraft(
+    preferredAiCommentaryRecordId: String? = null,
+): CaseNotesDraft {
     val adopted = calculationSnapshots.asReversed().firstOrNull { it.adopted }?.result
     fun recordBody(type: CaseTextRecordType): String = textRecords
         .filter { it.type == type }
@@ -8098,14 +8152,46 @@ private fun BaziCase.toCaseNotesDraft(): CaseNotesDraft {
             content = event.rawText,
         )
     }
-    val latestAiCommentary = textRecords
+    val aiCommentaryRecords = textRecords
         .filter { it.isAiCommentaryRecord() }
-        .maxByOrNull { it.updatedAt }
+    val versionTotals = aiCommentaryRecords
+        .groupingBy { it.aiCommentaryVersionLabel() }
+        .eachCount()
+    val versionLabels = buildMap {
+        aiCommentaryRecords
+            .sortedBy { it.createdAt }
+            .groupBy { it.aiCommentaryVersionLabel() }
+            .forEach { (baseLabel, records) ->
+                records.forEachIndexed { index, record ->
+                    put(
+                        record.id,
+                        if (versionTotals.getValue(baseLabel) > 1) {
+                            "$baseLabel · 第${index + 1}版"
+                        } else {
+                            baseLabel
+                        },
+                    )
+                }
+            }
+    }
+    val aiCommentaryVersions = aiCommentaryRecords
+        .sortedByDescending { it.updatedAt }
+        .map { record ->
+            AiCommentaryVersion(
+                recordId = record.id,
+                label = versionLabels.getValue(record.id),
+                body = record.aiCommentaryBody(),
+            )
+        }
+    val selectedAiCommentary = aiCommentaryVersions
+        .firstOrNull { it.recordId == preferredAiCommentaryRecordId }
+        ?: aiCommentaryVersions.firstOrNull()
     return CaseNotesDraft(
         ownerFeedback = recordBody(CaseTextRecordType.OWNER_FEEDBACK),
         masterCommentary = recordBody(CaseTextRecordType.MASTER_COMMENTARY),
-        aiCommentary = latestAiCommentary?.aiCommentaryBody().orEmpty(),
-        aiCommentaryRecordId = latestAiCommentary?.id,
+        aiCommentary = selectedAiCommentary?.body.orEmpty(),
+        aiCommentaryRecordId = selectedAiCommentary?.recordId,
+        aiCommentaryVersions = aiCommentaryVersions,
         timeline = timeline,
     )
 }
