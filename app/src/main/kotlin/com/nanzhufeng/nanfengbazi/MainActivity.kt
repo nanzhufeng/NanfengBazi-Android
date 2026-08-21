@@ -58,6 +58,23 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val catalogPreferences = getSharedPreferences(
+            BUILT_IN_CELEBRITY_CATALOG_PREFERENCES,
+            MODE_PRIVATE,
+        )
+        viewModel.synchronizeBuiltInUnifiedCelebrityCatalog(
+            openInput = {
+                applicationContext.assets.open(BUILT_IN_CELEBRITY_CATALOG_ASSET)
+            },
+            installedVersion = {
+                catalogPreferences.getString(BUILT_IN_CELEBRITY_CATALOG_VERSION_KEY, null)
+            },
+            markInstalled = { version ->
+                catalogPreferences.edit()
+                    .putString(BUILT_IN_CELEBRITY_CATALOG_VERSION_KEY, version)
+                    .apply()
+            },
+        )
         setContent {
             val screenshotImportState by
                 screenshotImportViewModel.state.collectAsStateWithLifecycle()
@@ -187,6 +204,22 @@ class MainActivity : ComponentActivity() {
                 onOpenWenzhenImportDocument = {
                     openWenzhenImportDocument.launch(
                         arrayOf("application/json", "text/plain"),
+                    )
+                },
+                onImportCuratedCelebrityCatalog = {
+                    viewModel.synchronizeBuiltInUnifiedCelebrityCatalog(
+                        openInput = {
+                        applicationContext.assets.open(BUILT_IN_CELEBRITY_CATALOG_ASSET)
+                        },
+                        installedVersion = {
+                            catalogPreferences.getString(BUILT_IN_CELEBRITY_CATALOG_VERSION_KEY, null)
+                        },
+                        markInstalled = { version ->
+                            catalogPreferences.edit()
+                                .putString(BUILT_IN_CELEBRITY_CATALOG_VERSION_KEY, version)
+                                .apply()
+                        },
+                        force = true,
                     )
                 },
                 onImportScreenshots = {
@@ -481,6 +514,9 @@ internal fun shouldRequestLargeBatchNotificationPermission(
 
 private const val POST_NOTIFICATIONS_PERMISSION = "android.permission.POST_NOTIFICATIONS"
 private const val CASE_IMAGE_SHARE_DIRECTORY = "case-image-share"
+private const val BUILT_IN_CELEBRITY_CATALOG_PREFERENCES = "built-in-celebrity-catalog"
+private const val BUILT_IN_CELEBRITY_CATALOG_VERSION_KEY = "installed-version"
+private const val BUILT_IN_CELEBRITY_CATALOG_ASSET = "catalogs/celebrity-unified-v1.json"
 private val CASE_IMAGE_SHARE_FILE_NAMES = listOf(
     "shared-case-chart.png",
     "shared-case-notes.png",

@@ -49,6 +49,11 @@ sealed interface CaseMutationResult {
     data class Saved(
         val caseId: String,
         val revision: Long,
+        /**
+         * The exact case just committed by a mutation that already held its complete snapshot.
+         * Callers can render it immediately instead of issuing a second Room read.
+         */
+        val savedCase: BaziCase? = null,
     ) : CaseMutationResult
 
     data class ValidationFailed(val message: String) : CaseMutationResult
@@ -76,6 +81,7 @@ class EditCaseUseCase(
         caseId: String,
         expectedRevision: Long,
         form: CaseFormState,
+        groupNames: String? = null,
         allowDuplicate: Boolean = false,
     ): CaseMutationResult {
         val valid = when (val validation = CaseFormValidator.validate(form)) {
@@ -91,6 +97,12 @@ class EditCaseUseCase(
         if (existing.revision != expectedRevision) {
             return CaseMutationResult.RevisionConflict(existing.revision)
         }
+        val groups = when (
+            val result = resolveEditGroups(groupNames, existing, caseRepository, idGenerator)
+        ) {
+            is EditGroupsResult.Valid -> result.groups
+            is EditGroupsResult.Invalid -> return CaseMutationResult.ValidationFailed(result.message)
+        }
         val profile = CalculationProfile.tymeDefault(
             solarTimeMode = if (valid.birthInput.useTrueSolarTime) {
                 SolarTimeMode.TRUE_SOLAR_TIME
@@ -99,6 +111,28 @@ class EditCaseUseCase(
             },
             ratHourRule = form.ratHourRule,
         )
+        val oldAdoptedSnapshot = existing.calculationSnapshots
+            .asReversed()
+            .firstOrNull { it.adopted }
+        if (
+            existing.birthInput.timeZoneDataVersion != null &&
+            valid.birthInput == existing.birthInput.copy(timeZoneDataVersion = null) &&
+            profile == oldAdoptedSnapshot?.result?.profile
+        ) {
+            val updated = existing.copy(
+                alias = valid.alias,
+                name = valid.name?.let(ExplicitText::present) ?: when (existing.name.state) {
+                    FieldValueState.ABSENT -> ExplicitText.absent()
+                    FieldValueState.PRESENT,
+                    FieldValueState.CLEARED,
+                    -> ExplicitText.cleared()
+                },
+                groups = groups,
+                updatedAt = clock.instant(),
+            )
+            return persistCase(caseRepository, updated, expectedRevision)
+                .withSavedCase(updated)
+        }
         val calculation = try {
             baziEngine.calculate(valid.birthInput, profile)
         } catch (cancelled: CancellationException) {
@@ -136,9 +170,6 @@ class EditCaseUseCase(
             }
         }
         val now = clock.instant()
-        val oldAdoptedSnapshot = existing.calculationSnapshots
-            .asReversed()
-            .firstOrNull { it.adopted }
         val legacyCandidate = if (
             existing.birthTimeCandidates.isEmpty() && oldAdoptedSnapshot != null
         ) {
@@ -163,6 +194,7 @@ class EditCaseUseCase(
                 FieldValueState.CLEARED,
                 -> ExplicitText.cleared()
             },
+            groups = groups,
             sexForFortuneDirection = calculation.normalizedInput.sexForFortuneDirection,
             birthInput = calculation.normalizedInput,
             birthTimeCandidates = (
@@ -198,7 +230,46 @@ class EditCaseUseCase(
             updatedAt = now,
         )
         return persistCase(caseRepository, updated, expectedRevision)
+            .withSavedCase(updated)
     }
+}
+
+private sealed interface EditGroupsResult {
+    data class Valid(val groups: List<CaseGroup>) : EditGroupsResult
+    data class Invalid(val message: String) : EditGroupsResult
+}
+
+private suspend fun resolveEditGroups(
+    groupNames: String?,
+    existing: BaziCase,
+    caseRepository: CaseRepository,
+    idGenerator: IdGenerator,
+): EditGroupsResult {
+    if (groupNames == null) return EditGroupsResult.Valid(existing.groups)
+    val names = groupNames
+        .split(Regex("[,，\\n]+"))
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .distinctBy(String::lowercase)
+    if (names.size > 10 || names.any { it.length > 40 }) {
+        return EditGroupsResult.Invalid("分组最多 10 个，且每个名称不能超过 40 个字符。")
+    }
+    val knownGroups = try {
+        caseRepository.listGroups(existing.libraryType)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        return EditGroupsResult.Invalid("无法读取分组目录，未保存任何更改。")
+    }.associateBy { it.name.trim().lowercase() } +
+        existing.groups.associateBy { it.name.trim().lowercase() }
+    return EditGroupsResult.Valid(
+        names.map { name ->
+            knownGroups[name.trim().lowercase()] ?: CaseGroup(
+                id = idGenerator.nextId(),
+                name = name,
+            )
+        },
+    )
 }
 
 class BirthTimeCandidateUseCase(
@@ -1610,4 +1681,11 @@ private suspend fun persistCase(
     CaseMutationResult.StorageFailed(
         "更改未保存，数据库暂时不可用。输入内容仍保留在当前页面。",
     )
+}
+
+private fun CaseMutationResult.withSavedCase(case: BaziCase): CaseMutationResult = when (this) {
+    is CaseMutationResult.Saved -> copy(
+        savedCase = case.copy(id = caseId, revision = revision),
+    )
+    else -> this
 }

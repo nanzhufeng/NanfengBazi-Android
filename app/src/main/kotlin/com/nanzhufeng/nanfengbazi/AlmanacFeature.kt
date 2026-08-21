@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -150,18 +151,10 @@ internal fun AlmanacScreen(
             .testTag("almanac_screen"),
     ) {
         AlmanacTopBar(onBack = onBack)
-        AlmanacPrimaryActions(
-            pillars = state.almanacView?.selected?.pillars.orEmpty(),
-            busy = state.previewing,
-            onUseForChart = {
-                haptics.perform(AppHapticEvent.CONFIRM)
-                onUseForChart()
-            },
-            onAdjustFourPillars = onAdjustFourPillars,
-        )
         BoxWithConstraints(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
@@ -207,6 +200,15 @@ internal fun AlmanacScreen(
                 )
             }
         }
+        AlmanacPrimaryActions(
+            pillars = state.almanacView?.selected?.pillars.orEmpty(),
+            busy = state.previewing,
+            onUseForChart = {
+                haptics.perform(AppHapticEvent.CONFIRM)
+                onUseForChart()
+            },
+            onAdjustFourPillars = onAdjustFourPillars,
+        )
     }
     if (showDateTimePicker) {
         ObservationDateTimePickerSheet(
@@ -243,41 +245,48 @@ private fun AlmanacPrimaryActions(
     onUseForChart: () -> Unit,
     onAdjustFourPillars: (List<String>) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 8.dp,
     ) {
-        Button(
-            onClick = onUseForChart,
-            enabled = !busy && pillars.isNotEmpty(),
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .height(46.dp)
-                .testTag("use_almanac_date_for_chart"),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = NanfengNavigation,
-                contentColor = Color(0xFFF2D8A5),
-            ),
-            shape = RoundedCornerShape(23.dp),
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                if (busy) "正在排盘…" else "用此日期排盘",
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-        }
-        OutlinedButton(
-            onClick = { onAdjustFourPillars(pillars.map(AlmanacPillarDetail::value)) },
-            enabled = !busy && pillars.isNotEmpty(),
-            modifier = Modifier
-                .weight(1f)
-                .height(46.dp)
-                .testTag("adjust_almanac_four_pillars"),
-            shape = RoundedCornerShape(23.dp),
-        ) {
-            Text("人工调整四柱", maxLines = 1)
+            Button(
+                onClick = onUseForChart,
+                enabled = !busy && pillars.isNotEmpty(),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .testTag("use_almanac_date_for_chart"),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NanfengNavigation,
+                    contentColor = Color(0xFFF2D8A5),
+                ),
+                shape = RoundedCornerShape(23.dp),
+            ) {
+                Text(
+                    if (busy) "正在排盘…" else "用此日期排盘",
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
+            OutlinedButton(
+                onClick = { onAdjustFourPillars(pillars.map(AlmanacPillarDetail::value)) },
+                enabled = !busy && pillars.isNotEmpty(),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .testTag("adjust_almanac_four_pillars"),
+                shape = RoundedCornerShape(23.dp),
+            ) {
+                Text("人工调整四柱", maxLines = 1)
+            }
         }
     }
 }
@@ -492,20 +501,20 @@ private fun AlmanacDayCell(
                 fontWeight = if (selected || today || solarTermDay) FontWeight.Bold else FontWeight.Medium,
                 color = contentColor,
             )
-            Text(
-                day.marker ?: day.lunarDayText,
-                modifier = Modifier.padding(top = 1.dp),
-                fontSize = if (expanded) 12.sp else 10.sp,
-                lineHeight = 13.sp,
-                color = if (selected) Color.White.copy(alpha = 0.9f) else {
-                    if (solarTermDay) NanfengSolarTermRed
-                    else if (day.marker != null) NanfengGold
-                    else contentColor.copy(alpha = 0.72f)
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
             if (expanded) {
+                Text(
+                    day.marker ?: day.lunarDayText,
+                    modifier = Modifier.padding(top = 1.dp),
+                    fontSize = 12.sp,
+                    lineHeight = 13.sp,
+                    color = if (selected) Color.White.copy(alpha = 0.9f) else {
+                        if (solarTermDay) NanfengSolarTermRed
+                        else if (day.marker != null) NanfengGold
+                        else contentColor.copy(alpha = 0.72f)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     buildAnnotatedString {
                         day.dayPillar.forEach { character ->
@@ -516,6 +525,37 @@ private fun AlmanacDayCell(
                     },
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
+                )
+            } else {
+                Text(
+                    day.marker ?: day.lunarDayText,
+                    modifier = Modifier.padding(top = 1.dp),
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
+                    color = if (selected) Color.White.copy(alpha = 0.9f) else {
+                        if (solarTermDay) NanfengSolarTermRed
+                        else if (day.marker != null) NanfengGold
+                        else contentColor.copy(alpha = 0.72f)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    buildAnnotatedString {
+                        day.dayPillar.forEach { character ->
+                            withStyle(
+                                SpanStyle(
+                                    color = if (selected) Color.White.copy(alpha = 0.9f) else {
+                                        baziElementColor(character)
+                                    },
+                                ),
+                            ) { append(character) }
+                        }
+                    },
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
                 )
             }
         }
@@ -690,7 +730,7 @@ private fun AlmanacHourPillarRail(
                         .size(width = 42.dp, height = 82.dp)
                         .testTag("almanac_double_hour_${hour.branch}"),
                     shape = RoundedCornerShape(13.dp),
-                    color = if (selected) NanfengNavigation else MaterialTheme.colorScheme.background,
+                    color = if (selected) NanfengNavigation else almanacMutedBackgroundColor(),
                     border = if (selected) null else BorderStroke(1.dp, Color(0x1A1B2732)),
                 ) {
                     Column(
@@ -743,7 +783,7 @@ private fun AlmanacEightCharacterTable(
             .fillMaxWidth()
             .testTag("almanac_eight_character_table"),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.background,
+        color = almanacMutedBackgroundColor(),
     ) {
         Column(modifier = Modifier.padding(vertical = 10.dp)) {
             AlmanacPillarRow("", pillars) { pillar ->
@@ -832,6 +872,12 @@ private fun AlmanacEightCharacterTable(
         }
     }
 }
+
+private const val AlmanacMutedBackgroundAlpha = 0.5f
+
+@Composable
+private fun almanacMutedBackgroundColor(): Color =
+    MaterialTheme.colorScheme.background.copy(alpha = AlmanacMutedBackgroundAlpha)
 
 @Composable
 private fun AlmanacPillarRow(

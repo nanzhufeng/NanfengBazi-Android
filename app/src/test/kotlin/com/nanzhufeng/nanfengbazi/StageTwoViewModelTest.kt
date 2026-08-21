@@ -75,6 +75,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.AnalysisCategory
 import com.nanzhufeng.nanfengbazi.domain.model.AnnualFortune
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
+import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTag
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
@@ -142,6 +143,398 @@ class StageTwoViewModelTest {
         assertEquals("测试甲", viewModel.state.value.query)
         assertEquals(listOf("case-1"), viewModel.state.value.cases.map { it.id })
         assertFalse(viewModel.state.value.listLoading)
+    }
+
+    @Test
+    fun `启动时将无断事笔记的用户某某数字占位移出用户列表`() = runTest {
+        val emptyPlaceholder = sampleStoredCase("empty-placeholder").copy(
+            alias = "某某",
+            name = ExplicitText.present("某某"),
+        )
+        val protectedPlaceholder = sampleStoredCase("placeholder-with-feedback").copy(
+            alias = "某某",
+            name = ExplicitText.present("某某"),
+            textRecords = listOf(ownerFeedback()),
+        )
+        val generatedPlaceholder = sampleStoredCase("generated-placeholder").copy(
+            alias = "某某7",
+            name = ExplicitText.present("某某7"),
+        )
+        val similarlyNamedCase = sampleStoredCase("similarly-named-case").copy(
+            alias = "某某甲",
+            name = ExplicitText.present("某某甲"),
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[emptyPlaceholder.id] = emptyPlaceholder
+            stored[protectedPlaceholder.id] = protectedPlaceholder
+            stored[generatedPlaceholder.id] = generatedPlaceholder
+            stored[similarlyNamedCase.id] = similarlyNamedCase
+        }
+
+        val viewModel = createViewModel(repository)
+        testScheduler.advanceUntilIdle()
+
+        assertNotNull(repository.stored.getValue(emptyPlaceholder.id).deletedAt)
+        assertNotNull(repository.stored.getValue(generatedPlaceholder.id).deletedAt)
+        assertNull(repository.stored.getValue(protectedPlaceholder.id).deletedAt)
+        assertNull(repository.stored.getValue(similarlyNamedCase.id).deletedAt)
+        assertFalse(viewModel.state.value.cases.any { it.id == emptyPlaceholder.id })
+        assertFalse(viewModel.state.value.cases.any { it.id == generatedPlaceholder.id })
+        assertTrue(viewModel.state.value.cases.any { it.id == protectedPlaceholder.id })
+        assertTrue(viewModel.state.value.cases.any { it.id == similarlyNamedCase.id })
+    }
+
+    @Test
+    fun `历史年份显示不补多余前导零`() {
+        assertEquals("624", 624.displayHistoricalYear())
+        assertEquals("公元前5", (-4).displayHistoricalYear())
+    }
+
+    @Test
+    fun `过期名人列表会话不能覆盖已经切回的用户列表`() {
+        val celebritySession = StageTwoUiState(
+            libraryType = CaseLibraryType.CELEBRITY,
+        ).caseListSession()
+        val userState = StageTwoUiState(libraryType = CaseLibraryType.USER)
+
+        assertFalse(userState.acceptsCaseListSession(celebritySession))
+        assertTrue(
+            userState.acceptsCaseListSession(
+                userState.caseListSession(),
+            ),
+        )
+    }
+
+    @Test
+    fun `应用启动同步内置统一名人库不改写用户案例`() = runTest {
+        val userCase = sampleStoredCase("user-private-case")
+        val repository = FakeCaseRepository().apply { stored[userCase.id] = userCase }
+        val viewModel = createViewModel(repository)
+        val raw = java.io.File("src/main/assets/catalogs/celebrity-unified-v1.json").readText()
+        var installedVersion: String? = null
+
+        viewModel.synchronizeBuiltInUnifiedCelebrityCatalog(
+            openInput = { ByteArrayInputStream(raw.toByteArray()) },
+            installedVersion = { installedVersion },
+            markInstalled = { version -> installedVersion = version },
+        )
+        testScheduler.advanceUntilIdle()
+
+        assertEquals("2026.08.21-unified-r7", installedVersion)
+        assertEquals(userCase, repository.stored.getValue(userCase.id))
+        assertEquals(574, repository.stored.values.count { it.libraryType == CaseLibraryType.CELEBRITY })
+        assertEquals(1, repository.stored.values.count { it.libraryType == CaseLibraryType.USER })
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        val displayGroups = viewModel.state.value.availableGroups
+        val storedGroups = repository.groupCatalog.filter { it.libraryType == CaseLibraryType.CELEBRITY }
+        assertEquals(storedGroups.map { it.name }, displayGroups.map { it.name })
+        assertEquals(
+            displayGroups.map { it.id }.toSet(),
+            viewModel.state.value.groupCaseCounts.keys.intersect(displayGroups.map { it.id }.toSet()),
+        )
+        assertEquals(
+            viewModel.state.value.libraryCaseCounts.getValue(CaseLibraryType.CELEBRITY),
+            displayGroups.sumOf { group -> viewModel.state.value.groupCaseCounts.getValue(group.id) },
+        )
+    }
+
+    @Test
+    fun `已核验的问真与资料包同一名人只展示一次且保留资料包入口`() = runTest {
+        val wenzhenBaseline = sampleStoredCase("wenzhen-einstein")
+        val curatedBaseline = sampleStoredCase("curated-einstein")
+        val repository = FakeCaseRepository().apply {
+            stored["wenzhen-einstein"] = wenzhenBaseline.copy(
+                alias = "爱因斯坦",
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+                birthInput = wenzhenBaseline.birthInput.copy(
+                    calendarInput = BirthCalendarInput.Solar(CivilDateTime(1879, 3, 14, 8, 0, 0)),
+                ),
+            )
+            stored["curated-einstein"] = curatedBaseline.copy(
+                alias = "阿尔伯特·爱因斯坦",
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
+                birthInput = curatedBaseline.birthInput.copy(
+                    calendarInput = BirthCalendarInput.Solar(CivilDateTime(1879, 3, 14, 12, 0, 0)),
+                ),
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(listOf("curated-einstein"), viewModel.state.value.cases.map { it.id })
+        assertEquals(2, repository.stored.size)
+        assertEquals(1, viewModel.state.value.libraryCaseCounts[CaseLibraryType.CELEBRITY])
+        viewModel.selectCaseLibrary(CaseLibraryType.USER)
+        assertEquals(1, viewModel.state.value.libraryCaseCounts[CaseLibraryType.CELEBRITY])
+    }
+
+    @Test
+    fun `统一名人目录用职业主分组展示并让计数与筛选一致`() = runTest {
+        val wenzhenBaseline = sampleStoredCase("wenzhen-einstein")
+        val curatedBaseline = sampleStoredCase("curated-einstein")
+        val historicalBaseline = sampleStoredCase("wenzhen-yuefei")
+        val repository = FakeCaseRepository().apply {
+            stored["wenzhen-einstein"] = wenzhenBaseline.copy(
+                alias = "爱因斯坦",
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+                birthInput = wenzhenBaseline.birthInput.copy(
+                    calendarInput = BirthCalendarInput.Solar(CivilDateTime(1879, 3, 14, 8, 0, 0)),
+                ),
+            )
+            stored["curated-einstein"] = curatedBaseline.copy(
+                alias = "阿尔伯特·爱因斯坦",
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
+                birthInput = curatedBaseline.birthInput.copy(
+                    calendarInput = BirthCalendarInput.Solar(CivilDateTime(1879, 3, 14, 12, 0, 0)),
+                ),
+            )
+            stored["wenzhen-yuefei"] = historicalBaseline.copy(
+                alias = "岳飞",
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+                groups = listOf(CaseGroup("source-history", "历史名人", CaseLibraryType.CELEBRITY)),
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        val state = viewModel.state.value
+        assertEquals(2, state.libraryCaseCounts[CaseLibraryType.CELEBRITY])
+        assertEquals(
+            setOf("军事", "科技"),
+            state.cases.flatMap { it.groups }.map { it.name }.toSet(),
+        )
+        assertEquals(
+            listOf("君主", "政界", "军事", "商界", "科技", "医学", "文教", "娱乐传媒", "体育", "僧道"),
+            state.availableGroups.map { it.name },
+        )
+        val scienceGroup = state.availableGroups.single { it.name == "科技" }
+        assertEquals(1, state.groupCaseCounts[scienceGroup.id])
+
+        viewModel.selectGroup(scienceGroup.id)
+
+        assertEquals(listOf("curated-einstein"), viewModel.state.value.cases.map { it.id })
+        assertEquals(3, repository.stored.size)
+    }
+
+    @Test
+    fun `统一名人目录将来源分组收敛为唯一主领域且优先人物实际领域`() = runTest {
+        val baseline = sampleStoredCase("celebrity-baseline")
+        val repository = FakeCaseRepository().apply {
+            stored["historical-public"] = baseline.copy(
+                id = "historical-public",
+                alias = "历史政治人物",
+                libraryType = CaseLibraryType.CELEBRITY,
+                groups = listOf(CaseGroup("source-history", "历史名人", CaseLibraryType.CELEBRITY)),
+                tags = listOf(CaseTag("tag-public", "政治")),
+            )
+            stored["business"] = baseline.copy(
+                id = "business",
+                alias = "商业人物",
+                libraryType = CaseLibraryType.CELEBRITY,
+                groups = listOf(CaseGroup("source-business", "商界", CaseLibraryType.CELEBRITY)),
+            )
+            stored["entertainment"] = baseline.copy(
+                id = "entertainment",
+                alias = "文艺人物",
+                libraryType = CaseLibraryType.CELEBRITY,
+                groups = listOf(CaseGroup("source-entertainment", "娱乐", CaseLibraryType.CELEBRITY)),
+            )
+            stored["thought"] = baseline.copy(
+                id = "thought",
+                alias = "宗教人物",
+                libraryType = CaseLibraryType.CELEBRITY,
+                groups = listOf(CaseGroup("source-thought", "僧道", CaseLibraryType.CELEBRITY)),
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(
+            mapOf(
+                "历史政治人物" to "政界",
+                "商业人物" to "商界",
+                "文艺人物" to "娱乐传媒",
+                "宗教人物" to "僧道",
+            ),
+            viewModel.state.value.cases.associate { it.alias to it.groups.single().name },
+        )
+        assertTrue(viewModel.state.value.cases.all { it.groups.size == 1 })
+        assertEquals(4, repository.stored.size)
+    }
+
+    @Test
+    fun `统一名人目录在列表采用完整公开生日但不改写原始案例`() = runTest {
+        val baseline = sampleStoredCase("wenzhen-qi-jiguang-list")
+        val stored = baseline.copy(
+            alias = "戚继光",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2008, 11, 25, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(
+            CivilDateTime(1528, 11, 12, 8, 0, 0),
+            (viewModel.state.value.cases.single().birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+        assertEquals(
+            CivilDateTime(2008, 11, 25, 8, 0, 0),
+            (repository.stored.getValue(stored.id).birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+    }
+
+    @Test
+    fun `日期冲突修正先于名人目录去重并保留资料完整入口`() = runTest {
+        val baseline = sampleStoredCase("wenzhen-qi-jiguang-conflict")
+        val wenzhen = baseline.copy(
+            alias = "戚继光",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2008, 11, 25, 8, 0, 0),
+                ),
+            ),
+        )
+        val curated = baseline.copy(
+            id = "curated-qi-jiguang-conflict",
+            alias = "戚继光",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1528, 11, 12, 12, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply {
+            stored[wenzhen.id] = wenzhen
+            stored[curated.id] = curated
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(listOf(curated.id), viewModel.state.value.cases.map { it.id })
+        assertEquals(1, viewModel.state.value.libraryCaseCounts[CaseLibraryType.CELEBRITY])
+        assertEquals(
+            "军事",
+            viewModel.state.value.cases.single().groups.single().name,
+        )
+        assertEquals(
+            CivilDateTime(2008, 11, 25, 8, 0, 0),
+            (repository.stored.getValue(wenzhen.id).birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+    }
+
+    @Test
+    fun `原问真君主条目采用故宫完整生日展示且保留原始排盘输入`() = runTest {
+        val baseline = sampleStoredCase("wenzhen-qianlong-list")
+        val stored = baseline.copy(
+            alias = "乾隆",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2011, 9, 12, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(
+            CivilDateTime(1711, 9, 25, 8, 0, 0),
+            (viewModel.state.value.cases.single().birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+        assertEquals(
+            CivilDateTime(2011, 9, 12, 8, 0, 0),
+            (repository.stored.getValue(stored.id).birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+    }
+
+    @Test
+    fun `原问真康熙条目采用故宫清帝诞辰完整生日展示且保留原始排盘输入`() = runTest {
+        val baseline = sampleStoredCase("wenzhen-kangxi-list")
+        val stored = baseline.copy(
+            alias = "康熙",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2014, 4, 7, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(
+            CivilDateTime(1654, 5, 4, 8, 0, 0),
+            (viewModel.state.value.cases.single().birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+        assertEquals(
+            CivilDateTime(2014, 4, 7, 8, 0, 0),
+            (repository.stored.getValue(stored.id).birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+    }
+
+    @Test
+    fun `原问真历史别名采用完整公开生日展示且保留原始排盘输入`() = runTest {
+        val baseline = sampleStoredCase("wenzhen-su-dongpo-list")
+        val stored = baseline.copy(
+            alias = "苏东坡",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2057, 1, 6, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectCaseLibrary(CaseLibraryType.CELEBRITY)
+
+        assertEquals(
+            CivilDateTime(1037, 1, 8, 8, 0, 0),
+            (viewModel.state.value.cases.single().birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+        assertEquals(
+            CivilDateTime(2057, 1, 6, 8, 0, 0),
+            (repository.stored.getValue(stored.id).birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
     }
 
     @Test
@@ -441,23 +834,20 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `表单错误保留在新建页且保存成功后直接进入专业细盘`() = runTest {
+    fun `空姓名保存自动命名并直接进入专业细盘`() = runTest {
         val repository = FakeCaseRepository()
         val viewModel = createViewModel(repository)
         viewModel.openCreate()
 
-        viewModel.submitCase()
-
-        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
-        assertEquals("请填写命例别名。", viewModel.state.value.formError)
-
-        viewModel.updateForm { validForm() }
+        viewModel.updateForm { validForm().copy(alias = "", name = "") }
         viewModel.submitCase()
 
         assertEquals(
             AppDestination.CaseDetail(repository.stored.keys.single()),
             viewModel.state.value.destination,
         )
+        assertEquals("某某1", repository.stored.values.single().alias)
+        assertEquals("某某1", repository.stored.values.single().name.value)
         assertEquals(CaseDetailSection.FORTUNE, viewModel.state.value.detailSection)
         assertEquals(repository.stored.keys.single(), viewModel.state.value.detail?.id)
         assertEquals(1, viewModel.state.value.cases.size)
@@ -858,6 +1248,35 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `仅修改命例名称保存复用原有排盘且不重复读取详情`() = runTest {
+        val existing = sampleStoredCase("case-fast-edit")
+        val normalizedInput = existing.birthInput.copy(timeZoneDataVersion = "tzdb:test")
+        val repository = FakeCaseRepository().apply {
+            stored["case-fast-edit"] = existing.copy(
+                birthInput = normalizedInput,
+                calculationSnapshots = existing.calculationSnapshots.map { snapshot ->
+                    snapshot.copy(result = snapshot.result.copy(normalizedInput = normalizedInput))
+                },
+            )
+        }
+        val engine = RecordingEngine()
+        val viewModel = createViewModel(repository, engine = engine)
+        viewModel.openDetail("case-fast-edit")
+        viewModel.openEditCase()
+        val readsBeforeSave = repository.findByIdRequests.size
+        val groupReadsBeforeSave = repository.listGroupRequests.size
+
+        viewModel.updateEditForm { it.copy(alias = "立即保存的命例") }
+        viewModel.saveEditedCase()
+
+        assertEquals(0, engine.calls)
+        assertEquals(readsBeforeSave + 1, repository.findByIdRequests.size)
+        assertEquals(groupReadsBeforeSave, repository.listGroupRequests.size)
+        assertEquals("立即保存的命例", viewModel.state.value.detail?.alias)
+        assertEquals(2L, viewModel.state.value.detail?.revision)
+    }
+
+    @Test
     fun `创建副本保留原命例并打开新命例详情`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-copy-source"] = sampleStoredCase("case-copy-source")
@@ -1129,6 +1548,541 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `待核名人标注来源排盘年份且不当作生平事实`() = runTest {
+        val stored = sampleStoredCase("case-celebrity-baseline").copy(
+            alias = "资料待补名人",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val timeline = viewModel.state.value.caseNotesDraft.timeline
+        assertEquals(1, timeline.size)
+        assertEquals("来源排盘年份", timeline.single().sourceLabel)
+        assertEquals("待核实", timeline.single().status)
+        assertTrue(timeline.single().content.contains("不作为公开生平事实引用"))
+        assertTrue(timeline.single().content.contains("姓名、阳历生日和公开来源"))
+        assertTrue(viewModel.state.value.caseNotesDraft.ownerFeedback.contains("资料可信度：待核"))
+        assertTrue(viewModel.state.value.caseNotesDraft.ownerFeedback.contains("资料来源：历史导入资料"))
+        assertFalse(viewModel.state.value.caseNotesDraft.ownerFeedback.contains("其他候选"))
+        assertTrue(repository.stored.getValue(stored.id).events.isEmpty())
+    }
+
+    @Test
+    fun `手动名人案例不因同名自动绑定公开人物资料`() = runTest {
+        val stored = sampleStoredCase("case-manual-name-conflict").copy(
+            alias = "李连杰",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.MANUAL,
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertEquals("当前排盘年份", notes.timeline.single().sourceLabel)
+        assertEquals("待核实", notes.timeline.single().status)
+        assertFalse(notes.masterCommentary.contains("武术运动员、演员、公益倡导者"))
+    }
+
+    @Test
+    fun `问真网页同名命例不自动绑定公开人物年表`() = runTest {
+        val stored = sampleStoredCase("case-wenzhen-name-conflict").copy(
+            alias = "苏东坡",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val timeline = viewModel.state.value.caseNotesDraft.timeline
+        assertEquals(1, timeline.size)
+        assertEquals("来源排盘年份", timeline.single().sourceLabel)
+        assertEquals("待核实", timeline.single().status)
+    }
+
+    @Test
+    fun `问真网页命例仅在姓名和阳历生日均核验后读取公开人物资料`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-verified-public-identity")
+        val stored = baseline.copy(
+            alias = "李连杰",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1963, 4, 26, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("武术运动员、演员、公益倡导者"))
+        assertTrue(notes.timeline.isNotEmpty())
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertEquals("可核对", notes.timeline.first().status)
+        assertTrue(notes.ownerFeedback.contains("https://www.cctv.com/performance/20051020/101274.shtml"))
+    }
+
+    @Test
+    fun `已核生日的问真吴京条目可读取公开人物资料`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-wu-jing-verified")
+        val stored = baseline.copy(
+            alias = "吴京",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1974, 4, 3, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("演员、导演与出品人"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("出生日期已与独立公开资料核验"))
+        assertTrue(notes.ownerFeedback.contains("公开资料来源"))
+    }
+
+    @Test
+    fun `已核生日的问真溥仪条目保留政府公开来源并读取年表`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-puyi-verified")
+        val stored = baseline.copy(
+            alias = "溥仪",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1906, 2, 7, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("清末代皇帝"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("gdwsw.gov.cn"))
+    }
+
+    @Test
+    fun `已核生日的问真梅兰芳条目保留故宫来源并读取年表`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-mei-lanfang-verified")
+        val stored = baseline.copy(
+            alias = "梅兰芳",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1894, 10, 22, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("京剧表演艺术家"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("dpm.org.cn/lemmas/239927"))
+    }
+
+    @Test
+    fun `已核生日的问真泰戈尔条目保留诺奖来源并读取年表`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-tagore-verified")
+        val stored = baseline.copy(
+            alias = "泰戈尔",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1861, 5, 7, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("印度诗人"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("nobelprize.org/laureate/583"))
+    }
+
+    @Test
+    fun `已核生日的问真宁泽涛条目保留运动人物资料库来源并读取年表`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-ning-zetao-verified")
+        val stored = baseline.copy(
+            alias = "宁泽涛",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1993, 3, 6, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("游泳运动员"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("olympedia.org/athletes/133209"))
+    }
+
+    @Test
+    fun `已核生日的问真王一博条目可读取公开人物资料`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-wang-yibo-verified")
+        val stored = baseline.copy(
+            alias = "王一博",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1997, 8, 5, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("职业赛车手"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("出生日期已与独立公开资料核验"))
+        assertTrue(notes.ownerFeedback.contains("iq.com/actor-info"))
+    }
+
+    @Test
+    fun `已核生日的问真陈伟霆条目可读取完整概览与时间线`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-william-chan-verified")
+        val stored = baseline.copy(
+            alias = "陈伟霆",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1985, 11, 21, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("演员、歌手与主持人"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+        assertTrue(notes.ownerFeedback.contains("1985-11-21"))
+        assertTrue(notes.ownerFeedback.contains("iq.com/actor-info"))
+    }
+
+    @Test
+    fun `问真名人日期与权威公开生日冲突时保留冲突且不绑定生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-nie-er-date-conflict")
+        val stored = baseline.copy(
+            alias = "聂耳",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1912, 2, 15, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("出生日期存在公开异说"))
+        assertTrue(notes.ownerFeedback.contains("1912-02-14"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真名人仅有公开出生年份冲突时不绑定生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-yan-song-year-conflict")
+        val stored = baseline.copy(
+            alias = "严嵩",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1900, 3, 31, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("出生日期存在公开异说"))
+        assertTrue(notes.ownerFeedback.contains("1480年（公开资料仅见年份）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真名人公开生日存在两种记录时保留异说且不绑定生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-eileen-chang-date-conflict")
+        val stored = baseline.copy(
+            alias = "张爱玲",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1920, 9, 30, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("1920年9月19日与9月30日（公开资料异说）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真商界人物公开生日有异说时保留原始输入且不绑定生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-pao-yue-kong-date-conflict")
+        val stored = baseline.copy(
+            alias = "包玉刚",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1918, 11, 10, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("1918年11月10日与11月16日（公开资料异说）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真影视人物日期可能混用农历公历时保留异说且不绑定生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-ruan-lingyu-date-conflict")
+        val stored = baseline.copy(
+            alias = "阮玲玉",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1910, 6, 3, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("1910年4月26日与6月3日（公开资料存在农历／公历混用风险）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真僧道人物仅有公开出生年份时保留原始排盘且不绑定生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-tao-hongjing-year-conflict")
+        val stored = baseline.copy(
+            alias = "陶弘景",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1896, 7, 1, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("456年（公开资料仅见年份）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真传统人物生日换算有异说时不伪造公历生日`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-confucius-date-conflict")
+        val stored = baseline.copy(
+            alias = "孔子",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2030, 12, 31, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("公元前551年（出生日期有不同换算与记载）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真晚明人物仅有公开出生年份时不把概览和年表绑定到原始排盘`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-wei-zhongxian-year-conflict")
+        val stored = baseline.copy(
+            alias = "魏忠贤",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2048, 3, 11, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("1568年（故宫资料仅见年份）"))
+        assertEquals("来源排盘年份", notes.timeline.single().sourceLabel)
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+        assertFalse(notes.masterCommentary.contains("明代宦官。天启朝掌司礼监与东厂"))
+    }
+
+    @Test
+    fun `问真传统人物公开完整生日冲突时详情只读采用资料日期但不绑定同名生平`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-wang-anshi-date-corrected")
+        val stored = baseline.copy(
+            alias = "王安石",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2064, 3, 4, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val displayedTime = (viewModel.state.value.detail?.birthInput?.calendarInput as? BirthCalendarInput.Solar)
+            ?.dateTime
+        assertEquals(CivilDateTime(1021, 12, 18, 8, 0, 0), displayedTime)
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("1021-12-18"))
+        assertTrue(notes.ownerFeedback.contains("公开完整生日已核验"))
+        assertTrue(notes.masterCommentary.contains("尚未完成同一人交叉核验"))
+    }
+
+    @Test
+    fun `问真名人有公开完整生日冲突时统一目录采用公开日期且保留原始输入`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-qi-jiguang-corrected")
+        val stored = baseline.copy(
+            alias = "戚继光",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(2008, 11, 25, 8, 0, 0),
+                ),
+                sourceNote = "问真网页名人案例；来源阳历：2008-11-25 08:00:00；来源四柱：戊子癸亥甲子戊辰。",
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val displayedTime = (viewModel.state.value.detail?.birthInput?.calendarInput as? BirthCalendarInput.Solar)
+            ?.dateTime
+        assertEquals(CivilDateTime(1528, 11, 12, 8, 0, 0), displayedTime)
+        assertEquals(
+            CivilDateTime(2008, 11, 25, 8, 0, 0),
+            (repository.stored.getValue(stored.id).birthInput.calendarInput as BirthCalendarInput.Solar)
+                .dateTime,
+        )
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.ownerFeedback.contains("公开完整生日已核验"))
+        assertTrue(notes.ownerFeedback.contains("2008-11-25 08:00:00"))
+        assertTrue(notes.ownerFeedback.contains("1528-11-12 08:00"))
+    }
+
+    @Test
+    fun `已核生日的问真别名可归并到公开人物资料`() = runTest {
+        val baseline = sampleStoredCase("case-wenzhen-einstein-verified")
+        val stored = baseline.copy(
+            alias = "爱因斯坦",
+            libraryType = CaseLibraryType.CELEBRITY,
+            sourceType = CaseSourceType.WENZHEN_WEB_IMPORT,
+            birthInput = baseline.birthInput.copy(
+                calendarInput = BirthCalendarInput.Solar(
+                    CivilDateTime(1879, 3, 14, 8, 0, 0),
+                ),
+            ),
+        )
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openDetail(stored.id)
+
+        val notes = viewModel.state.value.caseNotesDraft
+        assertTrue(notes.masterCommentary.contains("理论物理学家"))
+        assertEquals("公开生平资料", notes.timeline.first().sourceLabel)
+    }
+
+    @Test
     fun `同修订命例预取命中并快速切换时笔记始终归属当前命例`() = runTest {
         val caseARecord = masterCommentary().copy(id = "notes-a", content = "甲命例点评")
         val caseBRecord = masterCommentary().copy(id = "notes-b", content = "乙命例点评")
@@ -1373,7 +2327,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `分组标签筛选与排序直接复用已加载目录`() = runTest {
+    fun `分组和标签快捷筛选互斥且直接复用已加载目录`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["case-filter"] = sampleStoredCase("case-filter").copy(
                 groups = listOf(CaseGroup("group-1", "家人")),
@@ -1404,7 +2358,7 @@ class StageTwoViewModelTest {
         )
 
         assertEquals(catalogReadCount, repository.searchRequests.size)
-        assertEquals("group-1", viewModel.state.value.selectedGroupId)
+        assertNull(viewModel.state.value.selectedGroupId)
         assertEquals("tag-1", viewModel.state.value.selectedTagId)
         assertEquals(CaseSortOrder.LAST_VIEWED_DESC, viewModel.state.value.sortOrder)
         assertEquals(setOf('甲', '子'), viewModel.state.value.advancedFilter.ganZhi)
@@ -1420,6 +2374,11 @@ class StageTwoViewModelTest {
         assertEquals("北京", viewModel.state.value.advancedFilter.birthRegion)
         assertEquals(setOf("木旺"), viewModel.state.value.advancedFilter.seasonalWuxingStates)
         assertEquals(setOf("天乙贵人"), viewModel.state.value.advancedFilter.shenSha)
+
+        viewModel.selectGroup("group-1")
+
+        assertEquals("group-1", viewModel.state.value.selectedGroupId)
+        assertNull(viewModel.state.value.selectedTagId)
     }
 
     @Test
@@ -1579,7 +2538,7 @@ class StageTwoViewModelTest {
         assertNull(viewModel.state.value.selectedGroupId)
         assertEquals(
             listOf("celebrity-group"),
-            viewModel.state.value.availableGroups.map { it.id },
+            viewModel.state.value.availableFormGroups.map { it.id },
         )
 
         viewModel.openCreate()
@@ -1587,7 +2546,7 @@ class StageTwoViewModelTest {
         assertEquals(CaseLibraryType.USER, viewModel.state.value.form.libraryType)
         assertEquals(
             listOf("user-group"),
-            viewModel.state.value.availableGroups.map { it.id },
+            viewModel.state.value.availableFormGroups.map { it.id },
         )
     }
 
@@ -1701,6 +2660,86 @@ class StageTwoViewModelTest {
         assertEquals(CaseVisibility.ACTIVE, viewModel.state.value.visibility)
         assertEquals(listOf("case-trash"), viewModel.state.value.cases.map { it.id })
         assertNull(repository.stored.getValue("case-trash").deletedAt)
+    }
+
+    @Test
+    fun `回收站恢复会重读最新修订而不因详情缓存过期失效`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-trash"] = sampleStoredCase("case-trash").copy(deletedAt = FixedInstant)
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+        viewModel.openDetail("case-trash")
+        val renderedRevision = requireNotNull(viewModel.state.value.detail).revision
+        repository.stored["case-trash"] = repository.stored.getValue("case-trash").copy(
+            revision = renderedRevision + 1,
+        )
+
+        viewModel.restoreCase()
+
+        assertNull(repository.stored.getValue("case-trash").deletedAt)
+        assertEquals(CaseVisibility.ACTIVE, viewModel.state.value.visibility)
+        assertNull(viewModel.state.value.mutationError)
+    }
+
+    @Test
+    fun `回收站详情已被恢复时点击恢复会回到实际所在列表`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["case-trash"] = sampleStoredCase("case-trash").copy(deletedAt = FixedInstant)
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+        viewModel.openDetail("case-trash")
+        repository.stored["case-trash"] = repository.stored.getValue("case-trash").copy(deletedAt = null)
+
+        viewModel.restoreCase()
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(CaseVisibility.ACTIVE, viewModel.state.value.visibility)
+        assertEquals(listOf("case-trash"), viewModel.state.value.cases.map { it.id })
+        assertNull(viewModel.state.value.detail)
+        assertNull(viewModel.state.value.mutationError)
+    }
+
+    @Test
+    fun `从回收站恢复名人后自动回到名人案例库`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["celebrity-trash"] = sampleStoredCase("celebrity-trash").copy(
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
+                deletedAt = FixedInstant,
+            )
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.selectCaseLibrary(CaseLibraryType.USER)
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+        viewModel.openDetail("celebrity-trash")
+
+        viewModel.restoreCase()
+
+        assertEquals(CaseLibraryType.CELEBRITY, viewModel.state.value.libraryType)
+        assertEquals(CaseVisibility.ACTIVE, viewModel.state.value.visibility)
+        assertEquals(listOf("celebrity-trash"), viewModel.state.value.cases.map { it.id })
+    }
+
+    @Test
+    fun `恢复后仍无内容的旧某某案例会在下次启动时再次移入回收站`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["legacy-placeholder"] = sampleStoredCase("legacy-placeholder").copy(
+                alias = "某某",
+                name = ExplicitText.present("某某"),
+                deletedAt = FixedInstant,
+            )
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.selectVisibility(CaseVisibility.TRASHED)
+        viewModel.openDetail("legacy-placeholder")
+
+        viewModel.restoreCase()
+
+        assertNull(repository.stored.getValue("legacy-placeholder").deletedAt)
+        createViewModel(repository)
+        assertNotNull(repository.stored.getValue("legacy-placeholder").deletedAt)
     }
 
     @Test
@@ -2753,6 +3792,7 @@ class StageTwoViewModelTest {
             backupAttachmentRoot = backupRoot?.resolve("attachments"),
             backupWorkRoot = backupRoot?.resolve("work"),
             calculationPreferenceStore = calculationPreferenceStore,
+            baziEngine = engine,
             ioDispatcher = dispatcher,
             fortuneCalculationDispatcher = dispatcher,
             searchDebounceMillis = 0L,

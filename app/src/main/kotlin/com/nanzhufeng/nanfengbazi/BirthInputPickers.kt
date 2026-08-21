@@ -9,6 +9,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +61,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +69,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nanzhufeng.nanfengbazi.domain.model.CalendarSystem
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.math.abs
@@ -84,8 +88,102 @@ internal data class BirthDateTimeSelection(
     val day: Int,
     val hour: Int,
     val minute: Int,
+    val timePrecision: TimePrecision,
     val isLeapMonth: Boolean,
 )
+
+/**
+ * 顶部快速定位输入的解析结果。字段为空即表示保留当前滚轮值，不能靠文本猜测历法类型。
+ */
+internal data class BirthPickerQuickLocate(
+    val year: Int? = null,
+    val month: Int? = null,
+    val day: Int? = null,
+    val hour: Int? = null,
+    val minute: Int? = null,
+) {
+    val hasValue: Boolean
+        get() = year != null || month != null || day != null || hour != null || minute != null
+}
+
+/**
+ * 支持完整紧凑格式、常见分隔格式，以及带中文单位的任意部分输入。
+ * 例如：199001020830、1990-01-02 08:30、1990年、8:30、3月15日。
+ */
+internal fun parseBirthPickerQuickLocate(raw: String): BirthPickerQuickLocate? {
+    val input = raw.map { character ->
+        if (character in '０'..'９') {
+            ('0'.code + (character.code - '０'.code)).toChar()
+        } else {
+            character
+        }
+    }.joinToString("").trim()
+    if (input.isEmpty()) return null
+
+    fun firstNumber(pattern: String): Int? =
+        Regex(pattern).find(input)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+    val labeledYear = firstNumber("(\\d{1,4})\\s*年")
+    val labeledMonth = firstNumber("(\\d{1,2})\\s*月")
+    val labeledDay = firstNumber("(\\d{1,2})\\s*[日号]")
+    val labeledHour = firstNumber("(\\d{1,2})\\s*[时点]")
+    val labeledMinute = firstNumber("(\\d{1,2})\\s*分")
+    val clockMatch = Regex("(\\d{1,2})\\s*[:：]\\s*(\\d{1,2})").find(input)
+    val explicit = BirthPickerQuickLocate(
+        year = labeledYear,
+        month = labeledMonth,
+        day = labeledDay,
+        hour = labeledHour ?: clockMatch?.groupValues?.getOrNull(1)?.toIntOrNull(),
+        minute = labeledMinute ?: clockMatch?.groupValues?.getOrNull(2)?.toIntOrNull(),
+    )
+    if (labeledYear != null || labeledMonth != null || labeledDay != null ||
+        labeledHour != null || labeledMinute != null
+    ) {
+        return explicit
+    }
+
+    if (input.all(Char::isDigit)) {
+        return when (input.length) {
+            4 -> BirthPickerQuickLocate(year = input.toIntOrNull())
+            6 -> BirthPickerQuickLocate(
+                year = input.take(4).toIntOrNull(),
+                month = input.drop(4).take(2).toIntOrNull(),
+            )
+            8 -> BirthPickerQuickLocate(
+                year = input.take(4).toIntOrNull(),
+                month = input.drop(4).take(2).toIntOrNull(),
+                day = input.drop(6).take(2).toIntOrNull(),
+            )
+            10 -> BirthPickerQuickLocate(
+                year = input.take(4).toIntOrNull(),
+                month = input.drop(4).take(2).toIntOrNull(),
+                day = input.drop(6).take(2).toIntOrNull(),
+                hour = input.drop(8).take(2).toIntOrNull(),
+            )
+            12 -> BirthPickerQuickLocate(
+                year = input.take(4).toIntOrNull(),
+                month = input.drop(4).take(2).toIntOrNull(),
+                day = input.drop(6).take(2).toIntOrNull(),
+                hour = input.drop(8).take(2).toIntOrNull(),
+                minute = input.drop(10).take(2).toIntOrNull(),
+            )
+            else -> null
+        }
+    }
+
+    val datePart = clockMatch?.let { input.removeRange(it.range) } ?: input
+    val values = Regex("\\d+").findAll(datePart).mapNotNull { it.value.toIntOrNull() }.toList()
+    if (values.firstOrNull()?.toString()?.length == 4) {
+        return BirthPickerQuickLocate(
+            year = values.getOrNull(0),
+            month = values.getOrNull(1),
+            day = values.getOrNull(2),
+            hour = explicit.hour,
+            minute = explicit.minute,
+        )
+    }
+    return explicit.takeIf(BirthPickerQuickLocate::hasValue)
+}
 
 data class BirthPickerTodaySnapshot(
     val solarYear: Int,
@@ -99,6 +197,54 @@ data class BirthPickerTodaySnapshot(
     val minute: Int,
     val pillars: List<String>,
 )
+
+/** 公历与农历共用同一份时分精度，切换历法时不能分叉。 */
+internal data class BirthPickerClockSelection(
+    val hour: Int,
+    val minute: Int,
+    private val knownPrecision: TimePrecision,
+    val isUnknown: Boolean,
+) {
+    val hourValue: Int? get() = hour.takeUnless { isUnknown }
+    val minuteValue: Int? get() = minute.takeUnless { isUnknown }
+    val timePrecision: TimePrecision get() = if (isUnknown) TimePrecision.UNKNOWN else knownPrecision
+
+    fun displayLabel(): String = if (isUnknown) "未知:未知" else {
+        "${hour.twoDigits()}:${minute.twoDigits()}"
+    }
+
+    fun selectHour(value: Int?): BirthPickerClockSelection = when (value) {
+        null -> copy(isUnknown = true)
+        else -> copy(hour = value, isUnknown = false)
+    }
+
+    fun selectMinute(value: Int?): BirthPickerClockSelection = when (value) {
+        null -> copy(isUnknown = true)
+        else -> copy(
+            minute = value,
+            knownPrecision = if (value == 0) knownPrecision else TimePrecision.EXACT_TO_MINUTE,
+            isUnknown = false,
+        )
+    }
+
+    fun selectKnown(hour: Int, minute: Int): BirthPickerClockSelection = copy(
+        hour = hour,
+        minute = minute,
+        knownPrecision = TimePrecision.EXACT_TO_MINUTE,
+        isUnknown = false,
+    )
+
+    companion object {
+        fun from(hour: Int, minute: Int, timePrecision: TimePrecision): BirthPickerClockSelection =
+            BirthPickerClockSelection(
+                hour = hour,
+                minute = minute,
+                knownPrecision = timePrecision.takeUnless { it == TimePrecision.UNKNOWN }
+                    ?: TimePrecision.EXACT_TO_MINUTE,
+                isUnknown = timePrecision == TimePrecision.UNKNOWN,
+            )
+    }
+}
 
 internal data class FourPillarsLookupSelection(
     val pillars: List<String>,
@@ -138,9 +284,11 @@ internal fun BirthDateTimePickerSheet(
     var year by remember { mutableIntStateOf(initial.year) }
     var month by remember { mutableIntStateOf(initial.monthValue) }
     var day by remember { mutableIntStateOf(initial.dayOfMonth) }
-    var hour by remember { mutableIntStateOf(initial.hour) }
-    var minute by remember { mutableIntStateOf(initial.minute) }
+    var clock by remember(form) {
+        mutableStateOf(BirthPickerClockSelection.from(initial.hour, initial.minute, form.timePrecision))
+    }
     var leapMonth by remember { mutableStateOf(form.isLeapMonth) }
+    var quickLocateText by remember(form) { mutableStateOf("") }
     val maxDay = remember(mode, year, month) {
         if (mode == BirthPickerMode.SOLAR) {
             runCatching { LocalDate.of(year, month, 1).lengthOfMonth() }.getOrDefault(31)
@@ -150,6 +298,15 @@ internal fun BirthDateTimePickerSheet(
     }
     LaunchedEffect(maxDay) {
         if (day > maxDay) day = maxDay
+    }
+    LaunchedEffect(mode, quickLocateText) {
+        if (mode == BirthPickerMode.FOUR_PILLARS) return@LaunchedEffect
+        val quickLocate = parseBirthPickerQuickLocate(quickLocateText) ?: return@LaunchedEffect
+        quickLocate.year?.takeIf { it in SupportedPickerYears }?.let { year = it }
+        quickLocate.month?.takeIf { it in 1..12 }?.let { month = it }
+        quickLocate.day?.takeIf { it in 1..31 }?.let { day = it }
+        quickLocate.hour?.takeIf { it in 0..23 }?.let { clock = clock.selectHour(it) }
+        quickLocate.minute?.takeIf { it in 0..59 }?.let { clock = clock.selectMinute(it) }
     }
 
     FixedPickerSheet(
@@ -208,15 +365,13 @@ internal fun BirthDateTimePickerSheet(
                             day = today.solarDay
                             leapMonth = false
                         }
-                        hour = today.hour
-                        minute = today.minute
+                        clock = clock.selectKnown(today.hour, today.minute)
                     } else if (mode == BirthPickerMode.SOLAR) {
                         val now = LocalDateTime.now()
                         year = now.year
                         month = now.monthValue
                         day = now.dayOfMonth
-                        hour = now.hour
-                        minute = now.minute
+                        clock = clock.selectKnown(now.hour, now.minute)
                         leapMonth = false
                     }
                 },
@@ -229,19 +384,24 @@ internal fun BirthDateTimePickerSheet(
                             year = year,
                             month = month,
                             day = day,
-                            hour = hour,
-                            minute = minute,
+                            hour = clock.hour,
+                            minute = clock.minute,
+                            timePrecision = clock.timePrecision,
                             isLeapMonth = mode == BirthPickerMode.LUNAR && leapMonth,
                         ),
                     )
                 },
                 confirmTag = "confirm_birth_datetime",
             )
+            BirthPickerQuickLocateInput(
+                value = quickLocateText,
+                onValueChange = { quickLocateText = it },
+            )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             WheelSelectionPanel(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(PrimaryPickerWheelViewportHeight),
+                    .height(BirthDateTimeWheelViewportHeight),
             ) {
                 ValueWheel(
                     label = "年",
@@ -262,6 +422,7 @@ internal fun BirthDateTimePickerSheet(
                     onSelected = { month = it },
                     modifier = Modifier.weight(1f),
                     tag = "birth_month_wheel",
+                    cyclic = true,
                 )
                 ValueWheel(
                     label = "日",
@@ -273,24 +434,27 @@ internal fun BirthDateTimePickerSheet(
                     onSelected = { day = it },
                     modifier = Modifier.weight(1f),
                     tag = "birth_day_wheel",
+                    cyclic = true,
                 )
                 ValueWheel(
                     label = "时",
-                    values = (0..23).toList(),
-                    selectedValue = hour,
-                    display = Int::twoDigits,
-                    onSelected = { hour = it },
+                    values = BirthPickerHourValues,
+                    selectedValue = clock.hourValue,
+                    display = { value -> value?.twoDigits() ?: "未知" },
+                    onSelected = { clock = clock.selectHour(it) },
                     modifier = Modifier.weight(1f),
                     tag = "birth_hour_wheel",
+                    cyclic = true,
                 )
                 ValueWheel(
                     label = "分",
-                    values = (0..59).toList(),
-                    selectedValue = minute,
-                    display = Int::twoDigits,
-                    onSelected = { minute = it },
+                    values = BirthPickerMinuteValues,
+                    selectedValue = clock.minuteValue,
+                    display = { value -> value?.twoDigits() ?: "未知" },
+                    onSelected = { clock = clock.selectMinute(it) },
                     modifier = Modifier.weight(1f),
                     tag = "birth_minute_wheel",
+                    cyclic = true,
                 )
             }
             Box(
@@ -322,10 +486,10 @@ internal fun BirthDateTimePickerSheet(
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                     Text(
                         if (mode == BirthPickerMode.SOLAR) {
-                            "%04d-%02d-%02d  %02d:%02d".format(year, month, day, hour, minute)
+                            "%04d-%02d-%02d  %s".format(year, month, day, clock.displayLabel())
                         } else {
                             "${year}年${if (leapMonth) "闰" else ""}${lunarMonthName(month)}月" +
-                                "${lunarDayName(day)}  ${hour.twoDigits()}:${minute.twoDigits()}"
+                                "${lunarDayName(day)}  ${clock.displayLabel()}"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = NanfengInk,
@@ -339,6 +503,65 @@ internal fun BirthDateTimePickerSheet(
                     )
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BirthPickerQuickLocateInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .testTag("birth_quick_locate_input"),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                "快速定位",
+                style = MaterialTheme.typography.labelLarge,
+                color = NanfengNavigation,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                if (value.isEmpty()) {
+                    Text(
+                        "1990-01-02 08:30；也可输入 1990年、8:30",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = { candidate ->
+                        if (candidate.length <= 24 && candidate.all { character ->
+                                character.isDigit() || character in "年月日号时点分:-：/ ."
+                            }
+                        ) {
+                            onValueChange(candidate)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "快速定位出生年月日时分" },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = NanfengInk),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                )
             }
         }
     }
@@ -899,6 +1122,8 @@ internal fun FixedPickerSheet(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            val maxSheetHeight = maxHeight
+            val resolvedHeight = targetHeight?.let { minOf(it, maxSheetHeight) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -906,18 +1131,23 @@ internal fun FixedPickerSheet(
                     .clickable(onClick = onDismiss)
                     .testTag("picker_scrim_dismiss"),
             )
-            val resolvedHeight = targetHeight?.let { minOf(it, maxHeight) }
-            Surface(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(
-                        if (resolvedHeight != null) Modifier.height(resolvedHeight)
-                        else Modifier.heightIn(max = maxHeight),
-                    ),
-                color = surfaceColor,
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                content = content,
-            )
+                    .padding(bottom = PickerSheetBottomClearance),
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (resolvedHeight != null) Modifier.height(resolvedHeight)
+                            else Modifier.heightIn(max = maxSheetHeight),
+                        ),
+                    color = surfaceColor,
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    content = content,
+                )
+            }
         }
     }
 }
@@ -991,10 +1221,10 @@ internal fun ObservationDateTimePickerSheet(
                 modifier = Modifier.fillMaxWidth().height(ObservationWheelViewportHeight),
             ) {
                 ValueWheel("年", SupportedPickerYears.toList(), year, Int::toString, { year = it }, Modifier.weight(1.22f), "fortune_year_wheel")
-                ValueWheel("月", (1..12).toList(), month, Int::twoDigits, { month = it }, Modifier.weight(1f), "fortune_month_wheel")
-                ValueWheel("日", (1..maxDay).toList(), day.coerceAtMost(maxDay), Int::twoDigits, { day = it }, Modifier.weight(1f), "fortune_day_wheel")
-                ValueWheel("时", (0..23).toList(), hour, Int::twoDigits, { hour = it }, Modifier.weight(1f), "fortune_hour_wheel")
-                ValueWheel("分", (0..59).toList(), minute, Int::twoDigits, { minute = it }, Modifier.weight(1f), "fortune_minute_wheel")
+                ValueWheel("月", (1..12).toList(), month, Int::twoDigits, { month = it }, Modifier.weight(1f), "fortune_month_wheel", cyclic = true)
+                ValueWheel("日", (1..maxDay).toList(), day.coerceAtMost(maxDay), Int::twoDigits, { day = it }, Modifier.weight(1f), "fortune_day_wheel", cyclic = true)
+                ValueWheel("时", (0..23).toList(), hour, Int::twoDigits, { hour = it }, Modifier.weight(1f), "fortune_hour_wheel", cyclic = true)
+                ValueWheel("分", (0..59).toList(), minute, Int::twoDigits, { minute = it }, Modifier.weight(1f), "fortune_minute_wheel", cyclic = true)
             }
         }
     }
@@ -1077,35 +1307,51 @@ internal fun <T> ValueWheel(
     onSelected: (T) -> Unit,
     modifier: Modifier = Modifier,
     tag: String,
+    cyclic: Boolean = false,
 ) {
     val selectedIndex = values.indexOf(selectedValue).coerceAtLeast(0)
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
+    val initialListIndex = remember(values, selectedIndex, cyclic) {
+        if (cyclic) circularWheelIndex(selectedIndex, values.size) else selectedIndex
+    }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialListIndex)
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
     val currentValues by rememberUpdatedState(values)
     val currentSelected by rememberUpdatedState(selectedValue)
     val currentOnSelected by rememberUpdatedState(onSelected)
     val haptic = rememberAppHapticFeedback()
-    var lastCenteredIndex by remember(values) { mutableIntStateOf(selectedIndex) }
+    var lastCenteredValueIndex by remember(values, cyclic) { mutableIntStateOf(selectedIndex) }
 
-    LaunchedEffect(values, selectedValue) {
+    LaunchedEffect(values, selectedValue, cyclic) {
         if (!listState.isScrollInProgress && selectedIndex in values.indices) {
-            listState.scrollToItem(selectedIndex)
+            val targetIndex = if (cyclic) {
+                circularWheelIndexNear(
+                    currentIndex = listState.centeredWheelIndex() ?: listState.firstVisibleItemIndex,
+                    selectedIndex = selectedIndex,
+                    valueCount = values.size,
+                )
+            } else {
+                selectedIndex
+            }
+            listState.scrollToItem(targetIndex)
         }
     }
 
-    LaunchedEffect(listState, values) {
+    LaunchedEffect(listState, values, cyclic) {
         snapshotFlow { listState.isScrollInProgress to listState.centeredWheelIndex() }
             .distinctUntilChanged()
-            .collect { (scrolling, index) ->
-                if (index == null || index !in currentValues.indices) return@collect
-                if (index != lastCenteredIndex) {
-                    lastCenteredIndex = index
+            .collect { (scrolling, listIndex) ->
+                val valueIndex = listIndex?.let {
+                    if (cyclic) circularWheelValueIndex(it, currentValues.size) else it
+                }
+                if (valueIndex == null || valueIndex !in currentValues.indices) return@collect
+                if (valueIndex != lastCenteredValueIndex) {
+                    lastCenteredValueIndex = valueIndex
                     if (scrolling) {
                         haptic.perform(AppHapticEvent.SNAP)
                     }
                 }
                 if (!scrolling) {
-                    val settled = currentValues[index]
+                    val settled = currentValues[valueIndex]
                     if (settled != currentSelected) currentOnSelected(settled)
                 }
             }
@@ -1143,8 +1389,13 @@ internal fun <T> ValueWheel(
                     }
                     .testTag(tag),
             ) {
-                items(values.size) { index ->
-                    val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                items(if (cyclic) Int.MAX_VALUE else values.size) { listIndex ->
+                    val valueIndex = if (cyclic) {
+                        circularWheelValueIndex(listIndex, values.size)
+                    } else {
+                        listIndex
+                    }
+                    val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listIndex }
                     val center = (
                         listState.layoutInfo.viewportStartOffset +
                             listState.layoutInfo.viewportEndOffset
@@ -1166,7 +1417,7 @@ internal fun <T> ValueWheel(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            display(values[index]),
+                            display(values[valueIndex]),
                             fontSize = if (selected) 20.sp else 15.sp,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (selected) NanfengInk else NanfengNavigationMuted,
@@ -1177,6 +1428,27 @@ internal fun <T> ValueWheel(
             }
         }
     }
+}
+
+private fun circularWheelValueIndex(listIndex: Int, valueCount: Int): Int =
+    Math.floorMod(listIndex, valueCount)
+
+private fun circularWheelIndex(selectedIndex: Int, valueCount: Int): Int {
+    val midpoint = Int.MAX_VALUE / 2
+    return midpoint - Math.floorMod(midpoint, valueCount) + selectedIndex
+}
+
+private fun circularWheelIndexNear(
+    currentIndex: Int,
+    selectedIndex: Int,
+    valueCount: Int,
+): Int {
+    val currentCycle = Math.floorDiv(currentIndex, valueCount)
+    return listOf(currentCycle - 1, currentCycle, currentCycle + 1)
+        .map { cycle -> cycle * valueCount + selectedIndex }
+        .filter { it in 0 until Int.MAX_VALUE }
+        .minByOrNull { candidate -> abs(candidate.toLong() - currentIndex.toLong()) }
+        ?: circularWheelIndex(selectedIndex, valueCount)
 }
 
 @Composable
@@ -1279,10 +1551,14 @@ private val EarthlyBranches = listOf("子", "丑", "寅", "卯", "辰", "巳", "
 internal val PillarLabels = listOf("年柱", "月柱", "日柱", "时柱")
 
 private val SupportedPickerYears = AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR
+private val BirthPickerHourValues: List<Int?> = listOf(null) + (0..23).toList()
+private val BirthPickerMinuteValues: List<Int?> = listOf(null) + (0..59).toList()
 private val BirthPickerPanelHeight = 680.dp
+private val PickerSheetBottomClearance = 24.dp
 private val BirthWheelViewportHeight = 166.dp
 private val ObservationWheelViewportHeight = 250.dp
 private val PrimaryPickerWheelViewportHeight = 390.dp
+private val BirthDateTimeWheelViewportHeight = 350.dp
 private val BirthWheelItemHeight = 44.dp
 private val BirthWheelLabelCenterOffset = 14.dp
 private val BirthWheelVerticalInset = 12.dp

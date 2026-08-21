@@ -79,11 +79,20 @@ internal class AiVisionScreenshotOcrEngine(
         apiKey: String,
         input: OcrImageInput,
     ): String {
+        require(aiVisionModelSupportMessage(provider) == null) {
+            requireNotNull(aiVisionModelSupportMessage(provider))
+        }
         val body = buildJsonObject {
             put("model", provider.model)
-            put("stream", false)
+            put("stream", true)
+            put("stream_options", buildJsonObject { put("include_usage", true) })
             put("temperature", 0)
-            put("response_format", buildJsonObject { put("type", "json_object") })
+            if (provider.providerId == AiCommentaryProviderId.QWEN) {
+                put("enable_thinking", false)
+                put("max_tokens", 2_800)
+            } else {
+                put("response_format", buildJsonObject { put("type", "json_object") })
+            }
             put("messages", buildJsonArray {
                 add(buildJsonObject {
                     put("role", "system")
@@ -116,7 +125,7 @@ internal class AiVisionScreenshotOcrEngine(
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 15_000
-            readTimeout = 120_000
+            readTimeout = aiCommentaryReadTimeoutMillis(provider.providerId)
             doInput = true
             doOutput = true
             setRequestProperty("Authorization", "Bearer $apiKey")
@@ -124,6 +133,7 @@ internal class AiVisionScreenshotOcrEngine(
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             if (provider.providerId == AiCommentaryProviderId.OPEN_ROUTER) {
                 setRequestProperty("X-OpenRouter-Title", "南枫八字截图识别")
+                setRequestProperty("X-OpenRouter-Metadata", "enabled")
             }
             outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body.toString()) }
         }
@@ -134,7 +144,8 @@ internal class AiVisionScreenshotOcrEngine(
         require(code in 200..299) {
             when (code) {
                 400 -> "当前模型可能不支持图片输入或结构化输出，请在 AI 模型服务中更换视觉模型。"
-                401, 403 -> "请检查 API Key 与模型权限。"
+                403 -> aiCommentaryHttpFailureMessage(provider.providerId, code, payload)
+                401 -> "请检查 API Key 与模型权限。"
                 402 -> "模型服务账户余额不足。"
                 408, 429 -> "模型服务繁忙或超时，请稍后复用原图重试。"
                 else -> "模型识别请求失败（HTTP $code），请检查模型服务后重试。"
@@ -148,12 +159,9 @@ internal class AiVisionScreenshotOcrEngine(
         responseBody: String,
         provider: AiCommentaryProviderConfig,
     ): OcrDocument {
-        val content = runCatching {
-            json.parseToJsonElement(responseBody).jsonObject
-                .get("choices")?.jsonArray?.firstOrNull()?.jsonObject
-                ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
-                ?.removePrefix("```json")?.removePrefix("```")?.removeSuffix("```")?.trim()
-        }.getOrNull().orEmpty()
+        val content = decodeAiCommentaryResponsePayload(responseBody)?.content
+            ?.removePrefix("```json")?.removePrefix("```")?.removeSuffix("```")?.trim()
+            .orEmpty()
         val result = runCatching { json.parseToJsonElement(content).jsonObject }.getOrNull()
             ?: error("模型没有返回可读取的截图识别结果，请重试或更换视觉模型。")
         val pageType = result.text("pageType").toWenzhenPageType()

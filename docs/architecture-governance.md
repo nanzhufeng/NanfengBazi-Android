@@ -32,6 +32,8 @@
 | Tyme4j 状态隔离 | `core:engine-tyme` | `TymeBaziEngine` | 其他模块访问全局 provider |
 | `BaziCase` 与字段空值语义 | `core:domain` | 仓储、备份 | 页面或 OCR 用空串改写真值 |
 | 命例案例库归属 | `BaziCase.libraryType` + `CaseRepository` | 用户列表、名人案例、未来文字录入 | 用分组／标签冒充系统归属、页面二次过滤，或创建表单沿用前一个案例库的分组目录 |
+| 名人成品资料包 | `celebrity-unified-v1.json` → `UnifiedCelebrityCatalogImporter` → `CaseRepository` | 安装后资料包同步、名人列表、详情、去重与展示分类 | 回收站逐条恢复、平行名人目录、把资料包写成用户案例，或由页面临时改写资料包事实 |
+| 命例列表会话投影 | `StageTwoUiState.caseListSession()` → `StageTwoViewModel.publishCaseProjection()` | 用户列表、名人案例、回收站的标题、筛选、计数与行 | 分开保存工具栏和行数据、无条件回写过期异步投影，或为切换标签重读另一套列表 |
 | 分组目录投影 | `CaseCatalogStore.groupsByLibrary` → `StageTwoViewModel.cachedGroupsForLibrary()` | 记录分组筛选、用户排盘、名人案例录入、分组管理 | 以上一页 `availableGroups` 作为新建表单的目录真值；切换案例库时必须同步替换分组列表、清理跨库筛选。缓存未就绪时只能从同一目录读取链路补齐 |
 | 命例增量写入 | `CaseRepository` | 手动录入；未来 OCR | DAO、解析器或页面直接写库 |
 | 命例生命周期 | `CaseLifecycleUseCase` + `CaseRepository` | 详情、回收站、复制 | 页面直接删行或复制附件引用 |
@@ -143,7 +145,7 @@
 | 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
 |---|---|---|---|
 | 排盘首页最近命例 | 只读取活动命例中有 `lastViewedAt` 的最近 3 条，不另存显示副本 | `CaseRepository.search(LAST_VIEWED_DESC)` → `StageTwoViewModel.recentCases` | 仓储请求契约与 API 35 创建—查看—快捷返回流程 |
-| 记录目录投影与局部操作 | 导入包只负责输入；提交后案例按独立 `caseId` 聚合持久化。应用级 `CaseCatalogStore` 维护一次一致的轻量目录快照，页面重建先投影该快照、再静默校准；置顶／软删除／永久删除按仓储变更数精确回写共享快照，只有变更数不一致、导入、恢复或分组结构变更才读取仓储校准。仓储目录读取只聚合已采用计算快照，不扫描整段历史。 | `CaseRepository` 结构化变更结果 → `CaseCatalogStore` → `StageTwoViewModel` 列表投影 | 页面重建首帧复用共享目录；并发校准合并为一次读取；三类局部操作不增加仓储目录读取；已有列表在校准中持续可见 |
+| 记录目录投影与局部操作 | 导入包只负责输入；提交后案例按独立 `caseId` 聚合持久化。应用级 `CaseCatalogStore` 维护一次一致的轻量目录快照，页面重建先投影该快照、再静默校准；置顶／软删除／永久删除按仓储变更数精确回写共享快照，只有变更数不一致、导入、恢复或分组结构变更才读取仓储校准。每次投影绑定完整 `CaseListSession`，过期会话只能更新缓存，不能覆盖当前界面。仓储目录读取只聚合已采用计算快照，不扫描整段历史。 | `CaseRepository` 结构化变更结果 → `CaseCatalogStore` → `StageTwoViewModel` 列表投影 | 首屏清理完成后只触发一次目录加载；页面重建复用共享目录；切换用户／名人／回收站时标题、筛选、计数与行同会话；并发校准合并为一次读取；三类局部操作不增加仓储目录读取；已有列表在校准中持续可见 |
 | 命例详情读取与保留 | 普通详情只执行一次完整 `findById`，`markViewed` 后精确回写 `lastViewedAt`；最后打开的同一案例作为只读回退内容保留。即时排盘临时详情直接消费刚生成的 `BaziCase`；开启保存时先用同一计算结果进入“正在保存”详情，后台 `savePrepared` 成功后以带 revision 的聚合原子升级，不再回读仓储 | `CreateCaseUseCase.preview/previewForSave/savePrepared`、`CaseRepository.findById/markViewed` → `StageTwoViewModel.retainedCaseDetail` | 开关两态都进入专业细盘；未保存路径零写库，保存路径不阻塞首屏且零详情回读；重复或后台失败返回原表单处理 |
 | 详情与断事笔记状态一致性 | `detail`、笔记草稿、已保存草稿和事件时间线必须以同一 `caseId + revision` 原子装载；预取缓存保存完整 `RetainedCaseDetailSnapshot`，不得只缓存父案例或只更新其中一块。渲染和保存前都校验所有权；不匹配时禁止渲染／写入并从 Room 重新 hydrate。空缓存不能证明数据库为空；若详情聚合非空而内存草稿与已保存草稿都为空，必须阻止空内容覆盖 | `StageTwoViewModel.openDetail/restoreCaseBoundDestination/ensureCaseNotesHydrated/persistCaseNotes` → `CaseRepository.findById` | 同 revision 的 A/B 快速切换、预取命中、子记录后台变化、进程恢复、1000+ 案例与空缓存／非空数据库回归；任何迟到任务不得回写另一命例 |
 | 命盘详情四标签 | 基本信息、基本排盘、岁运、分析记录消费同一 `BaziCase` 与已采用快照 | `StageTwoUiState.detailSection` | 四标签真实切换；编辑、记录和岁运长流程回归 |

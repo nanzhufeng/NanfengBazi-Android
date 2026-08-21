@@ -42,6 +42,7 @@ enum class CaseSourceType {
     CASE_COPY,
     WENZHEN_SCREENSHOT,
     WENZHEN_WEB_IMPORT,
+    CURATED_CELEBRITY_CATALOG,
     BACKUP_RESTORE,
 }
 
@@ -90,6 +91,7 @@ enum class TextRecordSourceType {
     EXTERNAL_AI,
     IMPORTED_IMAGE,
     WENZHEN_WEB_IMPORT,
+    CURATED_RESEARCH,
     LEGACY_UNSPECIFIED,
 }
 

@@ -4,7 +4,10 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
@@ -31,11 +34,147 @@ import kotlinx.serialization.json.put
 
 internal const val AI_COMMENTARY_PROMPT_VERSION = 1
 internal const val AI_COMMENTARY_MARKER = "【AI 点评】"
+private const val DEFAULT_AI_READ_TIMEOUT_MILLIS = 120_000
+private const val QWEN_AI_READ_TIMEOUT_MILLIS = 180_000
+private const val OPEN_ROUTER_MAX_AUTOMATIC_RETRY_DELAY_MILLIS = 5_000L
+private const val OPEN_ROUTER_FALLBACK_RETRY_DELAY_MILLIS = 750L
+private const val MAX_AUTOMATIC_RESPONSE_RETRIES = 1
 
 enum class AiCommentaryProviderId(val displayName: String) {
     OPEN_ROUTER("OpenRouter"),
     DEEPSEEK("DeepSeek"),
     QWEN("千问"),
+}
+
+internal fun aiCommentaryReadTimeoutMillis(providerId: AiCommentaryProviderId): Int = when (providerId) {
+    AiCommentaryProviderId.QWEN -> QWEN_AI_READ_TIMEOUT_MILLIS
+    AiCommentaryProviderId.OPEN_ROUTER,
+    AiCommentaryProviderId.DEEPSEEK,
+    -> DEFAULT_AI_READ_TIMEOUT_MILLIS
+}
+
+internal fun aiCommentaryTransportFailureMessage(
+    providerId: AiCommentaryProviderId,
+    cause: Throwable,
+): String = when (cause) {
+    is SocketTimeoutException ->
+        "${providerId.displayName}响应超时，请稍后重试或选择更快模型。"
+    is UnknownHostException ->
+        "无法连接${providerId.displayName}服务域名，请检查当前网络或代理规则。"
+    is IOException ->
+        "${providerId.displayName}网络连接中断，请检查网络后重试。"
+    else ->
+        "${providerId.displayName}请求未能发出，请返回后重试。"
+}
+
+/**
+ * Only retry responses that OpenRouter explicitly documents as transient before a model result
+ * exists. Transport timeouts are intentionally excluded: a POST may already have been accepted
+ * upstream and retrying it silently can duplicate cost.
+ */
+internal fun aiCommentaryAutomaticRetryDelayMillis(
+    providerId: AiCommentaryProviderId,
+    statusCode: Int,
+    retryAfterHeader: String?,
+): Long? {
+    if (providerId != AiCommentaryProviderId.OPEN_ROUTER || statusCode !in setOf(429, 503)) {
+        return null
+    }
+    val retryAfterMillis = retryAfterHeader?.trim()?.toLongOrNull()
+        ?.times(1_000L)
+        ?.takeIf { it in 1L..OPEN_ROUTER_MAX_AUTOMATIC_RETRY_DELAY_MILLIS }
+    return retryAfterMillis ?: OPEN_ROUTER_FALLBACK_RETRY_DELAY_MILLIS.takeIf { statusCode == 503 }
+}
+
+/** Keeps provider diagnostics actionable without retaining a response body or user material. */
+internal fun aiCommentaryHttpFailureMessage(
+    providerId: AiCommentaryProviderId,
+    statusCode: Int,
+    responseBody: String,
+): String {
+    if (providerId == AiCommentaryProviderId.OPEN_ROUTER && statusCode == 403) {
+        val errorMessage = runCatching {
+            Json.parseToJsonElement(responseBody).jsonObject["error"]?.jsonObject
+                ?.get("message")?.jsonPrimitive?.contentOrNull.orEmpty()
+        }.getOrDefault("").lowercase()
+        return when {
+            errorMessage.contains("guardrail") ||
+                errorMessage.contains("prompt injection") ||
+                errorMessage.contains("moderation") ||
+                errorMessage.contains("content policy") ->
+                "OpenRouter 安全策略拦截了本次材料（HTTP 403），请检查该 Key 的 Guardrail 或内容策略。"
+            else ->
+                "OpenRouter 拒绝本次请求（HTTP 403），请检查该 Key 的模型白名单、用量上限或组织权限。"
+        }
+    }
+    val hint = when (statusCode) {
+        401, 403 -> "请检查 API Key 与权限"
+        402 -> "账户余额不足"
+        408 -> "请求超时"
+        429 -> "请求过于频繁，请稍后重试"
+        else -> "请检查模型名称、接口地址和服务状态"
+    }
+    return "请求失败（HTTP $statusCode）：$hint。"
+}
+
+/**
+ * Screenshot intake sends an image, unlike commentary. Do not spend time or quota sending that
+ * payload to a model which is publicly documented as text-only.
+ */
+internal fun aiVisionModelSupportMessage(config: AiCommentaryProviderConfig): String? = when {
+    config.providerId == AiCommentaryProviderId.QWEN &&
+        config.model.startsWith("qwen3.7-max") ->
+        "当前千问模型 ${config.model} 仅支持文本输入，不能用于截图识别；请改用支持图片输入的视觉模型后再识别。"
+    else -> null
+}
+
+internal data class AiCommentaryResponsePayload(
+    val content: String,
+    val inputTokens: Long?,
+    val outputTokens: Long?,
+)
+
+/**
+ * The providers use the OpenAI SSE shape for streaming responses. We only retain the completed
+ * content and token counts in memory; neither the wire payload nor reasoning fragments are logged.
+ */
+internal fun decodeAiCommentaryResponsePayload(responseBody: String): AiCommentaryResponsePayload? {
+    val directRoot = runCatching { Json.parseToJsonElement(responseBody).jsonObject }.getOrNull()
+    directRoot?.let { root ->
+        val content = root["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+        if (content != null) {
+            val usage = root["usage"] as? JsonObject
+            return AiCommentaryResponsePayload(
+                content = content,
+                inputTokens = usage?.longValue("prompt_tokens"),
+                outputTokens = usage?.longValue("completion_tokens"),
+            )
+        }
+    }
+
+    val content = StringBuilder()
+    var inputTokens: Long? = null
+    var outputTokens: Long? = null
+    var receivedEvent = false
+    responseBody.lineSequence().forEach { line ->
+        val data = line.trim().removePrefix("data:").trim()
+        if (!line.trim().startsWith("data:") || data == "[DONE]") return@forEach
+        val event = runCatching { Json.parseToJsonElement(data).jsonObject }.getOrNull()
+            ?: return@forEach
+        receivedEvent = true
+        event["choices"]?.jsonArray?.firstOrNull()?.jsonObject
+            ?.get("delta")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+            ?.let(content::append)
+        val usage = event["usage"] as? JsonObject
+        inputTokens = usage?.longValue("prompt_tokens") ?: inputTokens
+        outputTokens = usage?.longValue("completion_tokens") ?: outputTokens
+    }
+    return if (receivedEvent && content.isNotEmpty()) {
+        AiCommentaryResponsePayload(content.toString(), inputTokens, outputTokens)
+    } else {
+        null
+    }
 }
 
 data class AiCommentaryProviderConfig(
@@ -326,9 +465,17 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
         }
         val body = buildJsonObject {
             put("model", request.provider.model)
-            put("stream", false)
+            put("stream", true)
+            put("stream_options", buildJsonObject { put("include_usage", true) })
             put("temperature", 0.2)
-            put("response_format", buildJsonObject { put("type", "json_object") })
+            if (request.provider.providerId == AiCommentaryProviderId.QWEN) {
+                // This task only needs four concise evidence sections. Avoid an unbounded hidden
+                // reasoning pass, which delays the first response enough to cause false timeouts.
+                put("enable_thinking", false)
+                put("max_tokens", 1_400)
+            } else {
+                put("response_format", buildJsonObject { put("type", "json_object") })
+            }
             put("messages", buildJsonArray {
                 add(buildJsonObject {
                     put("role", "system")
@@ -354,10 +501,9 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
         request: AiCommentaryGenerationRequest,
         responseBody: String,
     ): AiCommentaryGenerationResult {
-        val root = runCatching { json.parseToJsonElement(responseBody).jsonObject }.getOrNull()
+        val decoded = decodeAiCommentaryResponsePayload(responseBody)
             ?: return AiCommentaryGenerationResult.Failure("模型返回内容无法读取。", false)
-        val content = root["choices"]?.jsonArray?.firstOrNull()?.jsonObject
-            ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
+        val content = decoded.content
             ?.removePrefix("```json")?.removePrefix("```")?.removeSuffix("```")?.trim()
             .orEmpty()
         val result = runCatching { json.parseToJsonElement(content).jsonObject }.getOrNull()
@@ -369,7 +515,6 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
         if (rendered == null) {
             return AiCommentaryGenerationResult.Failure("模型返回的点评内容为空。", false)
         }
-        val usage = root["usage"] as? JsonObject
         return AiCommentaryGenerationResult.Success(
             AiCommentaryDraft(
                 providerId = request.provider.providerId,
@@ -379,8 +524,8 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
                 promptVersion = AI_COMMENTARY_PROMPT_VERSION,
                 generatedAt = now(),
                 content = rendered,
-                inputTokens = usage?.longValue("prompt_tokens"),
-                outputTokens = usage?.longValue("completion_tokens"),
+                inputTokens = decoded.inputTokens,
+                outputTokens = decoded.outputTokens,
             ),
         )
     }
@@ -390,11 +535,28 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
         apiKey: String,
         providerId: AiCommentaryProviderId,
         body: String,
+    ): HttpResult {
+        repeat(MAX_AUTOMATIC_RESPONSE_RETRIES + 1) { attempt ->
+            val result = postOnce(endpoint, apiKey, providerId, body)
+            val retryDelayMillis = (result as? HttpResult.Failure)?.automaticRetryDelayMillis
+            if (retryDelayMillis == null || attempt == MAX_AUTOMATIC_RESPONSE_RETRIES) {
+                return result
+            }
+            Thread.sleep(retryDelayMillis)
+        }
+        error("Automatic retry loop should always return a result")
+    }
+
+    private fun postOnce(
+        endpoint: String,
+        apiKey: String,
+        providerId: AiCommentaryProviderId,
+        body: String,
     ): HttpResult = runCatching {
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10_000
-            readTimeout = 90_000
+            readTimeout = aiCommentaryReadTimeoutMillis(providerId)
             doInput = true
             doOutput = true
             setRequestProperty("Authorization", "Bearer $apiKey")
@@ -402,32 +564,42 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             if (providerId == AiCommentaryProviderId.OPEN_ROUTER) {
                 setRequestProperty("X-OpenRouter-Title", "南枫八字")
+                setRequestProperty("X-OpenRouter-Metadata", "enabled")
             }
             outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
         }
         val code = connection.responseCode
+        val retryAfterHeader = connection.getHeaderField("Retry-After")
         val payload = (if (code in 200..299) connection.inputStream else connection.errorStream)
             ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
         connection.disconnect()
         if (code in 200..299) {
             HttpResult.Success(payload)
         } else {
-            val hint = when (code) {
-                401, 403 -> "请检查 API Key 与权限"
-                402 -> "账户余额不足"
-                408 -> "请求超时"
-                429 -> "请求过于频繁，请稍后重试"
-                else -> "请检查模型名称、接口地址和服务状态"
-            }
-            HttpResult.Failure("请求失败（HTTP $code）：$hint。", code == 408 || code == 429 || code >= 500)
+            HttpResult.Failure(
+                message = aiCommentaryHttpFailureMessage(providerId, code, payload),
+                retryable = code == 408 || code == 429 || code >= 500,
+                automaticRetryDelayMillis = aiCommentaryAutomaticRetryDelayMillis(
+                    providerId,
+                    code,
+                    retryAfterHeader,
+                ),
+            )
         }
-    }.getOrElse {
-        HttpResult.Failure("网络请求失败，请检查网络后重试。", true)
+    }.getOrElse { cause ->
+        HttpResult.Failure(
+            message = aiCommentaryTransportFailureMessage(providerId, cause),
+            retryable = cause is IOException,
+        )
     }
 
     private sealed interface HttpResult {
         data class Success(val body: String) : HttpResult
-        data class Failure(val message: String, val retryable: Boolean) : HttpResult
+        data class Failure(
+            val message: String,
+            val retryable: Boolean,
+            val automaticRetryDelayMillis: Long? = null,
+        ) : HttpResult
     }
 
     private companion object {

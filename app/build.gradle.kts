@@ -36,7 +36,7 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10000
+        versionCode = 10012
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "NANFENG_CLOUD_URL", quotedBuildConfig(localValue("nanfeng.cloud.url")))

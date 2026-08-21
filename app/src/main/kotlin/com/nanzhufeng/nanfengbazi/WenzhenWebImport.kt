@@ -345,7 +345,9 @@ class WenzhenWebImporter(
             sex = sex,
             location = "",
             sourceNote = "问真网页名人案例；来源阳历：${source.solarTime.display()}；" +
-                "来源四柱：${source.fourPillars.toDomain().compact()}。",
+                "来源四柱：${source.fourPillars.toDomain().compact()}；" +
+                "原始排盘只能证明所用时辰，尚无公开出生时刻证据。",
+            timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
         )
         val calculation = validatedCalculation(birthInput, source.fourPillars.toDomain())
         val now = importInstant()
@@ -447,14 +449,15 @@ class WenzhenWebImporter(
         sex: SexForFortuneDirection,
         location: String,
         sourceNote: String,
-    ) = BirthInput(
-        calendarInput = BirthCalendarInput.Solar(toDomain()),
-        sexForFortuneDirection = sex,
-        timePrecision = if (second == 0) {
+        timePrecision: TimePrecision = if (second == 0) {
             TimePrecision.EXACT_TO_MINUTE
         } else {
             TimePrecision.EXACT_TO_SECOND
         },
+    ) = BirthInput(
+        calendarInput = BirthCalendarInput.Solar(toDomain()),
+        sexForFortuneDirection = sex,
+        timePrecision = timePrecision,
         locationName = location.trim().ifBlank { null },
         useTrueSolarTime = false,
         timeSourceType = TimeSourceType.WENZHEN_WEB_IMPORT,

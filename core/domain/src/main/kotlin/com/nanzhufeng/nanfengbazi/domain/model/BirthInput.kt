@@ -13,7 +13,9 @@ data class CivilDateTime(
     val second: Int,
 ) {
     init {
-        require(year in 1..9999) { "年份必须在 1..9999" }
+        // 天文纪年允许公元前年份（例如公元前 5 年为 -4），供史料型名人资料
+        // 如实保存；0 年不存在。普通用户输入范围仍由表单与排盘引擎分别约束。
+        require(year in -9999..9999 && year != 0) { "年份必须在公元前9999年至公元9999年，且不能为0" }
         require(month in 1..12) { "月份必须在 1..12" }
         require(day in 1..31) { "日期必须在 1..31" }
         require(hour in 0..23) { "小时必须在 0..23" }

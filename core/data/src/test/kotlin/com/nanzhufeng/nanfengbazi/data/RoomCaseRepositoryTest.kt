@@ -7,6 +7,8 @@ import com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase
 import com.nanzhufeng.nanfengbazi.data.repository.RoomCaseRepository
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
+import com.nanzhufeng.nanfengbazi.domain.CaseCatalogWriteRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseCatalogWriteResult
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
@@ -142,6 +144,70 @@ class RoomCaseRepositoryTest {
     }
 
     @Test
+    fun `只把没有断事笔记的用户某某占位案例移入回收站`() = runTest {
+        fun placeholder(
+            id: String,
+            name: String = "某某",
+            withTextRecord: Boolean = false,
+            withEvent: Boolean = false,
+        ) = sampleCase().let { source ->
+            val candidateId = "$id-candidate"
+            val snapshotId = "$id-snapshot"
+            source.copy(
+                id = id,
+                alias = name,
+                name = ExplicitText.present(name),
+                birthTimeCandidates = source.birthTimeCandidates.map {
+                    it.copy(id = candidateId, calculationSnapshotId = snapshotId)
+                },
+                calculationSnapshots = source.calculationSnapshots.map {
+                    it.copy(id = snapshotId, birthTimeCandidateId = candidateId)
+                },
+                textRecords = if (withTextRecord) {
+                    source.textRecords.take(1).map { it.copy(id = "$id-record", sourceAttachmentId = null) }
+                } else {
+                    emptyList()
+                },
+                textRecordRevisions = emptyList(),
+                events = if (withEvent) {
+                    source.events.take(1).map { it.copy(id = "$id-event", sourceAttachmentId = null) }
+                } else {
+                    emptyList()
+                },
+                eventRevisions = emptyList(),
+                attachments = emptyList(),
+                fieldEvidence = emptyList(),
+            )
+        }
+        val emptyPlaceholder = placeholder("empty-placeholder")
+        val generatedEmptyPlaceholder = placeholder("generated-empty-placeholder", name = "某某12")
+        val similarlyNamedUserCase = placeholder("similarly-named-user-case", name = "某某甲")
+        val withTextRecord = placeholder("placeholder-with-record", withTextRecord = true)
+        val withEvent = placeholder("placeholder-with-event", withEvent = true)
+        val celebrityPlaceholder = placeholder("celebrity-placeholder").copy(
+            libraryType = CaseLibraryType.CELEBRITY,
+        )
+        listOf(
+            emptyPlaceholder,
+            generatedEmptyPlaceholder,
+            similarlyNamedUserCase,
+            withTextRecord,
+            withEvent,
+            celebrityPlaceholder,
+        ).forEach { case ->
+            repository.save(case, null)
+        }
+
+        assertEquals(2, repository.moveBlankPlaceholderCasesToTrash(FixtureInstant))
+        assertEquals(FixtureInstant, repository.findById("empty-placeholder")?.deletedAt)
+        assertEquals(FixtureInstant, repository.findById("generated-empty-placeholder")?.deletedAt)
+        assertNull(repository.findById("similarly-named-user-case")?.deletedAt)
+        assertNull(repository.findById("placeholder-with-record")?.deletedAt)
+        assertNull(repository.findById("placeholder-with-event")?.deletedAt)
+        assertNull(repository.findById("celebrity-placeholder")?.deletedAt)
+    }
+
+    @Test
     fun `名人案例类型完整往返且不会混入用户列表`() = runTest {
         val source = sampleCase().copy(libraryType = CaseLibraryType.CELEBRITY)
 
@@ -176,6 +242,29 @@ class RoomCaseRepositoryTest {
             repository.save(source, 1),
         )
         assertEquals(ExplicitText.cleared(), repository.findById("case-1")?.profile?.health)
+    }
+
+    @Test
+    fun `资料包更新保留较晚创建时间时会钳制更新时间`() = runTest {
+        val existing = sampleCase().copy(
+            createdAt = FixtureInstant.plusSeconds(120),
+            updatedAt = FixtureInstant.plusSeconds(120),
+        )
+        assertEquals(CaseWriteResult.Created("case-1", 1), repository.save(existing, null))
+        val incoming = existing.copy(
+            alias = "资料包更新",
+            createdAt = FixtureInstant,
+            updatedAt = FixtureInstant,
+        )
+
+        assertEquals(
+            CaseCatalogWriteResult.Applied(created = 0, updated = 1),
+            repository.saveCatalogAtomically(listOf(CaseCatalogWriteRequest(incoming, 1))),
+        )
+        val saved = requireNotNull(repository.findById(existing.id))
+        assertEquals(existing.createdAt, saved.createdAt)
+        assertEquals(existing.createdAt, saved.updatedAt)
+        assertEquals("资料包更新", saved.alias)
     }
 
     @Test

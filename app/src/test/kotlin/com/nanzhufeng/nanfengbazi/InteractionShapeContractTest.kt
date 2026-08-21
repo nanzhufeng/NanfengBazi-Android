@@ -7,6 +7,69 @@ import org.junit.Test
 
 class InteractionShapeContractTest {
     @Test
+    fun notesIdentityHeaderCentersBalancedNameAndSexAroundThePillars() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val notesHeader = source.substringAfter("CaseDetailSection.RECORDS -> {")
+            .substringBefore("HorizontalDivider(\n                        modifier = Modifier.padding(top = 1.dp")
+
+        assertTrue(notesHeader.contains("case.name.value ?: case.alias"))
+        assertTrue(notesHeader.contains(".testTag(\"notes_identity_name\")"))
+        assertTrue(notesHeader.contains("fontSize = 15.sp"))
+        assertTrue(notesHeader.contains(".testTag(\"notes_identity_sex\")"))
+        assertTrue(notesHeader.contains("case.sexForFortuneDirection.displayName()"))
+        assertTrue(notesHeader.contains("fontSize = 14.sp"))
+        assertTrue(notesHeader.contains("Spacer(modifier = Modifier.width(136.dp))"))
+        assertTrue(notesHeader.contains("contentAlignment = Alignment.Center"))
+        assertTrue(!notesHeader.contains(".align(Alignment.CenterStart)"))
+        assertTrue(!notesHeader.contains(".align(Alignment.CenterEnd)"))
+        assertTrue(!notesHeader.contains("notes_identity_chart_type"))
+    }
+
+    @Test
+    fun caseNotesOpenUrlsInsideTheirOriginalInputWithoutRenderingDuplicates() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val editor = source.substringAfter("private fun CaseNotesTextEditor(")
+            .substringBefore("private fun CaseNotesEditorScrollbar(")
+        val timeline = source.substringAfter("private fun CaseNotesTimelineInput(")
+            .substringBefore("private fun CaseNotesTimePicker(")
+
+        assertTrue(source.contains("private fun Modifier.openCaseNotesUrlWhenTapped("))
+        assertTrue(source.contains("caseNotesWebUrlAtOffset(value"))
+        assertTrue(source.contains("uriHandler.openUri(url)"))
+        assertTrue(editor.contains("BasicTextField("))
+        assertTrue(editor.contains("openCaseNotesUrlWhenTapped("))
+        assertTrue(editor.contains("caseNotesWebUrlVisualTransformation("))
+        assertTrue(!editor.contains("CaseNotesWebLinks(value)"))
+        assertTrue(timeline.contains("CaseNotesTextEditor("))
+        assertTrue(!timeline.contains("CaseNotesWebLinks(entry.content)"))
+    }
+
+    @Test
+    fun trashListDoesNotExposeGroupFilteringOrManagement() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val list = source.substringAfter("private fun CaseListScreen(")
+            .substringBefore("private fun CaseSummaryCard(")
+
+        assertTrue(list.contains("if (state.visibility != CaseVisibility.TRASHED) {\n            Row("))
+        assertTrue(list.contains("record_filter_strip_placeholder"))
+        assertTrue(list.contains(".height(46.dp)"))
+        assertTrue(list.contains("if (state.visibility != CaseVisibility.TRASHED) {\n                            NanfengOverflowMenuItem("))
+    }
+
+    @Test
+    fun birthCalendarPickerKeepsQuickLocateAndFixedSheetHeight() {
+        val pickers = File(locateSourceRoot(), "BirthInputPickers.kt").readText()
+        val birthPicker = pickers.substringAfter("internal fun BirthDateTimePickerSheet(")
+            .substringBefore("private fun BirthPickerHeader(")
+
+        assertTrue(birthPicker.contains("BirthPickerQuickLocateInput("))
+        assertTrue(birthPicker.contains("LaunchedEffect(mode, quickLocateText)"))
+        assertTrue(birthPicker.contains(".height(BirthDateTimeWheelViewportHeight)"))
+        assertTrue(pickers.contains(".testTag(\"birth_quick_locate_input\")"))
+        assertTrue(pickers.contains("targetHeight = BirthPickerPanelHeight"))
+    }
+
+    @Test
     fun singleCaseExportKeepsTheDefaultJsonPathMinimalAndPasswordFlowCanReturn() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val viewModel = File(locateSourceRoot(), "StageTwoViewModel.kt").readText()
@@ -77,6 +140,50 @@ class InteractionShapeContractTest {
         assertTrue(topTabs.contains("accent: Color"))
         assertTrue(topTabs.contains("accent.copy(alpha = 0.78f)"))
         assertTrue(topTabs.contains("if (selected) accent.copy(alpha = 0.22f)"))
+    }
+
+    @Test
+    fun recordToolbarSearchAndVisibilityTabsSharePillGeometry() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val toolbar = source.substringAfter(".testTag(\"record_toolbar\")")
+            .substringBefore("private fun CaseListContent(")
+        val topTabs = source.substringAfter("private fun RecordTopTab(")
+            .substringBefore("private fun RecordCategoryTab(")
+
+        assertTrue(source.contains("private val RecordToolbarPillShape = RoundedCornerShape(24.dp)"))
+        assertTrue(toolbar.contains(".testTag(\"record_visibility_switcher\")"))
+        assertTrue(toolbar.contains(".testTag(\"case_search\")"))
+        assertTrue(toolbar.contains("shape = RecordToolbarPillShape"))
+        assertTrue(topTabs.contains("shape = RecordToolbarPillShape"))
+    }
+
+    @Test
+    fun celebrityLibraryIsBuiltInAndKeepsHistoricalImportAsEvidenceOnly() {
+        val root = locateSourceRoot()
+        val source = File(root, "StageTwoScreens.kt").readText()
+        val activity = File(root, "MainActivity.kt").readText()
+        val settings = source.substringAfter("SettingsGroupTitle(\"导入与建档\")")
+            .substringBefore("SettingsGroupTitle(\"排盘偏好\")")
+        assertTrue(settings.contains("title = \"名人案例统一资料库\""))
+        assertTrue(settings.contains("安装即自带；应用更新后自动同步"))
+        assertTrue(!settings.contains("导入可考名人案例"))
+        assertTrue(settings.contains("名人案例会自动纳入统一资料库"))
+        assertTrue(activity.contains("viewModel.synchronizeBuiltInUnifiedCelebrityCatalog("))
+        assertTrue(activity.contains("celebrity-unified-v1.json"))
+    }
+
+    @Test
+    fun settingsPlaceBackupAndRestoreBeforeChartPreferences() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+
+        assertTrue(
+            source.indexOf("SettingsGroupTitle(\"备份与恢复\")") <
+                source.indexOf("SettingsGroupTitle(\"导入与建档\")"),
+        )
+        assertTrue(
+            source.indexOf("SettingsGroupTitle(\"导入与建档\")") <
+                source.indexOf("SettingsGroupTitle(\"排盘偏好\")"),
+        )
     }
 
     @Test
@@ -180,8 +287,10 @@ class InteractionShapeContractTest {
         val choiceGroup = source.substringAfter("private fun HomeChoiceGroup(")
             .substringBefore("internal fun HomePickerRow(")
 
-        assertTrue(choiceGroup.contains(".height(32.dp)"))
-        assertTrue(choiceGroup.contains(".width(70.dp)"))
+        assertTrue(choiceGroup.contains("itemHeight: Dp = 32.dp"))
+        assertTrue(choiceGroup.contains("itemWidth: Dp = 70.dp"))
+        assertTrue(choiceGroup.contains(".height(itemHeight)"))
+        assertTrue(choiceGroup.contains(".width(itemWidth)"))
         assertTrue(choiceGroup.contains("style = MaterialTheme.typography.bodyMedium"))
         assertTrue(!choiceGroup.contains("fontSize = 11.sp"))
     }
@@ -259,6 +368,18 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun fixedPickerSheetsKeepTheThreeBirthModesAboveTheGestureArea() {
+        val pickers = File(locateSourceRoot(), "BirthInputPickers.kt").readText()
+        val fixedSheet = pickers.substringAfter("internal fun FixedPickerSheet(")
+            .substringBefore("internal fun ObservationDateTimePickerSheet(")
+
+        assertTrue(pickers.contains("private val PickerSheetBottomClearance = 24.dp"))
+        assertTrue(fixedSheet.contains(".padding(bottom = PickerSheetBottomClearance)"))
+        assertTrue(fixedSheet.contains(".height(resolvedHeight)"))
+        assertTrue(fixedSheet.contains("RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)"))
+    }
+
+    @Test
     fun aiServiceDestinationsUseWideCenteredCardsInsteadOfATopPackedList() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val page = source.substringAfter("private fun AiServiceSettingsPage(")
@@ -312,7 +433,7 @@ class InteractionShapeContractTest {
     }
 
     @Test
-    fun almanacKeepsBothPrimaryActionsTogetherAtTheTop() {
+    fun almanacKeepsBothPrimaryActionsFixedAtTheBottom() {
         val source = File(locateSourceRoot(), "AlmanacFeature.kt").readText()
         val screen = source.substringAfter("internal fun AlmanacScreen(")
             .substringBefore("private fun AlmanacPrimaryActions(")
@@ -321,10 +442,13 @@ class InteractionShapeContractTest {
         val details = source.substringAfter("private fun AlmanacDetailsCard(")
             .substringBefore("private fun AlmanacDoubleHourRail(")
 
-        assertTrue(screen.indexOf("AlmanacPrimaryActions(") < screen.indexOf("BoxWithConstraints("))
+        assertTrue(screen.indexOf("AlmanacPrimaryActions(") > screen.indexOf("BoxWithConstraints("))
+        assertTrue(screen.contains(".weight(1f)"))
         assertTrue(actions.contains("use_almanac_date_for_chart"))
         assertTrue(actions.contains("adjust_almanac_four_pillars"))
         assertTrue(actions.contains("horizontalArrangement = Arrangement.spacedBy(10.dp)"))
+        assertTrue(actions.contains("navigationBarsPadding()"))
+        assertTrue(actions.contains("shadowElevation = 8.dp"))
         assertTrue(!details.contains("use_almanac_date_for_chart"))
         assertTrue(!details.contains("adjust_almanac_four_pillars"))
     }
@@ -436,8 +560,33 @@ class InteractionShapeContractTest {
 
         val timelineInput = source.substringAfter("private fun CaseNotesTimelineInput(")
             .substringBefore("private fun CaseNotesTimePicker(")
+        val noteEditor = source.substringAfter("private fun CaseNotesTextEditor(")
+            .substringBefore("private fun CaseNotesEditorScrollbar(")
         assertTrue(timelineInput.contains("minLines = 1"))
-        assertTrue(timelineInput.contains("maxLines = Int.MAX_VALUE"))
+        assertTrue(timelineInput.contains("CaseNotesTextEditor("))
+        assertTrue(noteEditor.contains("maxLines = Int.MAX_VALUE"))
+    }
+
+    @Test
+    fun celebrityCaseTimelineUsesTheSameEditableInputAndSaveCallback() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val celebrityTimeline = source.substringAfter("private fun CelebrityCaseTimeline(")
+            .substringBefore("private fun Int.toTimelineYearLabel()")
+
+        assertTrue(celebrityTimeline.contains("CaseNotesTimelineInput("))
+        assertTrue(celebrityTimeline.contains("enabled = enabled"))
+        assertTrue(celebrityTimeline.contains("onContentChange = onContentChange"))
+    }
+
+    @Test
+    fun ownerFeedbackAndMasterCommentaryShareTheSameFixedHeaderSlot() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val notes = source.substringAfter("private fun ReferenceCaseNotes(")
+            .substringBefore("private fun AiCommentaryEditor(")
+
+        assertTrue(notes.contains("tag = \"owner_feedback_header\""))
+        assertTrue(notes.contains("tag = \"master_commentary_header\""))
+        assertTrue(!notes.contains("WenzhenSectionHeader(\n                title = \"命主反馈\""))
     }
 
     @Test
@@ -530,6 +679,19 @@ class InteractionShapeContractTest {
         assertTrue(rail.contains("centerWholeRail = maxWidth >= railContentWidth"))
         assertTrue(rail.contains("Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally)"))
         assertTrue(rail.contains("Modifier.horizontalScroll(rememberScrollState())"))
+    }
+
+    @Test
+    fun almanacPillarTableAndUnselectedHoursShareTheHalfStrengthBackground() {
+        val almanac = locateSourceRoot().resolve("AlmanacFeature.kt").readText()
+        val rail = almanac.substringAfter("private fun AlmanacHourPillarRail(")
+            .substringBefore("private fun AlmanacEightCharacterTable(")
+        val table = almanac.substringAfter("private fun AlmanacEightCharacterTable(")
+            .substringBefore("private fun AlmanacPillarRow(")
+
+        assertTrue(almanac.contains("AlmanacMutedBackgroundAlpha = 0.5f"))
+        assertTrue(rail.contains("else almanacMutedBackgroundColor()"))
+        assertTrue(table.contains("color = almanacMutedBackgroundColor()"))
     }
 
     @Test

@@ -12,6 +12,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -38,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -138,6 +142,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.input.pointer.pointerInput
@@ -154,11 +159,16 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -250,6 +260,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
+// 历史页顶栏的搜索与库切换共用此轮廓，保证边框、按压面和阴影都是同一枚胶囊。
+private val RecordToolbarPillShape = RoundedCornerShape(24.dp)
+
 @Composable
 fun NanfengBaziApp(
     viewModel: StageTwoViewModel,
@@ -268,6 +281,7 @@ fun NanfengBaziApp(
     onCreateSingleCaseDocument: (SingleCaseExportDocumentRequest) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
     onOpenWenzhenImportDocument: () -> Unit = {},
+    onImportCuratedCelebrityCatalog: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
     onCommitSingleCaseImport: ((SingleCaseImportDecision) -> Unit)? = null,
     onCommitSingleCaseMerge: (() -> Unit)? = null,
@@ -290,6 +304,8 @@ fun NanfengBaziApp(
     val rootView = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val caseDetailCaptureRegistry = remember { CaseDetailPageCaptureRegistry() }
+    // 列表在详情页显示期间会暂时离开组合；滚动位置必须由根页面持有，返回后才能回到原处。
+    val caseListState = rememberLazyListState()
     val latestUiState by rememberUpdatedState(state)
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
@@ -341,7 +357,7 @@ fun NanfengBaziApp(
         state.wenzhenImportPreview?.let { preview ->
             AlertDialog(
                 onDismissRequest = viewModel::cancelWenzhenWebImport,
-                title = { Text("导入问真网页案例？") },
+                title = { Text("导入网页案例资料？") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("用户案例 ${preview.userCaseCount} 个，名人案例 ${preview.celebrityCaseCount} 个。")
@@ -351,8 +367,8 @@ fun NanfengBaziApp(
                                 "${preview.celebrityTagCount} 个。",
                         )
                         Text(
-                            "导入会逐例校验并使用稳定 ID；重复执行只跳过已存在案例。" +
-                                "中途中断后可重新选择同一文件续传。",
+                            "导入会逐例校验并使用稳定 ID；其中名人案例会自动纳入" +
+                                "名人案例统一资料库。重复执行只跳过已存在案例，中途中断后可续传。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -373,7 +389,7 @@ fun NanfengBaziApp(
             val progress = requireNotNull(state.wenzhenImportProgress)
             AlertDialog(
                 onDismissRequest = {},
-                title = { Text("正在导入问真案例") },
+                title = { Text("正在导入网页案例资料") },
                 text = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -389,11 +405,11 @@ fun NanfengBaziApp(
         state.wenzhenImportResult?.let { result ->
             AlertDialog(
                 onDismissRequest = viewModel::dismissWenzhenImportResult,
-                title = { Text("问真案例导入完成") },
+                title = { Text("网页案例资料导入完成") },
                 text = {
                     Text(
-                        "新增 ${result.created} 个（用户 ${result.userCreated}、名人 " +
-                            "${result.celebrityCreated}），已存在 ${result.skipped} 个，" +
+                        "新增 ${result.created} 个（用户 ${result.userCreated}、名人案例 " +
+                            "${result.celebrityCreated} 个已纳入统一资料库），已存在 ${result.skipped} 个，" +
                             "异常 ${result.invalid} 个。",
                     )
                 },
@@ -405,11 +421,105 @@ fun NanfengBaziApp(
         state.wenzhenImportError?.let { error ->
             AlertDialog(
                 onDismissRequest = viewModel::dismissWenzhenImportResult,
-                title = { Text("问真案例导入未完成") },
+                title = { Text("网页案例资料导入未完成") },
                 text = { Text(error) },
                 confirmButton = {
                     Button(onClick = viewModel::dismissWenzhenImportResult) { Text("知道了") }
                 },
+            )
+        }
+        state.curatedCelebrityImportPreview?.let { preview ->
+            AlertDialog(
+                onDismissRequest = viewModel::cancelCuratedCelebrityImport,
+                title = { Text("更新名人案例统一资料库？") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("本次更新 ${preview.caseCount} 例，统一归入五个展示分组。")
+                        Text("资料等级：${preview.ratedCount.entries.sortedBy { it.key }.joinToString("、") { "${it.key} ${it.value}" }}。")
+                        Text("含其他时刻候选的命例 ${preview.alternativeTimeCaseCount} 例。")
+                        Text(
+                            "每例会保留来源网址、资料等级、默认与备选时刻；与历史导入资料统一去重，且不会覆盖已有命例。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = viewModel::executeCuratedCelebrityImport,
+                        modifier = Modifier.testTag("curated_celebrity_import_confirm"),
+                    ) { Text("开始导入") }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelCuratedCelebrityImport) { Text("取消") }
+                },
+            )
+        }
+        if (state.curatedCelebrityImportBusy && state.curatedCelebrityImportProgress != null) {
+            val progress = requireNotNull(state.curatedCelebrityImportProgress)
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("正在更新名人案例统一资料库") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text("${progress.completed}/${progress.total}")
+                    }
+                },
+                confirmButton = {},
+            )
+        }
+        state.curatedCelebrityImportResult?.let { result ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissCuratedCelebrityImportResult,
+                title = { Text("名人案例统一资料库已更新") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("新增 ${result.created} 个，更新 ${result.updated} 个，已存在 ${result.skipped} 个，异常 ${result.invalid} 个。")
+                        if (result.errors.isNotEmpty()) {
+                            Text(
+                                result.errors.joinToString("\n"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissCuratedCelebrityImportResult) { Text("完成") }
+                },
+            )
+        }
+        state.curatedCelebrityImportError?.let { error ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissCuratedCelebrityImportResult,
+                title = { Text("名人案例统一资料库更新未完成") },
+                text = { Text(error) },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissCuratedCelebrityImportResult) { Text("知道了") }
+                },
+            )
+        }
+        if (state.builtInCelebrityCatalogSyncBusy) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("正在同步名人案例统一资料库") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text(
+                            "正在校验并分批更新 ${state.builtInCelebrityCatalogSyncCaseCount} 条资料。" +
+                                "用户案例、笔记和关键事件不会被改动。",
+                        )
+                    }
+                },
+                confirmButton = {},
             )
         }
         Surface(
@@ -462,6 +572,7 @@ fun NanfengBaziApp(
                             when (state.destination) {
                     AppDestination.CaseList -> CaseListScreen(
                         state = state,
+                        caseListState = caseListState,
                         onQueryChange = viewModel::updateQuery,
                         onSelectGroup = viewModel::selectGroup,
                         onSelectTag = viewModel::selectTag,
@@ -547,6 +658,7 @@ fun NanfengBaziApp(
                         onImportScreenshots = onImportScreenshots,
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onImportWenzhen = onOpenWenzhenImportDocument,
+                        onImportCuratedCelebrityCatalog = onImportCuratedCelebrityCatalog,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onRestoreFullBackup = onOpenFullBackupDocument,
                         onOpenAiServicePage = viewModel::openAiServicePage,
@@ -753,10 +865,16 @@ fun NanfengBaziApp(
                         )
                     is AppDestination.EditCase -> EditCaseScreen(
                         form = state.editForm,
+                        groupNames = state.metadataDraft.groupNames,
+                        availableGroups = state.availableFormGroups,
                         error = state.mutationError,
                         saving = state.mutationSaving,
                         onBack = viewModel::navigateBack,
                         onFormChange = viewModel::updateEditForm,
+                        onGroupNamesChange = { value ->
+                            viewModel.updateMetadataDraft { it.copy(groupNames = value) }
+                        },
+                        onCreateGroup = viewModel::createAndSelectEditCaseGroup,
                         onSave = { viewModel.saveEditedCase() },
                         onCreateCopy = viewModel::createEditedCaseCopy,
                         duplicateCandidates = state.duplicateCandidates,
@@ -2537,6 +2655,7 @@ private fun SettingsHomeScreen(
     onImportScreenshots: () -> Unit,
     onImportSingleCase: () -> Unit,
     onImportWenzhen: () -> Unit,
+    onImportCuratedCelebrityCatalog: () -> Unit,
     onExportFullBackup: () -> Unit,
     onRestoreFullBackup: () -> Unit,
     onOpenAiServicePage: () -> Unit,
@@ -2626,51 +2745,6 @@ private fun SettingsHomeScreen(
                 accent = NanfengGold,
             )
         }
-        SettingsGroupTitle("排盘偏好")
-        SettingsActionGroup {
-            SettingsActionRow(
-                title = "子时口径",
-                description = if (state.defaultRatHourRule == RatHourRule.TYME_DEFAULT) {
-                    "23:00 换日"
-                } else {
-                    "晚子时算当天"
-                },
-                icon = Icons.Filled.Settings,
-                onClick = { showRatHourRulePicker = true },
-                tag = "settings_rat_hour_rule",
-                accent = NanfengGreen,
-            )
-        }
-        SettingsGroupTitle("导入与建档")
-        SettingsActionGroup {
-            SettingsActionRow(
-                title = "导入问真截图",
-                description = "本机识别后逐项确认",
-                icon = Icons.Filled.Search,
-                onClick = onImportScreenshots,
-                enabled = !screenshotImportState.busy,
-                tag = "settings_import_screenshots",
-                accent = NanfengOrange,
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
-            SettingsActionRow(
-                title = "导入问真网页案例",
-                description = "先核对数量，再批量导入用户与名人案例",
-                icon = Icons.Filled.List,
-                onClick = onImportWenzhen,
-                enabled = !state.wenzhenImportBusy,
-                tag = "settings_import_wenzhen_web",
-                accent = NanfengGold,
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
-            SettingsActionRow(
-                title = "导入南枫命例包",
-                description = "跨设备转移单个命例；先预览冲突再决定合并",
-                icon = Icons.Filled.List,
-                onClick = onImportSingleCase,
-                tag = "settings_import_case",
-            )
-        }
         SettingsGroupTitle("备份与恢复")
         SettingsActionGroup {
             SettingsActionRow(
@@ -2688,6 +2762,61 @@ private fun SettingsHomeScreen(
                 onClick = onRestoreFullBackup,
                 tag = "settings_restore_backup",
                 accent = NanfengOrange,
+            )
+        }
+        SettingsGroupTitle("导入与建档")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "导入问真截图",
+                description = "本机识别后逐项确认",
+                icon = Icons.Filled.Search,
+                onClick = onImportScreenshots,
+                enabled = !screenshotImportState.busy,
+                tag = "settings_import_screenshots",
+                accent = NanfengOrange,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "导入网页案例资料",
+                description = "先核对数量；名人案例会自动纳入统一资料库",
+                icon = Icons.Filled.List,
+                onClick = onImportWenzhen,
+                enabled = !state.wenzhenImportBusy,
+                tag = "settings_import_wenzhen_web",
+                accent = NanfengGold,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "名人案例统一资料库",
+                description = "安装即自带；应用更新后自动同步。点此可重新同步",
+                icon = Icons.Filled.List,
+                onClick = onImportCuratedCelebrityCatalog,
+                enabled = !state.curatedCelebrityImportBusy && !state.builtInCelebrityCatalogSyncBusy,
+                tag = "settings_import_curated_celebrities",
+                accent = NanfengGold,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "导入南枫命例包",
+                description = "跨设备转移单个命例；先预览冲突再决定合并",
+                icon = Icons.Filled.List,
+                onClick = onImportSingleCase,
+                tag = "settings_import_case",
+            )
+        }
+        SettingsGroupTitle("排盘偏好")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "子时口径",
+                description = if (state.defaultRatHourRule == RatHourRule.TYME_DEFAULT) {
+                    "23:00 换日"
+                } else {
+                    "晚子时算当天"
+                },
+                icon = Icons.Filled.Settings,
+                onClick = { showRatHourRulePicker = true },
+                tag = "settings_rat_hour_rule",
+                accent = NanfengGreen,
             )
         }
         Spacer(modifier = Modifier.height(bottomContentInset + 12.dp))
@@ -2985,6 +3114,7 @@ private fun SettingsStaticRow(title: String, value: String) {
 @Composable
 private fun CaseListScreen(
     state: StageTwoUiState,
+    caseListState: LazyListState,
     onQueryChange: (String) -> Unit,
     onSelectGroup: (String?) -> Unit,
     onSelectTag: (String?) -> Unit,
@@ -3028,7 +3158,6 @@ private fun CaseListScreen(
     var deleteEditMode by rememberSaveable { mutableStateOf(false) }
     var deleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingSwipeDeleteCaseId by rememberSaveable { mutableStateOf<String?>(null) }
-    val caseListState = rememberLazyListState()
     val alphabetActivationDistancePx = with(LocalDensity.current) { 48.dp.roundToPx() }
     val activeAlphabetInitial by remember(state.cases, alphabetActivationDistancePx) {
         derivedStateOf {
@@ -3056,6 +3185,24 @@ private fun CaseListScreen(
     }
     val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size +
         state.advancedFilter.activeCategoryCount
+    val emptyResultCriteria = buildList {
+        state.query.trim().takeIf(String::isNotEmpty)?.let { query ->
+            add("关键词“$query”")
+        }
+        state.selectedGroupId?.let { groupId ->
+            state.availableGroups.firstOrNull { it.id == groupId }?.name?.let { groupName ->
+                add("分组“$groupName”")
+            } ?: add("所选分组")
+        }
+        state.selectedTagId?.let { tagId ->
+            state.availableTags.firstOrNull { it.id == tagId }?.name?.let { tagName ->
+                add("标签“$tagName”")
+            } ?: add("所选标签")
+        }
+        if (state.advancedFilter.activeCategoryCount > 0) {
+            add("其他筛选条件")
+        }
+    }
     val visibleDeleteCaseIds = state.cases.mapTo(linkedSetOf()) { it.id }
     val allVisibleDeleteCasesSelected = deleteEditMode &&
         visibleDeleteCaseIds.isNotEmpty() &&
@@ -3090,7 +3237,7 @@ private fun CaseListScreen(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("record_visibility_switcher"),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RecordToolbarPillShape,
                     color = Color(0xFFF9F9F8),
                 ) {
                     Row(modifier = Modifier.padding(3.dp)) {
@@ -3178,16 +3325,18 @@ private fun CaseListScreen(
                             },
                             modifier = Modifier.testTag("record_more_sort"),
                         )
-                        NanfengOverflowMenuItem(
-                            label = "分组管理",
-                            icon = Icons.Filled.Edit,
-                            accent = NanfengGreen,
-                            onClick = {
-                                moreExpanded = false
-                                showGroupEditor = true
-                            },
-                            modifier = Modifier.testTag("record_more_groups"),
-                        )
+                        if (state.visibility != CaseVisibility.TRASHED) {
+                            NanfengOverflowMenuItem(
+                                label = "分组管理",
+                                icon = Icons.Filled.Edit,
+                                accent = NanfengGreen,
+                                onClick = {
+                                    moreExpanded = false
+                                    showGroupEditor = true
+                                },
+                                modifier = Modifier.testTag("record_more_groups"),
+                            )
+                        }
                         NanfengOverflowMenuItem(
                             label = "置顶八字",
                             icon = Icons.Filled.Star,
@@ -3331,7 +3480,7 @@ private fun CaseListScreen(
                 },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge,
-                shape = RoundedCornerShape(17.dp),
+                shape = RecordToolbarPillShape,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White,
@@ -3349,7 +3498,8 @@ private fun CaseListScreen(
             onDelete = onDeleteScreenshotImport,
             onReview = onReviewScreenshotImport,
         )
-        Row(
+        if (state.visibility != CaseVisibility.TRASHED) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -3359,12 +3509,12 @@ private fun CaseListScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RecordCategoryTab(
-                    text = "全部 ${if (state.visibility == CaseVisibility.TRASHED) state.trashedCaseCount else state.libraryCaseCounts[state.libraryType] ?: 0}",
+                    text = "全部 ${state.libraryCaseCounts[state.libraryType] ?: 0}",
                     selected = state.selectedGroupId == null && state.selectedTagId == null,
                     onClick = { onSelectGroup(null); onSelectTag(null) },
                     tag = "record_filter_all",
                 )
-                state.availableGroups.take(5).forEach { group ->
+                state.availableGroups.forEach { group ->
                     RecordCategoryTab(
                         text = "${group.name} ${state.groupCaseCounts[group.id] ?: 0}",
                         selected = state.selectedGroupId == group.id,
@@ -3372,15 +3522,16 @@ private fun CaseListScreen(
                         tag = "record_group_${group.id}",
                     )
                 }
-                state.availableTags.take(3).forEach { tag ->
-                    RecordCategoryTab(
-                        text = tag.name,
-                        selected = state.selectedTagId == tag.id,
-                        onClick = { onSelectTag(tag.id) },
-                        tag = "record_tag_${tag.id}",
-                    )
-                }
             }
+        } else {
+            // 回收站没有分组筛选，但必须保留活动列表同等高度，避免切换时内容上跳。
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .testTag("record_filter_strip_placeholder"),
+            )
+        }
         HorizontalDivider(
             modifier = Modifier.padding(horizontal = 16.dp),
             color = MaterialTheme.colorScheme.outlineVariant,
@@ -3395,10 +3546,16 @@ private fun CaseListScreen(
             state.cases.isEmpty() -> EmptyCaseList(
                 visibility = state.visibility,
                 libraryType = state.libraryType,
+                libraryCaseCount = state.libraryCaseCounts[state.libraryType] ?: 0,
+                activeCriteria = emptyResultCriteria,
                 onCreate = if (state.libraryType == CaseLibraryType.CELEBRITY) {
                     onCreateCelebrity
                 } else {
                     onCreate
+                },
+                onClearConditions = {
+                    onQueryChange("")
+                    onClearFilters()
                 },
             )
             else -> Box(
@@ -3585,6 +3742,8 @@ private fun CaseListScreen(
             RecordGroupEditorDialog(
                 groups = state.availableGroups,
                 cases = state.batchCases,
+                readOnly = state.visibility == CaseVisibility.ACTIVE &&
+                    state.libraryType == CaseLibraryType.CELEBRITY,
                 saving = state.mutationSaving,
                 onDismiss = { showGroupEditor = false },
                 onCreate = onCreateGroup,
@@ -3705,21 +3864,23 @@ private fun RecordAdvancedFilterDialog(
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
                         RecordFilterSection("性别") {
-                            FilterChoiceGrid(
-                                options = listOf("男", "女"),
-                                selected = setOfNotNull(
-                                    when (draft.sex) {
-                                        SexForFortuneDirection.MAN -> "男"
-                                        SexForFortuneDirection.WOMAN -> "女"
-                                        null -> null
-                                    },
+                            HomeChoiceGroup(
+                                options = listOf(
+                                    "男" to (draft.sex == SexForFortuneDirection.MAN),
+                                    "女" to (draft.sex == SexForFortuneDirection.WOMAN),
                                 ),
-                                columns = 2,
-                                tagPrefix = "filter_gender",
-                            ) { value ->
-                                val sex = if (value == "男") SexForFortuneDirection.MAN else SexForFortuneDirection.WOMAN
-                                draft = draft.copy(sex = sex.takeUnless { it == draft.sex })
-                            }
+                                onSelect = { value ->
+                                    val sex = if (value == "男") {
+                                        SexForFortuneDirection.MAN
+                                    } else {
+                                        SexForFortuneDirection.WOMAN
+                                    }
+                                    draft = draft.copy(sex = sex.takeUnless { it == draft.sex })
+                                },
+                                tags = listOf("filter_gender_男", "filter_gender_女"),
+                                itemWidth = 156.dp,
+                                itemHeight = 40.dp,
+                            )
                         }
                         RecordFilterSection("干支") {
                             ElementFilterChoiceGrid(
@@ -3783,7 +3944,7 @@ private fun RecordAdvancedFilterDialog(
                             HomePickerRow(
                                 title = "选择",
                                 value = draft.birthRegion.ifBlank { "请选择地区" },
-                                supporting = "与首页建档使用同一地区库",
+                                supporting = "",
                                 onClick = { showBirthplacePicker = true },
                                 tag = "filter_birth_region",
                             )
@@ -4063,6 +4224,7 @@ private fun RecordSortDialog(
 private fun RecordGroupEditorDialog(
     groups: List<CaseGroup>,
     cases: List<CaseSummary>,
+    readOnly: Boolean,
     saving: Boolean,
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit,
@@ -4124,10 +4286,17 @@ private fun RecordGroupEditorDialog(
                         TextButton(onClick = onDismiss) { Text("完成") }
                     }
                     Text(
-                        "所有分组（${groups.size}）",
+                        if (readOnly) "内置职业分组（${groups.size}）" else "所有分组（${groups.size}）",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (readOnly) {
+                        Text(
+                            "名人案例的职业分组由内置统一资料库维护，列表、筛选和数量使用同一目录。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Surface(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp),
                         color = NanfengControlSurface,
@@ -4147,7 +4316,7 @@ private fun RecordGroupEditorDialog(
                         if (displayedGroups.isEmpty()) {
                             item {
                                 Text(
-                                    "暂无分组，点击底部“添加”创建第一个分组。",
+                                    if (readOnly) "内置职业分组正在同步，请稍后重试。" else "暂无分组，点击底部“添加”创建第一个分组。",
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 22.dp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -4206,7 +4375,7 @@ private fun RecordGroupEditorDialog(
                                             editingGroupId = group.id
                                             editName = group.name
                                         },
-                                        enabled = !saving,
+                                        enabled = !saving && !readOnly,
                                         modifier = Modifier.testTag("record_group_rename_${group.id}"),
                                     ) { Icon(Icons.Filled.Edit, "重命名${group.name}") }
                                     Box(
@@ -4216,8 +4385,8 @@ private fun RecordGroupEditorDialog(
                                             .semantics {
                                                 contentDescription = "拖动排序${group.name}"
                                             }
-                                            .pointerInput(group.id, saving) {
-                                                if (!saving) {
+                                            .pointerInput(group.id, saving, readOnly) {
+                                            if (!saving && !readOnly) {
                                                     detectVerticalDragGestures(
                                                         onDragStart = {
                                                             draggedGroupId = group.id
@@ -4274,7 +4443,7 @@ private fun RecordGroupEditorDialog(
                                     }
                                     IconButton(
                                         onClick = { pendingDelete = group },
-                                        enabled = !saving,
+                                        enabled = !saving && !readOnly,
                                         modifier = Modifier.testTag("record_group_delete_${group.id}"),
                                     ) {
                                         Icon(
@@ -4288,7 +4457,7 @@ private fun RecordGroupEditorDialog(
                             }
                         }
                     }
-                    if (adding) {
+                    if (adding && !readOnly) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -4324,7 +4493,7 @@ private fun RecordGroupEditorDialog(
                                 }
                             }
                         }
-                    } else {
+                    } else if (!readOnly) {
                         Button(
                             onClick = { adding = true },
                             modifier = Modifier.fillMaxWidth().height(52.dp).testTag("record_group_add"),
@@ -4752,7 +4921,7 @@ private fun RecordTopTab(
         modifier = modifier
             .height(40.dp)
             .testTag(tag),
-        shape = RoundedCornerShape(20.dp),
+        shape = RecordToolbarPillShape,
         color = if (selected) Color.White else Color.Transparent,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -6213,8 +6382,14 @@ private fun SelectionButton(
 private fun EmptyCaseList(
     visibility: CaseVisibility,
     libraryType: CaseLibraryType,
+    libraryCaseCount: Int,
+    activeCriteria: List<String>,
     onCreate: () -> Unit,
+    onClearConditions: () -> Unit,
 ) {
+    val hasNoMatchedResults = visibility == CaseVisibility.ACTIVE &&
+        libraryCaseCount > 0 &&
+        activeCriteria.isNotEmpty()
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -6226,6 +6401,9 @@ private fun EmptyCaseList(
             Text(
                 when {
                     visibility == CaseVisibility.TRASHED -> "回收站为空"
+                    hasNoMatchedResults && libraryType == CaseLibraryType.CELEBRITY ->
+                        "未找到符合当前条件的名人案例"
+                    hasNoMatchedResults -> "未找到符合当前条件的命例"
                     libraryType == CaseLibraryType.CELEBRITY -> "还没有名人案例"
                     else -> "还没有命例"
                 },
@@ -6233,17 +6411,33 @@ private fun EmptyCaseList(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                if (visibility == CaseVisibility.TRASHED) {
-                    "移入回收站的命例会保留完整数据，并可从这里恢复。"
-                } else if (libraryType == CaseLibraryType.CELEBRITY) {
-                    "可先手动录入名人出生资料；后续文字自动录入也会保存到这里。"
-                } else {
-                    "先手动录入出生资料，应用会完成排盘并保存到本机。"
+                when {
+                    visibility == CaseVisibility.TRASHED ->
+                        "移入回收站的命例会保留完整数据，并可从这里恢复。"
+                    hasNoMatchedResults -> buildString {
+                        append("当前条件：")
+                        append(activeCriteria.joinToString("、"))
+                        append("。可清除条件后查看全部 $libraryCaseCount 例")
+                        append(if (libraryType == CaseLibraryType.CELEBRITY) "名人案例。" else "命例。")
+                    }
+                    libraryType == CaseLibraryType.CELEBRITY ->
+                        "可先手动录入名人出生资料；后续文字自动录入也会保存到这里。"
+                    else -> "先手动录入出生资料，应用会完成排盘并保存到本机。"
                 },
                 modifier = Modifier.padding(top = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (visibility == CaseVisibility.ACTIVE) {
+            if (hasNoMatchedResults) {
+                OutlinedButton(
+                    onClick = onClearConditions,
+                    modifier = Modifier
+                        .padding(top = 20.dp)
+                        .heightIn(min = 48.dp)
+                        .testTag("case_empty_clear_conditions"),
+                ) {
+                    Text("清除搜索与筛选")
+                }
+            } else if (visibility == CaseVisibility.ACTIVE) {
                 Button(
                     onClick = onCreate,
                     modifier = Modifier
@@ -6630,6 +6824,7 @@ private fun WenzhenCreateCaseScreen(
                         hour = selection.hour.toString(),
                         minute = selection.minute.toString(),
                         second = "0",
+                        timePrecision = selection.timePrecision,
                         isLeapMonth = selection.isLeapMonth,
                     ).clearTimeZoneResolution()
                 }
@@ -6672,7 +6867,7 @@ private fun WenzhenCreateCaseScreen(
     }
     if (showGroupPicker) {
         HomeCaseGroupPickerDialog(
-            groups = state.availableGroups,
+            groups = state.availableFormGroups,
             selectedGroupId = form.groupId,
             saving = state.mutationSaving,
             creationError = state.mutationError,
@@ -6862,7 +7057,7 @@ private fun WenzhenCreateCaseScreen(
                     HorizontalDivider()
                     HomePickerRow(
                         title = "分组",
-                        value = state.availableGroups
+                        value = state.availableFormGroups
                             .firstOrNull { it.id == form.groupId }
                             ?.name
                             ?: "全部",
@@ -6964,6 +7159,9 @@ private fun HomeChoiceGroup(
     options: List<Pair<String, Boolean>>,
     onSelect: (String) -> Unit,
     tags: List<String>,
+    enabled: Boolean = true,
+    itemWidth: Dp = 70.dp,
+    itemHeight: Dp = 32.dp,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -6973,11 +7171,12 @@ private fun HomeChoiceGroup(
             options.forEachIndexed { index, (label, selected) ->
                 Surface(
                     onClick = { onSelect(label) },
+                    enabled = enabled,
                     modifier = Modifier
-                        .height(32.dp)
-                        .width(70.dp)
+                        .height(itemHeight)
+                        .width(itemWidth)
                         .testTag(tags[index]),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
                 ) {
                     Box(
@@ -7006,6 +7205,7 @@ internal fun HomePickerRow(
     supporting: String,
     onClick: () -> Unit,
     tag: String,
+    titleWidth: Dp = 68.dp,
 ) {
     Row(
         modifier = Modifier
@@ -7020,10 +7220,12 @@ internal fun HomePickerRow(
     ) {
         Text(
             title,
-            modifier = Modifier.width(68.dp),
+            modifier = Modifier.width(titleWidth),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
             color = NanfengInk,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -7079,10 +7281,14 @@ private fun String.dropLastTextElement(): String {
 @Composable
 internal fun EditCaseScreen(
     form: CaseFormState,
+    groupNames: String,
+    availableGroups: List<CaseGroup>,
     error: String?,
     saving: Boolean,
     onBack: () -> Unit,
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onGroupNamesChange: (String) -> Unit,
+    onCreateGroup: (String) -> Unit,
     onSave: () -> Unit,
     onCreateCopy: () -> Unit,
     duplicateCandidates: List<DuplicateCaseCandidate>,
@@ -7091,6 +7297,7 @@ internal fun EditCaseScreen(
 ) {
     var showBirthPicker by rememberSaveable { mutableStateOf(false) }
     var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    var showGroupPicker by rememberSaveable { mutableStateOf(false) }
     if (showBirthPicker) {
         BirthDateTimePickerSheet(
             form = form,
@@ -7109,6 +7316,7 @@ internal fun EditCaseScreen(
                         hour = selection.hour.toString(),
                         minute = selection.minute.toString(),
                         second = "0",
+                        timePrecision = selection.timePrecision,
                         isLeapMonth = selection.isLeapMonth,
                     ).clearTimeZoneResolution()
                 }
@@ -7132,6 +7340,22 @@ internal fun EditCaseScreen(
                 }
                 showBirthplacePicker = false
             },
+        )
+    }
+    if (showGroupPicker) {
+        HomeCaseGroupPickerDialog(
+            groups = availableGroups,
+            selectedGroupId = availableGroups.firstOrNull { it.name == groupNames }?.id,
+            saving = saving,
+            creationError = error,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { groupId ->
+                onGroupNamesChange(
+                    availableGroups.firstOrNull { it.id == groupId }?.name.orEmpty(),
+                )
+                showGroupPicker = false
+            },
+            onCreate = onCreateGroup,
         )
     }
 
@@ -7162,6 +7386,11 @@ internal fun EditCaseScreen(
         ) {
             EditCaseSectionCard(title = "基本资料") {
                 val displayName = form.name.ifBlank { form.alias }
+                Text(
+                    "姓名",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                )
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { value ->
@@ -7169,11 +7398,16 @@ internal fun EditCaseScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(top = 8.dp)
                         .testTag("case_alias"),
-                    label = { Text("姓名") },
                     singleLine = true,
                     enabled = !saving,
                     shape = RoundedCornerShape(15.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        disabledContainerColor = Color.White,
+                    ),
                 )
                 Text(
                     "性别",
@@ -7181,26 +7415,35 @@ internal fun EditCaseScreen(
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SexButton(
-                        text = "男",
-                        selected = form.sex == SexForFortuneDirection.MAN,
-                        enabled = !saving,
-                        tag = "sex_man",
-                        onClick = {
-                            onFormChange { it.copy(sex = SexForFortuneDirection.MAN) }
-                        },
-                    )
-                    SexButton(
-                        text = "女",
-                        selected = form.sex == SexForFortuneDirection.WOMAN,
-                        enabled = !saving,
-                        tag = "sex_woman",
-                        onClick = {
-                            onFormChange { it.copy(sex = SexForFortuneDirection.WOMAN) }
-                        },
-                    )
-                }
+                HomeChoiceGroup(
+                    options = listOf(
+                        "男" to (form.sex == SexForFortuneDirection.MAN),
+                        "女" to (form.sex == SexForFortuneDirection.WOMAN),
+                    ),
+                    onSelect = { label ->
+                        onFormChange {
+                            it.copy(
+                                sex = if (label == "男") {
+                                    SexForFortuneDirection.MAN
+                                } else {
+                                    SexForFortuneDirection.WOMAN
+                                },
+                            )
+                        }
+                    },
+                    tags = listOf("sex_man", "sex_woman"),
+                    enabled = !saving,
+                )
+            }
+
+            EditCaseSectionCard(title = "分组") {
+                HomePickerRow(
+                    title = "分组",
+                    value = groupNames.ifBlank { "全部" },
+                    supporting = "",
+                    onClick = { if (!saving) showGroupPicker = true },
+                    tag = "edit_case_groups",
+                )
             }
 
             EditCaseSectionCard(title = "出生时间") {
@@ -7214,6 +7457,7 @@ internal fun EditCaseScreen(
                     supporting = "",
                     onClick = { if (!saving) showBirthPicker = true },
                     tag = "open_birth_datetime_picker",
+                    titleWidth = 104.dp,
                 )
             }
 
@@ -7384,8 +7628,9 @@ private fun EditCaseSectionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFFFF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x14000000)),
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
             Text(
@@ -7445,6 +7690,7 @@ internal fun CaseFormScreen(
                         hour = selection.hour.toString(),
                         minute = selection.minute.toString(),
                         second = "0",
+                        timePrecision = selection.timePrecision,
                         isLeapMonth = selection.isLeapMonth,
                     ).clearTimeZoneResolution()
                 }
@@ -9126,11 +9372,7 @@ private fun CaseDetailScreen(
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                             NanfengOverflowMenuItem(
-                                label = if (state.singleCaseExchangeBusy) {
-                                    "正在准备导出…"
-                                } else {
-                                    "导出当前命例"
-                                },
+                                label = if (state.singleCaseExchangeBusy) "正在准备导出…" else "导出当前命例",
                                 icon = Icons.Filled.FileUpload,
                                 accent = NanfengGoldText,
                                 onClick = { closeThen(onExportSingleCase) },
@@ -9171,6 +9413,7 @@ private fun CaseDetailScreen(
                     }
                 }
             },
+            windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         )
         if (state.detail != null && state.detailError == null) {
             CaseDetailTabs(
@@ -9184,6 +9427,8 @@ private fun CaseDetailScreen(
                     }
                 },
             )
+        }
+        if (state.detail != null && state.detailError == null) {
             WenzhenCaseIdentityHeader(
                 case = state.detail,
                 adopted = state.detail.calculationSnapshots.asReversed()
@@ -9447,16 +9692,47 @@ private fun WenzhenCaseIdentityHeader(
                             .height(40.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            case.sexForFortuneDirection.chartTypeName(),
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .offset(x = (-102).dp)
-                                .testTag("notes_identity_chart_type"),
-                            color = NanfengGoldLight,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    case.name.value ?: case.alias,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("notes_identity_name"),
+                                    color = NanfengGoldLight,
+                                    fontSize = 15.sp,
+                                    lineHeight = 19.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(136.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    case.sexForFortuneDirection.displayName(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("notes_identity_sex"),
+                                    color = Color.White.copy(alpha = 0.90f),
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
                         if (pillars.isEmpty()) {
                             Text(
                                 "暂无已采用排盘",
@@ -10264,9 +10540,9 @@ private fun ReferenceCaseNotes(
             }
         }
         if (captureForLongImage) {
-            WenzhenSectionHeader(
+            CaseNotesCommentaryHeader(
                 title = "命主反馈",
-                modifier = Modifier.padding(top = 18.dp),
+                tag = "owner_feedback_capture_header",
             )
             CaseNotesTextEditor(
                 value = draft.ownerFeedback,
@@ -10284,6 +10560,7 @@ private fun ReferenceCaseNotes(
             CaseNotesTimeline(
                 draft = draft,
                 calculation = adopted?.result,
+                displayAsIndependentChronology = case.libraryType == CaseLibraryType.CELEBRITY,
                 enabled = case.deletedAt == null,
                 onContentChange = onTimelineContentChange,
             )
@@ -10307,9 +10584,11 @@ private fun ReferenceCaseNotes(
                 modifier = Modifier.testTag("ai_commentary_capture"),
             )
         } else if (mode == CaseNotesMode.OWNER_FEEDBACK) {
-            WenzhenSectionHeader(
+            // 与师傅点评复用同一个固定标题槽：左侧金线、文本基线和上下留白完全一致，
+            // 切换时不会因为标题本身的高度差让正文发生跳动。
+            CaseNotesCommentaryHeader(
                 title = "命主反馈",
-                modifier = Modifier.padding(top = 18.dp),
+                tag = "owner_feedback_header",
             )
             CaseNotesTextEditor(
                 value = draft.ownerFeedback,
@@ -10348,6 +10627,7 @@ private fun ReferenceCaseNotes(
             CaseNotesTimeline(
                 draft = draft,
                 calculation = adopted?.result,
+                displayAsIndependentChronology = case.libraryType == CaseLibraryType.CELEBRITY,
                 enabled = case.deletedAt == null,
                 onContentChange = onTimelineContentChange,
             )
@@ -10631,64 +10911,139 @@ private fun CaseNotesTextEditor(
     fillAvailableSpace: Boolean = false,
 ) {
     val editorScrollState = rememberScrollState()
-    Box(
+    val uriHandler = LocalUriHandler.current
+    val openUrl by rememberUpdatedState<(String) -> Unit> { url -> uriHandler.openUri(url) }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 2.dp),
     ) {
-        Surface(
+        Box(
             modifier = if (fillAvailableSpace) {
-                Modifier.fillMaxSize()
-            } else {
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = (minLines * 25).dp + 32.dp)
-            },
-            shape = RoundedCornerShape(14.dp),
-            color = if (enabled) Color.White else MaterialTheme.colorScheme.surfaceVariant,
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (enabled) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-            ),
-        ) {
-            BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            modifier = (if (fillAvailableSpace) {
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(editorScrollState)
+                    .weight(1f)
             } else {
-                Modifier.fillMaxSize()
-            })
-                .padding(start = 16.dp, top = 14.dp, end = 18.dp, bottom = 14.dp),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (value.isEmpty()) {
-                        Text(
-                            placeholder,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
-                        )
-                    }
-                    innerTextField()
+                Modifier.fillMaxWidth()
+            },
+        ) {
+            Surface(
+                modifier = if (fillAvailableSpace) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = (minLines * 25).dp + 32.dp)
+                },
+                shape = RoundedCornerShape(14.dp),
+                color = if (enabled) Color.White else MaterialTheme.colorScheme.surfaceVariant,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (enabled) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    },
+                ),
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    enabled = enabled,
+                    modifier = (if (fillAvailableSpace) {
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(editorScrollState)
+                    } else {
+                        Modifier.fillMaxSize()
+                    })
+                        .padding(start = 16.dp, top = 14.dp, end = 18.dp, bottom = 14.dp)
+                        .openCaseNotesUrlWhenTapped(
+                            value = value,
+                            textLayoutResult = { textLayoutResult },
+                            onOpenUrl = openUrl,
+                        ),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+                    maxLines = Int.MAX_VALUE,
+                    visualTransformation = caseNotesWebUrlVisualTransformation(
+                        MaterialTheme.colorScheme.primary,
+                    ),
+                    onTextLayout = { textLayoutResult = it },
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (value.isEmpty()) {
+                                Text(
+                                    placeholder,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            }
+            if (fillAvailableSpace && editorScrollState.maxValue > 0) {
+                CaseNotesEditorScrollbar(
+                    scrollState = editorScrollState,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(top = 14.dp, end = 5.dp, bottom = 14.dp),
+                )
+            }
+        }
+    }
+}
+
+private val CaseNotesWebUrlPattern = Regex("""https?://[^\s<>"'，。；、！？]+""")
+
+internal fun extractCaseNotesWebUrls(value: String): List<String> =
+    CaseNotesWebUrlPattern.findAll(value)
+        .map { it.normalizedCaseNotesWebUrl() }
+        .filter(String::isNotEmpty)
+        .distinct()
+        .toList()
+
+internal fun caseNotesWebUrlAtOffset(value: String, offset: Int): String? =
+    CaseNotesWebUrlPattern.findAll(value)
+        .firstNotNullOfOrNull { match ->
+            val normalized = match.normalizedCaseNotesWebUrl()
+            normalized.takeIf { offset in match.range.first until (match.range.first + it.length) }
+        }
+
+private fun MatchResult.normalizedCaseNotesWebUrl(): String =
+    value.trimEnd('.', ',', ';', ':', '!', '?', '。', '，', '；', '！', '？', '、')
+
+private fun caseNotesWebUrlVisualTransformation(linkColor: Color): VisualTransformation =
+    VisualTransformation { original ->
+        TransformedText(
+            buildAnnotatedString {
+                append(original)
+                CaseNotesWebUrlPattern.findAll(original.text).forEach { match ->
+                    addStyle(
+                        SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                        match.range.first,
+                        match.range.last + 1,
+                    )
                 }
             },
-            )
-        }
-        if (fillAvailableSpace && editorScrollState.maxValue > 0) {
-            CaseNotesEditorScrollbar(
-                scrollState = editorScrollState,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(top = 14.dp, end = 5.dp, bottom = 14.dp),
-            )
+            OffsetMapping.Identity,
+        )
+    }
+
+private fun Modifier.openCaseNotesUrlWhenTapped(
+    value: String,
+    textLayoutResult: () -> TextLayoutResult?,
+    onOpenUrl: (String) -> Unit,
+): Modifier = pointerInput(value) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+        val layout = textLayoutResult() ?: return@awaitEachGesture
+        caseNotesWebUrlAtOffset(value, layout.getOffsetForPosition(up.position))?.let { url ->
+            up.consume()
+            onOpenUrl(url)
         }
     }
 }
@@ -10727,6 +11082,7 @@ private fun CaseNotesEditorScrollbar(
 private fun CaseNotesTimeline(
     draft: CaseNotesDraft,
     calculation: CalculationResult?,
+    displayAsIndependentChronology: Boolean,
     enabled: Boolean,
     onContentChange: (String, String) -> Unit,
 ) {
@@ -10736,6 +11092,14 @@ private fun CaseNotesTimeline(
             modifier = Modifier.padding(vertical = 18.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
             style = MaterialTheme.typography.bodyMedium,
+        )
+        return
+    }
+    if (displayAsIndependentChronology) {
+        CelebrityCaseTimeline(
+            entries = draft.timeline,
+            enabled = enabled,
+            onContentChange = onContentChange,
         )
         return
     }
@@ -10765,6 +11129,64 @@ private fun CaseNotesTimeline(
             CaseNotesStandaloneTimelineEntry(entry, enabled, onContentChange)
         }
 }
+
+@Composable
+private fun CelebrityCaseTimeline(
+    entries: List<CaseNotesTimelineDraft>,
+    enabled: Boolean,
+    onContentChange: (String, String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .drawBehind {
+                val x = 9.dp.toPx()
+                drawLine(
+                    color = NanfengGold.copy(alpha = 0.32f),
+                    start = Offset(x, 14.dp.toPx()),
+                    end = Offset(x, size.height - 12.dp.toPx()),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            },
+    ) {
+        entries.sortedBy { it.year }.forEach { entry ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(
+                    modifier = Modifier.padding(top = 8.dp).size(18.dp),
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(
+                        4.dp,
+                        NanfengGold.copy(alpha = 0.72f),
+                    ),
+                ) {}
+                Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
+                    Text(
+                        entry.year.toTimelineYearLabel(),
+                        color = NanfengGold,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    CaseNotesTimelineInput(
+                        entry = entry,
+                        enabled = enabled,
+                        onContentChange = onContentChange,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Int.toTimelineYearLabel(): String =
+    if (this < 0) "公元前${-this}年" else "${this}年"
 
 @Composable
 private fun CaseNotesDecadeGroup(
@@ -10893,20 +11315,19 @@ private fun CaseNotesTimelineInput(
     onContentChange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
-        value = entry.content,
-        onValueChange = { onContentChange(entry.id, it) },
-        enabled = enabled,
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("timeline_event_input")
-            .semantics { contentDescription = "时间线事件输入 ${entry.id}" },
-        placeholder = { Text("输入这一阶段的关键事件") },
-        minLines = 1,
-        maxLines = Int.MAX_VALUE,
-        shape = RoundedCornerShape(12.dp),
-        textStyle = MaterialTheme.typography.bodyMedium,
-    )
+    Column(modifier = modifier.fillMaxWidth()) {
+        CaseNotesTextEditor(
+            value = entry.content,
+            onValueChange = { onContentChange(entry.id, it) },
+            placeholder = "输入这一阶段的关键事件",
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("timeline_event_input")
+                .semantics { contentDescription = "时间线事件输入 ${entry.id}" },
+            minLines = 1,
+        )
+    }
 }
 
 @Composable
@@ -12744,7 +13165,7 @@ private fun ProfessionalSelectedDateBar(
                         .testTag("fortune_today")
                         .semantics { contentDescription = "定位今天" },
                     color = NanfengGold.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 9.dp),
@@ -13214,7 +13635,7 @@ private fun TimeSourceType.displayName(): String = when (this) {
     TimeSourceType.FAMILY_REPORTED -> "家人提供"
     TimeSourceType.OFFICIAL_RECORD -> "出生证明"
     TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
-    TimeSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
+    TimeSourceType.WENZHEN_WEB_IMPORT -> "历史网页资料导入"
     TimeSourceType.OTHER_RECORD -> "其他资料"
     TimeSourceType.UNKNOWN -> "未说明"
 }
@@ -13228,7 +13649,8 @@ private fun CaseSourceType.displayName(): String = when (this) {
     CaseSourceType.MANUAL -> "手动录入"
     CaseSourceType.CASE_COPY -> "命例复制"
     CaseSourceType.WENZHEN_SCREENSHOT -> "问真截图迁移"
-    CaseSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
+    CaseSourceType.WENZHEN_WEB_IMPORT -> "历史网页资料导入"
+    CaseSourceType.CURATED_CELEBRITY_CATALOG -> "名人案例统一资料"
     CaseSourceType.BACKUP_RESTORE -> "备份恢复"
 }
 
@@ -13258,7 +13680,8 @@ internal fun TextRecordSourceType.displayName(): String = when (this) {
     TextRecordSourceType.RULE_TEMPLATE -> "规则模板"
     TextRecordSourceType.EXTERNAL_AI -> "外部 AI（手动回填）"
     TextRecordSourceType.IMPORTED_IMAGE -> "图片导入"
-    TextRecordSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
+    TextRecordSourceType.WENZHEN_WEB_IMPORT -> "历史网页资料导入"
+    TextRecordSourceType.CURATED_RESEARCH -> "资料编审"
     TextRecordSourceType.LEGACY_UNSPECIFIED -> "历史未标记"
 }
 
@@ -13300,20 +13723,25 @@ private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateTime()
 private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateOnly(): String =
     when (val calendar = calendarInput) {
         is BirthCalendarInput.Solar -> with(calendar.dateTime) {
-            "阳历%04d年%d月%d日".format(year, month, day)
+            "阳历${year.displayHistoricalYear()}年${month}月${day}日"
         }
         is BirthCalendarInput.Lunar -> with(calendar.dateTime) {
-            "农历%04d年%s%d月%d日".format(
-                year,
-                if (isLeapMonth) "闰" else "",
-                month,
-                day,
-            )
+            "农历${year.displayHistoricalYear()}年${if (isLeapMonth) "闰" else ""}${month}月${day}日"
         }
     }
 
 private fun CivilDateTime.display(): String =
-    "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
+    "%s-%02d-%02d %02d:%02d:%02d".format(
+        year.displayHistoricalYear(),
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    )
+
+internal fun Int.displayHistoricalYear(): String =
+    if (this <= 0) "公元前${1 - this}" else toString()
 
 private fun formatUtcOffset(totalSeconds: Int): String {
     val sign = if (totalSeconds >= 0) "+" else "-"
