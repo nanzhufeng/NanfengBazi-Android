@@ -59,6 +59,35 @@ class CaseBackupServiceTest {
     private val fixedClock = Clock.fixed(FixtureInstant, ZoneOffset.UTC)
 
     @Test
+    fun `云端结构化快照包含合盘记录`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-cloud-compatibility-history-")
+        val history = root.resolve("bazi-compatibility-history-v1.json")
+        Files.write(history, "[]".encodeToByteArray())
+        try {
+            withDatabase { database ->
+                val output = ByteArrayOutputStream()
+                val result = CaseBackupService(
+                    database = database,
+                    clock = fixedClock,
+                    compatibilityHistoryFile = history,
+                ).exportCloudSnapshot(output, "0.3.0-test")
+
+                assertTrue(result is BackupExportResult.Success)
+                val entries = mutableListOf<String>()
+                ZipInputStream(ByteArrayInputStream(output.toByteArray())).use { zip ->
+                    while (true) {
+                        val entry = zip.nextEntry ?: break
+                        entries += entry.name
+                    }
+                }
+                assertTrue(entries.contains("compatibility-history.json"))
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `云端结构化快照排除设备本地最近查看时间`() = runTest {
         withDatabase { database ->
             val repository = RoomCaseRepository(database)
@@ -164,6 +193,66 @@ class CaseBackupServiceTest {
                 assertTrue(restore is BackupRestoreResult.Success)
                 assertEquals(records.size, RoomCaseRepository(destination).findById("case-1")!!.textRecords.size)
             }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `大型完整备份可流式导出并经过磁盘预检`() = runTest {
+        val root = Files.createTempDirectory("nanfeng-full-backup-large-notes-")
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preflightDatabasesBefore = context.databaseList()
+            .filter { it.startsWith("nanfeng-bazi-restore-preflight-") }
+        try {
+            val noteContent = "x".repeat(384 * 1024)
+            val records = (1..48).map { index ->
+                sampleCase().textRecords.first().copy(
+                    id = "full-backup-large-note-$index",
+                    content = noteContent,
+                    sourceAttachmentId = null,
+                )
+            }
+            val sourceCase = sampleCase().copy(
+                textRecords = records,
+                events = emptyList(),
+                attachments = emptyList(),
+                fieldEvidence = emptyList(),
+            )
+            val backup = withDatabase { source ->
+                RoomCaseRepository(source).save(sourceCase, expectedRevision = null)
+                ByteArrayOutputStream().also { output ->
+                    assertTrue(
+                        CaseBackupService(source, fixedClock).export(
+                            output = output,
+                            attachmentRoot = root.resolve("attachments"),
+                            appVersion = "0.3.0-test",
+                            protection = BackupProtection.UnencryptedSensitiveDataConfirmed,
+                        ) is BackupExportResult.Success,
+                    )
+                }.toByteArray()
+            }
+
+            withDatabase { destination ->
+                val preview = CaseBackupService(
+                    database = destination,
+                    clock = fixedClock,
+                    stagingDatabaseContext = context,
+                ).preview(
+                    input = ByteArrayInputStream(backup),
+                    workRoot = root.resolve("preview-work"),
+                )
+                assertTrue(preview.toString(), preview is BackupPreviewResult.Success)
+                assertEquals(
+                    BackupDatabasePreflight.INDEPENDENT_ROOM_ROUND_TRIP_VERIFIED,
+                    (preview as BackupPreviewResult.Success).preview.databasePreflight,
+                )
+            }
+            assertEquals(
+                preflightDatabasesBefore,
+                context.databaseList()
+                    .filter { it.startsWith("nanfeng-bazi-restore-preflight-") },
+            )
         } finally {
             root.toFile().deleteRecursively()
         }

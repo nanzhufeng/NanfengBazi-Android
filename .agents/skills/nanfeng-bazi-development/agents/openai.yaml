@@ -1,0 +1,4 @@
+interface:
+  display_name: "南枫八字开发"
+  short_description: "Build scoped Android changes with architecture and regression safeguards"
+  default_prompt: "Use $nanfeng-bazi-development to implement a scoped 南枫八字 Android change."

@@ -132,6 +132,9 @@ class PrivateImportImageStore(
 
     private companion object {
         val SAFE_ID = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
-        const val DEFAULT_MAX_IMAGE_BYTES = 100L * 1024L * 1024L
+        // Screenshot OCR keeps several copies during decode, recognition and optional upload.
+        // A 25 MiB source cap keeps those bounded on real phones instead of accepting a file
+        // that is safe on disk but unsafe once decoded in memory.
+        const val DEFAULT_MAX_IMAGE_BYTES = 25L * 1024L * 1024L
     }
 }

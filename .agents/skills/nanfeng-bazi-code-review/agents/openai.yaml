@@ -1,0 +1,4 @@
+interface:
+  display_name: "南枫八字代码审查"
+  short_description: "Review Android changes for data safety privacy and regressions"
+  default_prompt: "Use $nanfeng-bazi-code-review to review a 南枫八字 Android change."

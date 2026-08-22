@@ -775,7 +775,8 @@ class SingleCaseBundleService(
                         totalBytes += count
                         if (
                             entryBytes > MAX_SINGLE_ENTRY_BYTES ||
-                            totalBytes > MAX_TOTAL_BYTES
+                            totalBytes > MAX_TOTAL_BYTES ||
+                            !hasStagingSpace(stagingRoot, count.toLong())
                         ) {
                             return null
                         }
@@ -885,8 +886,8 @@ class SingleCaseBundleService(
         private const val MAX_ATTACHMENT_COUNT = 2_000
         private const val MAX_ENTRY_COUNT = 2_010
         private const val MAX_JSON_BYTES = 16L * 1024 * 1024
-        private const val MAX_SINGLE_ENTRY_BYTES = 512L * 1024 * 1024
-        private const val MAX_TOTAL_BYTES = 1024L * 1024 * 1024
+        private const val MAX_SINGLE_ENTRY_BYTES = 128L * 1024 * 1024
+        private const val MAX_TOTAL_BYTES = 256L * 1024 * 1024
         private const val MAX_ID_GENERATION_ATTEMPTS = 100
         private val GENERATED_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
         private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
@@ -952,6 +953,10 @@ private fun resolveContained(root: Path, relative: String): Path? {
     val resolved = normalizedRoot.resolve(relative).normalize()
     return resolved.takeIf { it.startsWith(normalizedRoot) }
 }
+
+private fun hasStagingSpace(root: Path, nextBytes: Long): Boolean = runCatching {
+    Files.getFileStore(root).usableSpace - nextBytes >= 128L * 1024 * 1024
+}.getOrDefault(false)
 
 private fun sha256(path: Path): String {
     val digest = MessageDigest.getInstance("SHA-256")

@@ -159,7 +159,7 @@ private fun CaseSortOrder.summaryComparator(): Comparator<CaseSummary> {
     val selected = when (this) {
         CaseSortOrder.NAME_ASC ->
             Comparator { left, right ->
-                compareCaseNames(left.displayName(), right.displayName())
+                compareCaseNameGroups(left.displayName(), right.displayName())
             }
         CaseSortOrder.LAST_VIEWED_DESC ->
             compareByDescending<CaseSummary> { it.lastViewedAt }.thenByDescending { it.updatedAt }
@@ -212,7 +212,33 @@ interface CaseRepository {
         expectedRevision: Long?,
     ): CaseWriteResult
 
+    /**
+     * Production repositories override this with a single transaction. The default keeps
+     * lightweight test repositories compatible while preserving the same result contract.
+     */
+    suspend fun saveCatalogAtomically(
+        requests: List<CaseCatalogWriteRequest>,
+    ): CaseCatalogWriteResult {
+        var created = 0
+        var updated = 0
+        requests.forEach { request ->
+            when (val result = save(request.case, request.expectedRevision)) {
+                is CaseWriteResult.Created -> created++
+                is CaseWriteResult.Updated -> updated++
+                else -> return CaseCatalogWriteResult.NotApplied(result)
+            }
+        }
+        return CaseCatalogWriteResult.Applied(created, updated)
+    }
+
     suspend fun findById(id: String): BaziCase?
+
+    /**
+     * Reads a bounded set from one repository snapshot. Catalog synchronization must not
+     * turn a few hundred records into thousands of per-record child-table queries.
+     */
+    suspend fun findByIds(ids: Set<String>): Map<String, BaziCase> =
+        ids.mapNotNull { id -> findById(id)?.let { id to it } }.toMap()
 
     suspend fun search(request: CaseSearchRequest = CaseSearchRequest()): List<CaseSummary>
 
@@ -267,6 +293,12 @@ interface CaseRepository {
         deletedAt: Instant,
     ): Int = 0
 
+    /**
+     * 将无内容的“某某”或系统自动生成的“某某数字”占位案例移入回收站。
+     * 仅限用户库，且不得包含任何断事文字或关键事件。
+     */
+    suspend fun moveBlankPlaceholderCasesToTrash(deletedAt: Instant): Int = 0
+
     /** Permanently removes only cases that are already in the trash. */
     suspend fun deleteTrashedCasesPermanently(caseIds: Set<String>): Int = 0
 }
@@ -292,4 +324,20 @@ sealed interface CaseWriteResult {
         val expectedRevision: Long,
         val actualRevision: Long,
     ) : CaseWriteResult
+}
+
+data class CaseCatalogWriteRequest(
+    val case: BaziCase,
+    val expectedRevision: Long?,
+)
+
+sealed interface CaseCatalogWriteResult {
+    data class Applied(
+        val created: Int,
+        val updated: Int,
+    ) : CaseCatalogWriteResult
+
+    data class NotApplied(
+        val cause: CaseWriteResult,
+    ) : CaseCatalogWriteResult
 }

@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi.domain.model
 
+import com.nanzhufeng.nanfengbazi.domain.BaziStructuralProfile
 import java.time.Instant
 import kotlinx.serialization.Serializable
 
@@ -180,4 +181,6 @@ data class CalculationResult(
     val calendarConversion: CalendarConversionResult? = null,
     val trueSolarTimeEvidence: TrueSolarTimeEvidence? = null,
     val basicChartDetails: BasicChartDetails? = null,
+    /** 月令、通根、透干与生扶克泄耗形成的本机结构候选；问真来源字段仍独立保真。 */
+    val structuralProfile: BaziStructuralProfile? = null,
 )

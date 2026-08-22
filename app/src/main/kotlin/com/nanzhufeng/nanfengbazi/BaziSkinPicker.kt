@@ -37,8 +37,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,9 +61,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
@@ -91,10 +98,18 @@ internal fun BaziSkinArtwork(
 @Composable
 internal fun BaziHomeSkinHeader(
     skin: BaziSkin = LocalBaziSkin.current,
+    height: Dp = 148.dp,
     modifier: Modifier = Modifier,
 ) {
     val recipe = skin.visualRecipe
     val tokens = skin.tokens
+    var currentSolarTime by remember { mutableStateOf(baziHomeSolarDateTime()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentSolarTime = baziHomeSolarDateTime()
+            delay(1_000L)
+        }
+    }
     val scope = rememberCoroutineScope()
     val flowProgress = remember(skin.id) { Animatable(0f) }
     val pulseProgress = remember(skin.id) { Animatable(0f) }
@@ -114,7 +129,7 @@ internal fun BaziHomeSkinHeader(
         onClick = activateFlow,
         modifier = modifier
             .fillMaxWidth()
-            .height(148.dp)
+            .height(height)
             .semantics {
                 contentDescription = "${skin.displayName}互动头图，点击或左右滑动可查看五行流转效果"
             },
@@ -213,17 +228,20 @@ internal fun BaziHomeSkinHeader(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    skin.headline,
-                    color = recipe.headerContentColor.copy(alpha = 0.94f),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
                     skin.subhead,
                     color = recipe.headerContentColor.copy(alpha = 0.82f),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            Text(
+                currentSolarTime,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 17.dp, vertical = 14.dp),
+                color = recipe.headerContentColor.copy(alpha = 0.76f),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+            )
             Text(
                 "八字",
                 modifier = Modifier
@@ -245,6 +263,9 @@ internal fun BaziHomeSkinHeader(
         }
     }
 }
+
+private fun baziHomeSolarDateTime(): String = LocalDateTime.now()
+    .format(DateTimeFormatter.ofPattern("yyyy年MM月dd日 · HH:mm:ss"))
 
 @Composable
 private fun BaziHomeFlowOverlay(

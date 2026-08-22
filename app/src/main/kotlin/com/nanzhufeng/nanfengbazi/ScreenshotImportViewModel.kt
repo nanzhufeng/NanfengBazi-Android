@@ -215,15 +215,17 @@ class ScreenshotImportViewModel(
                     applyRecognitionResult(recognitionScheduler.recognize(sessionId))
                 } else {
                     val model = selectedAiModel()
+                    val visionModelIssue = selectedAiVisionModelSupportMessage()
                     mutableState.update {
                         it.copy(
                             busy = false,
                             progressText = null,
                             completedImageCount = imported.images.size,
-                            awaitingAiModelConsent = true,
+                            awaitingAiModelConsent = visionModelIssue == null,
                             aiModelProviderName = model?.first,
                             aiModelName = model?.second,
-                            message = "原图已私有保存，确认后才会上传给所选 AI 模型识别。",
+                            message = visionModelIssue
+                                ?: "原图已私有保存，确认后才会上传给所选 AI 模型识别。",
                         )
                     }
                 }
@@ -266,12 +268,13 @@ class ScreenshotImportViewModel(
         if (mutableState.value.busy) return
         if (aiCommentarySettings != null) {
             val model = selectedAiModel()
+            val visionModelIssue = selectedAiVisionModelSupportMessage()
             mutableState.update {
                 it.copy(
-                    awaitingAiModelConsent = true,
+                    awaitingAiModelConsent = visionModelIssue == null,
                     aiModelProviderName = model?.first,
                     aiModelName = model?.second,
-                    message = null,
+                    message = visionModelIssue,
                 )
             }
             return
@@ -293,6 +296,15 @@ class ScreenshotImportViewModel(
     fun confirmAiModelRecognition() {
         val sessionId = mutableState.value.activeSessionId ?: return
         if (!mutableState.value.awaitingAiModelConsent || mutableState.value.busy) return
+        selectedAiVisionModelSupportMessage()?.let { issue ->
+            mutableState.update {
+                it.copy(
+                    awaitingAiModelConsent = false,
+                    message = issue,
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             mutableState.update {
                 it.copy(
@@ -774,6 +786,12 @@ class ScreenshotImportViewModel(
             providerId,
             config.model,
         )
+    }
+
+    private fun selectedAiVisionModelSupportMessage(): String? {
+        val settings = aiCommentarySettings ?: return null
+        val providerId = settings.selectedProvider()
+        return aiVisionModelSupportMessage(settings.configs().getValue(providerId))
     }
 
     private fun recognitionParserVersion(): String {

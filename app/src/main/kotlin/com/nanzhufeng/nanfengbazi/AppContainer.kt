@@ -51,6 +51,7 @@ interface AppContainer {
     val backupAttachmentRoot: Path
     val backupWorkRoot: Path
     val calculationPreferenceStore: CalculationPreferenceStore
+    val baziCompatibilityHistoryStore: BaziCompatibilityHistoryStore
     val baziSkinPreferenceStore: BaziSkinPreferenceStore
     val aiCommentarySettings: AiCommentarySettingsStore
     val aiCommentaryGenerator: AiCommentaryGenerator
@@ -65,6 +66,8 @@ class DefaultAppContainer(
     override val almanacReader: AlmanacReader = TymeAlmanacReader()
     override val calculationPreferenceStore: CalculationPreferenceStore =
         AndroidCalculationPreferenceStore(application)
+    override val baziCompatibilityHistoryStore: BaziCompatibilityHistoryStore =
+        LocalBaziCompatibilityHistoryStore(application)
     override val baziSkinPreferenceStore: BaziSkinPreferenceStore =
         BaziSkinPreferenceStore(application)
     override val aiCommentarySettings: AiCommentarySettingsStore =
@@ -106,6 +109,10 @@ class DefaultAppContainer(
     override val caseBackupService: CaseBackupOperations = CaseBackupService(
         database = database,
         stagingDatabaseContext = application,
+        compatibilityHistoryFile = File(
+            application.noBackupFilesDir,
+            "bazi-compatibility-history-v1.json",
+        ).toPath(),
     )
     override val singleCaseBundleService: SingleCaseBundleOperations =
         SingleCaseBundleService(database)

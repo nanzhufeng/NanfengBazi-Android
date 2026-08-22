@@ -42,6 +42,7 @@ enum class CaseSourceType {
     CASE_COPY,
     WENZHEN_SCREENSHOT,
     WENZHEN_WEB_IMPORT,
+    CURATED_CELEBRITY_CATALOG,
     BACKUP_RESTORE,
 }
 
@@ -90,6 +91,7 @@ enum class TextRecordSourceType {
     EXTERNAL_AI,
     IMPORTED_IMAGE,
     WENZHEN_WEB_IMPORT,
+    CURATED_RESEARCH,
     LEGACY_UNSPECIFIED,
 }
 
@@ -432,7 +434,12 @@ data class BaziCase(
             require(birthTimeCandidates.count { it.adopted } == 1) {
                 "出生时间候选必须且只能采用一个"
             }
-            require(birthTimeCandidates.single { it.adopted }.birthInput == birthInput) {
+            val adoptedBirthInput = birthTimeCandidates.single { it.adopted }.birthInput
+            val allowsHistoricalCalculationProxy =
+                sourceType == CaseSourceType.CURATED_CELEBRITY_CATALOG &&
+                    birthInput.calendarInput.let { it is BirthCalendarInput.Solar && it.dateTime.year < 0 } &&
+                    adoptedBirthInput.isHistoricalCalculationProxy
+            require(adoptedBirthInput == birthInput || allowsHistoricalCalculationProxy) {
                 "命例出生输入必须与采用的出生时间候选一致"
             }
         }

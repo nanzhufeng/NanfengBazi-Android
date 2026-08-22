@@ -12,7 +12,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -22,6 +26,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +43,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -68,6 +74,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.RestoreFromTrash
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -125,6 +133,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.PathEffect
@@ -138,6 +147,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.input.pointer.pointerInput
@@ -154,11 +164,16 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -169,6 +184,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityReport
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySignal
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySignalKind
+import com.nanzhufeng.nanfengbazi.domain.BaziStructuralProfile
 import com.nanzhufeng.nanfengbazi.domain.CaseAdvancedFilter
 import com.nanzhufeng.nanfengbazi.domain.CaseSortOrder
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -209,6 +229,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.DecadeFortune
+import com.nanzhufeng.nanfengbazi.domain.model.completedAgeRangeDisplay
+import com.nanzhufeng.nanfengbazi.domain.model.solarBirthDateTimeForFortuneDisplay
 import com.nanzhufeng.nanfengbazi.domain.model.FieldValueState
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.PillarDetail
@@ -243,12 +265,18 @@ import com.nanzhufeng.nanfengbazi.cloud.BaziGoogleSignInClient
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
 import com.nanzhufeng.nanfengbazi.domain.displayName
+import com.nanzhufeng.nanfengbazi.domain.structuralProfileOrAnalyze
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+
+// 历史页顶栏的搜索与库切换共用此轮廓，保证边框、按压面和阴影都是同一枚胶囊。
+private val RecordToolbarPillShape = RoundedCornerShape(24.dp)
+internal val HomeQuickEntryPillShape = RoundedCornerShape(percent = 50)
 
 @Composable
 fun NanfengBaziApp(
@@ -268,6 +296,7 @@ fun NanfengBaziApp(
     onCreateSingleCaseDocument: (SingleCaseExportDocumentRequest) -> Unit = {},
     onOpenSingleCaseDocument: () -> Unit = {},
     onOpenWenzhenImportDocument: () -> Unit = {},
+    onImportCuratedCelebrityCatalog: () -> Unit = {},
     onRetryPasswordSingleCaseDocument: (CharArray) -> Unit = {},
     onCommitSingleCaseImport: ((SingleCaseImportDecision) -> Unit)? = null,
     onCommitSingleCaseMerge: (() -> Unit)? = null,
@@ -290,6 +319,8 @@ fun NanfengBaziApp(
     val rootView = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val caseDetailCaptureRegistry = remember { CaseDetailPageCaptureRegistry() }
+    // 列表在详情页显示期间会暂时离开组合；滚动位置必须由根页面持有，返回后才能回到原处。
+    val caseListState = rememberLazyListState()
     val latestUiState by rememberUpdatedState(state)
     val snackbarHostState = remember { SnackbarHostState() }
     val message = state.message
@@ -327,21 +358,31 @@ fun NanfengBaziApp(
             }
         }
     }
-    BackHandler(
-        enabled = state.destination !in setOf(
+    val returnsToCompatibilityCreate =
+        state.destination == AppDestination.CreateCase &&
+            state.compatibilityParticipantRole != null
+    val hasBackStackDestination = state.destination !in setOf(
             AppDestination.CaseList,
             AppDestination.RecordHub,
             AppDestination.Settings,
             AppDestination.CreateCase,
-        ),
+        )
+    BackHandler(
+        enabled = hasBackStackDestination ||
+            state.compatibilityParticipantSelectionRole != null ||
+            returnsToCompatibilityCreate,
     ) {
-        viewModel.navigateBack()
+        if (returnsToCompatibilityCreate) {
+            viewModel.cancelCompatibilityParticipantCreate()
+        } else {
+            viewModel.navigateBack()
+        }
     }
     NanfengBaziTheme(skin = selectedSkin) {
         state.wenzhenImportPreview?.let { preview ->
             AlertDialog(
                 onDismissRequest = viewModel::cancelWenzhenWebImport,
-                title = { Text("导入问真网页案例？") },
+                title = { Text("导入网页案例资料？") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("用户案例 ${preview.userCaseCount} 个，名人案例 ${preview.celebrityCaseCount} 个。")
@@ -351,8 +392,8 @@ fun NanfengBaziApp(
                                 "${preview.celebrityTagCount} 个。",
                         )
                         Text(
-                            "导入会逐例校验并使用稳定 ID；重复执行只跳过已存在案例。" +
-                                "中途中断后可重新选择同一文件续传。",
+                            "导入会逐例校验并使用稳定 ID；其中名人案例会自动纳入" +
+                                "名人案例统一资料库。重复执行只跳过已存在案例，中途中断后可续传。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -373,7 +414,7 @@ fun NanfengBaziApp(
             val progress = requireNotNull(state.wenzhenImportProgress)
             AlertDialog(
                 onDismissRequest = {},
-                title = { Text("正在导入问真案例") },
+                title = { Text("正在导入网页案例资料") },
                 text = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -389,11 +430,11 @@ fun NanfengBaziApp(
         state.wenzhenImportResult?.let { result ->
             AlertDialog(
                 onDismissRequest = viewModel::dismissWenzhenImportResult,
-                title = { Text("问真案例导入完成") },
+                title = { Text("网页案例资料导入完成") },
                 text = {
                     Text(
-                        "新增 ${result.created} 个（用户 ${result.userCreated}、名人 " +
-                            "${result.celebrityCreated}），已存在 ${result.skipped} 个，" +
+                        "新增 ${result.created} 个（用户 ${result.userCreated}、名人案例 " +
+                            "${result.celebrityCreated} 个已纳入统一资料库），已存在 ${result.skipped} 个，" +
                             "异常 ${result.invalid} 个。",
                     )
                 },
@@ -405,11 +446,105 @@ fun NanfengBaziApp(
         state.wenzhenImportError?.let { error ->
             AlertDialog(
                 onDismissRequest = viewModel::dismissWenzhenImportResult,
-                title = { Text("问真案例导入未完成") },
+                title = { Text("网页案例资料导入未完成") },
                 text = { Text(error) },
                 confirmButton = {
                     Button(onClick = viewModel::dismissWenzhenImportResult) { Text("知道了") }
                 },
+            )
+        }
+        state.curatedCelebrityImportPreview?.let { preview ->
+            AlertDialog(
+                onDismissRequest = viewModel::cancelCuratedCelebrityImport,
+                title = { Text("更新名人案例统一资料库？") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("本次更新 ${preview.caseCount} 例，统一归入五个展示分组。")
+                        Text("资料等级：${preview.ratedCount.entries.sortedBy { it.key }.joinToString("、") { "${it.key} ${it.value}" }}。")
+                        Text("含其他时刻候选的命例 ${preview.alternativeTimeCaseCount} 例。")
+                        Text(
+                            "每例会保留来源网址、资料等级、默认与备选时刻；与历史导入资料统一去重，且不会覆盖已有命例。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = viewModel::executeCuratedCelebrityImport,
+                        modifier = Modifier.testTag("curated_celebrity_import_confirm"),
+                    ) { Text("开始导入") }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelCuratedCelebrityImport) { Text("取消") }
+                },
+            )
+        }
+        if (state.curatedCelebrityImportBusy && state.curatedCelebrityImportProgress != null) {
+            val progress = requireNotNull(state.curatedCelebrityImportProgress)
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("正在更新名人案例统一资料库") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text("${progress.completed}/${progress.total}")
+                    }
+                },
+                confirmButton = {},
+            )
+        }
+        state.curatedCelebrityImportResult?.let { result ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissCuratedCelebrityImportResult,
+                title = { Text("名人案例统一资料库已更新") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("新增 ${result.created} 个，更新 ${result.updated} 个，已存在 ${result.skipped} 个，异常 ${result.invalid} 个。")
+                        if (result.errors.isNotEmpty()) {
+                            Text(
+                                result.errors.joinToString("\n"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissCuratedCelebrityImportResult) { Text("完成") }
+                },
+            )
+        }
+        state.curatedCelebrityImportError?.let { error ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissCuratedCelebrityImportResult,
+                title = { Text("名人案例统一资料库更新未完成") },
+                text = { Text(error) },
+                confirmButton = {
+                    Button(onClick = viewModel::dismissCuratedCelebrityImportResult) { Text("知道了") }
+                },
+            )
+        }
+        if (state.builtInCelebrityCatalogSyncBusy) {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("正在同步名人案例统一资料库") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Text(
+                            "正在校验并分批更新 ${state.builtInCelebrityCatalogSyncCaseCount} 条资料。" +
+                                "用户案例、笔记和关键事件不会被改动。",
+                        )
+                    }
+                },
+                confirmButton = {},
             )
         }
         Surface(
@@ -418,7 +553,11 @@ fun NanfengBaziApp(
         ) {
             BoxWithConstraints {
                 val useNavigationRail = maxWidth >= EXPANDED_NAVIGATION_MIN_WIDTH
-                val showRootNavigation = state.destination in setOf(
+                val isCompatibilityParticipantCreate = state.compatibilityParticipantRole != null
+                val isCompatibilityParticipantSelection =
+                    state.compatibilityParticipantSelectionRole != null
+                val showRootNavigation = !isCompatibilityParticipantCreate &&
+                    !isCompatibilityParticipantSelection && state.destination in setOf(
                     AppDestination.CaseList,
                     AppDestination.CreateCase,
                     AppDestination.RecordHub,
@@ -430,19 +569,29 @@ fun NanfengBaziApp(
                     }
                 }
                 val shouldFloatRootNavigation = showRootNavigation && !useNavigationRail
+                val rootNavigationScrollEndInset = if (shouldFloatRootNavigation) {
+                    ROOT_NAVIGATION_BAR_HEIGHT +
+                        ROOT_NAVIGATION_BOTTOM_MARGIN +
+                        ROOT_NAVIGATION_CONTENT_GAP
+                } else {
+                    0.dp
+                }
+                // Only the A–Z/# index needs the usable list viewport.  Keeping this separate
+                // from page content prevents a white navigation backing strip from returning.
+                val recordAlphabetIndexBottomInset = if (
+                    shouldFloatRootNavigation && state.destination == AppDestination.CaseList
+                ) {
+                    RECORD_ALPHABET_FLOATING_NAVIGATION_INSET
+                } else {
+                    0.dp
+                }
                 Scaffold(
                     containerColor = MaterialTheme.colorScheme.background,
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                 ) { padding ->
-                    // The floating navigation overlays the page.  Its safe space belongs to each
-                    // scrollable content consumer, never to this root container: shrinking the
-                    // root left a visible scaffold-colored strip below the page.
+                    // The phone navigation is a true overlay. It owns no layout height or
+                    // content-safe spacer; pages continue naturally behind its own surface.
                     val rootScreenModifier = Modifier.padding(padding)
-                    val floatingNavigationContentInset = if (shouldFloatRootNavigation) {
-                        FLOATING_ROOT_NAVIGATION_CONTENT_INSET
-                    } else {
-                        0.dp
-                    }
                     Box(modifier = Modifier.fillMaxSize()) {
                         Row(modifier = Modifier.fillMaxSize()) {
                         if (showRootNavigation && useNavigationRail) {
@@ -462,6 +611,7 @@ fun NanfengBaziApp(
                             when (state.destination) {
                     AppDestination.CaseList -> CaseListScreen(
                         state = state,
+                        caseListState = caseListState,
                         onQueryChange = viewModel::updateQuery,
                         onSelectGroup = viewModel::selectGroup,
                         onSelectTag = viewModel::selectTag,
@@ -493,7 +643,11 @@ fun NanfengBaziApp(
                         onTogglePinnedCase = viewModel::togglePinnedCase,
                         onPrefetchCase = viewModel::prefetchCaseDetail,
                         onOpenCase = viewModel::openDetailFromList,
-                        bottomContentInset = floatingNavigationContentInset,
+                        compatibilitySelectionRole = state.compatibilityParticipantSelectionRole,
+                        onSelectCompatibilityCase = viewModel::selectCompatibilityParticipantFromList,
+                        onCancelCompatibilitySelection = viewModel::cancelCompatibilityParticipantList,
+                        bottomContentInset = rootNavigationScrollEndInset,
+                        alphabetIndexBottomInset = recordAlphabetIndexBottomInset,
                         modifier = rootScreenModifier,
                     )
                     AppDestination.CaseComparison -> CaseComparisonScreen(
@@ -503,6 +657,30 @@ fun NanfengBaziApp(
                         onSelectRight = viewModel::selectComparisonRight,
                         onRetry = viewModel::retryCaseComparison,
                         modifier = Modifier.padding(padding),
+                    )
+                    AppDestination.BaziCompatibility -> BaziCompatibilityScreen(
+                        state = state,
+                        onBack = viewModel::navigateBack,
+                        onOpenParticipantList = viewModel::openCompatibilityParticipantList,
+                        onOpenHistoryRecord = viewModel::openCompatibilityHistoryRecord,
+                        onCloseHistoryRecord = viewModel::closeCompatibilityHistoryRecord,
+                        onDeleteHistoryRecords = viewModel::deleteCompatibilityHistoryRecords,
+                        onRetryHistory = viewModel::retryCompatibilityHistory,
+                        onAnalyze = viewModel::analyzeBaziCompatibility,
+                        onRetry = viewModel::retryBaziCompatibility,
+                        // Compatibility TopAppBar owns the status-bar inset. Applying Scaffold's
+                        // inset here as well leaves a blank band above all compatibility pages.
+                        modifier = Modifier,
+                    )
+                    AppDestination.BaziCompatibilityReport -> BaziCompatibilityReportScreen(
+                        report = state.compatibilityReport,
+                        loading = state.compatibilityLoading,
+                        error = state.compatibilityError,
+                        onBack = viewModel::navigateBack,
+                        onReplaceParticipant = viewModel::openCompatibilityParticipantList,
+                        onRetry = viewModel::retryBaziCompatibility,
+                        // Keep the report aligned with setup/history: one top inset, from its bar.
+                        modifier = Modifier,
                     )
                     AppDestination.FourPillarsLookup -> FourPillarsLookupScreen(
                         state = state,
@@ -530,7 +708,7 @@ fun NanfengBaziApp(
                         error = state.listError,
                         onRefresh = viewModel::refreshCases,
                         onOpenCase = viewModel::openDetailFromList,
-                        bottomContentInset = floatingNavigationContentInset,
+                        bottomContentInset = rootNavigationScrollEndInset,
                         modifier = rootScreenModifier,
                     )
                     AppDestination.Settings -> SettingsHomeScreen(
@@ -547,6 +725,7 @@ fun NanfengBaziApp(
                         onImportScreenshots = onImportScreenshots,
                         onImportSingleCase = onOpenSingleCaseDocument,
                         onImportWenzhen = onOpenWenzhenImportDocument,
+                        onImportCuratedCelebrityCatalog = onImportCuratedCelebrityCatalog,
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onRestoreFullBackup = onOpenFullBackupDocument,
                         onOpenAiServicePage = viewModel::openAiServicePage,
@@ -555,7 +734,7 @@ fun NanfengBaziApp(
                         cloudSyncCoordinator = cloudContainer?.cloudSyncCoordinator,
                         googleSignInClient = cloudContainer?.googleSignInClient,
                         activityContext = context,
-                        bottomContentInset = floatingNavigationContentInset,
+                        bottomContentInset = rootNavigationScrollEndInset,
                         modifier = rootScreenModifier,
                     )
                     AppDestination.ScreenshotImportReview -> ScreenshotImportReviewScreen(
@@ -570,7 +749,11 @@ fun NanfengBaziApp(
                     )
                     AppDestination.CreateCase -> CreateCaseScreen(
                         state = state,
-                        onBack = viewModel::backToList,
+                        onBack = if (state.compatibilityParticipantRole != null) {
+                            viewModel::cancelCompatibilityParticipantCreate
+                        } else {
+                            viewModel::backToList
+                        },
                         onOpenCase = viewModel::openDetailFromList,
                         onCreateGroup = viewModel::createAndSelectCaseGroup,
                         onFormChange = viewModel::updateForm,
@@ -580,7 +763,9 @@ fun NanfengBaziApp(
                         onConfirmFourPillarsLookup = viewModel::confirmFourPillarsLookup,
                         onPrepareBirthPickerToday = viewModel::prepareBirthPickerToday,
                         onOpenAlmanac = viewModel::openAlmanac,
-                        bottomContentInset = floatingNavigationContentInset,
+                        onOpenBaziCompatibility = viewModel::openBaziCompatibility,
+                        compatibilityParticipantRole = state.compatibilityParticipantRole,
+                        bottomContentInset = 0.dp,
                         modifier = rootScreenModifier,
                     )
                     is AppDestination.CaseDetail -> {
@@ -592,7 +777,7 @@ fun NanfengBaziApp(
                                     if (state.detailIsTransient) {
                                         viewModel.closeTransientDetail()
                                     } else {
-                                        viewModel.backToList()
+                                        viewModel.navigateBack()
                                     }
                                 },
                                 onEditCase = viewModel::openEditCase,
@@ -753,10 +938,16 @@ fun NanfengBaziApp(
                         )
                     is AppDestination.EditCase -> EditCaseScreen(
                         form = state.editForm,
+                        groupNames = state.metadataDraft.groupNames,
+                        availableGroups = state.availableFormGroups,
                         error = state.mutationError,
                         saving = state.mutationSaving,
                         onBack = viewModel::navigateBack,
                         onFormChange = viewModel::updateEditForm,
+                        onGroupNamesChange = { value ->
+                            viewModel.updateMetadataDraft { it.copy(groupNames = value) }
+                        },
+                        onCreateGroup = viewModel::createAndSelectEditCaseGroup,
                         onSave = { viewModel.saveEditedCase() },
                         onCreateCopy = viewModel::createEditedCaseCopy,
                         duplicateCandidates = state.duplicateCandidates,
@@ -815,7 +1006,7 @@ fun NanfengBaziApp(
                                 .align(Alignment.BottomCenter)
                                 .navigationBarsPadding()
                                 .padding(horizontal = 18.dp)
-                                .padding(bottom = 8.dp),
+                                .padding(bottom = ROOT_NAVIGATION_BOTTOM_MARGIN),
                         ) {
                             RootNavigationBar(
                                 destination = state.destination,
@@ -2118,7 +2309,13 @@ private fun SingleCaseConflictReason.displayName(): String = when (this) {
 
 private val EXPANDED_NAVIGATION_MIN_WIDTH = 840.dp
 private val EXPANDED_DETAIL_MIN_WIDTH = 360.dp
-private val FLOATING_ROOT_NAVIGATION_CONTENT_INSET = 84.dp
+private val INNER_DISPLAY_HOME_MIN_WIDTH = 600.dp
+private val ROOT_NAVIGATION_BAR_HEIGHT = 68.dp
+private val ROOT_NAVIGATION_BOTTOM_MARGIN = 8.dp
+private val ROOT_NAVIGATION_CONTENT_GAP = 10.dp
+// Root navigation: 68dp surface + 8dp bottom gap + OPPO gesture area/shadow.
+// Used only by the A–Z/# overlay; it must not create a content backing strip.
+private val RECORD_ALPHABET_FLOATING_NAVIGATION_INSET = 112.dp
 
 @Composable
 private fun AlertDialog(
@@ -2219,7 +2416,7 @@ private fun RootNavigationBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp)
+            .height(ROOT_NAVIGATION_BAR_HEIGHT)
             // The root bar floats over page content: only its downward spot shadow should be visible.
             .graphicsLayer {
                 shadowElevation = 12.dp.toPx()
@@ -2459,7 +2656,7 @@ private fun RecordHubScreen(
                     start = 16.dp,
                     top = 10.dp,
                     end = 16.dp,
-                    bottom = 24.dp + bottomContentInset,
+                    bottom = bottomContentInset,
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -2492,8 +2689,7 @@ private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
                 Text(
                     summary.name.value ?: summary.alias,
                     style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
                 )
                 Text(
                     summary.birthInput.displayDateOnly(),
@@ -2537,6 +2733,7 @@ private fun SettingsHomeScreen(
     onImportScreenshots: () -> Unit,
     onImportSingleCase: () -> Unit,
     onImportWenzhen: () -> Unit,
+    onImportCuratedCelebrityCatalog: () -> Unit,
     onExportFullBackup: () -> Unit,
     onRestoreFullBackup: () -> Unit,
     onOpenAiServicePage: () -> Unit,
@@ -2626,51 +2823,6 @@ private fun SettingsHomeScreen(
                 accent = NanfengGold,
             )
         }
-        SettingsGroupTitle("排盘偏好")
-        SettingsActionGroup {
-            SettingsActionRow(
-                title = "子时口径",
-                description = if (state.defaultRatHourRule == RatHourRule.TYME_DEFAULT) {
-                    "23:00 换日"
-                } else {
-                    "晚子时算当天"
-                },
-                icon = Icons.Filled.Settings,
-                onClick = { showRatHourRulePicker = true },
-                tag = "settings_rat_hour_rule",
-                accent = NanfengGreen,
-            )
-        }
-        SettingsGroupTitle("导入与建档")
-        SettingsActionGroup {
-            SettingsActionRow(
-                title = "导入问真截图",
-                description = "本机识别后逐项确认",
-                icon = Icons.Filled.Search,
-                onClick = onImportScreenshots,
-                enabled = !screenshotImportState.busy,
-                tag = "settings_import_screenshots",
-                accent = NanfengOrange,
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
-            SettingsActionRow(
-                title = "导入问真网页案例",
-                description = "先核对数量，再批量导入用户与名人案例",
-                icon = Icons.Filled.List,
-                onClick = onImportWenzhen,
-                enabled = !state.wenzhenImportBusy,
-                tag = "settings_import_wenzhen_web",
-                accent = NanfengGold,
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
-            SettingsActionRow(
-                title = "导入南枫命例包",
-                description = "跨设备转移单个命例；先预览冲突再决定合并",
-                icon = Icons.Filled.List,
-                onClick = onImportSingleCase,
-                tag = "settings_import_case",
-            )
-        }
         SettingsGroupTitle("备份与恢复")
         SettingsActionGroup {
             SettingsActionRow(
@@ -2690,7 +2842,62 @@ private fun SettingsHomeScreen(
                 accent = NanfengOrange,
             )
         }
-        Spacer(modifier = Modifier.height(bottomContentInset + 12.dp))
+        SettingsGroupTitle("导入与建档")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "导入问真截图",
+                description = "本机识别后逐项确认",
+                icon = Icons.Filled.Search,
+                onClick = onImportScreenshots,
+                enabled = !screenshotImportState.busy,
+                tag = "settings_import_screenshots",
+                accent = NanfengOrange,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "导入网页案例资料",
+                description = "先核对数量；名人案例会自动纳入统一资料库",
+                icon = Icons.Filled.List,
+                onClick = onImportWenzhen,
+                enabled = !state.wenzhenImportBusy,
+                tag = "settings_import_wenzhen_web",
+                accent = NanfengGold,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "名人案例统一资料库",
+                description = "安装即自带；应用更新后自动同步。点此可重新同步",
+                icon = Icons.Filled.List,
+                onClick = onImportCuratedCelebrityCatalog,
+                enabled = !state.curatedCelebrityImportBusy && !state.builtInCelebrityCatalogSyncBusy,
+                tag = "settings_import_curated_celebrities",
+                accent = NanfengGold,
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
+            SettingsActionRow(
+                title = "导入南枫命例包",
+                description = "跨设备转移单个命例；先预览冲突再决定合并",
+                icon = Icons.Filled.List,
+                onClick = onImportSingleCase,
+                tag = "settings_import_case",
+            )
+        }
+        SettingsGroupTitle("排盘偏好")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "子时口径",
+                description = if (state.defaultRatHourRule == RatHourRule.TYME_DEFAULT) {
+                    "23:00 换日"
+                } else {
+                    "晚子时算当天"
+                },
+                icon = Icons.Filled.Settings,
+                onClick = { showRatHourRulePicker = true },
+                tag = "settings_rat_hour_rule",
+                accent = NanfengGreen,
+            )
+        }
+        Spacer(modifier = Modifier.height(bottomContentInset))
     }
     if (showSkinPicker) {
         BaziSkinPickerDialog(
@@ -2985,6 +3192,7 @@ private fun SettingsStaticRow(title: String, value: String) {
 @Composable
 private fun CaseListScreen(
     state: StageTwoUiState,
+    caseListState: LazyListState,
     onQueryChange: (String) -> Unit,
     onSelectGroup: (String?) -> Unit,
     onSelectTag: (String?) -> Unit,
@@ -3014,9 +3222,19 @@ private fun CaseListScreen(
     onTogglePinnedCase: (String) -> Unit,
     onPrefetchCase: (String) -> Unit,
     onOpenCase: (String) -> Unit,
+    compatibilitySelectionRole: SexForFortuneDirection? = null,
+    onSelectCompatibilityCase: ((String) -> Unit)? = null,
+    onCancelCompatibilitySelection: (() -> Unit)? = null,
     bottomContentInset: Dp,
+    alphabetIndexBottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val isCompatibilitySelection = compatibilitySelectionRole != null
+    val compatibilityRoleLabel = if (compatibilitySelectionRole == SexForFortuneDirection.MAN) {
+        "男方"
+    } else {
+        "女方"
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var moreExpanded by rememberSaveable { mutableStateOf(false) }
@@ -3028,7 +3246,22 @@ private fun CaseListScreen(
     var deleteEditMode by rememberSaveable { mutableStateOf(false) }
     var deleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingSwipeDeleteCaseId by rememberSaveable { mutableStateOf<String?>(null) }
-    val caseListState = rememberLazyListState()
+    var alphabetJumpMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val alphabetJumpScope = rememberCoroutineScope()
+    var alphabetJumpJob by remember { mutableStateOf<Job?>(null) }
+    val alphabetHaptics = rememberAppHapticFeedback()
+    val firstCaseIndexByInitial = remember(state.cases) {
+        state.cases.indexOfFirstBy { summary -> summary.displayCaseName().caseNameInitial() }
+    }
+    val firstPinnedCaseIndex = remember(state.cases) {
+        state.cases.indexOfFirst { it.isPinned }.takeIf { it >= 0 }
+    }
+    LaunchedEffect(alphabetJumpMessage) {
+        if (alphabetJumpMessage != null) {
+            delay(1_600L)
+            alphabetJumpMessage = null
+        }
+    }
     val alphabetActivationDistancePx = with(LocalDensity.current) { 48.dp.roundToPx() }
     val activeAlphabetInitial by remember(state.cases, alphabetActivationDistancePx) {
         derivedStateOf {
@@ -3056,6 +3289,24 @@ private fun CaseListScreen(
     }
     val activeFilterCount = listOfNotNull(state.selectedGroupId, state.selectedTagId).size +
         state.advancedFilter.activeCategoryCount
+    val emptyResultCriteria = buildList {
+        state.query.trim().takeIf(String::isNotEmpty)?.let { query ->
+            add("关键词“$query”")
+        }
+        state.selectedGroupId?.let { groupId ->
+            state.availableGroups.firstOrNull { it.id == groupId }?.name?.let { groupName ->
+                add("分组“$groupName”")
+            } ?: add("所选分组")
+        }
+        state.selectedTagId?.let { tagId ->
+            state.availableTags.firstOrNull { it.id == tagId }?.name?.let { tagName ->
+                add("标签“$tagName”")
+            } ?: add("所选标签")
+        }
+        if (state.advancedFilter.activeCategoryCount > 0) {
+            add("其他筛选条件")
+        }
+    }
     val visibleDeleteCaseIds = state.cases.mapTo(linkedSetOf()) { it.id }
     val allVisibleDeleteCasesSelected = deleteEditMode &&
         visibleDeleteCaseIds.isNotEmpty() &&
@@ -3079,18 +3330,40 @@ private fun CaseListScreen(
                 .testTag("record_toolbar"),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
+            if (isCompatibilitySelection) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = requireNotNull(onCancelCompatibilitySelection),
+                        modifier = Modifier.width(64.dp),
+                    ) {
+                        Text("返回")
+                    }
+                    Text(
+                        text = "选择${compatibilityRoleLabel}八字",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.width(64.dp))
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                 Surface(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("record_visibility_switcher"),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RecordToolbarPillShape,
                     color = Color(0xFFF9F9F8),
                 ) {
                     Row(modifier = Modifier.padding(3.dp)) {
@@ -3178,16 +3451,18 @@ private fun CaseListScreen(
                             },
                             modifier = Modifier.testTag("record_more_sort"),
                         )
-                        NanfengOverflowMenuItem(
-                            label = "分组管理",
-                            icon = Icons.Filled.Edit,
-                            accent = NanfengGreen,
-                            onClick = {
-                                moreExpanded = false
-                                showGroupEditor = true
-                            },
-                            modifier = Modifier.testTag("record_more_groups"),
-                        )
+                        if (state.visibility != CaseVisibility.TRASHED) {
+                            NanfengOverflowMenuItem(
+                                label = "分组管理",
+                                icon = Icons.Filled.Edit,
+                                accent = NanfengGreen,
+                                onClick = {
+                                    moreExpanded = false
+                                    showGroupEditor = true
+                                },
+                                modifier = Modifier.testTag("record_more_groups"),
+                            )
+                        }
                         NanfengOverflowMenuItem(
                             label = "置顶八字",
                             icon = Icons.Filled.Star,
@@ -3223,6 +3498,7 @@ private fun CaseListScreen(
                     }
                 }
             }
+                }
             OutlinedTextField(
                 value = state.query,
                 onValueChange = onQueryChange,
@@ -3246,7 +3522,7 @@ private fun CaseListScreen(
                 trailingIcon = {
                     Row(
                         modifier = Modifier
-                            .width(128.dp)
+                            .width(if (isCompatibilitySelection) 48.dp else 128.dp)
                             .padding(end = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(
                             4.dp,
@@ -3282,7 +3558,7 @@ private fun CaseListScreen(
                                 ),
                             )
                         }
-                        Surface(
+                        if (!isCompatibilitySelection) Surface(
                             onClick = { showAdvancedFilters = true },
                             modifier = Modifier
                                 .height(34.dp)
@@ -3331,7 +3607,7 @@ private fun CaseListScreen(
                 },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge,
-                shape = RoundedCornerShape(17.dp),
+                shape = RecordToolbarPillShape,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White,
@@ -3341,7 +3617,7 @@ private fun CaseListScreen(
                 ),
             )
         }
-        ScreenshotImportSummary(
+        if (!isCompatibilitySelection) ScreenshotImportSummary(
             state = screenshotImportState,
             onRetry = onRetryScreenshotImport,
             onConfirmAiRecognition = onConfirmScreenshotAiRecognition,
@@ -3349,7 +3625,8 @@ private fun CaseListScreen(
             onDelete = onDeleteScreenshotImport,
             onReview = onReviewScreenshotImport,
         )
-        Row(
+        if (!isCompatibilitySelection && state.visibility != CaseVisibility.TRASHED) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
@@ -3359,12 +3636,12 @@ private fun CaseListScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RecordCategoryTab(
-                    text = "全部 ${if (state.visibility == CaseVisibility.TRASHED) state.trashedCaseCount else state.libraryCaseCounts[state.libraryType] ?: 0}",
+                    text = "全部 ${state.libraryCaseCounts[state.libraryType] ?: 0}",
                     selected = state.selectedGroupId == null && state.selectedTagId == null,
                     onClick = { onSelectGroup(null); onSelectTag(null) },
                     tag = "record_filter_all",
                 )
-                state.availableGroups.take(5).forEach { group ->
+                state.availableGroups.forEach { group ->
                     RecordCategoryTab(
                         text = "${group.name} ${state.groupCaseCounts[group.id] ?: 0}",
                         selected = state.selectedGroupId == group.id,
@@ -3372,15 +3649,16 @@ private fun CaseListScreen(
                         tag = "record_group_${group.id}",
                     )
                 }
-                state.availableTags.take(3).forEach { tag ->
-                    RecordCategoryTab(
-                        text = tag.name,
-                        selected = state.selectedTagId == tag.id,
-                        onClick = { onSelectTag(tag.id) },
-                        tag = "record_tag_${tag.id}",
-                    )
-                }
             }
+        } else if (!isCompatibilitySelection) {
+            // 回收站没有分组筛选，但必须保留活动列表同等高度，避免切换时内容上跳。
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .testTag("record_filter_strip_placeholder"),
+            )
+        }
         HorizontalDivider(
             modifier = Modifier.padding(horizontal = 16.dp),
             color = MaterialTheme.colorScheme.outlineVariant,
@@ -3395,10 +3673,16 @@ private fun CaseListScreen(
             state.cases.isEmpty() -> EmptyCaseList(
                 visibility = state.visibility,
                 libraryType = state.libraryType,
+                libraryCaseCount = state.libraryCaseCounts[state.libraryType] ?: 0,
+                activeCriteria = emptyResultCriteria,
                 onCreate = if (state.libraryType == CaseLibraryType.CELEBRITY) {
                     onCreateCelebrity
                 } else {
                     onCreate
+                },
+                onClearConditions = {
+                    onQueryChange("")
+                    onClearFilters()
                 },
             )
             else -> Box(
@@ -3434,46 +3718,99 @@ private fun CaseListScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Box(modifier = Modifier.padding(end = 28.dp)) {
-                            SwipeableCaseSummaryRow(
+                        if (isCompatibilitySelection) {
+                            CaseSummaryRow(
                                 summary = summary,
-                                selectionMode = pinnedEditMode || deleteEditMode,
-                                selected = if (pinnedEditMode) {
-                                    summary.id in pinnedSelection
-                                } else {
-                                    summary.id in deleteSelection
-                                },
-                                onClick = {
-                                    if (pinnedEditMode) {
-                                        pinnedSelection = if (summary.id in pinnedSelection) {
-                                            pinnedSelection - summary.id
-                                        } else {
-                                            pinnedSelection + summary.id
-                                        }
-                                    } else if (deleteEditMode) {
-                                        if (summary.id in deleteSelection) {
-                                            deleteSelection = deleteSelection - summary.id
-                                        } else {
-                                            deleteSelection = deleteSelection + summary.id
-                                        }
-                                    } else {
-                                        onOpenCase(summary.id)
-                                    }
-                                },
-                                onEdit = { onEditCase(summary.id) },
-                                onTogglePinned = { onTogglePinnedCase(summary.id) },
-                                onDelete = { pendingSwipeDeleteCaseId = summary.id },
+                                onClick = { requireNotNull(onSelectCompatibilityCase)(summary.id) },
                             )
+                        } else {
+                            Box(modifier = Modifier.padding(end = 28.dp)) {
+                                SwipeableCaseSummaryRow(
+                                    summary = summary,
+                                    selectionMode = pinnedEditMode || deleteEditMode,
+                                    selected = if (pinnedEditMode) {
+                                        summary.id in pinnedSelection
+                                    } else {
+                                        summary.id in deleteSelection
+                                    },
+                                    onClick = {
+                                        if (pinnedEditMode) {
+                                            pinnedSelection = if (summary.id in pinnedSelection) {
+                                                pinnedSelection - summary.id
+                                            } else {
+                                                pinnedSelection + summary.id
+                                            }
+                                        } else if (deleteEditMode) {
+                                            if (summary.id in deleteSelection) {
+                                                deleteSelection = deleteSelection - summary.id
+                                            } else {
+                                                deleteSelection = deleteSelection + summary.id
+                                            }
+                                        } else {
+                                            onOpenCase(summary.id)
+                                        }
+                                    },
+                                    onEdit = { onEditCase(summary.id) },
+                                    onTogglePinned = { onTogglePinnedCase(summary.id) },
+                                    onDelete = { pendingSwipeDeleteCaseId = summary.id },
+                                )
+                            }
                         }
                     }
                 }
-                RecordAlphabetIndex(
-                    activeInitial = activeAlphabetInitial,
+                // 索引的几何参照是可见案例区而不是整个根内容：浮动主导航不参与垂直居中。
+                // 让上下留白相等后略放大索引本身，避免过度收紧。
+                Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
-                        .padding(end = 3.dp, top = 8.dp, bottom = 8.dp),
-                )
+                        .padding(bottom = alphabetIndexBottomInset),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    RecordAlphabetIndex(
+                        activeInitial = activeAlphabetInitial,
+                        pinnedActive = activeAlphabetInitial == '星',
+                        onPinnedClick = {
+                            val targetIndex = firstPinnedCaseIndex
+                            if (targetIndex == null) {
+                                alphabetJumpMessage = "当前列表没有置顶命例"
+                            } else {
+                                alphabetJumpJob?.cancel()
+                                alphabetHaptics.perform(AppHapticEvent.SELECTION)
+                                alphabetJumpJob = alphabetJumpScope.launch {
+                                    // 置顶锚点就是列表首项；不能套用字母索引的“目标附近预定位”，
+                                    // 否则会先闪到 A 分组再回到置顶分组。
+                                    caseListState.scrollToItem(targetIndex)
+                                }
+                            }
+                        },
+                        onInitialClick = { initial ->
+                            val targetIndex = firstCaseIndexByInitial[initial]
+                            if (targetIndex == null) {
+                                alphabetJumpMessage = "当前列表没有以「$initial」开头的案例"
+                            } else {
+                                alphabetJumpJob?.cancel()
+                                alphabetHaptics.perform(AppHapticEvent.SELECTION)
+                                alphabetJumpJob = alphabetJumpScope.launch {
+                                    caseListState.smoothAlphabetScrollToItem(targetIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxHeight(0.92f)
+                            .offset(y = 10.dp)
+                            .padding(end = 3.dp, top = 8.dp, bottom = 8.dp),
+                    )
+                }
+                alphabetJumpMessage?.let { message ->
+                    Surface(
+                        modifier = Modifier.align(Alignment.Center).testTag("record_alphabet_empty_hint"),
+                        shape = RoundedCornerShape(14.dp),
+                        color = NanfengInk.copy(alpha = 0.86f),
+                    ) {
+                        Text(message, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), style = MaterialTheme.typography.bodySmall, color = Color.White)
+                    }
+                }
                 if (pinnedEditMode || deleteEditMode) {
                     Surface(
                         modifier = Modifier
@@ -3585,6 +3922,8 @@ private fun CaseListScreen(
             RecordGroupEditorDialog(
                 groups = state.availableGroups,
                 cases = state.batchCases,
+                readOnly = state.visibility == CaseVisibility.ACTIVE &&
+                    state.libraryType == CaseLibraryType.CELEBRITY,
                 saving = state.mutationSaving,
                 onDismiss = { showGroupEditor = false },
                 onCreate = onCreateGroup,
@@ -3705,21 +4044,23 @@ private fun RecordAdvancedFilterDialog(
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                     ) {
                         RecordFilterSection("性别") {
-                            FilterChoiceGrid(
-                                options = listOf("男", "女"),
-                                selected = setOfNotNull(
-                                    when (draft.sex) {
-                                        SexForFortuneDirection.MAN -> "男"
-                                        SexForFortuneDirection.WOMAN -> "女"
-                                        null -> null
-                                    },
+                            HomeChoiceGroup(
+                                options = listOf(
+                                    "男" to (draft.sex == SexForFortuneDirection.MAN),
+                                    "女" to (draft.sex == SexForFortuneDirection.WOMAN),
                                 ),
-                                columns = 2,
-                                tagPrefix = "filter_gender",
-                            ) { value ->
-                                val sex = if (value == "男") SexForFortuneDirection.MAN else SexForFortuneDirection.WOMAN
-                                draft = draft.copy(sex = sex.takeUnless { it == draft.sex })
-                            }
+                                onSelect = { value ->
+                                    val sex = if (value == "男") {
+                                        SexForFortuneDirection.MAN
+                                    } else {
+                                        SexForFortuneDirection.WOMAN
+                                    }
+                                    draft = draft.copy(sex = sex.takeUnless { it == draft.sex })
+                                },
+                                tags = listOf("filter_gender_男", "filter_gender_女"),
+                                itemWidth = 156.dp,
+                                itemHeight = 40.dp,
+                            )
                         }
                         RecordFilterSection("干支") {
                             ElementFilterChoiceGrid(
@@ -3783,7 +4124,7 @@ private fun RecordAdvancedFilterDialog(
                             HomePickerRow(
                                 title = "选择",
                                 value = draft.birthRegion.ifBlank { "请选择地区" },
-                                supporting = "与首页建档使用同一地区库",
+                                supporting = "",
                                 onClick = { showBirthplacePicker = true },
                                 tag = "filter_birth_region",
                             )
@@ -4063,6 +4404,7 @@ private fun RecordSortDialog(
 private fun RecordGroupEditorDialog(
     groups: List<CaseGroup>,
     cases: List<CaseSummary>,
+    readOnly: Boolean,
     saving: Boolean,
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit,
@@ -4124,10 +4466,17 @@ private fun RecordGroupEditorDialog(
                         TextButton(onClick = onDismiss) { Text("完成") }
                     }
                     Text(
-                        "所有分组（${groups.size}）",
+                        if (readOnly) "内置职业分组（${groups.size}）" else "所有分组（${groups.size}）",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (readOnly) {
+                        Text(
+                            "名人案例的职业分组由内置统一资料库维护，列表、筛选和数量使用同一目录。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Surface(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 58.dp),
                         color = NanfengControlSurface,
@@ -4147,7 +4496,7 @@ private fun RecordGroupEditorDialog(
                         if (displayedGroups.isEmpty()) {
                             item {
                                 Text(
-                                    "暂无分组，点击底部“添加”创建第一个分组。",
+                                    if (readOnly) "内置职业分组正在同步，请稍后重试。" else "暂无分组，点击底部“添加”创建第一个分组。",
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 22.dp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -4206,7 +4555,7 @@ private fun RecordGroupEditorDialog(
                                             editingGroupId = group.id
                                             editName = group.name
                                         },
-                                        enabled = !saving,
+                                        enabled = !saving && !readOnly,
                                         modifier = Modifier.testTag("record_group_rename_${group.id}"),
                                     ) { Icon(Icons.Filled.Edit, "重命名${group.name}") }
                                     Box(
@@ -4216,8 +4565,8 @@ private fun RecordGroupEditorDialog(
                                             .semantics {
                                                 contentDescription = "拖动排序${group.name}"
                                             }
-                                            .pointerInput(group.id, saving) {
-                                                if (!saving) {
+                                            .pointerInput(group.id, saving, readOnly) {
+                                            if (!saving && !readOnly) {
                                                     detectVerticalDragGestures(
                                                         onDragStart = {
                                                             draggedGroupId = group.id
@@ -4274,7 +4623,7 @@ private fun RecordGroupEditorDialog(
                                     }
                                     IconButton(
                                         onClick = { pendingDelete = group },
-                                        enabled = !saving,
+                                        enabled = !saving && !readOnly,
                                         modifier = Modifier.testTag("record_group_delete_${group.id}"),
                                     ) {
                                         Icon(
@@ -4288,7 +4637,7 @@ private fun RecordGroupEditorDialog(
                             }
                         }
                     }
-                    if (adding) {
+                    if (adding && !readOnly) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -4324,7 +4673,7 @@ private fun RecordGroupEditorDialog(
                                 }
                             }
                         }
-                    } else {
+                    } else if (!readOnly) {
                         Button(
                             onClick = { adding = true },
                             modifier = Modifier.fillMaxWidth().height(52.dp).testTag("record_group_add"),
@@ -4752,7 +5101,7 @@ private fun RecordTopTab(
         modifier = modifier
             .height(40.dp)
             .testTag(tag),
-        shape = RoundedCornerShape(20.dp),
+        shape = RecordToolbarPillShape,
         color = if (selected) Color.White else Color.Transparent,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -4909,9 +5258,29 @@ private fun RecordSortChip(
     }
 }
 
+/**
+ * 字母索引跨越很长列表时不直接做全距离逐项动画：先无动画地预定位到目标前后极短距离，
+ * 再完成可见的收尾动画。这样不会在大量案例卡片上持续测量／合成，也能随时被下一次点按取消。
+ */
+private suspend fun LazyListState.smoothAlphabetScrollToItem(targetIndex: Int) {
+    val itemCount = layoutInfo.totalItemsCount
+    if (itemCount == 0) return
+    val safeTargetIndex = targetIndex.coerceIn(0, itemCount - 1)
+    val isVisible = layoutInfo.visibleItemsInfo.any { it.index == safeTargetIndex }
+    if (!isVisible) {
+        val direction = if (safeTargetIndex >= firstVisibleItemIndex) 1 else -1
+        val approachIndex = (safeTargetIndex - direction * 3).coerceIn(0, itemCount - 1)
+        scrollToItem(approachIndex)
+    }
+    animateScrollToItem(safeTargetIndex)
+}
+
 @Composable
 private fun RecordAlphabetIndex(
     activeInitial: Char,
+    pinnedActive: Boolean,
+    onPinnedClick: () -> Unit,
+    onInitialClick: (Char) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -4919,24 +5288,87 @@ private fun RecordAlphabetIndex(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {
+        val pinnedInteractionSource = remember { MutableInteractionSource() }
+        val pinnedPressed by pinnedInteractionSource.collectIsPressedAsState()
+        // 置顶定位与字母项共用同一透明默认态与圆形选中反馈；默认只露出主体图标。
+        Box(
+            modifier = Modifier
+                .width(30.dp)
+                .height(28.dp)
+                .clickable(
+                    interactionSource = pinnedInteractionSource,
+                    indication = null,
+                    onClick = onPinnedClick,
+                )
+                .testTag("record_alphabet_pinned_locator"),
+            contentAlignment = Alignment.Center,
+        ) {
+            val pinnedVisualActive = pinnedActive || pinnedPressed
+            Surface(
+                modifier = Modifier.size(24.dp),
+                shape = CircleShape,
+                color = if (pinnedVisualActive) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    Color.Transparent
+                },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.VerticalAlignTop,
+                    contentDescription = "定位至置顶命例",
+                    modifier = Modifier.size(17.dp),
+                    tint = if (pinnedVisualActive) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                }
+            }
+        }
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".forEach { initial ->
             val active = initial == activeInitial
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+            val interactionSource = remember { MutableInteractionSource() }
+            val pressed by interactionSource.collectIsPressedAsState()
+            // 每一行保留较大的触控区域；可见的选中、按压反馈只由内层圆形承载，
+            // 避免触控层的矩形波纹破坏字母索引的圆形语言。
+            Box(
+                modifier = Modifier
+                    .width(30.dp)
+                    .weight(1f)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = { onInitialClick(initial) },
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    initial.toString(),
-                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp),
-                    fontSize = if (active) 10.sp else 8.sp,
-                    lineHeight = if (active) 12.sp else 10.sp,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                val visualActive = active || pressed
+                Surface(
+                    modifier = Modifier.size(24.dp),
+                    shape = CircleShape,
+                    color = if (visualActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            initial.toString(),
+                            fontSize = if (active) 12.sp else 10.sp,
+                            lineHeight = if (active) 14.sp else 12.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                            color = if (visualActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+private inline fun <T> List<T>.indexOfFirstBy(initial: (T) -> Char): Map<Char, Int> =
+    buildMap {
+        this@indexOfFirstBy.forEachIndexed { index, item -> putIfAbsent(initial(item), index) }
+    }
 
 private fun CaseSummary.recordSection(): String {
     if (isPinned) return "星标置顶"
@@ -5318,6 +5750,1704 @@ private fun CaseComparisonScreen(
             )
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BaziCompatibilityScreen(
+    state: StageTwoUiState,
+    onBack: () -> Unit,
+    onOpenParticipantList: (SexForFortuneDirection) -> Unit,
+    onOpenHistoryRecord: (String) -> Unit,
+    onCloseHistoryRecord: () -> Unit,
+    onDeleteHistoryRecords: (Set<String>) -> Unit,
+    onRetryHistory: () -> Unit,
+    onAnalyze: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var showCompatibilityHistory by remember { mutableStateOf(false) }
+    val historyRecord = state.compatibilityHistory.firstOrNull {
+        it.id == state.compatibilityHistoryRecordId
+    }
+    if (historyRecord != null) {
+        BackHandler(onBack = onCloseHistoryRecord)
+        Column(modifier = modifier.fillMaxSize().testTag("bazi_compatibility_history_record")) {
+            TopAppBar(
+                title = { Text("合盘记录", fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    TextButton(onClick = onCloseHistoryRecord) { Text("返回合盘") }
+                },
+            )
+            BaziCompatibilityReportContent(
+                report = historyRecord.report,
+                onReplaceParticipant = onOpenParticipantList,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        return
+    }
+    if (showCompatibilityHistory) {
+        CompatibilityHistoryScreen(
+            records = state.compatibilityHistory,
+            loading = state.compatibilityHistoryLoading,
+            error = state.compatibilityHistoryError,
+            onBack = { showCompatibilityHistory = false },
+            onOpenRecord = onOpenHistoryRecord,
+            onDeleteRecords = onDeleteHistoryRecords,
+            onRetry = onRetryHistory,
+            modifier = modifier,
+        )
+        return
+    }
+    Column(
+        modifier = modifier.fillMaxSize().testTag("bazi_compatibility_screen"),
+    ) {
+        TopAppBar(
+            title = { Text("八字合盘", fontWeight = FontWeight.SemiBold) },
+            navigationIcon = {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("back_from_bazi_compatibility"),
+                ) { Text("返回") }
+            },
+        )
+        CompatibilitySetupPanel(
+            state = state,
+            onOpenParticipantPicker = onOpenParticipantList,
+            onOpenHistory = { showCompatibilityHistory = true },
+            onAnalyze = onAnalyze,
+            onRetry = onRetry,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 720.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BaziCompatibilityReportScreen(
+    report: BaziCompatibilityReport?,
+    loading: Boolean,
+    error: String?,
+    onBack: () -> Unit,
+    onReplaceParticipant: (SexForFortuneDirection) -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .testTag("bazi_compatibility_report_screen"),
+    ) {
+        TopAppBar(
+            title = { Text("合盘结果", fontWeight = FontWeight.SemiBold) },
+            navigationIcon = {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("返回") }
+            },
+        )
+        when {
+            loading -> LoadingBox("正在生成双方合盘对照…")
+            report != null -> BaziCompatibilityReportContent(
+                report = report,
+                onReplaceParticipant = onReplaceParticipant,
+                modifier = Modifier.weight(1f),
+            )
+            else -> ErrorBox(
+                message = error ?: "合盘结果暂不可用，请返回重新选择双方命例。",
+                actionLabel = "重试",
+                onAction = onRetry,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompatibilitySetupPanel(
+    state: StageTwoUiState,
+    onOpenParticipantPicker: (SexForFortuneDirection) -> Unit,
+    onOpenHistory: () -> Unit,
+    onAnalyze: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canAnalyze = state.compatibilityLeftCaseId != null &&
+        state.compatibilityRightCaseId != null
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            onClick = onOpenHistory,
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "查看合盘记录" }
+                .testTag("bazi_compatibility_history_entry"),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 2.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = NanfengGreen.copy(alpha = 0.10f),
+                    contentColor = NanfengGreen,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_bazi_compatibility_history),
+                        contentDescription = null,
+                        modifier = Modifier.padding(10.dp).size(26.dp),
+                    )
+                }
+                Text(
+                    "合盘记录",
+                    modifier = Modifier.padding(start = 12.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CompatibilityParticipantCard(
+                roleLabel = "男方",
+                candidates = state.compatibilityCandidates.filter {
+                    it.sexForFortuneDirection == SexForFortuneDirection.MAN
+                },
+                selectedId = state.compatibilityLeftCaseId,
+                onAdd = { onOpenParticipantPicker(SexForFortuneDirection.MAN) },
+                tagPrefix = "compatibility_male",
+                modifier = Modifier.weight(1f),
+            )
+            CompatibilityParticipantCard(
+                roleLabel = "女方",
+                candidates = state.compatibilityCandidates.filter {
+                    it.sexForFortuneDirection == SexForFortuneDirection.WOMAN
+                },
+                selectedId = state.compatibilityRightCaseId,
+                onAdd = { onOpenParticipantPicker(SexForFortuneDirection.WOMAN) },
+                tagPrefix = "compatibility_female",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Button(
+            onClick = onAnalyze,
+            enabled = canAnalyze && !state.compatibilityLoading,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp)
+                .testTag("bazi_compatibility_analyze"),
+        ) {
+            Text(if (state.compatibilityLoading) "正在核对命盘…" else "开始合盘")
+        }
+        when {
+            state.compatibilityError != null -> Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(state.compatibilityError, style = MaterialTheme.typography.bodyMedium)
+                    TextButton(
+                        onClick = onRetry,
+                        modifier = Modifier.testTag("bazi_compatibility_retry"),
+                    ) { Text("重新读取命例") }
+                }
+            }
+            else -> Unit
+        }
+    }
+}
+
+@Composable
+private fun CompatibilityParticipantCard(
+    roleLabel: String,
+    candidates: List<CaseSummary>,
+    selectedId: String?,
+    onAdd: () -> Unit,
+    tagPrefix: String,
+    modifier: Modifier = Modifier,
+) {
+    val selected = candidates.firstOrNull { it.id == selectedId }
+    val roleAccent = if (roleLabel == "男方") CompatibilityMaleAccent else CompatibilityFemaleAccent
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 248.dp)
+            .testTag("${tagPrefix}_card"),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(18.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = roleAccent.copy(alpha = 0.10f),
+                    contentColor = roleAccent,
+                ) {
+                    Text(
+                        roleLabel,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                if (selected != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(roleAccent, CircleShape),
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    selected?.let { candidate ->
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = roleAccent.copy(alpha = 0.10f),
+                            contentColor = roleAccent,
+                        ) {
+                            Text(
+                                candidate.alias,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick = onAdd,
+                        modifier = Modifier
+                            .size(62.dp)
+                            .semantics { contentDescription = "添加${roleLabel}八字" }
+                            .testTag("${tagPrefix}_add"),
+                        shape = CircleShape,
+                        color = roleAccent.copy(alpha = 0.10f),
+                        contentColor = roleAccent,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(32.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun CompatibilityHistoryScreen(
+    records: List<BaziCompatibilityRecord>,
+    loading: Boolean,
+    error: String?,
+    onBack: () -> Unit,
+    onOpenRecord: (String) -> Unit,
+    onDeleteRecords: (Set<String>) -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    var selectedRecordIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDeleteRecordIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val allSelected = records.isNotEmpty() && records.all { it.id in selectedRecordIds }
+    BackHandler(onBack = onBack)
+    Column(modifier = modifier.fillMaxSize().testTag("bazi_compatibility_history")) {
+        TopAppBar(
+            title = { Text("合盘记录", fontWeight = FontWeight.SemiBold) },
+            navigationIcon = { TextButton(onClick = onBack) { Text("返回合盘") } },
+            actions = {
+                if (selectionMode) {
+                    TextButton(
+                        onClick = {
+                            selectedRecordIds = if (allSelected) emptySet() else records.mapTo(linkedSetOf()) { it.id }
+                        },
+                        enabled = records.isNotEmpty(),
+                    ) { Text(if (allSelected) "取消全选" else "全选") }
+                    TextButton(
+                        onClick = { pendingDeleteRecordIds = selectedRecordIds },
+                        enabled = selectedRecordIds.isNotEmpty(),
+                    ) { Text("删除 ${selectedRecordIds.size}", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = {
+                        selectionMode = false
+                        selectedRecordIds = emptySet()
+                    }) { Text("完成") }
+                } else if (records.isNotEmpty()) {
+                    TextButton(onClick = { selectionMode = true }) { Text("管理") }
+                }
+            },
+        )
+        if (loading && records.isEmpty()) {
+            LoadingBox("正在读取合盘记录…")
+        } else if (error != null && records.isEmpty()) {
+            ErrorBox(
+                message = error,
+                actionLabel = "重新读取",
+                onAction = onRetry,
+            )
+        } else if (records.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 34.dp, vertical = 30.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_bazi_compatibility_history),
+                            contentDescription = null,
+                            modifier = Modifier.size(42.dp),
+                            tint = NanfengGreen,
+                        )
+                        Text("暂无合盘记录", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        } else {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = if (selectionMode) 92.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(records, key = { it.id }) { record ->
+                        CompatibilityHistoryRecordCard(
+                            record = record,
+                            selectionMode = selectionMode,
+                            selected = record.id in selectedRecordIds,
+                            onClick = {
+                                if (selectionMode) {
+                                    selectedRecordIds = if (record.id in selectedRecordIds) {
+                                        selectedRecordIds - record.id
+                                    } else {
+                                        selectedRecordIds + record.id
+                                    }
+                                } else {
+                                    onOpenRecord(record.id)
+                                }
+                            },
+                            onLongClick = { pendingDeleteRecordIds = setOf(record.id) },
+                        )
+                    }
+                }
+                if (selectionMode) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                        color = Color.White,
+                        shadowElevation = 8.dp,
+                    ) {
+                        Button(
+                            onClick = { pendingDeleteRecordIds = selectedRecordIds },
+                            enabled = selectedRecordIds.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(52.dp)
+                                .testTag("compatibility_history_batch_delete"),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            shape = RoundedCornerShape(16.dp),
+                        ) { Text("删除已选 ${selectedRecordIds.size} 条") }
+                    }
+                }
+            }
+        }
+    }
+    if (pendingDeleteRecordIds.isNotEmpty()) {
+        val deletingCount = pendingDeleteRecordIds.size
+        AlertDialog(
+            onDismissRequest = { pendingDeleteRecordIds = emptySet() },
+            title = { Text(if (deletingCount == 1) "删除这条合盘记录？" else "删除 $deletingCount 条合盘记录？") },
+            text = { Text("仅删除本机保存的合盘报告，不会删除男方、女方的任何命例或笔记。") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteRecords(pendingDeleteRecordIds)
+                        selectedRecordIds = selectedRecordIds - pendingDeleteRecordIds
+                        pendingDeleteRecordIds = emptySet()
+                        if (records.size == deletingCount) selectionMode = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.testTag("confirm_compatibility_history_delete"),
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteRecordIds = emptySet() }) { Text("取消") }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CompatibilityHistoryRecordCard(
+    record: BaziCompatibilityRecord,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .testTag("compatibility_history_${record.id}"),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 2.dp,
+        border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, NanfengGreen) else null,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (selectionMode) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = null,
+                        modifier = Modifier.testTag("compatibility_history_select_${record.id}"),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = NanfengGreen.copy(alpha = 0.10f),
+                    contentColor = NanfengGreen,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_bazi_compatibility_history),
+                        contentDescription = null,
+                        modifier = Modifier.padding(7.dp).size(18.dp),
+                    )
+                }
+                Text(
+                    "合盘记录",
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NanfengGreen,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    formatCompatibilityHistoryCreatedAt(record.createdAtEpochMillis),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CompatibilityHistoryParticipantSummary(
+                    roleLabel = "男方",
+                    participant = record.report.left,
+                    modifier = Modifier.weight(1f),
+                )
+                Surface(
+                    modifier = Modifier.size(30.dp),
+                    shape = CircleShape,
+                    color = NanfengGold.copy(alpha = 0.14f),
+                    contentColor = NanfengGoldText,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("合", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                CompatibilityHistoryParticipantSummary(
+                    roleLabel = "女方",
+                    participant = record.report.right,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            CompatibilityHistoryRelationshipFocus(record.report)
+        }
+    }
+}
+
+@Composable
+private fun CompatibilityHistoryRelationshipFocus(report: BaziCompatibilityReport) {
+    val intimate = report.compatibilityRelationSnapshot(
+        leftPosition = PillarPosition.DAY,
+        rightPosition = PillarPosition.DAY,
+        scope = "亲密关系与相处模式",
+    )
+    val family = report.compatibilityRelationSnapshot(
+        leftPosition = PillarPosition.YEAR,
+        rightPosition = PillarPosition.YEAR,
+        scope = "成长家庭与长辈互动",
+    )
+    Text(
+        "亲密：${intimate.headline}  ·  家庭：${family.headline}",
+        modifier = Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun CompatibilityHistoryParticipantSummary(
+    roleLabel: String,
+    participant: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant,
+    modifier: Modifier = Modifier,
+) {
+    val roleAccent = if (roleLabel == "男方") CompatibilityMaleAccent else CompatibilityFemaleAccent
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = roleAccent.copy(alpha = 0.10f),
+                contentColor = roleAccent,
+            ) {
+                Text(
+                    roleLabel,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                participant.alias,
+                modifier = Modifier.padding(start = 6.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengInk,
+            )
+        }
+        Text(
+            "${participant.solarDateTimeText.ifBlank { "出生日期未保存" }} · 生肖 ${participant.zodiac.ifBlank { "未保存" }}",
+            modifier = Modifier.padding(top = 6.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "日主 ${participant.dayMaster} · ${listOf(participant.pillars.year, participant.pillars.month, participant.pillars.day, participant.pillars.hour).joinToString(" ")}",
+            modifier = Modifier.padding(top = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun formatCompatibilityHistoryCreatedAt(epochMillis: Long): String =
+    java.time.Instant.ofEpochMilli(epochMillis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+
+@Composable
+private fun BaziCompatibilityReportContent(
+    report: BaziCompatibilityReport,
+    onReplaceParticipant: ((SexForFortuneDirection) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .testTag("bazi_compatibility_report"),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
+    ) {
+        item {
+            CompatibilitySideBySideChart(report, onReplaceParticipant)
+        }
+        item {
+            CompatibilityRelationshipSummary(report)
+        }
+        item {
+            CompatibilityElementVisualization(report)
+        }
+        item {
+            CompatibilityImportantParameterTable(report)
+        }
+        if (report.warnings.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+                    Text("资料与口径提示", fontWeight = FontWeight.SemiBold)
+                    Column(modifier = Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        report.warnings.forEach { warning ->
+                            Text("• ${warning.message}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            CompatibilityRelationshipTable(
+                title = "相处优势",
+                leftAlias = report.left.alias,
+                rightAlias = report.right.alias,
+                signals = report.coordinationSignals,
+                emptyText = "当前规则集中没有额外的跨盘呼应信号。",
+            )
+        }
+        item {
+            CompatibilityRelationshipTable(
+                title = "相处提醒",
+                leftAlias = report.left.alias,
+                rightAlias = report.right.alias,
+                signals = report.tensionSignals,
+                emptyText = "当前规则集中没有需要额外提示的跨盘张力信号。",
+            )
+        }
+        item {
+            CompatibilityAiPromptSection(report = report, modifier = Modifier.padding(start = 16.dp, top = 18.dp, end = 16.dp))
+        }
+    }
+}
+
+@Composable
+private fun CompatibilitySideBySideChart(
+    report: BaziCompatibilityReport,
+    onReplaceParticipant: ((SexForFortuneDirection) -> Unit)?,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("compatibility_side_by_side_chart"),
+        color = Color.White,
+        shape = RoundedCornerShape(0.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFE2E0DB)),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+                    .background(Color(0xFF1F1D19)),
+            ) {
+                CompatibilityParticipantHeader(
+                    modifier = Modifier.weight(1f),
+                    role = "男方",
+                    participant = report.left,
+                    roleAccent = CompatibilityMaleAccent,
+                    onReplace = onReplaceParticipant?.let { { it(SexForFortuneDirection.MAN) } },
+                )
+                VerticalDivider(color = Color(0xFF45413A))
+                CompatibilityParticipantHeader(
+                    modifier = Modifier.weight(1f),
+                    role = "女方",
+                    participant = report.right,
+                    roleAccent = CompatibilityFemaleAccent,
+                    onReplace = onReplaceParticipant?.let { { it(SexForFortuneDirection.WOMAN) } },
+                )
+            }
+            HorizontalDivider(color = Color(0xFF45413A))
+            Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                CompatibilityBasicChartGrid(
+                    modifier = Modifier.weight(1f),
+                    participant = report.left,
+                    role = "男方",
+                )
+                VerticalDivider(color = Color(0xFFE2E0DB))
+                CompatibilityBasicChartGrid(
+                    modifier = Modifier.weight(1f),
+                    participant = report.right,
+                    role = "女方",
+                )
+            }
+            HorizontalDivider(color = Color(0xFFE2E0DB))
+            CompatibilityPairedDecadeTimeline(report.left, report.right)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompatibilityParticipantHeader(
+    modifier: Modifier,
+    role: String,
+    participant: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant,
+    roleAccent: Color,
+    onReplace: (() -> Unit)?,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(Color(0xFF1F1D19))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    participant.alias,
+                    modifier = Modifier.weight(1f, fill = false),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                )
+                Text(
+                    "（${if (role == "男方") "男" else "女"}）",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = roleAccent,
+                )
+            }
+            if (onReplace != null) {
+                CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+                    IconButton(
+                        onClick = onReplace,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                            .testTag("replace_${role}_compatibility_participant"),
+                    ) {
+                        Icon(
+                            Icons.Filled.SwapHoriz,
+                            contentDescription = "更换${role}八字",
+                            modifier = Modifier.size(20.dp),
+                            tint = NanfengGoldText,
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            "阳历：${participant.solarDateTimeText.ifBlank { "未保存" }}",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.88f),
+            maxLines = 2,
+        )
+        Text(
+            "农历：${participant.lunarDateTimeText.ifBlank { "未保存" }}",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.88f),
+            maxLines = 2,
+        )
+    }
+}
+
+@Composable
+private fun CompatibilityBasicChartGrid(
+    modifier: Modifier,
+    participant: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant,
+    role: String,
+) {
+    val names = listOf("年柱", "月柱", "日柱", "时柱")
+    val values = listOf(participant.pillars.year, participant.pillars.month, participant.pillars.day, participant.pillars.hour)
+    val details = participant.pillarPresentation.takeIf { it.size == 4 }
+    Column(modifier = modifier) {
+        CompatibilityBasicGridRow(label = "", values = names, shaded = true, strong = true)
+        CompatibilityBasicGridRow(
+            label = "日期",
+            values = participant.solarDateValues.takeIf { it.size == 4 } ?: List(4) { "未保存" },
+        )
+        CompatibilityBasicGridRow(
+            label = "十神",
+            values = values.mapIndexed { index, _ ->
+                if (index == PillarPosition.DAY.ordinal) {
+                    if (role == "男方") "元男" else "元女"
+                } else {
+                    details?.get(index)?.primaryTenGod ?: "未保存"
+                }
+            },
+            valueColors = values.map { value ->
+                value.firstOrNull()?.let(::compatibilityTenGodColor) ?: NanfengInk
+            },
+            shaded = true,
+        )
+        CompatibilityBasicGridRow(
+            label = "天干",
+            values = values.map { it.firstOrNull()?.toString() ?: "未保存" },
+            valueColors = values.map { value -> value.firstOrNull()?.let(::baziElementColor) ?: NanfengInk },
+            strong = true,
+        )
+        CompatibilityBasicGridRow(
+            label = "地支",
+            values = values.map { it.lastOrNull()?.toString() ?: "未保存" },
+            valueColors = values.map { value -> value.lastOrNull()?.let(::baziElementColor) ?: NanfengInk },
+            strong = true,
+        )
+        CompatibilityBasicHiddenStemGridRow(
+            label = "藏干",
+            values = details?.map { detail ->
+                detail.hiddenStemSummary.compatibilityHiddenStemEntries()
+            } ?: List(4) { listOf("未保存") },
+            shaded = true,
+        )
+    }
+}
+
+private fun String.compatibilityHiddenStemEntries(): List<String> =
+    split('·', '\n')
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .ifEmpty { listOf("未保存") }
+
+private val COMPATIBILITY_STEM_CHARACTERS = setOf('甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸')
+
+/** 十神的色彩跟随其对应天干的统一五行色，和基础排盘的藏干保持同一口径。 */
+private fun compatibilityTenGodColor(stem: Char): Color = baziElementColor(stem)
+
+@Composable
+private fun CompatibilityBasicHiddenStemGridRow(
+    label: String,
+    values: List<List<String>>,
+    shaded: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .background(if (shaded) Color(0xFFF5F5F3) else Color.White)
+            .testTag("compatibility_basic_chart_hidden_stems"),
+        verticalAlignment = Alignment.Top,
+    ) {
+        CompatibilityBasicGridCell(
+            value = label,
+            modifier = Modifier.width(30.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            strong = false,
+        )
+        values.forEach { entries ->
+            VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color(0xFFE5E4E0), thickness = 0.5.dp)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 42.dp)
+                    .padding(horizontal = 2.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    entries.forEach { entry ->
+                        val stem = entry.firstOrNull()?.takeIf { it in COMPATIBILITY_STEM_CHARACTERS }
+                        if (stem == null) {
+                            Text(
+                                text = entry,
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NanfengInk,
+                            )
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = stem.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = compatibilityTenGodColor(stem),
+                                )
+                                Text(
+                                    text = entry.drop(1),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = compatibilityTenGodColor(stem),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    HorizontalDivider(color = Color(0xFFE5E4E0))
+}
+
+@Composable
+private fun CompatibilityBasicGridRow(
+    label: String,
+    values: List<String>,
+    valueColors: List<Color> = emptyList(),
+    shaded: Boolean = false,
+    strong: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .background(if (shaded) Color(0xFFF5F5F3) else Color.White),
+        verticalAlignment = Alignment.Top,
+    ) {
+        CompatibilityBasicGridCell(
+            value = label,
+            modifier = Modifier.width(30.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            strong = false,
+        )
+        values.forEachIndexed { index, value ->
+            VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color(0xFFE5E4E0), thickness = 0.5.dp)
+            CompatibilityBasicGridCell(
+                value = value,
+                modifier = Modifier.weight(1f),
+                color = valueColors.getOrNull(index) ?: NanfengInk,
+                strong = strong,
+            )
+        }
+    }
+    HorizontalDivider(color = Color(0xFFE5E4E0))
+}
+
+@Composable
+private fun CompatibilityBasicGridCell(
+    value: String,
+    modifier: Modifier,
+    color: Color,
+    strong: Boolean,
+) {
+    Box(
+        modifier = modifier.heightIn(min = if (strong) 48.dp else 34.dp).padding(horizontal = 2.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            value,
+            textAlign = TextAlign.Center,
+            style = if (strong) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelSmall,
+            fontWeight = if (strong) FontWeight.SemiBold else FontWeight.Normal,
+            color = color,
+        )
+    }
+}
+
+@Composable
+private fun CompatibilityPairedDecadeTimeline(
+    left: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant,
+    right: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant,
+) {
+    if (left.decadeFortunes.isEmpty() && right.decadeFortunes.isEmpty()) return
+    val pairedSteps = (0 until maxOf(left.decadeFortunes.size, right.decadeFortunes.size)).map { index ->
+        left.decadeFortunes.getOrNull(index) to right.decadeFortunes.getOrNull(index)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFFBFAF7))
+            .padding(horizontal = 10.dp, vertical = 9.dp)
+            .testTag("compatibility_paired_decades"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            "大运并行",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = NanfengInk,
+        )
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.width(30.dp)) {
+                CompatibilityDecadeRoleLabel("男方", CompatibilityMaleAccent)
+                HorizontalDivider(color = Color(0xFFE4E2DE), thickness = 0.5.dp)
+                CompatibilityDecadeRoleLabel("女方", CompatibilityFemaleAccent)
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                pairedSteps.forEach { (leftDecade, rightDecade) ->
+                    CompatibilityPairedDecadeColumn(
+                        left = leftDecade,
+                        right = rightDecade,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompatibilityDecadeRoleLabel(
+    role: String,
+    roleAccent: Color,
+) {
+    Box(
+        modifier = Modifier.height(66.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            role,
+            style = MaterialTheme.typography.labelSmall,
+            color = roleAccent,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun CompatibilityPairedDecadeColumn(
+    left: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityDecadePresentation?,
+    right: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityDecadePresentation?,
+) {
+    Column(modifier = Modifier.width(64.dp)) {
+        CompatibilityDecadeCell(left)
+        HorizontalDivider(color = Color(0xFFE4E2DE), thickness = 0.5.dp)
+        CompatibilityDecadeCell(right)
+    }
+}
+
+@Composable
+private fun CompatibilityDecadeCell(
+    decade: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityDecadePresentation?,
+) {
+    val tenGod = decade?.stemTenGod.orEmpty().ifBlank { "—" }
+    val name = decade?.name.orEmpty().ifBlank { "—" }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(66.dp)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        Text(
+            decade?.ageRange.orEmpty().ifBlank { "—" },
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            tenGod,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            color = decade?.name?.firstOrNull()?.let(::compatibilityTenGodColor)
+                ?: MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            buildAnnotatedString {
+                name.forEach { character ->
+                    withStyle(SpanStyle(color = baziElementColor(character))) { append(character) }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun CompatibilityImportantParameterTable(report: BaziCompatibilityReport) {
+    val leftDayBranch = report.left.pillars.day.lastOrNull()?.toString() ?: "未保存"
+    val rightDayBranch = report.right.pillars.day.lastOrNull()?.toString() ?: "未保存"
+    val leftYearBranch = report.left.pillars.year.lastOrNull()?.toString() ?: "未保存"
+    val rightYearBranch = report.right.pillars.year.lastOrNull()?.toString() ?: "未保存"
+    val leftStructure = report.left.structuralProfileOrAnalyze()
+    val rightStructure = report.right.structuralProfileOrAnalyze()
+    CompatibilityComparisonTable(
+        title = "核心关系",
+        headers = listOf("对比项", report.left.alias, report.right.alias, "解析"),
+        rows = listOf(
+            listOf(
+                "日主",
+                "${report.left.dayMaster}${report.dayMasterRelation.leftElement}",
+                "${report.right.dayMaster}${report.dayMasterRelation.rightElement}",
+                "${report.dayMasterRelation.description}：${report.dayMasterRelation.explanation}",
+            ),
+        ),
+        columnWeights = CompatibilityReportColumnWeights,
+    )
+    CompatibilityComparisonTable(
+        title = "家庭互动",
+        headers = listOf("对比项", report.left.alias, report.right.alias, "解析"),
+        rows = listOf(
+            listOf(
+                "双方年支（生肖）", "${report.left.zodiac.ifBlank { "未保存" }}（$leftYearBranch）", "${report.right.zodiac.ifBlank { "未保存" }}（$rightYearBranch）",
+                report.compatibilityPairImpact(PillarPosition.YEAR, PillarPosition.YEAR, "成长家庭与长辈互动"),
+            ),
+            listOf(
+                "双方夫妻宫（日支）", leftDayBranch, rightDayBranch,
+                report.compatibilityPairImpact(PillarPosition.DAY, PillarPosition.DAY, "伴侣相处与亲密边界"),
+            ),
+            listOf(
+                "${report.left.alias}夫妻宫 ↔ ${report.right.alias}年支", leftDayBranch, rightYearBranch,
+                report.compatibilityPairImpact(PillarPosition.DAY, PillarPosition.YEAR, "${report.left.alias}进入${report.right.alias}成长家庭的相处节奏"),
+            ),
+            listOf(
+                "${report.right.alias}夫妻宫 ↔ ${report.left.alias}年支", leftYearBranch, rightDayBranch,
+                report.compatibilityPairImpact(PillarPosition.YEAR, PillarPosition.DAY, "${report.right.alias}进入${report.left.alias}成长家庭的相处节奏"),
+            ),
+        ),
+        columnWeights = CompatibilityReportColumnWeights,
+    )
+    CompatibilityComparisonTable(
+        title = "命盘结构",
+        headers = listOf("对比项", report.left.alias, report.right.alias, "解析"),
+        rows = listOf(
+            listOf(
+                "表层五行缺失",
+                report.left.pillars.compatibilityMissingElements(),
+                report.right.pillars.compatibilityMissingElements(),
+                "按各自采用快照四柱的显性干支展示未出现项；未出现不等同喜忌，也不能单独解释为互补。",
+            ),
+            listOf(
+                "日主旺衰（候选）",
+                leftStructure.compatibilityStrengthLabel(),
+                rightStructure.compatibilityStrengthLabel(),
+                "${report.left.alias}：${leftStructure.compatibilityStrengthEvidence()}；${report.right.alias}：${rightStructure.compatibilityStrengthEvidence()}。依据月令、通根及天干生扶克泄耗，不以字符数量直接判旺衰。",
+            ),
+            listOf(
+                "格局（候选）",
+                leftStructure.selectedPattern.name,
+                rightStructure.selectedPattern.name,
+                "${report.left.alias}：${leftStructure.compatibilityPatternEvidence()}；${report.right.alias}：${rightStructure.compatibilityPatternEvidence()}。先取月令藏干，再看透干；从格、专旺与合化只列复核项，不作定格。",
+            ),
+        ),
+        columnWeights = CompatibilityReportColumnWeights,
+    )
+}
+
+private fun BaziStructuralProfile.compatibilityStrengthLabel(): String =
+    "${strength.displayName}（${strengthConfidence.displayName}置信）"
+
+private fun BaziStructuralProfile.compatibilityStrengthEvidence(): String =
+    strengthEvidence.take(2).joinToString("；") { it.detail }
+
+private fun BaziStructuralProfile.compatibilityPatternEvidence(): String =
+    selectedPattern.evidence.joinToString("；") { it.detail }
+
+private fun BaziCompatibilityReport.compatibilityPairImpact(
+    leftPosition: PillarPosition,
+    rightPosition: PillarPosition,
+    scope: String,
+): String {
+    val elemental = compatibilityBranchElementRelation(leftPosition, rightPosition, scope)
+    val impacts = coordinationSignals.plus(tensionSignals)
+        .filter { signal ->
+            signal.pillars.size == 2 &&
+                signal.pillars.any { it.side == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.LEFT && it.position == leftPosition } &&
+                signal.pillars.any { it.side == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.RIGHT && it.position == rightPosition }
+        }
+        .distinctBy { signal -> signal.kind to signal.values }
+        .map { signal -> "${signal.kind.title} · ${signal.values}：${signal.explanation}" }
+    return listOf(elemental.detail).plus(impacts).joinToString("\n")
+}
+
+@Composable
+private fun CompatibilityElementVisualization(report: BaziCompatibilityReport) {
+    val leftElements = report.left.pillars.compatibilityElementCounts()
+    val rightElements = report.right.pillars.compatibilityElementCounts()
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 18.dp, end = 16.dp).testTag("compatibility_element_balance"),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("五行结构", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            CompatibilityParticipantLegend("男方 · ${report.left.alias}", CompatibilityMaleAccent, Modifier.weight(1f))
+            CompatibilityParticipantLegend("女方 · ${report.right.alias}", CompatibilityFemaleAccent, Modifier.weight(1f))
+        }
+        Text("以双方四柱八个表层干支字符计数。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        listOf("木", "火", "土", "金", "水").forEach { element ->
+            CompatibilityElementBalanceRow(
+                element = element,
+                leftCount = leftElements.getValue(element),
+                rightCount = rightElements.getValue(element),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompatibilityElementBalanceRow(
+    element: String,
+    leftCount: Int,
+    rightCount: Int,
+) {
+    val elementColor = baziElementColor(element)
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(element, modifier = Modifier.width(26.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = elementColor)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            CompatibilityElementBar("男", leftCount, elementColor, CompatibilityMaleAccent)
+            CompatibilityElementBar("女", rightCount, elementColor, CompatibilityFemaleAccent)
+        }
+    }
+}
+
+@Composable
+private fun CompatibilityElementBar(
+    role: String,
+    count: Int,
+    elementColor: Color,
+    roleAccent: Color,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(role, modifier = Modifier.width(14.dp), style = MaterialTheme.typography.labelSmall, color = roleAccent, fontWeight = FontWeight.SemiBold)
+        Box(modifier = Modifier.weight(1f).height(7.dp).background(elementColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth((count / 8f).coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .background(elementColor, RoundedCornerShape(4.dp)),
+            )
+        }
+        Text("$count/8", modifier = Modifier.width(27.dp), textAlign = TextAlign.End, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun CompatibilityParticipantLegend(text: String, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(modifier = Modifier.size(8.dp).background(color, CircleShape))
+        Text(text, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+private data class CompatibilityRelationSnapshot(
+    val headline: String,
+    val detail: String,
+    val color: Color,
+)
+
+private data class CompatibilityBranchElementRelation(
+    val headline: String,
+    val detail: String,
+    val color: Color,
+    val requiresAttention: Boolean = false,
+)
+
+private fun BaziCompatibilityReport.compatibilityBranchElementRelation(
+    leftPosition: PillarPosition,
+    rightPosition: PillarPosition,
+    scope: String,
+): CompatibilityBranchElementRelation {
+    val leftBranch = left.pillars.compatibilityBranchAt(leftPosition)
+    val rightBranch = right.pillars.compatibilityBranchAt(rightPosition)
+    val leftElement = leftBranch.compatibilityBranchElement()
+    val rightElement = rightBranch.compatibilityBranchElement()
+    if (leftElement == null || rightElement == null) {
+        return CompatibilityBranchElementRelation(
+            headline = "五行关系待核",
+            detail = "${scope}的地支信息不完整，暂不判断双方在支持、付出或主导上的方向。",
+            color = Color(0xFF73716C),
+        )
+    }
+    return when {
+        leftElement == rightElement -> CompatibilityBranchElementRelation(
+            headline = "同五行（$leftElement）",
+            detail = "${scope}同属$leftElement，双方较容易站在相近的需求和表达方式上；有默契时很顺，僵持时也要避免各自坚持自己的标准。",
+            color = NanfengGreen,
+        )
+        leftElement.compatibilityGenerates() == rightElement -> CompatibilityBranchElementRelation(
+            headline = "男方生女方（$leftElement→$rightElement）",
+            detail = "${scope}呈男方生女方：传统上是资生与输出的方向，现实中男方更容易主动承担、照顾或投入资源；需要确认女方能接住，也避免付出长期失衡。",
+            color = NanfengGreen,
+        )
+        rightElement.compatibilityGenerates() == leftElement -> CompatibilityBranchElementRelation(
+            headline = "女方生男方（$rightElement→$leftElement）",
+            detail = "${scope}呈女方生男方：传统上是资生与输出的方向，现实中女方更容易主动承担、照顾或投入资源；需要确认男方能接住，也避免付出长期失衡。",
+            color = NanfengGreen,
+        )
+        leftElement.compatibilityControls() == rightElement -> CompatibilityBranchElementRelation(
+            headline = "男方克女方（$leftElement→$rightElement）",
+            detail = "${scope}呈男方克女方：传统上是制约方向，现实中男方更容易在规则、资源、节奏或决策上占据主导。适度能帮助落实，过强会让女方感到被管束、被消耗。",
+            color = NanfengSolarTermRed,
+            requiresAttention = true,
+        )
+        rightElement.compatibilityControls() == leftElement -> CompatibilityBranchElementRelation(
+            headline = "女方克男方（$rightElement→$leftElement）",
+            detail = "${scope}呈女方克男方：传统上是制约方向，现实中女方更容易在规则、资源、节奏或决策上占据主导。适度能帮助落实，过强会让男方感到被管束、被消耗。",
+            color = NanfengSolarTermRed,
+            requiresAttention = true,
+        )
+        else -> CompatibilityBranchElementRelation(
+            headline = "五行关系待核",
+            detail = "${scope}暂未能取得稳定的五行方向，建议先核对双方已采用的四柱资料。",
+            color = Color(0xFF73716C),
+        )
+    }
+}
+
+private fun FourPillars.compatibilityBranchAt(position: PillarPosition): String = when (position) {
+    PillarPosition.YEAR -> year.lastOrNull()?.toString().orEmpty()
+    PillarPosition.MONTH -> month.lastOrNull()?.toString().orEmpty()
+    PillarPosition.DAY -> day.lastOrNull()?.toString().orEmpty()
+    PillarPosition.HOUR -> hour.lastOrNull()?.toString().orEmpty()
+}
+
+private fun String.compatibilityBranchElement(): String? = when (this) {
+    "寅", "卯" -> "木"
+    "巳", "午" -> "火"
+    "辰", "戌", "丑", "未" -> "土"
+    "申", "酉" -> "金"
+    "亥", "子" -> "水"
+    else -> null
+}
+
+private fun String.compatibilityGenerates(): String? = when (this) {
+    "木" -> "火"
+    "火" -> "土"
+    "土" -> "金"
+    "金" -> "水"
+    "水" -> "木"
+    else -> null
+}
+
+private fun String.compatibilityControls(): String? = when (this) {
+    "木" -> "土"
+    "土" -> "水"
+    "水" -> "火"
+    "火" -> "金"
+    "金" -> "木"
+    else -> null
+}
+
+private fun BaziCompatibilityReport.compatibilityRelationSnapshot(
+    leftPosition: PillarPosition,
+    rightPosition: PillarPosition,
+    scope: String,
+): CompatibilityRelationSnapshot {
+    val elemental = compatibilityBranchElementRelation(leftPosition, rightPosition, scope)
+    val signals = coordinationSignals.plus(tensionSignals)
+        .filter { signal ->
+            signal.pillars.size == 2 &&
+                signal.pillars.any { it.side == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.LEFT && it.position == leftPosition } &&
+                signal.pillars.any { it.side == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.RIGHT && it.position == rightPosition }
+        }
+        .distinctBy { signal -> signal.kind to signal.values }
+    if (signals.isEmpty()) return CompatibilityRelationSnapshot(elemental.headline, elemental.detail, elemental.color)
+    val hasTension = signals.any { !it.kind.isCoordination }
+    return CompatibilityRelationSnapshot(
+        headline = listOf(elemental.headline).plus(
+            signals.map { signal -> "${signal.kind.title} ${signal.values}" },
+        ).joinToString(" · "),
+        detail = listOf(elemental.detail).plus(
+            signals.map { signal -> signal.explanation.substringAfter('，', signal.explanation) },
+        ).joinToString("；"),
+        color = if (hasTension || elemental.requiresAttention) NanfengSolarTermRed else NanfengGreen,
+    )
+}
+
+@Composable
+private fun CompatibilityRelationshipSummary(report: BaziCompatibilityReport) {
+    val summary = report.relationshipSummary
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+            .border(0.5.dp, Color(0xFFE1DFDA), RoundedCornerShape(16.dp))
+            .padding(14.dp)
+            .testTag("compatibility_relationship_summary"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("双方关系总结", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        CompatibilitySummaryRow(
+            label = "关系判断",
+            accent = NanfengGoldText,
+            text = summary.relationshipJudgement,
+        )
+        CompatibilitySummaryRow(
+            label = "优势",
+            accent = NanfengGreen,
+            text = summary.advantage,
+        )
+        CompatibilitySummaryRow(
+            label = "需要留意",
+            accent = NanfengSolarTermRed,
+            text = summary.caution,
+        )
+        CompatibilitySummaryRow(
+            label = "相处建议",
+            accent = NanfengGold,
+            text = summary.suggestion,
+        )
+        CompatibilitySummaryRow(
+            label = "资料提醒",
+            accent = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = summary.dataReminder,
+        )
+    }
+}
+
+@Composable
+private fun CompatibilitySummaryRow(label: String, accent: Color, text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(label, modifier = Modifier.width(62.dp), color = accent, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun CompatibilityComparisonTable(
+    title: String,
+    headers: List<String>,
+    rows: List<List<String>>,
+    modifier: Modifier = Modifier,
+    firstColumnColor: ((List<String>) -> Color)? = null,
+    columnWeights: List<Float> = List(headers.size) { 1f },
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp)
+            .compatibilityTableSideBorders(),
+    ) {
+        Text(
+            title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+                .padding(start = 16.dp, top = 2.dp, end = 16.dp, bottom = 10.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        CompatibilityTableHeader(headers, columnWeights)
+        rows.forEach { row ->
+            CompatibilityTableRow(
+                values = row,
+                firstColumnColor = firstColumnColor?.invoke(row),
+                columnWeights = columnWeights,
+            )
+        }
+    }
+}
+
+private val CompatibilityReportColumnWeights = listOf(0.92f, 0.72f, 0.72f, 1.64f)
+
+private fun Modifier.compatibilityTableSideBorders(): Modifier = drawWithContent {
+    drawContent()
+    val strokeWidth = 0.5.dp.toPx()
+    val inset = strokeWidth / 2f
+    drawLine(
+        color = Color(0xFFDCDCD8),
+        start = Offset(inset, 0f),
+        end = Offset(inset, size.height),
+        strokeWidth = strokeWidth,
+    )
+    drawLine(
+        color = Color(0xFFDCDCD8),
+        start = Offset(size.width - inset, 0f),
+        end = Offset(size.width - inset, size.height),
+        strokeWidth = strokeWidth,
+    )
+}
+
+@Composable
+private fun CompatibilityTableHeader(headers: List<String>, columnWeights: List<Float>) {
+    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).background(Color.White)) {
+        headers.forEachIndexed { index, header ->
+            if (index > 0) VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color(0xFFDCDCD8), thickness = 0.5.dp)
+            Box(
+                modifier = Modifier
+                    .weight(columnWeights.getOrElse(index) { 1f })
+                    .fillMaxHeight()
+                    .background(Color(0xFFF3F3F1))
+                    .padding(horizontal = 6.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    header,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Medium,
+                )
+            }
+        }
+    }
+    HorizontalDivider(color = Color(0xFFDCDCD8), thickness = 0.5.dp)
+}
+
+@Composable
+private fun CompatibilityTableRow(
+    values: List<String>,
+    firstColumnColor: Color? = null,
+    columnWeights: List<Float> = List(values.size) { 1f },
+) {
+    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).background(Color.White)) {
+        values.forEachIndexed { index, value ->
+            if (index > 0) VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color(0xFFE5E4E0), thickness = 0.5.dp)
+            Box(
+                modifier = Modifier
+                    .weight(columnWeights.getOrElse(index) { 1f })
+                    .fillMaxHeight()
+                    .background(if (index == 0) Color(0xFFF7F7F5) else Color.White)
+                    .padding(horizontal = 6.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    value,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (index == 0) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (index == 0) firstColumnColor ?: NanfengInk else NanfengInk,
+                )
+            }
+        }
+    }
+    HorizontalDivider(color = Color(0xFFE5E4E0), thickness = 0.5.dp)
+}
+
+@Composable
+private fun CompatibilityRelationshipTable(
+    title: String,
+    leftAlias: String,
+    rightAlias: String,
+    signals: List<BaziCompatibilitySignal>,
+    emptyText: String,
+) {
+    val groups = signals
+        .groupBy { it.kind to it.values }
+        .map { (key, groupedSignals) ->
+            CompatibilityRelationshipGroup(
+                kind = key.first,
+                values = key.second,
+                left = groupedSignals.map(BaziCompatibilitySignal::compatibilityEvidence).map { it.left }.filter { it.isNotBlank() }.distinct().joinToString("；"),
+                right = groupedSignals.map(BaziCompatibilitySignal::compatibilityEvidence).map { it.right }.filter { it.isNotBlank() }.distinct().joinToString("；"),
+                explanation = groupedSignals
+                    .map(BaziCompatibilitySignal::explanation)
+                    .distinct()
+                    .joinToString("\n"),
+            )
+        }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 18.dp)
+            .compatibilityTableSideBorders(),
+    ) {
+        Text(
+            title,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (groups.isEmpty()) {
+            Text(emptyText, modifier = Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            return
+        }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CompatibilityTableHeader(
+                headers = listOf("对比项", leftAlias, rightAlias, "解析"),
+                columnWeights = CompatibilityReportColumnWeights,
+            )
+            groups.forEach { group ->
+                val accent = if (group.kind.isCoordination) NanfengGreen else NanfengSolarTermRed
+                CompatibilityTableRow(
+                    values = listOf(
+                        group.kind.title,
+                        group.left.ifBlank { "未参与" },
+                        group.right.ifBlank { "未参与" },
+                        "${group.values}\n${group.explanation}",
+                    ),
+                    firstColumnColor = accent,
+                    columnWeights = CompatibilityReportColumnWeights,
+                )
+            }
+        }
+    }
+}
+
+private data class CompatibilityRelationshipGroup(
+    val kind: BaziCompatibilitySignalKind,
+    val values: String,
+    val left: String,
+    val right: String,
+    val explanation: String,
+)
+
+private fun FourPillars.compatibilityElementCounts(): Map<String, Int> =
+    listOf(year, month, day, hour)
+        .flatMap { pillar -> listOf(pillar.firstOrNull(), pillar.lastOrNull()) }
+        .mapNotNull { character -> character?.compatibilityElement() }
+        .groupingBy { it }
+        .eachCount()
+        .let { counts -> listOf("木", "火", "土", "金", "水").associateWith { counts[it] ?: 0 } }
+
+private fun FourPillars.compatibilityMissingElements(): String =
+    compatibilityElementCounts()
+        .filterValues { count -> count == 0 }
+        .keys
+        .joinToString("、")
+        .ifBlank { "无" }
+
+private fun Char.compatibilityElement(): String? = when (this) {
+    '甲', '乙', '寅', '卯' -> "木"
+    '丙', '丁', '巳', '午' -> "火"
+    '戊', '己', '辰', '戌', '丑', '未' -> "土"
+    '庚', '辛', '申', '酉' -> "金"
+    '壬', '癸', '亥', '子' -> "水"
+    else -> null
+}
+
+private val CompatibilityMaleAccent = Color(0xFF527A84)
+private val CompatibilityFemaleAccent = Color(0xFFD78335)
+
+private data class CompatibilitySignalEvidence(val left: String, val right: String)
+
+private fun BaziCompatibilitySignal.compatibilityEvidence(): CompatibilitySignalEvidence {
+    val left = pillars
+        .filter { it.side == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.LEFT }
+        .joinToString("、") { "${it.position.compatibilityDisplay()} ${it.value}" }
+    val right = pillars
+        .filter { it.side == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.RIGHT }
+        .joinToString("、") { "${it.position.compatibilityDisplay()} ${it.value}" }
+    return CompatibilitySignalEvidence(left = left, right = right)
+}
+
+private fun com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.compatibilityDisplay(): String =
+    if (this == com.nanzhufeng.nanfengbazi.domain.BaziCompatibilitySide.LEFT) "男方" else "女方"
+
+private fun PillarPosition.compatibilityDisplay(): String = when (this) {
+    PillarPosition.YEAR -> "年柱"
+    PillarPosition.MONTH -> "月柱"
+    PillarPosition.DAY -> "日柱"
+    PillarPosition.HOUR -> "时柱"
+}
+
+private fun TimePrecision.compatibilityDisplay(): String = when (this) {
+    TimePrecision.EXACT_TO_SECOND -> "精确到秒"
+    TimePrecision.EXACT_TO_MINUTE -> "精确到分"
+    TimePrecision.APPROXIMATE -> "约略时间"
+    TimePrecision.HOUR_ONLY -> "仅知小时"
+    TimePrecision.DOUBLE_HOUR_ONLY -> "仅知时辰"
+    TimePrecision.UNKNOWN -> "时刻未知"
 }
 
 @Composable
@@ -6213,8 +8343,14 @@ private fun SelectionButton(
 private fun EmptyCaseList(
     visibility: CaseVisibility,
     libraryType: CaseLibraryType,
+    libraryCaseCount: Int,
+    activeCriteria: List<String>,
     onCreate: () -> Unit,
+    onClearConditions: () -> Unit,
 ) {
+    val hasNoMatchedResults = visibility == CaseVisibility.ACTIVE &&
+        libraryCaseCount > 0 &&
+        activeCriteria.isNotEmpty()
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -6226,6 +8362,9 @@ private fun EmptyCaseList(
             Text(
                 when {
                     visibility == CaseVisibility.TRASHED -> "回收站为空"
+                    hasNoMatchedResults && libraryType == CaseLibraryType.CELEBRITY ->
+                        "未找到符合当前条件的名人案例"
+                    hasNoMatchedResults -> "未找到符合当前条件的命例"
                     libraryType == CaseLibraryType.CELEBRITY -> "还没有名人案例"
                     else -> "还没有命例"
                 },
@@ -6233,17 +8372,33 @@ private fun EmptyCaseList(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                if (visibility == CaseVisibility.TRASHED) {
-                    "移入回收站的命例会保留完整数据，并可从这里恢复。"
-                } else if (libraryType == CaseLibraryType.CELEBRITY) {
-                    "可先手动录入名人出生资料；后续文字自动录入也会保存到这里。"
-                } else {
-                    "先手动录入出生资料，应用会完成排盘并保存到本机。"
+                when {
+                    visibility == CaseVisibility.TRASHED ->
+                        "移入回收站的命例会保留完整数据，并可从这里恢复。"
+                    hasNoMatchedResults -> buildString {
+                        append("当前条件：")
+                        append(activeCriteria.joinToString("、"))
+                        append("。可清除条件后查看全部 $libraryCaseCount 例")
+                        append(if (libraryType == CaseLibraryType.CELEBRITY) "名人案例。" else "命例。")
+                    }
+                    libraryType == CaseLibraryType.CELEBRITY ->
+                        "可先手动录入名人出生资料；后续文字自动录入也会保存到这里。"
+                    else -> "先手动录入出生资料，应用会完成排盘并保存到本机。"
                 },
                 modifier = Modifier.padding(top = 8.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (visibility == CaseVisibility.ACTIVE) {
+            if (hasNoMatchedResults) {
+                OutlinedButton(
+                    onClick = onClearConditions,
+                    modifier = Modifier
+                        .padding(top = 20.dp)
+                        .heightIn(min = 48.dp)
+                        .testTag("case_empty_clear_conditions"),
+                ) {
+                    Text("清除搜索与筛选")
+                }
+            } else if (visibility == CaseVisibility.ACTIVE) {
                 Button(
                     onClick = onCreate,
                     modifier = Modifier
@@ -6338,7 +8493,9 @@ private fun CreateCaseScreen(
     onConfirmFourPillarsLookup: (FourPillarsLookupSelection) -> Unit,
     onPrepareBirthPickerToday: () -> Unit,
     onOpenAlmanac: () -> Unit,
+    onOpenBaziCompatibility: () -> Unit,
     onCreateGroup: (String) -> Unit,
+    compatibilityParticipantRole: SexForFortuneDirection?,
     bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
@@ -6351,7 +8508,10 @@ private fun CreateCaseScreen(
         onConfirmFourPillarsLookup = onConfirmFourPillarsLookup,
         onPrepareBirthPickerToday = onPrepareBirthPickerToday,
         onOpenAlmanac = onOpenAlmanac,
+        onOpenBaziCompatibility = onOpenBaziCompatibility,
         onCreateGroup = onCreateGroup,
+        compatibilityParticipantRole = compatibilityParticipantRole,
+        onBack = onBack,
         bottomContentInset = bottomContentInset,
         modifier = modifier,
     )
@@ -6579,10 +8739,14 @@ private fun WenzhenCreateCaseScreen(
     onConfirmFourPillarsLookup: (FourPillarsLookupSelection) -> Unit,
     onPrepareBirthPickerToday: () -> Unit,
     onOpenAlmanac: () -> Unit,
+    onOpenBaziCompatibility: () -> Unit,
     onCreateGroup: (String) -> Unit,
+    compatibilityParticipantRole: SexForFortuneDirection?,
+    onBack: () -> Unit,
     bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val isCompatibilityParticipantCreate = compatibilityParticipantRole != null
     var saveCase by rememberSaveable { mutableStateOf(true) }
     var showBirthPicker by rememberSaveable { mutableStateOf(false) }
     var birthPickerEntryMode by rememberSaveable { mutableStateOf(BirthPickerMode.SOLAR) }
@@ -6630,6 +8794,7 @@ private fun WenzhenCreateCaseScreen(
                         hour = selection.hour.toString(),
                         minute = selection.minute.toString(),
                         second = "0",
+                        timePrecision = selection.timePrecision,
                         isLeapMonth = selection.isLeapMonth,
                     ).clearTimeZoneResolution()
                 }
@@ -6672,7 +8837,7 @@ private fun WenzhenCreateCaseScreen(
     }
     if (showGroupPicker) {
         HomeCaseGroupPickerDialog(
-            groups = state.availableGroups,
+            groups = state.availableFormGroups,
             selectedGroupId = form.groupId,
             saving = state.mutationSaving,
             creationError = state.mutationError,
@@ -6698,7 +8863,9 @@ private fun WenzhenCreateCaseScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    if (form.libraryType == CaseLibraryType.CELEBRITY) {
+                    if (compatibilityParticipantRole != null) {
+                        "录入${if (compatibilityParticipantRole == SexForFortuneDirection.MAN) "男方" else "女方"}八字"
+                    } else if (form.libraryType == CaseLibraryType.CELEBRITY) {
                         "名人案例录入"
                     } else {
                         "首页排盘"
@@ -6707,31 +8874,73 @@ private fun WenzhenCreateCaseScreen(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
+                if (isCompatibilityParticipantCreate) {
+                    TextButton(
+                        onClick = onBack,
+                        modifier = Modifier.align(Alignment.CenterStart),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("返回")
+                    }
+                }
             }
         }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .padding(bottom = bottomContentInset),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        BoxWithConstraints(
+            modifier = Modifier.weight(1f),
         ) {
-            if (form.libraryType != CaseLibraryType.CELEBRITY) {
-                BaziHomeSkinHeader(modifier = Modifier.testTag("home_skin_header"))
-            }
-            Card(
+            // 内外屏的余量问题不同：内屏不再让入口卡填满剩余空间，
+            // 外屏只把导航上方已确认的少量余量给入口卡。
+            val compactHomeLayout = !isCompatibilityParticipantCreate &&
+                maxWidth >= INNER_DISPLAY_HOME_MIN_WIDTH
+            val contentVerticalPadding = if (compactHomeLayout) 8.dp else 12.dp
+            val sectionSpacing = if (compactHomeLayout) 8.dp else 12.dp
+            val formVerticalPadding = if (compactHomeLayout) 8.dp else 12.dp
+            val formNameRowHeight = if (compactHomeLayout) 48.dp else 52.dp
+            val pickerRowHeight = if (compactHomeLayout) 60.dp else 68.dp
+            val compactDividerPadding = if (compactHomeLayout) 6.dp else 10.dp
+            val saveRowHeight = if (compactHomeLayout) 42.dp else 46.dp
+            val submitButtonHeight = if (compactHomeLayout) 48.dp else 50.dp
+            // 入口卡两边都由明确的 10dp 规则约束，不再把可用高度留成无定义空白。
+            val homeQuickEntryEdgeGap = 10.dp
+            val quickEntryNavigationBottomInset =
+                ROOT_NAVIGATION_BAR_HEIGHT +
+                    ROOT_NAVIGATION_BOTTOM_MARGIN +
+                    homeQuickEntryEdgeGap
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("home_input_card"),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(22.dp),
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .padding(top = contentVerticalPadding)
+                    .padding(
+                        bottom = bottomContentInset + if (isCompatibilityParticipantCreate) {
+                            0.dp
+                        } else {
+                            quickEntryNavigationBottomInset
+                        },
+                    ),
             ) {
-                Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(sectionSpacing),
+                    ) {
+                    if (form.libraryType != CaseLibraryType.CELEBRITY && !isCompatibilityParticipantCreate) {
+                        BaziHomeSkinHeader(
+                            height = if (compactHomeLayout) 132.dp else 148.dp,
+                            modifier = Modifier.testTag("home_skin_header"),
+                        )
+                    }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_input_card"),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(22.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = formVerticalPadding)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp)
+                            .height(formNameRowHeight)
                             .padding(horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -6785,7 +8994,7 @@ private fun WenzhenCreateCaseScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 10.dp, bottom = 2.dp),
+                            .padding(top = compactDividerPadding, bottom = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -6836,7 +9045,7 @@ private fun WenzhenCreateCaseScreen(
                             ),
                         )
                     }
-                    HorizontalDivider(modifier = Modifier.padding(top = 10.dp))
+                    HorizontalDivider(modifier = Modifier.padding(top = compactDividerPadding))
                     HomePickerRow(
                         title = "出生时间",
                         value = form.birthDateTimeDisplay(),
@@ -6850,6 +9059,7 @@ private fun WenzhenCreateCaseScreen(
                             showBirthPicker = true
                         },
                         tag = "open_birth_datetime_picker",
+                        rowHeight = pickerRowHeight,
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     HomePickerRow(
@@ -6858,23 +9068,27 @@ private fun WenzhenCreateCaseScreen(
                         supporting = "",
                         onClick = { showBirthplacePicker = true },
                         tag = "open_birthplace_picker",
+                        rowHeight = pickerRowHeight,
                     )
-                    HorizontalDivider()
-                    HomePickerRow(
-                        title = "分组",
-                        value = state.availableGroups
-                            .firstOrNull { it.id == form.groupId }
-                            ?.name
-                            ?: "全部",
-                        supporting = "",
-                        onClick = { showGroupPicker = true },
-                        tag = "open_case_group_picker",
-                    )
-                    HorizontalDivider()
-                    Row(
+                    if (!isCompatibilityParticipantCreate) {
+                        HorizontalDivider()
+                        HomePickerRow(
+                            title = "分组",
+                            value = state.availableFormGroups
+                                .firstOrNull { it.id == form.groupId }
+                                ?.name
+                                ?: "全部",
+                            supporting = "",
+                            onClick = { showGroupPicker = true },
+                            tag = "open_case_group_picker",
+                            rowHeight = pickerRowHeight,
+                        )
+                        HorizontalDivider()
+                    }
+                    if (!isCompatibilityParticipantCreate) Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(46.dp),
+                            .height(saveRowHeight),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Spacer(modifier = Modifier.weight(1f))
@@ -6905,56 +9119,129 @@ private fun WenzhenCreateCaseScreen(
                             }
                         }
                     }
-                    Button(
-                        onClick = if (saveCase) onSubmit else onPreview,
+                            Button(
+                        onClick = if (isCompatibilityParticipantCreate || saveCase) onSubmit else onPreview,
                         enabled = !state.saving && !state.previewing,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 4.dp)
-                            .height(50.dp)
+                            .height(submitButtonHeight)
                             .testTag(if (saveCase) "save_case" else "preview_case"),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                         shape = RoundedCornerShape(25.dp),
-                    ) {
+                            ) {
                         Text(
                             when {
                                 state.saving -> "正在排盘并保存…"
                                 state.previewing -> "正在即时排盘…"
+                                isCompatibilityParticipantCreate -> "保存并返回"
                                 else -> "开始排盘"
                             },
                             style = MaterialTheme.typography.titleMedium,
                         )
+                            }
+                        }
+                    }
+                    state.formError?.let { error ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("form_error"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                        ) {
+                            Text(
+                                error,
+                                modifier = Modifier.padding(14.dp),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                    if (state.duplicateCandidates.isNotEmpty()) {
+                        DuplicateCandidatesCard(
+                            candidates = state.duplicateCandidates,
+                            saving = state.saving || state.previewing,
+                            onConfirm = onConfirmDuplicate,
+                        )
                     }
                 }
-            }
-            AlmanacHomeEntry(onClick = onOpenAlmanac)
-            state.formError?.let { error ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("form_error"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                ) {
-                    Text(
-                        error,
-                        modifier = Modifier.padding(14.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
+                if (!isCompatibilityParticipantCreate) {
+                    Spacer(modifier = Modifier.height(homeQuickEntryEdgeGap))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            BaziCompatibilityHomeEntry(
+                                onClick = onOpenBaziCompatibility,
+                                compact = compactHomeLayout,
+                                modifier = Modifier.weight(1f),
+                            )
+                            AlmanacHomeEntry(
+                                onClick = onOpenAlmanac,
+                                compact = compactHomeLayout,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                 }
-            }
-            if (state.duplicateCandidates.isNotEmpty()) {
-                DuplicateCandidatesCard(
-                    candidates = state.duplicateCandidates,
-                    saving = state.saving || state.previewing,
-                    onConfirm = onConfirmDuplicate,
+        }
+    }
+}
+}
+
+@Composable
+private fun BaziCompatibilityHomeEntry(
+    onClick: () -> Unit,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .semantics { contentDescription = "打开八字合盘" }
+            .testTag("home_open_bazi_compatibility"),
+        shape = HomeQuickEntryPillShape,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp),
+            ) {
+                Surface(
+                    modifier = Modifier.size(if (compact) 42.dp else 52.dp),
+                    shape = CircleShape,
+                    color = NanfengGold.copy(alpha = 0.12f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_bazi_compatibility),
+                            contentDescription = null,
+                            modifier = Modifier.size(if (compact) 22.dp else 26.dp),
+                            tint = NanfengGold,
+                        )
+                    }
+                }
+                Text(
+                    "八字合盘",
+                    style = if (compact) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NanfengInk,
                 )
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -6964,6 +9251,9 @@ private fun HomeChoiceGroup(
     options: List<Pair<String, Boolean>>,
     onSelect: (String) -> Unit,
     tags: List<String>,
+    enabled: Boolean = true,
+    itemWidth: Dp = 70.dp,
+    itemHeight: Dp = 32.dp,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -6973,11 +9263,12 @@ private fun HomeChoiceGroup(
             options.forEachIndexed { index, (label, selected) ->
                 Surface(
                     onClick = { onSelect(label) },
+                    enabled = enabled,
                     modifier = Modifier
-                        .height(32.dp)
-                        .width(70.dp)
+                        .height(itemHeight)
+                        .width(itemWidth)
                         .testTag(tags[index]),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
                 ) {
                     Box(
@@ -7006,11 +9297,13 @@ internal fun HomePickerRow(
     supporting: String,
     onClick: () -> Unit,
     tag: String,
+    titleWidth: Dp = 68.dp,
+    rowHeight: Dp = 68.dp,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(68.dp)
+            .height(rowHeight)
             .clickable(onClick = onClick)
             .semantics { contentDescription = "$title，$value" }
             .padding(horizontal = 2.dp)
@@ -7020,10 +9313,12 @@ internal fun HomePickerRow(
     ) {
         Text(
             title,
-            modifier = Modifier.width(68.dp),
+            modifier = Modifier.width(titleWidth),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
             color = NanfengInk,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -7079,10 +9374,14 @@ private fun String.dropLastTextElement(): String {
 @Composable
 internal fun EditCaseScreen(
     form: CaseFormState,
+    groupNames: String,
+    availableGroups: List<CaseGroup>,
     error: String?,
     saving: Boolean,
     onBack: () -> Unit,
     onFormChange: ((CaseFormState) -> CaseFormState) -> Unit,
+    onGroupNamesChange: (String) -> Unit,
+    onCreateGroup: (String) -> Unit,
     onSave: () -> Unit,
     onCreateCopy: () -> Unit,
     duplicateCandidates: List<DuplicateCaseCandidate>,
@@ -7091,6 +9390,7 @@ internal fun EditCaseScreen(
 ) {
     var showBirthPicker by rememberSaveable { mutableStateOf(false) }
     var showBirthplacePicker by rememberSaveable { mutableStateOf(false) }
+    var showGroupPicker by rememberSaveable { mutableStateOf(false) }
     if (showBirthPicker) {
         BirthDateTimePickerSheet(
             form = form,
@@ -7109,6 +9409,7 @@ internal fun EditCaseScreen(
                         hour = selection.hour.toString(),
                         minute = selection.minute.toString(),
                         second = "0",
+                        timePrecision = selection.timePrecision,
                         isLeapMonth = selection.isLeapMonth,
                     ).clearTimeZoneResolution()
                 }
@@ -7132,6 +9433,22 @@ internal fun EditCaseScreen(
                 }
                 showBirthplacePicker = false
             },
+        )
+    }
+    if (showGroupPicker) {
+        HomeCaseGroupPickerDialog(
+            groups = availableGroups,
+            selectedGroupId = availableGroups.firstOrNull { it.name == groupNames }?.id,
+            saving = saving,
+            creationError = error,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { groupId ->
+                onGroupNamesChange(
+                    availableGroups.firstOrNull { it.id == groupId }?.name.orEmpty(),
+                )
+                showGroupPicker = false
+            },
+            onCreate = onCreateGroup,
         )
     }
 
@@ -7162,6 +9479,11 @@ internal fun EditCaseScreen(
         ) {
             EditCaseSectionCard(title = "基本资料") {
                 val displayName = form.name.ifBlank { form.alias }
+                Text(
+                    "姓名",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                )
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { value ->
@@ -7169,11 +9491,16 @@ internal fun EditCaseScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(top = 8.dp)
                         .testTag("case_alias"),
-                    label = { Text("姓名") },
                     singleLine = true,
                     enabled = !saving,
                     shape = RoundedCornerShape(15.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        disabledContainerColor = Color.White,
+                    ),
                 )
                 Text(
                     "性别",
@@ -7181,26 +9508,35 @@ internal fun EditCaseScreen(
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Medium,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SexButton(
-                        text = "男",
-                        selected = form.sex == SexForFortuneDirection.MAN,
-                        enabled = !saving,
-                        tag = "sex_man",
-                        onClick = {
-                            onFormChange { it.copy(sex = SexForFortuneDirection.MAN) }
-                        },
-                    )
-                    SexButton(
-                        text = "女",
-                        selected = form.sex == SexForFortuneDirection.WOMAN,
-                        enabled = !saving,
-                        tag = "sex_woman",
-                        onClick = {
-                            onFormChange { it.copy(sex = SexForFortuneDirection.WOMAN) }
-                        },
-                    )
-                }
+                HomeChoiceGroup(
+                    options = listOf(
+                        "男" to (form.sex == SexForFortuneDirection.MAN),
+                        "女" to (form.sex == SexForFortuneDirection.WOMAN),
+                    ),
+                    onSelect = { label ->
+                        onFormChange {
+                            it.copy(
+                                sex = if (label == "男") {
+                                    SexForFortuneDirection.MAN
+                                } else {
+                                    SexForFortuneDirection.WOMAN
+                                },
+                            )
+                        }
+                    },
+                    tags = listOf("sex_man", "sex_woman"),
+                    enabled = !saving,
+                )
+            }
+
+            EditCaseSectionCard(title = "分组") {
+                HomePickerRow(
+                    title = "分组",
+                    value = groupNames.ifBlank { "全部" },
+                    supporting = "",
+                    onClick = { if (!saving) showGroupPicker = true },
+                    tag = "edit_case_groups",
+                )
             }
 
             EditCaseSectionCard(title = "出生时间") {
@@ -7214,6 +9550,7 @@ internal fun EditCaseScreen(
                     supporting = "",
                     onClick = { if (!saving) showBirthPicker = true },
                     tag = "open_birth_datetime_picker",
+                    titleWidth = 104.dp,
                 )
             }
 
@@ -7384,8 +9721,9 @@ private fun EditCaseSectionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFFFF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x14000000)),
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
             Text(
@@ -7445,6 +9783,7 @@ internal fun CaseFormScreen(
                         hour = selection.hour.toString(),
                         minute = selection.minute.toString(),
                         second = "0",
+                        timePrecision = selection.timePrecision,
                         isLeapMonth = selection.isLeapMonth,
                     ).clearTimeZoneResolution()
                 }
@@ -7938,7 +10277,7 @@ private fun InstantCalculationPreviewCard(
                     "${calculation.fortuneStart.minutes} 分",
             )
             DetailRow("精确交运时间", calculation.fortuneStart.endAt.display())
-            DecadeFortuneDetailsView(calculation.decadeFortunes)
+            DecadeFortuneDetailsView(calculation)
         }
     }
 }
@@ -9126,11 +11465,7 @@ private fun CaseDetailScreen(
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                             NanfengOverflowMenuItem(
-                                label = if (state.singleCaseExchangeBusy) {
-                                    "正在准备导出…"
-                                } else {
-                                    "导出当前命例"
-                                },
+                                label = if (state.singleCaseExchangeBusy) "正在准备导出…" else "导出当前命例",
                                 icon = Icons.Filled.FileUpload,
                                 accent = NanfengGoldText,
                                 onClick = { closeThen(onExportSingleCase) },
@@ -9171,6 +11506,7 @@ private fun CaseDetailScreen(
                     }
                 }
             },
+            windowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         )
         if (state.detail != null && state.detailError == null) {
             CaseDetailTabs(
@@ -9184,6 +11520,8 @@ private fun CaseDetailScreen(
                     }
                 },
             )
+        }
+        if (state.detail != null && state.detailError == null) {
             WenzhenCaseIdentityHeader(
                 case = state.detail,
                 adopted = state.detail.calculationSnapshots.asReversed()
@@ -9447,16 +11785,47 @@ private fun WenzhenCaseIdentityHeader(
                             .height(40.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            case.sexForFortuneDirection.chartTypeName(),
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .offset(x = (-102).dp)
-                                .testTag("notes_identity_chart_type"),
-                            color = NanfengGoldLight,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    case.name.value ?: case.alias,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("notes_identity_name"),
+                                    color = NanfengGoldLight,
+                                    fontSize = 15.sp,
+                                    lineHeight = 19.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(136.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    case.sexForFortuneDirection.displayName(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("notes_identity_sex"),
+                                    color = Color.White.copy(alpha = 0.90f),
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
                         if (pillars.isEmpty()) {
                             Text(
                                 "暂无已采用排盘",
@@ -9644,6 +12013,7 @@ private fun ReferenceCaseDetailContent(
                 onFortuneObservationChange(date, time)
                 showObservationPicker = false
             },
+            showQuickLocateInput = true,
         )
     }
     val wide = LocalConfiguration.current.screenWidthDp >= 840
@@ -9845,7 +12215,13 @@ private fun ReferenceBasicInfo(
 
     val result = adopted?.result
     val conversion = result?.calendarConversion
-    val solarText = conversion?.solarDateTime?.display() ?: case.birthInput.displayDateTime()
+    val usesHistoricalCalculationProxy = result?.normalizedInput?.calendarInput !=
+        case.birthInput.calendarInput
+    val solarText = if (usesHistoricalCalculationProxy) {
+        case.birthInput.displayDateTime()
+    } else {
+        conversion?.solarDateTime?.display() ?: case.birthInput.displayDateTime()
+    }
     val lunarText = conversion?.lunarDateTime?.let { lunar ->
         "${lunar.year}年${if (lunar.isLeapMonth) "闰" else ""}${lunar.month}月${lunar.day}日 " +
             "%02d:%02d:%02d".format(lunar.hour, lunar.minute, lunar.second)
@@ -9858,8 +12234,18 @@ private fun ReferenceBasicInfo(
         alternate = nextAlternate(),
         rightTag = "basic_info_sex_fact",
     )
-    WenzhenFactRow("农历", lunarText, alternate = nextAlternate())
-    WenzhenFactRow("阳历", solarText.removePrefix("公历 "), alternate = nextAlternate())
+    if (usesHistoricalCalculationProxy && result != null) {
+        WenzhenFactRow("史实出生", solarText.removePrefix("公历 "), alternate = nextAlternate())
+        WenzhenFactRow(
+            "排盘采用日期",
+            result.normalizedInput.displayDateTime().removePrefix("公历 "),
+            alternate = nextAlternate(),
+        )
+        WenzhenFactRow("排盘采用农历", lunarText, alternate = nextAlternate())
+    } else {
+        WenzhenFactRow("农历", lunarText, alternate = nextAlternate())
+        WenzhenFactRow("阳历", solarText.removePrefix("公历 "), alternate = nextAlternate())
+    }
     result?.trueSolarTimeEvidence?.let { evidence ->
         WenzhenFactRow(
             "真太阳时",
@@ -10264,9 +12650,9 @@ private fun ReferenceCaseNotes(
             }
         }
         if (captureForLongImage) {
-            WenzhenSectionHeader(
+            CaseNotesCommentaryHeader(
                 title = "命主反馈",
-                modifier = Modifier.padding(top = 18.dp),
+                tag = "owner_feedback_capture_header",
             )
             CaseNotesTextEditor(
                 value = draft.ownerFeedback,
@@ -10284,6 +12670,7 @@ private fun ReferenceCaseNotes(
             CaseNotesTimeline(
                 draft = draft,
                 calculation = adopted?.result,
+                displayAsIndependentChronology = case.libraryType == CaseLibraryType.CELEBRITY,
                 enabled = case.deletedAt == null,
                 onContentChange = onTimelineContentChange,
             )
@@ -10307,9 +12694,11 @@ private fun ReferenceCaseNotes(
                 modifier = Modifier.testTag("ai_commentary_capture"),
             )
         } else if (mode == CaseNotesMode.OWNER_FEEDBACK) {
-            WenzhenSectionHeader(
+            // 与师傅点评复用同一个固定标题槽：左侧金线、文本基线和上下留白完全一致，
+            // 切换时不会因为标题本身的高度差让正文发生跳动。
+            CaseNotesCommentaryHeader(
                 title = "命主反馈",
-                modifier = Modifier.padding(top = 18.dp),
+                tag = "owner_feedback_header",
             )
             CaseNotesTextEditor(
                 value = draft.ownerFeedback,
@@ -10348,6 +12737,7 @@ private fun ReferenceCaseNotes(
             CaseNotesTimeline(
                 draft = draft,
                 calculation = adopted?.result,
+                displayAsIndependentChronology = case.libraryType == CaseLibraryType.CELEBRITY,
                 enabled = case.deletedAt == null,
                 onContentChange = onTimelineContentChange,
             )
@@ -10631,64 +13021,139 @@ private fun CaseNotesTextEditor(
     fillAvailableSpace: Boolean = false,
 ) {
     val editorScrollState = rememberScrollState()
-    Box(
+    val uriHandler = LocalUriHandler.current
+    val openUrl by rememberUpdatedState<(String) -> Unit> { url -> uriHandler.openUri(url) }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(top = 2.dp),
     ) {
-        Surface(
+        Box(
             modifier = if (fillAvailableSpace) {
-                Modifier.fillMaxSize()
-            } else {
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = (minLines * 25).dp + 32.dp)
-            },
-            shape = RoundedCornerShape(14.dp),
-            color = if (enabled) Color.White else MaterialTheme.colorScheme.surfaceVariant,
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (enabled) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-                } else {
-                    MaterialTheme.colorScheme.outlineVariant
-                },
-            ),
-        ) {
-            BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            modifier = (if (fillAvailableSpace) {
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(editorScrollState)
+                    .weight(1f)
             } else {
-                Modifier.fillMaxSize()
-            })
-                .padding(start = 16.dp, top = 14.dp, end = 18.dp, bottom = 14.dp),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
-            decorationBox = { innerTextField ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    if (value.isEmpty()) {
-                        Text(
-                            placeholder,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
-                        )
-                    }
-                    innerTextField()
+                Modifier.fillMaxWidth()
+            },
+        ) {
+            Surface(
+                modifier = if (fillAvailableSpace) {
+                    Modifier.fillMaxSize()
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = (minLines * 25).dp + 32.dp)
+                },
+                shape = RoundedCornerShape(14.dp),
+                color = if (enabled) Color.White else MaterialTheme.colorScheme.surfaceVariant,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (enabled) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    },
+                ),
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    enabled = enabled,
+                    modifier = (if (fillAvailableSpace) {
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(editorScrollState)
+                    } else {
+                        Modifier.fillMaxSize()
+                    })
+                        .padding(start = 16.dp, top = 14.dp, end = 18.dp, bottom = 14.dp)
+                        .openCaseNotesUrlWhenTapped(
+                            value = value,
+                            textLayoutResult = { textLayoutResult },
+                            onOpenUrl = openUrl,
+                        ),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+                    maxLines = Int.MAX_VALUE,
+                    visualTransformation = caseNotesWebUrlVisualTransformation(
+                        MaterialTheme.colorScheme.primary,
+                    ),
+                    onTextLayout = { textLayoutResult = it },
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (value.isEmpty()) {
+                                Text(
+                                    placeholder,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                    style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
+            }
+            if (fillAvailableSpace && editorScrollState.maxValue > 0) {
+                CaseNotesEditorScrollbar(
+                    scrollState = editorScrollState,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(top = 14.dp, end = 5.dp, bottom = 14.dp),
+                )
+            }
+        }
+    }
+}
+
+private val CaseNotesWebUrlPattern = Regex("""https?://[^\s<>"'，。；、！？]+""")
+
+internal fun extractCaseNotesWebUrls(value: String): List<String> =
+    CaseNotesWebUrlPattern.findAll(value)
+        .map { it.normalizedCaseNotesWebUrl() }
+        .filter(String::isNotEmpty)
+        .distinct()
+        .toList()
+
+internal fun caseNotesWebUrlAtOffset(value: String, offset: Int): String? =
+    CaseNotesWebUrlPattern.findAll(value)
+        .firstNotNullOfOrNull { match ->
+            val normalized = match.normalizedCaseNotesWebUrl()
+            normalized.takeIf { offset in match.range.first until (match.range.first + it.length) }
+        }
+
+private fun MatchResult.normalizedCaseNotesWebUrl(): String =
+    value.trimEnd('.', ',', ';', ':', '!', '?', '。', '，', '；', '！', '？', '、')
+
+private fun caseNotesWebUrlVisualTransformation(linkColor: Color): VisualTransformation =
+    VisualTransformation { original ->
+        TransformedText(
+            buildAnnotatedString {
+                append(original)
+                CaseNotesWebUrlPattern.findAll(original.text).forEach { match ->
+                    addStyle(
+                        SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                        match.range.first,
+                        match.range.last + 1,
+                    )
                 }
             },
-            )
-        }
-        if (fillAvailableSpace && editorScrollState.maxValue > 0) {
-            CaseNotesEditorScrollbar(
-                scrollState = editorScrollState,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(top = 14.dp, end = 5.dp, bottom = 14.dp),
-            )
+            OffsetMapping.Identity,
+        )
+    }
+
+private fun Modifier.openCaseNotesUrlWhenTapped(
+    value: String,
+    textLayoutResult: () -> TextLayoutResult?,
+    onOpenUrl: (String) -> Unit,
+): Modifier = pointerInput(value) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+        val layout = textLayoutResult() ?: return@awaitEachGesture
+        caseNotesWebUrlAtOffset(value, layout.getOffsetForPosition(up.position))?.let { url ->
+            up.consume()
+            onOpenUrl(url)
         }
     }
 }
@@ -10727,6 +13192,7 @@ private fun CaseNotesEditorScrollbar(
 private fun CaseNotesTimeline(
     draft: CaseNotesDraft,
     calculation: CalculationResult?,
+    displayAsIndependentChronology: Boolean,
     enabled: Boolean,
     onContentChange: (String, String) -> Unit,
 ) {
@@ -10736,6 +13202,14 @@ private fun CaseNotesTimeline(
             modifier = Modifier.padding(vertical = 18.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
             style = MaterialTheme.typography.bodyMedium,
+        )
+        return
+    }
+    if (displayAsIndependentChronology) {
+        CelebrityCaseTimeline(
+            entries = draft.timeline,
+            enabled = enabled,
+            onContentChange = onContentChange,
         )
         return
     }
@@ -10765,6 +13239,64 @@ private fun CaseNotesTimeline(
             CaseNotesStandaloneTimelineEntry(entry, enabled, onContentChange)
         }
 }
+
+@Composable
+private fun CelebrityCaseTimeline(
+    entries: List<CaseNotesTimelineDraft>,
+    enabled: Boolean,
+    onContentChange: (String, String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .drawBehind {
+                val x = 9.dp.toPx()
+                drawLine(
+                    color = NanfengGold.copy(alpha = 0.32f),
+                    start = Offset(x, 14.dp.toPx()),
+                    end = Offset(x, size.height - 12.dp.toPx()),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            },
+    ) {
+        entries.sortedBy { it.year }.forEach { entry ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(
+                    modifier = Modifier.padding(top = 8.dp).size(18.dp),
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(
+                        4.dp,
+                        NanfengGold.copy(alpha = 0.72f),
+                    ),
+                ) {}
+                Column(modifier = Modifier.padding(start = 14.dp).weight(1f)) {
+                    Text(
+                        entry.year.toTimelineYearLabel(),
+                        color = NanfengGold,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    CaseNotesTimelineInput(
+                        entry = entry,
+                        enabled = enabled,
+                        onContentChange = onContentChange,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Int.toTimelineYearLabel(): String =
+    if (this < 0) "公元前${-this}年" else "${this}年"
 
 @Composable
 private fun CaseNotesDecadeGroup(
@@ -10893,20 +13425,19 @@ private fun CaseNotesTimelineInput(
     onContentChange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
-        value = entry.content,
-        onValueChange = { onContentChange(entry.id, it) },
-        enabled = enabled,
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("timeline_event_input")
-            .semantics { contentDescription = "时间线事件输入 ${entry.id}" },
-        placeholder = { Text("输入这一阶段的关键事件") },
-        minLines = 1,
-        maxLines = Int.MAX_VALUE,
-        shape = RoundedCornerShape(12.dp),
-        textStyle = MaterialTheme.typography.bodyMedium,
-    )
+    Column(modifier = modifier.fillMaxWidth()) {
+        CaseNotesTextEditor(
+            value = entry.content,
+            onValueChange = { onContentChange(entry.id, it) },
+            placeholder = "输入这一阶段的关键事件",
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("timeline_event_input")
+                .semantics { contentDescription = "时间线事件输入 ${entry.id}" },
+            minLines = 1,
+        )
+    }
 }
 
 @Composable
@@ -12744,7 +15275,7 @@ private fun ProfessionalSelectedDateBar(
                         .testTag("fortune_today")
                         .semantics { contentDescription = "定位今天" },
                     color = NanfengGold.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(24.dp),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 9.dp),
@@ -12852,12 +15383,13 @@ private fun ProfessionalTextSections(
 }
 
 @Composable
-private fun DecadeFortuneDetailsView(decades: List<DecadeFortune>) {
+private fun DecadeFortuneDetailsView(calculation: CalculationResult) {
+    val birth = calculation.solarBirthDateTimeForFortuneDisplay()
     Column(modifier = Modifier.fillMaxWidth().testTag("decade_fortune_details")) {
-        decades.take(8).forEachIndexed { index, decade ->
+        calculation.decadeFortunes.take(8).forEachIndexed { index, decade ->
             DetailRow(
                 "第${index + 1}运",
-                "${decade.name}　${decade.startAge}–${decade.endAge}岁　" +
+                "${decade.name}　${decade.completedAgeRangeDisplay(birth)}　" +
                     "${decade.startYear}–${decade.endYear}",
             )
         }
@@ -13214,7 +15746,7 @@ private fun TimeSourceType.displayName(): String = when (this) {
     TimeSourceType.FAMILY_REPORTED -> "家人提供"
     TimeSourceType.OFFICIAL_RECORD -> "出生证明"
     TimeSourceType.WENZHEN_SCREENSHOT -> "问真截图"
-    TimeSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
+    TimeSourceType.WENZHEN_WEB_IMPORT -> "历史网页资料导入"
     TimeSourceType.OTHER_RECORD -> "其他资料"
     TimeSourceType.UNKNOWN -> "未说明"
 }
@@ -13228,7 +15760,8 @@ private fun CaseSourceType.displayName(): String = when (this) {
     CaseSourceType.MANUAL -> "手动录入"
     CaseSourceType.CASE_COPY -> "命例复制"
     CaseSourceType.WENZHEN_SCREENSHOT -> "问真截图迁移"
-    CaseSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
+    CaseSourceType.WENZHEN_WEB_IMPORT -> "历史网页资料导入"
+    CaseSourceType.CURATED_CELEBRITY_CATALOG -> "名人案例统一资料"
     CaseSourceType.BACKUP_RESTORE -> "备份恢复"
 }
 
@@ -13258,7 +15791,8 @@ internal fun TextRecordSourceType.displayName(): String = when (this) {
     TextRecordSourceType.RULE_TEMPLATE -> "规则模板"
     TextRecordSourceType.EXTERNAL_AI -> "外部 AI（手动回填）"
     TextRecordSourceType.IMPORTED_IMAGE -> "图片导入"
-    TextRecordSourceType.WENZHEN_WEB_IMPORT -> "问真网页导入"
+    TextRecordSourceType.WENZHEN_WEB_IMPORT -> "历史网页资料导入"
+    TextRecordSourceType.CURATED_RESEARCH -> "资料编审"
     TextRecordSourceType.LEGACY_UNSPECIFIED -> "历史未标记"
 }
 
@@ -13300,20 +15834,25 @@ private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateTime()
 private fun com.nanzhufeng.nanfengbazi.domain.model.BirthInput.displayDateOnly(): String =
     when (val calendar = calendarInput) {
         is BirthCalendarInput.Solar -> with(calendar.dateTime) {
-            "阳历%04d年%d月%d日".format(year, month, day)
+            "阳历${year.displayHistoricalYear()}年${month}月${day}日"
         }
         is BirthCalendarInput.Lunar -> with(calendar.dateTime) {
-            "农历%04d年%s%d月%d日".format(
-                year,
-                if (isLeapMonth) "闰" else "",
-                month,
-                day,
-            )
+            "农历${year.displayHistoricalYear()}年${if (isLeapMonth) "闰" else ""}${month}月${day}日"
         }
     }
 
 private fun CivilDateTime.display(): String =
-    "%04d-%02d-%02d %02d:%02d:%02d".format(year, month, day, hour, minute, second)
+    "%s-%02d-%02d %02d:%02d:%02d".format(
+        year.displayHistoricalYear(),
+        month,
+        day,
+        hour,
+        minute,
+        second,
+    )
+
+internal fun Int.displayHistoricalYear(): String =
+    if (this <= 0) "公元前${1 - this}" else toString()
 
 private fun formatUtcOffset(totalSeconds: Int): String {
     val sign = if (totalSeconds >= 0) "+" else "-"

@@ -14,6 +14,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.nanzhufeng.nanfengbazi.readUtf8Bounded
 import com.nanzhufeng.nanfengbazi.data.backup.BackupExportResult
 import com.nanzhufeng.nanfengbazi.data.backup.BackupPreviewResult
 import com.nanzhufeng.nanfengbazi.data.backup.CaseBackupOperations
@@ -649,7 +650,7 @@ class BaziSupabaseGateway(private val config: BaziSupabaseConfig) {
             if (bodyBytes != null) connection.outputStream.use { it.write(bodyBytes) }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val response = stream?.use { it.readUtf8Bounded(MAX_CLOUD_RESPONSE_BYTES) }.orEmpty()
             if (code !in 200..299) throw BaziCloudHttpException(code, response.safeServiceCode())
             response
         } finally {
@@ -692,6 +693,7 @@ class BaziSupabaseGateway(private val config: BaziSupabaseConfig) {
     )
     @Serializable private data class CommitResponse(val outcome: String, @SerialName("committed_revision") val committedRevision: Long? = null)
     private companion object {
+        const val MAX_CLOUD_RESPONSE_BYTES = 64 * 1024 * 1024
         val BaziCloudKeyEnvelopeList = kotlinx.serialization.builtins.ListSerializer(BaziCloudKeyEnvelope.serializer())
         val BaziCloudDocumentList = kotlinx.serialization.builtins.ListSerializer(BaziCloudDocument.serializer())
         val BaziCloudDocumentMetadataList = kotlinx.serialization.builtins.ListSerializer(BaziCloudDocumentMetadata.serializer())

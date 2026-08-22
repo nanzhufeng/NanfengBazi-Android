@@ -5,6 +5,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseEventTimelineLevel
 import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
 import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.Clock
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
@@ -77,6 +78,7 @@ class WenzhenWebImportTest {
             it.libraryType == CaseLibraryType.USER
         }
         assertEquals("清娟", userCase.groups.single().name)
+        assertEquals(TimePrecision.EXACT_TO_MINUTE, userCase.birthInput.timePrecision)
         assertEquals(
             "师傅点评原文",
             userCase.textRecords.single {
@@ -89,6 +91,8 @@ class WenzhenWebImportTest {
             it.libraryType == CaseLibraryType.CELEBRITY
         }
         assertEquals("君主", celebrity.groups.single().name)
+        assertEquals(TimePrecision.DOUBLE_HOUR_ONLY, celebrity.birthInput.timePrecision)
+        assertTrue(celebrity.birthInput.sourceNote.orEmpty().contains("尚无公开出生时刻证据"))
         assertEquals(setOf("测试朝代", "测试身份"), celebrity.tags.map { it.name }.toSet())
         assertTrue(
             repository.listGroups(CaseLibraryType.USER).none {

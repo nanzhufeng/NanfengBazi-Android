@@ -1,0 +1,4 @@
+interface:
+  display_name: "南枫八字文档同步"
+  short_description: "Sync project documentation from code tests configuration and Git evidence"
+  default_prompt: "Use $nanfeng-bazi-documentation-sync to synchronize 南枫八字 project documentation."

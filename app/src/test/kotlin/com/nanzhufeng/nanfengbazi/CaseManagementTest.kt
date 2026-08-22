@@ -137,7 +137,11 @@ class CaseManagementTest {
             ),
         )
 
-        assertEquals(CaseMutationResult.Saved("case-edit", 2), result)
+        val savedResult = result as? CaseMutationResult.Saved
+        assertTrue(savedResult != null)
+        assertEquals("case-edit", savedResult?.caseId)
+        assertEquals(2L, savedResult?.revision)
+        assertEquals("合成命例乙", savedResult?.savedCase?.alias)
         val saved = repository.stored.getValue("case-edit")
         assertEquals("合成命例乙", saved.alias)
         assertEquals(2, saved.calculationSnapshots.size)
@@ -169,7 +173,10 @@ class CaseManagementTest {
             IdGenerator { zoneIds.removeFirst() },
         )("case-zone", 1, validForm())
 
-        assertEquals(CaseMutationResult.Saved("case-zone", 2), saved)
+        val savedResult = saved as? CaseMutationResult.Saved
+        assertTrue(savedResult != null)
+        assertEquals(2L, savedResult?.revision)
+        assertEquals("case-zone", savedResult?.savedCase?.id)
         assertEquals(
             "tzdb:test",
             repository.stored.getValue("case-zone").birthInput.timeZoneDataVersion,

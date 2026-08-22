@@ -2,10 +2,79 @@ package com.nanzhufeng.nanfengbazi
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InteractionShapeContractTest {
+    @Test
+    fun notesIdentityHeaderCentersBalancedNameAndSexAroundThePillars() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val notesHeader = source.substringAfter("CaseDetailSection.RECORDS -> {")
+            .substringBefore("HorizontalDivider(\n                        modifier = Modifier.padding(top = 1.dp")
+
+        assertTrue(notesHeader.contains("case.name.value ?: case.alias"))
+        assertTrue(notesHeader.contains(".testTag(\"notes_identity_name\")"))
+        assertTrue(notesHeader.contains("fontSize = 15.sp"))
+        assertTrue(notesHeader.contains(".testTag(\"notes_identity_sex\")"))
+        assertTrue(notesHeader.contains("case.sexForFortuneDirection.displayName()"))
+        assertTrue(notesHeader.contains("fontSize = 14.sp"))
+        assertTrue(notesHeader.contains("Spacer(modifier = Modifier.width(136.dp))"))
+        assertTrue(notesHeader.contains("contentAlignment = Alignment.Center"))
+        assertTrue(!notesHeader.contains(".align(Alignment.CenterStart)"))
+        assertTrue(!notesHeader.contains(".align(Alignment.CenterEnd)"))
+        assertTrue(!notesHeader.contains("notes_identity_chart_type"))
+    }
+
+    @Test
+    fun caseNotesOpenUrlsInsideTheirOriginalInputWithoutRenderingDuplicates() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val editor = source.substringAfter("private fun CaseNotesTextEditor(")
+            .substringBefore("private fun CaseNotesEditorScrollbar(")
+        val timeline = source.substringAfter("private fun CaseNotesTimelineInput(")
+            .substringBefore("private fun CaseNotesTimePicker(")
+
+        assertTrue(source.contains("private fun Modifier.openCaseNotesUrlWhenTapped("))
+        assertTrue(source.contains("caseNotesWebUrlAtOffset(value"))
+        assertTrue(source.contains("uriHandler.openUri(url)"))
+        assertTrue(editor.contains("BasicTextField("))
+        assertTrue(editor.contains("openCaseNotesUrlWhenTapped("))
+        assertTrue(editor.contains("caseNotesWebUrlVisualTransformation("))
+        assertTrue(!editor.contains("CaseNotesWebLinks(value)"))
+        assertTrue(timeline.contains("CaseNotesTextEditor("))
+        assertTrue(!timeline.contains("CaseNotesWebLinks(entry.content)"))
+    }
+
+    @Test
+    fun trashListDoesNotExposeGroupFilteringOrManagement() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val list = source.substringAfter("private fun CaseListScreen(")
+            .substringBefore("private fun CaseSummaryCard(")
+
+        assertTrue(
+            list.contains(
+                "if (!isCompatibilitySelection && state.visibility != CaseVisibility.TRASHED) {\n            Row(",
+            ),
+        )
+        assertTrue(list.contains("record_filter_strip_placeholder"))
+        assertTrue(list.contains(".height(46.dp)"))
+        assertTrue(list.contains("if (state.visibility != CaseVisibility.TRASHED) {\n                            NanfengOverflowMenuItem("))
+    }
+
+    @Test
+    fun birthCalendarPickerKeepsQuickLocateAndFixedSheetHeight() {
+        val pickers = File(locateSourceRoot(), "BirthInputPickers.kt").readText()
+        val birthPicker = pickers.substringAfter("internal fun BirthDateTimePickerSheet(")
+            .substringBefore("private fun BirthPickerHeader(")
+
+        assertTrue(birthPicker.contains("BirthPickerQuickLocateInput("))
+        assertTrue(birthPicker.contains("LaunchedEffect(mode, quickLocateText)"))
+        assertTrue(birthPicker.contains(".height(BirthDateTimeWheelViewportHeight)"))
+        assertTrue(pickers.contains("tag: String = \"birth_quick_locate_input\""))
+        assertTrue(pickers.contains(".testTag(tag)"))
+        assertTrue(pickers.contains("targetHeight = BirthPickerPanelHeight"))
+    }
+
     @Test
     fun singleCaseExportKeepsTheDefaultJsonPathMinimalAndPasswordFlowCanReturn() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
@@ -49,7 +118,7 @@ class InteractionShapeContractTest {
         assertTrue(navigation.contains("Column("))
         assertTrue(navigation.contains("item.label"))
         assertTrue(navigation.contains("modifier: Modifier = Modifier"))
-        assertTrue(navigation.contains(".height(68.dp)"))
+        assertTrue(navigation.contains(".height(ROOT_NAVIGATION_BAR_HEIGHT)"))
         assertTrue(navigation.contains(".height(58.dp)"))
         assertTrue(navigation.contains("val navigationShape = RoundedCornerShape(26.dp)"))
         assertTrue(navigation.contains("RoundedCornerShape(26.dp)"))
@@ -63,6 +132,314 @@ class InteractionShapeContractTest {
         assertTrue(navigation.contains("shadowElevation = 12.dp.toPx()"))
         assertTrue(navigation.contains("shadowElevation = 0.dp"))
         assertTrue(!navigation.contains("NavigationBar("))
+    }
+
+    @Test
+    fun homeQuickEntriesUseIndependentInnerAndOuterScreenHeights() {
+        val screens = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val almanac = File(locateSourceRoot(), "AlmanacFeature.kt").readText()
+        val create = screens.substringAfter("private fun WenzhenCreateCaseScreen(")
+            .substringBefore("private fun BaziCompatibilityHomeEntry(")
+        val compatibility = screens.substringAfter("private fun BaziCompatibilityHomeEntry(")
+            .substringBefore("private fun HomeChoiceGroup(")
+
+        assertTrue(create.contains("BoxWithConstraints("))
+        assertTrue(create.contains("val homeQuickEntryEdgeGap = 10.dp"))
+        assertTrue(create.contains("val quickEntryNavigationBottomInset"))
+        assertTrue(create.contains("ROOT_NAVIGATION_BAR_HEIGHT"))
+        assertTrue(create.contains("ROOT_NAVIGATION_BOTTOM_MARGIN"))
+        assertFalse(create.contains("navigationBarInset"))
+        assertTrue(create.contains(".padding(top = contentVerticalPadding)"))
+        assertFalse(create.contains("QuickEntrySlotOffset"))
+        assertFalse(create.contains("innerQuickEntryTopOffset"))
+        assertTrue(create.contains("Spacer(modifier = Modifier.height(homeQuickEntryEdgeGap))"))
+        assertTrue(create.contains(".weight(1f)"))
+        assertTrue(create.contains(".fillMaxHeight()"))
+        assertTrue(create.contains("BaziCompatibilityHomeEntry("))
+        assertTrue(create.contains("onClick = onOpenBaziCompatibility"))
+        assertTrue(create.contains("AlmanacHomeEntry("))
+        assertTrue(create.contains("onClick = onOpenAlmanac"))
+        assertTrue(create.contains("maxWidth >= INNER_DISPLAY_HOME_MIN_WIDTH"))
+        assertTrue(!create.contains("maxHeight < 780.dp"))
+        assertTrue(screens.contains("private val INNER_DISPLAY_HOME_MIN_WIDTH = 600.dp"))
+        assertTrue(screens.contains("private val ROOT_NAVIGATION_BAR_HEIGHT = 68.dp"))
+        assertTrue(screens.contains("private val ROOT_NAVIGATION_BOTTOM_MARGIN = 8.dp"))
+        assertTrue(screens.contains("private val ROOT_NAVIGATION_CONTENT_GAP = 10.dp"))
+        assertTrue(!create.contains("topContentHeightPx"))
+        assertTrue(!create.contains("quickEntryReserve"))
+        assertTrue(!create.contains("minQuickEntryHeight"))
+        assertFalse(create.contains(".verticalScroll(rememberScrollState())"))
+        assertTrue(create.contains(".weight(1f)"))
+        assertTrue(create.contains("height = if (compactHomeLayout) 132.dp else 148.dp"))
+        assertTrue(create.contains("val pickerRowHeight = if (compactHomeLayout) 60.dp else 68.dp"))
+        assertTrue(compatibility.contains(".fillMaxHeight()"))
+        assertTrue(compatibility.contains("compact: Boolean"))
+        assertTrue(compatibility.contains("contentDescription = \"打开八字合盘\""))
+        assertTrue(compatibility.contains("painterResource(R.drawable.ic_bazi_compatibility)"))
+        assertTrue(compatibility.contains("shape = HomeQuickEntryPillShape"))
+        assertTrue(!compatibility.contains("Icons.Filled.Share"))
+        assertTrue(almanac.contains(".fillMaxHeight()"))
+        assertTrue(almanac.contains("compact: Boolean"))
+        assertTrue(almanac.contains("shape = HomeQuickEntryPillShape"))
+        assertTrue(almanac.contains("modifier = Modifier.fillMaxSize(),\n            contentAlignment = Alignment.Center"))
+        assertTrue(screens.contains("internal val HomeQuickEntryPillShape = RoundedCornerShape(percent = 50)"))
+    }
+
+    @Test
+    fun compatibilityParticipantSelectionReusesTheSearchableRecordList() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val compatibility = source.substringAfter("private fun BaziCompatibilityScreen(")
+            .substringBefore("private fun BaziCompatibilityHistoryList(")
+        val caseList = source.substringAfter("private fun CaseListScreen(")
+            .substringBefore("private fun CaseSummaryCard(")
+
+        assertTrue(compatibility.contains("onOpenParticipantList"))
+        assertTrue(!source.contains("CompatibilityParticipantPickerDialog"))
+        assertTrue(caseList.contains("compatibilitySelectionRole: SexForFortuneDirection?"))
+        assertTrue(caseList.contains("onSelectCompatibilityCase"))
+        assertTrue(caseList.contains("选择\${compatibilityRoleLabel}八字"))
+        assertTrue(caseList.contains(".testTag(\"case_search\")"))
+        assertTrue(caseList.contains("if (isCompatibilitySelection) {\n                            CaseSummaryRow("))
+        assertTrue(caseList.contains("if (!isCompatibilitySelection) Surface("))
+    }
+
+    @Test
+    fun compatibilityResultUsesASeparateVisualComparisonScreen() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val viewModel = File(locateSourceRoot(), "StageTwoViewModel.kt").readText()
+        val resultScreen = source.substringAfter("private fun BaziCompatibilityReportScreen(")
+            .substringBefore("private fun CompatibilitySetupPanel(")
+        val report = source.substringAfter("private fun BaziCompatibilityReportContent(")
+            .substringBefore("private fun FourPillars.compatibilityElementCounts()")
+
+        assertTrue(viewModel.contains("data object BaziCompatibilityReport"))
+        assertTrue(viewModel.contains("navigator.openBaziCompatibilityReport()"))
+        assertTrue(resultScreen.contains("bazi_compatibility_report_screen"))
+        assertTrue(resultScreen.contains("onReplaceParticipant"))
+        val compatibilityScreen = source.substringAfter("private fun BaziCompatibilityScreen(")
+            .substringBefore("private fun BaziCompatibilityReportScreen(")
+        assertTrue(compatibilityScreen.contains("onReplaceParticipant = onOpenParticipantList"))
+        assertTrue(report.contains("CompatibilitySideBySideChart(report, onReplaceParticipant)"))
+        assertTrue(report.contains("CompatibilityImportantParameterTable(report)"))
+        assertTrue(report.contains("CompatibilityElementVisualization(report)"))
+        assertFalse(report.contains("CompatibilityRelationshipVisualization(report)"))
+        assertTrue(report.contains("compatibility_element_balance"))
+        assertTrue(report.contains("CompatibilityElementBalanceRow("))
+        assertTrue(report.contains("CompatibilitySideBySideChart(report, onReplaceParticipant)"))
+        assertTrue(report.contains("CompatibilityRelationshipSummary(report)"))
+        assertTrue(report.indexOf("CompatibilityRelationshipSummary(report)") < report.indexOf("CompatibilityImportantParameterTable(report)"))
+        assertTrue(report.indexOf("CompatibilityElementVisualization(report)") < report.indexOf("CompatibilityImportantParameterTable(report)"))
+        assertTrue(report.contains("CompatibilityRelationshipTable("))
+        assertTrue(report.contains("CompatibilityAiPromptSection(report = report,"))
+        assertTrue(!report.contains("CompatibilityPillarComparison(report)"))
+        assertTrue(!report.contains("CompatibilityReportFootnote"))
+        assertTrue(!source.contains("未见直接作用"))
+        assertTrue(source.contains("compatibilityBranchElementRelation"))
+        assertTrue(source.contains("男方生女方"))
+        assertTrue(source.contains("女方生男方"))
+        assertTrue(source.contains("男方克女方"))
+        assertTrue(source.contains("女方克男方"))
+        assertTrue(report.contains("五行结构"))
+        assertTrue(report.contains("对比项"))
+        assertTrue(report.contains("\"相处优势\""))
+        assertTrue(report.contains("\"相处提醒\""))
+        assertTrue(report.contains("\"解析\""))
+        assertTrue(source.contains(".groupBy { it.kind to it.values }"))
+        assertTrue(source.contains("compatibilityEvidence"))
+        assertTrue(source.contains("CompatibilityParticipantHeader("))
+        val participantHeader = source.substringAfter("private fun CompatibilityParticipantHeader(")
+            .substringBefore("private fun CompatibilityBasicChartGrid(")
+        assertTrue(participantHeader.contains("background(Color(0xFF1F1D19))"))
+        assertTrue(participantHeader.contains(".fillMaxHeight()"))
+        assertTrue(source.contains(".height(IntrinsicSize.Min)\n                    .background(Color(0xFF1F1D19))"))
+        assertTrue(participantHeader.contains("Icons.Filled.SwapHoriz"))
+        assertTrue(participantHeader.contains("contentDescription = \"更换\${role}八字\""))
+        assertTrue(participantHeader.contains("LocalMinimumInteractiveComponentEnforcement provides false"))
+        assertTrue(participantHeader.contains(".size(36.dp)"))
+        assertTrue(participantHeader.contains("modifier = Modifier.size(20.dp)"))
+        assertTrue(participantHeader.contains(".clip(CircleShape)"))
+        assertTrue(participantHeader.contains("阳历："))
+        assertTrue(participantHeader.contains("农历："))
+        assertTrue(participantHeader.contains("maxLines = 2"))
+        assertTrue(!participantHeader.contains("overflow = TextOverflow.Ellipsis"))
+        assertTrue(!participantHeader.contains("Text(\"换例\""))
+        assertTrue(source.contains("CompatibilityPairedDecadeTimeline(report.left, report.right)"))
+        val pairedDecades = source.substringAfter("private fun CompatibilityPairedDecadeTimeline(")
+            .substringBefore("private fun CompatibilityImportantParameterTable(")
+        assertTrue(pairedDecades.contains("val pairedSteps = (0 until maxOf(left.decadeFortunes.size, right.decadeFortunes.size))"))
+        assertTrue(pairedDecades.contains("CompatibilityPairedDecadeColumn("))
+        assertTrue(pairedDecades.contains("CompatibilityDecadeCell(left)"))
+        assertTrue(pairedDecades.contains("CompatibilityDecadeCell(right)"))
+        assertTrue(pairedDecades.contains(".height(66.dp)"))
+        assertTrue(pairedDecades.contains("textAlign = TextAlign.Center"))
+        assertTrue(!pairedDecades.contains("CompatibilityDecadeTimelineRow"))
+        val basicChartGrid = source.substringAfter("private fun CompatibilityBasicChartGrid(")
+            .substringBefore("private fun CompatibilityBasicGridRow(")
+        assertTrue(basicChartGrid.contains("CompatibilityBasicHiddenStemGridRow("))
+        assertTrue(basicChartGrid.contains("compatibilityHiddenStemEntries()"))
+        assertTrue(basicChartGrid.contains("split('·', '\\n')"))
+        assertTrue(basicChartGrid.contains("compatibility_basic_chart_hidden_stems"))
+        assertTrue(basicChartGrid.contains("compatibilityTenGodColor"))
+        assertTrue(source.contains("decade?.stemTenGod"))
+        assertFalse(source.contains("private fun CompatibilityRelationshipVisualization("))
+        assertFalse(source.contains("private fun CompatibilityRelationshipMatrix("))
+        assertFalse(source.contains("亲密与家庭关系"))
+        assertTrue(!source.contains("CompatibilityCoreRelationDiagram"))
+        assertTrue(!source.contains("CompatibilitySignalDistributionRow"))
+        assertTrue(source.contains("Text(\"双方关系总结\""))
+        assertTrue(source.contains("label = \"关系判断\""))
+        assertTrue(source.contains("label = \"优势\""))
+        assertTrue(source.contains("label = \"需要留意\""))
+        assertTrue(source.contains("label = \"相处建议\""))
+        assertTrue(source.contains("label = \"资料提醒\""))
+        assertTrue(source.contains("val summary = report.relationshipSummary"))
+        assertFalse(source.contains("这段关系有彼此吸引、互相带动的基础"))
+
+        val importantParameters = source.substringAfter("private fun CompatibilityImportantParameterTable(")
+            .substringBefore("private fun CompatibilityElementVisualization(")
+        assertTrue(!importantParameters.contains("listOf(\"公历出生\""))
+        assertTrue(!importantParameters.contains("listOf(\"农历出生\""))
+        assertTrue(!importantParameters.contains("listOf(\"时刻精度\""))
+        assertTrue(importantParameters.contains("双方年支（生肖）"))
+        assertTrue(importantParameters.contains("双方夫妻宫（日支）"))
+        assertTrue(importantParameters.contains("\${report.left.alias}夫妻宫 ↔ \${report.right.alias}年支"))
+        assertTrue(importantParameters.contains("\${report.right.alias}夫妻宫 ↔ \${report.left.alias}年支"))
+        assertTrue(
+            importantParameters.indexOf("双方年支（生肖）") <
+                importantParameters.indexOf("双方夫妻宫（日支）"),
+        )
+        assertEquals(3, importantParameters.split("columnWeights = CompatibilityReportColumnWeights").size - 1)
+        assertTrue(importantParameters.contains("表层五行缺失"))
+        assertTrue(importantParameters.contains("日主旺衰（候选）"))
+        assertTrue(importantParameters.contains("格局（候选）"))
+        assertTrue(importantParameters.contains("compatibilityStrengthEvidence"))
+        assertTrue(importantParameters.contains("compatibilityPatternEvidence"))
+        assertTrue(!importantParameters.contains("格局（来源）"))
+        assertTrue(importantParameters.contains("compatibilityPairImpact("))
+        assertTrue(importantParameters.contains("title = \"核心关系\""))
+        assertTrue(importantParameters.contains("title = \"家庭互动\""))
+        assertTrue(importantParameters.contains("title = \"命盘结构\""))
+        assertTrue(importantParameters.contains("headers = listOf(\"对比项\", report.left.alias, report.right.alias, \"解析\")"))
+        assertFalse(importantParameters.contains("\"男方\", \"女方\""))
+
+        val comparisonTable = source.substringAfter("private fun CompatibilityComparisonTable(")
+            .substringBefore("private fun CompatibilityTableHeader(")
+        assertTrue(comparisonTable.contains(".compatibilityTableSideBorders()"))
+        assertTrue(!comparisonTable.contains(".border(0.5.dp, Color(0xFFDCDCD8))"))
+
+        val relationshipTable = source.substringAfter("private fun CompatibilityRelationshipTable(")
+            .substringBefore("private data class CompatibilityRelationshipGroup(")
+        assertTrue(relationshipTable.contains(".compatibilityTableSideBorders()"))
+        assertTrue(relationshipTable.contains("headers = listOf(\"对比项\", leftAlias, rightAlias, \"解析\")"))
+        assertEquals(2, relationshipTable.split("columnWeights = CompatibilityReportColumnWeights").size - 1)
+        assertFalse(relationshipTable.contains(".border(0.5.dp, Color(0xFFDCDCD8))"))
+
+        val tableHeader = source.substringAfter("private fun CompatibilityTableHeader(")
+            .substringBefore("private fun CompatibilityTableRow(")
+        val tableRow = source.substringAfter("private fun CompatibilityTableRow(")
+            .substringBefore("private fun CompatibilityRelationshipTable(")
+        assertTrue(tableHeader.contains(".background(Color(0xFFF3F3F1))"))
+        assertTrue(!tableHeader.contains("background(if (index == 0)"))
+        assertTrue(tableHeader.contains(".fillMaxHeight()"))
+        assertTrue(tableHeader.contains("contentAlignment = Alignment.Center"))
+        assertTrue(tableHeader.contains("textAlign = TextAlign.Center"))
+        assertTrue(tableRow.contains(".fillMaxHeight()"))
+        assertTrue(tableRow.contains("contentAlignment = Alignment.Center"))
+        assertTrue(tableRow.contains("textAlign = TextAlign.Center"))
+        assertTrue(tableRow.contains("columnWeights.getOrElse"))
+        assertTrue(source.contains("CompatibilityElementBar(\"男\""))
+        assertTrue(source.contains("CompatibilityElementBar(\"女\""))
+        assertTrue(!source.contains("CompatibilityElementRadar("))
+        assertTrue(source.contains("background(if (index == 0) Color(0xFFF7F7F5) else Color.White)"))
+        assertTrue(source.contains("fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Medium"))
+        assertTrue(!source.contains("background = if (index % 2 == 0)"))
+        assertTrue(source.contains("height(IntrinsicSize.Min)"))
+        assertTrue(source.contains("VerticalDivider(modifier = Modifier.fillMaxHeight()"))
+        assertTrue(source.contains("\"\${group.values}\\n\${group.explanation}\""))
+        assertTrue(!source.contains("compatibilityElementColor"))
+    }
+
+    @Test
+    fun compatibilityAiPromptRequiresSpecificEvidenceAndUsesFrozenNotes() {
+        val source = File(locateSourceRoot(), "BaziAiPromptDialog.kt").readText()
+
+        assertTrue(source.contains("断事笔记与已记录应事"))
+        assertTrue(source.contains("盲派断事、子平格局"))
+        assertTrue(source.contains("夫妻宫"))
+        assertTrue(source.contains("不要泛泛使用"))
+        assertTrue(source.contains("笔记内容｜对应命盘/岁运依据｜吻合程度"))
+        assertTrue(!source.contains("compatibility_ai_prompt_privacy_row"))
+        assertTrue(!source.contains("结尾强调结果仅供传统文化与自我沟通参考"))
+    }
+
+    @Test
+    fun compatibilityHistoryUsesCompactPairedIdentityCardsInsteadOfBareNames() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val history = source.substringAfter("private fun CompatibilityHistoryScreen(")
+            .substringBefore("private fun BaziCompatibilityReportContent(")
+
+        assertTrue(history.contains("CompatibilityHistoryRecordCard("))
+        assertTrue(history.contains("loading: Boolean"))
+        assertTrue(history.contains("error: String?"))
+        assertTrue(history.contains("if (loading && records.isEmpty())"))
+        assertTrue(history.contains("LoadingBox(\"正在读取合盘记录…\")"))
+        assertTrue(history.contains("else if (error != null && records.isEmpty())"))
+        assertTrue(history.contains("actionLabel = \"重新读取\""))
+        assertTrue(history.contains("CompatibilityHistoryParticipantSummary("))
+        assertTrue(history.contains("combinedClickable(onClick = onClick, onLongClick = onLongClick)"))
+        assertTrue(history.contains("selectionMode"))
+        assertTrue(history.contains("compatibility_history_batch_delete"))
+        assertTrue(history.contains("confirm_compatibility_history_delete"))
+        assertTrue(history.contains("仅删除本机保存的合盘报告"))
+        assertTrue(history.contains("roleLabel = \"男方\""))
+        assertTrue(history.contains("roleLabel = \"女方\""))
+        assertTrue(history.contains("participant.solarDateTimeText"))
+        assertTrue(history.contains("生肖 \${participant.zodiac"))
+        assertTrue(history.contains("日主 \${participant.dayMaster}"))
+        assertTrue(history.contains("CompatibilityHistoryRelationshipFocus(record.report)"))
+        assertTrue(history.contains("formatCompatibilityHistoryCreatedAt(record.createdAtEpochMillis)"))
+        assertTrue(!history.contains("Icons.Filled.KeyboardArrowRight"))
+    }
+
+    @Test
+    fun compatibilityHistoryBackAlwaysReturnsToItsImmediateParent() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val compatibility = source.substringAfter("private fun BaziCompatibilityScreen(")
+            .substringBefore("private fun BaziCompatibilityReportScreen(")
+        val history = source.substringAfter("private fun CompatibilityHistoryScreen(")
+            .substringBefore("private fun CompatibilityHistoryRecordCard(")
+
+        assertTrue(compatibility.contains("if (historyRecord != null) {\n        BackHandler(onBack = onCloseHistoryRecord)"))
+        assertTrue(compatibility.contains("onBack = { showCompatibilityHistory = false }"))
+        assertTrue(history.contains("BackHandler(onBack = onBack)"))
+    }
+
+    @Test
+    fun detailTopBackUsesTheSameNavigatorParentAsTheSystemBackGesture() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val detailRoute = source.substringAfter("is AppDestination.CaseDetail -> {")
+            .substringBefore("is AppDestination.CaseObjectiveSummary ->")
+
+        assertTrue(detailRoute.contains("if (state.detailIsTransient)"))
+        assertTrue(detailRoute.contains("viewModel.closeTransientDetail()"))
+        assertTrue(detailRoute.contains("viewModel.navigateBack()"))
+        assertTrue(!detailRoute.contains("viewModel.backToList()"))
+    }
+
+    @Test
+    fun systemBackReturnsCompatibilityChildrenToTheirParentInsteadOfExiting() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val viewModel = File(locateSourceRoot(), "StageTwoViewModel.kt").readText()
+        val rootBack = source.substringAfter("val returnsToCompatibilityCreate =")
+            .substringBefore("NanfengBaziTheme(")
+        val navigateBack = viewModel.substringAfter("fun navigateBack()")
+            .substringBefore("fun closeTransientDetail()")
+
+        assertTrue(rootBack.contains("state.compatibilityParticipantSelectionRole != null"))
+        assertTrue(rootBack.contains("returnsToCompatibilityCreate"))
+        assertTrue(rootBack.contains("viewModel.cancelCompatibilityParticipantCreate()"))
+        assertTrue(navigateBack.contains("cancelCompatibilityParticipantCreate()"))
+        assertTrue(navigateBack.contains("cancelCompatibilityParticipantList()"))
     }
 
     @Test
@@ -80,10 +457,54 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun recordToolbarSearchAndVisibilityTabsSharePillGeometry() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val toolbar = source.substringAfter(".testTag(\"record_toolbar\")")
+            .substringBefore("private fun CaseListContent(")
+        val topTabs = source.substringAfter("private fun RecordTopTab(")
+            .substringBefore("private fun RecordCategoryTab(")
+
+        assertTrue(source.contains("private val RecordToolbarPillShape = RoundedCornerShape(24.dp)"))
+        assertTrue(toolbar.contains(".testTag(\"record_visibility_switcher\")"))
+        assertTrue(toolbar.contains(".testTag(\"case_search\")"))
+        assertTrue(toolbar.contains("shape = RecordToolbarPillShape"))
+        assertTrue(topTabs.contains("shape = RecordToolbarPillShape"))
+    }
+
+    @Test
+    fun celebrityLibraryIsBuiltInAndKeepsHistoricalImportAsEvidenceOnly() {
+        val root = locateSourceRoot()
+        val source = File(root, "StageTwoScreens.kt").readText()
+        val activity = File(root, "MainActivity.kt").readText()
+        val settings = source.substringAfter("SettingsGroupTitle(\"导入与建档\")")
+            .substringBefore("SettingsGroupTitle(\"排盘偏好\")")
+        assertTrue(settings.contains("title = \"名人案例统一资料库\""))
+        assertTrue(settings.contains("安装即自带；应用更新后自动同步"))
+        assertTrue(!settings.contains("导入可考名人案例"))
+        assertTrue(settings.contains("名人案例会自动纳入统一资料库"))
+        assertTrue(activity.contains("viewModel.synchronizeBuiltInUnifiedCelebrityCatalog("))
+        assertTrue(activity.contains("celebrity-unified-v1.json"))
+    }
+
+    @Test
+    fun settingsPlaceBackupAndRestoreBeforeChartPreferences() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+
+        assertTrue(
+            source.indexOf("SettingsGroupTitle(\"备份与恢复\")") <
+                source.indexOf("SettingsGroupTitle(\"导入与建档\")"),
+        )
+        assertTrue(
+            source.indexOf("SettingsGroupTitle(\"导入与建档\")") <
+                source.indexOf("SettingsGroupTitle(\"排盘偏好\")"),
+        )
+    }
+
+    @Test
     fun recordOverflowMenuKeepsOrderedActionsAndDeleteDistinctWithoutHelperTitles() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val menu = source.substringAfter("NanfengWhiteDropdownMenu(\n                        expanded = moreExpanded")
-            .substringBefore("}\n                }\n            }\n            OutlinedTextField")
+            .substringBefore("            OutlinedTextField(")
 
         assertTrue(!menu.contains("新建与导入"))
         assertTrue(!menu.contains("列表整理"))
@@ -114,17 +535,26 @@ class InteractionShapeContractTest {
     }
 
     @Test
-    fun compactRootNavigationFloatsOverThePageWithBottomContentSafeSpace() {
+    fun compactRootNavigationFloatsOverContentWithoutAReservedBottomBand() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
 
         assertTrue(source.contains("val shouldFloatRootNavigation = showRootNavigation && !useNavigationRail"))
-        assertTrue(source.contains("FLOATING_ROOT_NAVIGATION_CONTENT_INSET = 84.dp"))
         assertTrue(source.contains("val rootScreenModifier = Modifier.padding(padding)"))
-        assertTrue(source.contains("val floatingNavigationContentInset = if (shouldFloatRootNavigation)"))
-        assertTrue(!source.contains("Modifier.padding(bottom = FLOATING_ROOT_NAVIGATION_CONTENT_INSET)"))
+        assertTrue(source.contains("The phone navigation is a true overlay"))
+        assertTrue(source.contains("bottomContentInset = 0.dp"))
+        assertTrue(source.contains("val recordAlphabetIndexBottomInset"))
+        assertTrue(source.contains("alphabetIndexBottomInset = recordAlphabetIndexBottomInset"))
+        assertTrue(source.contains(".padding(bottom = alphabetIndexBottomInset)"))
+        assertTrue(!source.contains("floatingNavigationHeightPx"))
+        assertTrue(!source.contains("FLOATING_ROOT_NAVIGATION_CONTENT_INSET"))
+        assertTrue(!source.contains("FLOATING_ROOT_NAVIGATION_CLEARANCE"))
         assertTrue(source.contains(".align(Alignment.BottomCenter)"))
         assertTrue(source.contains(".navigationBarsPadding()"))
         assertTrue(source.contains("modifier = rootScreenModifier"))
+        val compatibilityRoutes = source.substringAfter("AppDestination.BaziCompatibility -> BaziCompatibilityScreen(")
+            .substringBefore("AppDestination.FourPillarsLookup ->")
+        assertEquals(2, compatibilityRoutes.split("modifier = Modifier,").size - 1)
+        assertTrue(!compatibilityRoutes.contains("modifier = Modifier.padding(padding)"))
     }
 
     @Test
@@ -145,6 +575,43 @@ class InteractionShapeContractTest {
         assertTrue(!recordPage.contains("contentPadding = androidx.compose.foundation.layout.PaddingValues(\n                        end = 28.dp"))
         assertTrue(recordPage.contains("alphabetActivationDistancePx = with(LocalDensity.current) { 48.dp.roundToPx() }"))
         assertTrue(recordPage.contains("item.offset <= viewportStart + alphabetActivationDistancePx"))
+        assertTrue(recordPage.contains(".padding(bottom = bottomContentInset)"))
+        assertTrue(recordPage.contains("contentAlignment = Alignment.CenterEnd"))
+        assertTrue(recordPage.contains(".fillMaxHeight(0.92f)"))
+        assertTrue(recordPage.contains(".offset(y = 10.dp)"))
+        assertTrue(recordPage.contains("firstPinnedCaseIndex"))
+        assertTrue(recordPage.contains("pinnedActive = activeAlphabetInitial == '星'"))
+        assertTrue(recordPage.contains("onPinnedClick = {"))
+        assertTrue(recordPage.contains("当前列表没有置顶命例"))
+        val pinnedLocatorJump = recordPage.substringAfter("onPinnedClick = {")
+            .substringBefore("onInitialClick = { initial ->")
+        assertTrue(pinnedLocatorJump.contains("caseListState.scrollToItem(targetIndex)"))
+        assertFalse(pinnedLocatorJump.contains("caseListState.smoothAlphabetScrollToItem(targetIndex)"))
+        assertTrue(recordPage.contains("onInitialClick = { initial ->"))
+        assertTrue(recordPage.contains("alphabetJumpJob?.cancel()"))
+        assertTrue(recordPage.contains("caseListState.smoothAlphabetScrollToItem(targetIndex)"))
+        assertTrue(recordPage.contains("alphabetHaptics.perform(AppHapticEvent.SELECTION)"))
+        assertTrue(recordPage.contains("record_alphabet_empty_hint"))
+        assertTrue(source.contains("private suspend fun LazyListState.smoothAlphabetScrollToItem"))
+        assertTrue(source.contains("scrollToItem(approachIndex)"))
+        assertTrue(source.contains("animateScrollToItem(safeTargetIndex)"))
+        assertTrue(source.contains("private fun RecordAlphabetIndex("))
+        assertTrue(source.contains("Icons.Filled.VerticalAlignTop"))
+        assertTrue(source.contains(".width(30.dp)"))
+        assertTrue(source.contains(".weight(1f)"))
+        assertTrue(source.contains("modifier = Modifier.size(24.dp)"))
+        val alphabetIndex = source.substringAfter("private fun RecordAlphabetIndex(")
+            .substringBefore("private inline fun <T> List<T>.indexOfFirstBy")
+        assertTrue(alphabetIndex.contains("indication = null"))
+        assertTrue(alphabetIndex.contains("val visualActive = active || pressed"))
+        assertTrue(alphabetIndex.contains("shape = CircleShape"))
+        assertTrue(alphabetIndex.contains("record_alphabet_pinned_locator"))
+        assertTrue(alphabetIndex.contains("定位至置顶命例"))
+        assertTrue(alphabetIndex.contains("val pinnedVisualActive = pinnedActive || pinnedPressed"))
+        assertTrue(alphabetIndex.contains("color = if (pinnedVisualActive)"))
+        assertTrue(alphabetIndex.contains("Color.Transparent"))
+        assertTrue(!alphabetIndex.contains("shadowElevation = 1.dp"))
+        assertTrue(!alphabetIndex.contains("shape = RectangleShape"))
         assertTrue(
             recordPage.contains(
                 "state.listLoading && state.cases.isEmpty() -> LoadingBox(\"正在读取命例…\")",
@@ -180,8 +647,10 @@ class InteractionShapeContractTest {
         val choiceGroup = source.substringAfter("private fun HomeChoiceGroup(")
             .substringBefore("internal fun HomePickerRow(")
 
-        assertTrue(choiceGroup.contains(".height(32.dp)"))
-        assertTrue(choiceGroup.contains(".width(70.dp)"))
+        assertTrue(choiceGroup.contains("itemHeight: Dp = 32.dp"))
+        assertTrue(choiceGroup.contains("itemWidth: Dp = 70.dp"))
+        assertTrue(choiceGroup.contains(".height(itemHeight)"))
+        assertTrue(choiceGroup.contains(".width(itemWidth)"))
         assertTrue(choiceGroup.contains("style = MaterialTheme.typography.bodyMedium"))
         assertTrue(!choiceGroup.contains("fontSize = 11.sp"))
     }
@@ -259,6 +728,27 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun fixedPickerSheetsKeepTheThreeBirthModesAboveTheGestureArea() {
+        val pickers = File(locateSourceRoot(), "BirthInputPickers.kt").readText()
+        val fixedSheet = pickers.substringAfter("internal fun FixedPickerSheet(")
+            .substringBefore("internal fun ObservationDateTimePickerSheet(")
+        val observationPicker = pickers.substringAfter("internal fun ObservationDateTimePickerSheet(")
+            .substringBefore("private fun <T> PickerSegmentedControl(")
+        val screens = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+
+        assertTrue(pickers.contains("private val PickerSheetBottomClearance = 24.dp"))
+        assertTrue(fixedSheet.contains(".padding(bottom = PickerSheetBottomClearance)"))
+        assertTrue(fixedSheet.contains(".height(resolvedHeight)"))
+        assertTrue(fixedSheet.contains("RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)"))
+        assertTrue(observationPicker.contains("showQuickLocateInput: Boolean = false"))
+        assertTrue(observationPicker.contains("LaunchedEffect(showQuickLocateInput, quickLocateText)"))
+        assertTrue(observationPicker.contains("BirthPickerQuickLocateInput("))
+        assertTrue(observationPicker.contains("tag = \"fortune_quick_locate_input\""))
+        assertTrue(observationPicker.contains("inputContentDescription = \"快速定位观察日期与时刻\""))
+        assertTrue(screens.contains("showQuickLocateInput = true"))
+    }
+
+    @Test
     fun aiServiceDestinationsUseWideCenteredCardsInsteadOfATopPackedList() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val page = source.substringAfter("private fun AiServiceSettingsPage(")
@@ -286,11 +776,26 @@ class InteractionShapeContractTest {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val settings = source.substringAfter("private fun SettingsHomeScreen(")
             .substringBefore("if (showRatHourRulePicker)")
+        val records = source.substringAfter("private fun RecordHubScreen(")
+            .substringBefore("private fun RecordCaseRow(")
+        val recordNavigationRoute = source.substringAfter("AppDestination.CaseList -> CaseListScreen(")
+            .substringBefore("AppDestination.CaseComparison")
 
         assertTrue(settings.contains("title = \"导入南枫命例包\""))
         assertTrue(settings.contains("跨设备转移单个命例；先预览冲突再决定合并"))
         assertTrue(settings.contains("title = \"恢复完整备份\""))
         assertTrue(!settings.contains("预览并恢复完整备份"))
+        assertFalse(settings.contains("SettingsGroupTitle(\"功能审阅\")"))
+        assertFalse(settings.contains("settings_feature_review_"))
+        assertFalse(settings.contains("onOpenBaziCompatibility"))
+        assertFalse(settings.contains("onOpenRecords"))
+        assertTrue(settings.contains("Spacer(modifier = Modifier.height(bottomContentInset))"))
+        assertFalse(settings.contains("bottomContentInset + 12.dp"))
+        assertTrue(source.contains("val rootNavigationScrollEndInset = if (shouldFloatRootNavigation)"))
+        assertTrue(source.contains("bottomContentInset = rootNavigationScrollEndInset"))
+        assertTrue(records.contains("bottom = bottomContentInset"))
+        assertFalse(records.contains("24.dp + bottomContentInset"))
+        assertTrue(recordNavigationRoute.contains("bottomContentInset = rootNavigationScrollEndInset"))
     }
 
     @Test
@@ -312,7 +817,7 @@ class InteractionShapeContractTest {
     }
 
     @Test
-    fun almanacKeepsBothPrimaryActionsTogetherAtTheTop() {
+    fun almanacKeepsBothPrimaryActionsFixedAtTheBottom() {
         val source = File(locateSourceRoot(), "AlmanacFeature.kt").readText()
         val screen = source.substringAfter("internal fun AlmanacScreen(")
             .substringBefore("private fun AlmanacPrimaryActions(")
@@ -321,10 +826,13 @@ class InteractionShapeContractTest {
         val details = source.substringAfter("private fun AlmanacDetailsCard(")
             .substringBefore("private fun AlmanacDoubleHourRail(")
 
-        assertTrue(screen.indexOf("AlmanacPrimaryActions(") < screen.indexOf("BoxWithConstraints("))
+        assertTrue(screen.indexOf("AlmanacPrimaryActions(") > screen.indexOf("BoxWithConstraints("))
+        assertTrue(screen.contains(".weight(1f)"))
         assertTrue(actions.contains("use_almanac_date_for_chart"))
         assertTrue(actions.contains("adjust_almanac_four_pillars"))
         assertTrue(actions.contains("horizontalArrangement = Arrangement.spacedBy(10.dp)"))
+        assertTrue(actions.contains("navigationBarsPadding()"))
+        assertTrue(actions.contains("shadowElevation = 8.dp"))
         assertTrue(!details.contains("use_almanac_date_for_chart"))
         assertTrue(!details.contains("adjust_almanac_four_pillars"))
     }
@@ -387,6 +895,7 @@ class InteractionShapeContractTest {
                 "RecordSortDialog",
                 "RecordGroupEditorDialog",
                 "RecordCaseSelectionDialog",
+                "RecordAlphabetIndex",
                 "NotesModeTab",
                 "ReferenceOtherNotes",
                 "ReferenceEventTimelineItem",
@@ -436,8 +945,33 @@ class InteractionShapeContractTest {
 
         val timelineInput = source.substringAfter("private fun CaseNotesTimelineInput(")
             .substringBefore("private fun CaseNotesTimePicker(")
+        val noteEditor = source.substringAfter("private fun CaseNotesTextEditor(")
+            .substringBefore("private fun CaseNotesEditorScrollbar(")
         assertTrue(timelineInput.contains("minLines = 1"))
-        assertTrue(timelineInput.contains("maxLines = Int.MAX_VALUE"))
+        assertTrue(timelineInput.contains("CaseNotesTextEditor("))
+        assertTrue(noteEditor.contains("maxLines = Int.MAX_VALUE"))
+    }
+
+    @Test
+    fun celebrityCaseTimelineUsesTheSameEditableInputAndSaveCallback() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val celebrityTimeline = source.substringAfter("private fun CelebrityCaseTimeline(")
+            .substringBefore("private fun Int.toTimelineYearLabel()")
+
+        assertTrue(celebrityTimeline.contains("CaseNotesTimelineInput("))
+        assertTrue(celebrityTimeline.contains("enabled = enabled"))
+        assertTrue(celebrityTimeline.contains("onContentChange = onContentChange"))
+    }
+
+    @Test
+    fun ownerFeedbackAndMasterCommentaryShareTheSameFixedHeaderSlot() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val notes = source.substringAfter("private fun ReferenceCaseNotes(")
+            .substringBefore("private fun AiCommentaryEditor(")
+
+        assertTrue(notes.contains("tag = \"owner_feedback_header\""))
+        assertTrue(notes.contains("tag = \"master_commentary_header\""))
+        assertTrue(!notes.contains("WenzhenSectionHeader(\n                title = \"命主反馈\""))
     }
 
     @Test
@@ -533,6 +1067,19 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun almanacPillarTableAndUnselectedHoursShareTheHalfStrengthBackground() {
+        val almanac = locateSourceRoot().resolve("AlmanacFeature.kt").readText()
+        val rail = almanac.substringAfter("private fun AlmanacHourPillarRail(")
+            .substringBefore("private fun AlmanacEightCharacterTable(")
+        val table = almanac.substringAfter("private fun AlmanacEightCharacterTable(")
+            .substringBefore("private fun AlmanacPillarRow(")
+
+        assertTrue(almanac.contains("AlmanacMutedBackgroundAlpha = 0.5f"))
+        assertTrue(rail.contains("else almanacMutedBackgroundColor()"))
+        assertTrue(table.contains("color = almanacMutedBackgroundColor()"))
+    }
+
+    @Test
     fun baziSkinSystemKeepsSixLocalOnlySkinsWithTheNanfengjiVerticalPreviewFlow() {
         val root = locateSourceRoot()
         val skin = File(root, "BaziSkin.kt").readText()
@@ -565,6 +1112,11 @@ class InteractionShapeContractTest {
         assertTrue(header.contains("BaziHomeFlowOverlay("))
         assertTrue(header.contains("BaziHomeHeaderArtworkOverscan"))
         assertTrue(header.contains("点击或左右滑动可查看五行流转效果"))
+        assertTrue(header.contains("mutableStateOf(baziHomeSolarDateTime())"))
+        assertTrue(header.contains("LaunchedEffect(Unit)"))
+        assertTrue(header.contains("currentSolarTime = baziHomeSolarDateTime()"))
+        assertTrue(header.contains(".align(Alignment.BottomStart)"))
+        assertTrue(header.contains("yyyy年MM月dd日 · HH:mm:ss"))
         assertTrue(picker.contains("private fun BaziHomeFlowOverlay("))
         assertTrue(picker.contains("Canvas(modifier = modifier)"))
         assertTrue(picker.contains("Brush.linearGradient("))

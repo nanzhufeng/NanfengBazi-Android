@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi
 
 import java.time.Instant
+import java.net.SocketTimeoutException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -9,6 +10,118 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiCommentaryFeatureTest {
+    @Test
+    fun `千问为长响应保留更长超时并给出可行动提示`() {
+        assertEquals(180_000, aiCommentaryReadTimeoutMillis(AiCommentaryProviderId.QWEN))
+        assertEquals(120_000, aiCommentaryReadTimeoutMillis(AiCommentaryProviderId.DEEPSEEK))
+        assertEquals(
+            "千问响应超时，请稍后重试或选择更快模型。",
+            aiCommentaryTransportFailureMessage(
+                AiCommentaryProviderId.QWEN,
+                SocketTimeoutException(),
+            ),
+        )
+    }
+
+    @Test
+    fun `OpenRouter 仅为明确的短暂服务故障短退避一次`() {
+        assertEquals(
+            2_000L,
+            aiCommentaryAutomaticRetryDelayMillis(
+                AiCommentaryProviderId.OPEN_ROUTER,
+                429,
+                "2",
+            ),
+        )
+        assertEquals(
+            750L,
+            aiCommentaryAutomaticRetryDelayMillis(
+                AiCommentaryProviderId.OPEN_ROUTER,
+                503,
+                null,
+            ),
+        )
+        assertEquals(
+            null,
+            aiCommentaryAutomaticRetryDelayMillis(
+                AiCommentaryProviderId.OPEN_ROUTER,
+                408,
+                "1",
+            ),
+        )
+        assertEquals(
+            null,
+            aiCommentaryAutomaticRetryDelayMillis(
+                AiCommentaryProviderId.DEEPSEEK,
+                503,
+                "1",
+            ),
+        )
+    }
+
+    @Test
+    fun `OpenRouter 403 安全策略与权限被分开呈现且不保留原始错误体`() {
+        assertEquals(
+            "OpenRouter 安全策略拦截了本次材料（HTTP 403），请检查该 Key 的 Guardrail 或内容策略。",
+            aiCommentaryHttpFailureMessage(
+                AiCommentaryProviderId.OPEN_ROUTER,
+                403,
+                """{"error":{"message":"Request blocked: prompt injection patterns detected"}}""",
+            ),
+        )
+        assertEquals(
+            "OpenRouter 拒绝本次请求（HTTP 403），请检查该 Key 的模型白名单、用量上限或组织权限。",
+            aiCommentaryHttpFailureMessage(
+                AiCommentaryProviderId.OPEN_ROUTER,
+                403,
+                """{"error":{"message":"permission denied"}}""",
+            ),
+        )
+    }
+
+    @Test
+    fun `流式响应仅聚合最终正文与用量`() {
+        val payload = decodeAiCommentaryResponsePayload(
+            """
+            data: {"choices":[{"delta":{"reasoning_content":"先分析"}}]}
+            data: {"choices":[{"delta":{"content":"{\\\"summary\\\":\\\"结论"}}]}
+            data: {"choices":[{"delta":{"content":"\\\"}"}}],"usage":{"prompt_tokens":123,"completion_tokens":45}}
+            data: [DONE]
+            """.trimIndent(),
+        )
+
+        requireNotNull(payload)
+        assertEquals("{\\\"summary\\\":\\\"结论\\\"}", payload.content)
+        assertEquals(123L, payload.inputTokens)
+        assertEquals(45L, payload.outputTokens)
+    }
+
+    @Test
+    fun `截图录入拒绝已知的千问纯文本模型但允许视觉模型`() {
+        assertEquals(
+            "当前千问模型 qwen3.7-max 仅支持文本输入，不能用于截图识别；请改用支持图片输入的视觉模型后再识别。",
+            aiVisionModelSupportMessage(
+                AiCommentaryProviderConfig(
+                    providerId = AiCommentaryProviderId.QWEN,
+                    enabled = true,
+                    baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    model = "qwen3.7-max",
+                ),
+            ),
+        )
+        assertEquals(
+            null,
+            aiVisionModelSupportMessage(
+                AiCommentaryProviderConfig(
+                    providerId = AiCommentaryProviderId.OPEN_ROUTER,
+                    enabled = true,
+                    baseUrl = "https://openrouter.ai/api/v1",
+                    model = "openai/gpt-5.6-terra",
+                ),
+            ),
+        )
+    }
+
     @Test
     fun `三家默认服务使用固定地址和当前主流分档模型`() {
         val openRouter = AiCommentaryProviderPresets.defaults(AiCommentaryProviderId.OPEN_ROUTER)

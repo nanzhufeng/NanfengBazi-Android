@@ -16,6 +16,8 @@ import com.nanzhufeng.nanfengbazi.data.db.SourceAttachmentEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordEntity
 import com.nanzhufeng.nanfengbazi.data.db.TextRecordRevisionEntity
 import com.nanzhufeng.nanfengbazi.domain.CaseRepository
+import com.nanzhufeng.nanfengbazi.domain.CaseCatalogWriteRequest
+import com.nanzhufeng.nanfengbazi.domain.CaseCatalogWriteResult
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.CaseSearchRequest
 import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
@@ -55,6 +57,7 @@ import java.util.UUID
 import kotlinx.serialization.json.Json
 
 private const val CASE_ID_SQL_BATCH_SIZE = 900
+private const val CATALOG_WRITE_BATCH_SIZE = 48
 
 class RoomCaseRepository(
     private val database: NanfengBaziDatabase,
@@ -152,6 +155,15 @@ class RoomCaseRepository(
         }
     }
 
+    override suspend fun moveBlankPlaceholderCasesToTrash(deletedAt: Instant): Int =
+        database.withTransaction {
+            dao.moveBlankPlaceholderCasesToTrash(
+                placeholderAlias = "某某",
+                generatedAliasPrefix = "某某",
+                deletedAtEpochMillis = deletedAt.toEpochMilli(),
+            )
+        }
+
     override suspend fun deleteTrashedCasesPermanently(caseIds: Set<String>): Int =
         if (caseIds.isEmpty()) {
             0
@@ -167,10 +179,127 @@ class RoomCaseRepository(
         case: BaziCase,
         expectedRevision: Long?,
     ): CaseWriteResult = database.withTransaction {
-        val current = dao.findCase(case.id)
+        saveWithinTransaction(case, expectedRevision)
+    }
+
+    override suspend fun saveCatalogAtomically(
+        requests: List<CaseCatalogWriteRequest>,
+    ): CaseCatalogWriteResult {
+        // A full celebrity catalog replaces hundreds of child rows. Keeping every one of
+        // those deletes/inserts in a single SQLite transaction can leave real devices
+        // waiting indefinitely for the transaction executor. First validate the complete
+        // revision set, then use bounded transactions. If the process is interrupted the
+        // install marker is deliberately not written, so the next launch resumes the same
+        // idempotent catalog rather than treating a partial run as current.
+        val preflight = database.withTransaction {
+            preflightCatalogRequests(requests, catalogCasesById(requests))
+        }
+        if (preflight != null) return CaseCatalogWriteResult.NotApplied(preflight)
+
+        var created = 0
+        var updated = 0
+        for (batch in requests.chunked(CATALOG_WRITE_BATCH_SIZE)) {
+            val result = database.withTransaction {
+                val currentById = catalogCasesById(batch)
+                val conflict = preflightCatalogRequests(batch, currentById)
+                if (conflict != null) {
+                    CaseCatalogWriteResult.NotApplied(conflict)
+                } else {
+                    saveCatalogBatch(batch, currentById)
+                }
+            }
+            when (result) {
+                is CaseCatalogWriteResult.NotApplied -> return result
+                is CaseCatalogWriteResult.Applied -> {
+                    created += result.created
+                    updated += result.updated
+                }
+            }
+        }
+        return CaseCatalogWriteResult.Applied(created, updated)
+    }
+
+    private suspend fun preflightCatalogRequests(
+        requests: List<CaseCatalogWriteRequest>,
+        currentById: Map<String, CaseEntity>,
+    ): CaseWriteResult? {
+        requests.forEach { request ->
+            val current = currentById[request.case.id]
+            val expectedRevision = request.expectedRevision
+            val conflict = when {
+                current == null && expectedRevision != null && expectedRevision != 0L ->
+                    CaseWriteResult.RevisionConflict(request.case.id, expectedRevision, 0)
+                current != null && expectedRevision == null ->
+                    CaseWriteResult.AlreadyExists(request.case.id, current.revision)
+                current != null && expectedRevision != current.revision ->
+                    CaseWriteResult.RevisionConflict(
+                        request.case.id,
+                        requireNotNull(expectedRevision),
+                        current.revision,
+                    )
+                else -> null
+            }
+            if (conflict != null) {
+                return conflict
+            }
+        }
+        return null
+    }
+
+    /**
+     * Catalog synchronization must not turn a revision preflight into one SQL lookup per
+     * celebrity. All callers are already bounded by [CASE_ID_SQL_BATCH_SIZE].
+     */
+    private suspend fun catalogCasesById(
+        requests: List<CaseCatalogWriteRequest>,
+    ): Map<String, CaseEntity> = requests
+        .map { it.case.id }
+        .distinct()
+        .chunked(CASE_ID_SQL_BATCH_SIZE)
+        .flatMap { dao.casesByIds(it) }
+        .associateBy { it.id }
+
+    /**
+     * Writes every child table by catalog batch. The previous per-case delete/insert sequence
+     * produced thousands of Room calls during a single package migration on real devices.
+     */
+    private suspend fun saveCatalogBatch(
+        requests: List<CaseCatalogWriteRequest>,
+        currentById: Map<String, CaseEntity>,
+    ): CaseCatalogWriteResult.Applied {
+        val persisted = requests.map { request ->
+            currentById[request.case.id]?.let { current ->
+                val createdAt = Instant.ofEpochMilli(current.createdAtEpochMillis)
+                request.case.copy(
+                    createdAt = createdAt,
+                    updatedAt = maxOf(request.case.updatedAt, createdAt),
+                    revision = current.revision + 1,
+                )
+            } ?: request.case.copy(revision = 1)
+        }
+        val created = persisted.filter { it.id !in currentById }
+        val updated = persisted.filter { it.id in currentById }
+
+        if (created.isNotEmpty()) dao.insertCases(created.map { it.toCaseEntity() })
+        if (updated.isNotEmpty()) dao.updateCases(updated.map { it.toCaseEntity() })
+        if (updated.isNotEmpty()) deleteChildren(updated.map { it.id })
+        insertChildren(persisted)
+        return CaseCatalogWriteResult.Applied(created.size, updated.size)
+    }
+
+    private suspend fun saveWithinTransaction(
+        case: BaziCase,
+        expectedRevision: Long?,
+    ): CaseWriteResult = saveWithinTransaction(case, expectedRevision, dao.findCase(case.id))
+
+    private suspend fun saveWithinTransaction(
+        case: BaziCase,
+        expectedRevision: Long?,
+        current: CaseEntity?,
+    ): CaseWriteResult {
         if (current == null) {
             if (expectedRevision != null && expectedRevision != 0L) {
-                return@withTransaction CaseWriteResult.RevisionConflict(
+                return CaseWriteResult.RevisionConflict(
                     caseId = case.id,
                     expectedRevision = expectedRevision,
                     actualRevision = 0,
@@ -179,30 +308,32 @@ class RoomCaseRepository(
             val persisted = case.copy(revision = 1)
             dao.insertCase(persisted.toCaseEntity())
             insertChildren(persisted)
-            CaseWriteResult.Created(case.id, 1)
+            return CaseWriteResult.Created(case.id, 1)
         } else {
             if (expectedRevision == null) {
-                return@withTransaction CaseWriteResult.AlreadyExists(
+                return CaseWriteResult.AlreadyExists(
                     caseId = case.id,
                     revision = current.revision,
                 )
             }
             if (expectedRevision != current.revision) {
-                return@withTransaction CaseWriteResult.RevisionConflict(
+                return CaseWriteResult.RevisionConflict(
                     caseId = case.id,
                     expectedRevision = expectedRevision,
                     actualRevision = current.revision,
                 )
             }
             val nextRevision = current.revision + 1
+            val createdAt = Instant.ofEpochMilli(current.createdAtEpochMillis)
             val persisted = case.copy(
-                createdAt = Instant.ofEpochMilli(current.createdAtEpochMillis),
+                createdAt = createdAt,
+                updatedAt = maxOf(case.updatedAt, createdAt),
                 revision = nextRevision,
             )
             deleteChildren(case.id)
             dao.updateCase(persisted.toCaseEntity())
             insertChildren(persisted)
-            CaseWriteResult.Updated(case.id, nextRevision)
+            return CaseWriteResult.Updated(case.id, nextRevision)
         }
     }
 
@@ -234,6 +365,38 @@ class RoomCaseRepository(
             groups = dao.groups(id),
             tags = dao.tags(id),
         )
+    }
+
+    override suspend fun findByIds(ids: Set<String>): Map<String, BaziCase> = database.withTransaction {
+        if (ids.isEmpty()) return@withTransaction emptyMap()
+        require(ids.size <= CASE_ID_SQL_BATCH_SIZE) { "批量命例读取超过 SQL 上限" }
+        val caseIds = ids.toList()
+        val groupsById = dao.allGroups().associateBy { it.id }
+        val tagsById = dao.allTags().associateBy { it.id }
+        val snapshotsByCase = dao.calculationSnapshotsByCaseIds(caseIds).groupBy { it.caseId }
+        val recordsByCase = dao.textRecordsByCaseIds(caseIds).groupBy { it.caseId }
+        val recordRevisionsByCase = dao.textRecordRevisionsByCaseIds(caseIds).groupBy { it.caseId }
+        val eventsByCase = dao.eventsByCaseIds(caseIds).groupBy { it.caseId }
+        val eventRevisionsByCase = dao.eventRevisionsByCaseIds(caseIds).groupBy { it.caseId }
+        val attachmentsByCase = dao.attachmentsByCaseIds(caseIds).groupBy { it.caseId }
+        val evidenceByCase = dao.fieldEvidenceByCaseIds(caseIds).groupBy { it.caseId }
+        val groupIdsByCase = dao.caseGroupCrossRefsByCaseIds(caseIds)
+            .groupBy({ it.caseId }, { it.groupId })
+        val tagIdsByCase = dao.caseTagCrossRefsByCaseIds(caseIds)
+            .groupBy({ it.caseId }, { it.tagId })
+        dao.casesByIds(caseIds).associate { entity ->
+            entity.id to entity.toDomain(
+                snapshots = snapshotsByCase[entity.id].orEmpty(),
+                textRecords = recordsByCase[entity.id].orEmpty(),
+                textRecordRevisions = recordRevisionsByCase[entity.id].orEmpty(),
+                events = eventsByCase[entity.id].orEmpty(),
+                eventRevisions = eventRevisionsByCase[entity.id].orEmpty(),
+                attachments = attachmentsByCase[entity.id].orEmpty(),
+                fieldEvidence = evidenceByCase[entity.id].orEmpty(),
+                groups = groupIdsByCase[entity.id].orEmpty().mapNotNull(groupsById::get),
+                tags = tagIdsByCase[entity.id].orEmpty().mapNotNull(tagsById::get),
+            )
+        }
     }
 
     override suspend fun search(request: CaseSearchRequest): List<CaseSummary> =
@@ -333,6 +496,18 @@ class RoomCaseRepository(
         dao.deleteAttachments(caseId)
     }
 
+    private suspend fun deleteChildren(caseIds: List<String>) {
+        dao.deleteFieldEvidence(caseIds)
+        dao.deleteCalculationSnapshots(caseIds)
+        dao.deleteTextRecords(caseIds)
+        dao.deleteTextRecordRevisions(caseIds)
+        dao.deleteEvents(caseIds)
+        dao.deleteEventRevisions(caseIds)
+        dao.deleteCaseGroupCrossRefs(caseIds)
+        dao.deleteCaseTagCrossRefs(caseIds)
+        dao.deleteAttachments(caseIds)
+    }
+
     private suspend fun insertChildren(case: BaziCase) {
         dao.insertAttachments(case.attachments.mapIndexed { index, value ->
             value.toEntity(case.id, index)
@@ -383,6 +558,46 @@ class RoomCaseRepository(
         dao.insertCaseTagCrossRefs(
             case.tags.map { CaseTagCrossRefEntity(case.id, it.id) },
         )
+    }
+
+    private suspend fun insertChildren(cases: List<BaziCase>) {
+        dao.insertAttachments(cases.flatMap { case ->
+            case.attachments.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertCalculationSnapshots(cases.flatMap { case ->
+            case.calculationSnapshots.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertTextRecords(cases.flatMap { case ->
+            case.textRecords.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertTextRecordRevisions(cases.flatMap { case ->
+            case.textRecordRevisions.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertEvents(cases.flatMap { case ->
+            case.events.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertEventRevisions(cases.flatMap { case ->
+            case.eventRevisions.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertFieldEvidence(cases.flatMap { case ->
+            case.fieldEvidence.mapIndexed { index, value -> value.toEntity(case.id, index) }
+        })
+        dao.insertGroups(cases.flatMap { case ->
+            case.groups.map {
+                CaseGroupEntity(
+                    id = it.id,
+                    name = it.name,
+                    libraryType = it.libraryType.name,
+                )
+            }
+        }.distinctBy { it.id })
+        dao.insertTags(cases.flatMap { case -> case.tags.map { CaseTagEntity(it.id, it.name) } }.distinctBy { it.id })
+        dao.insertCaseGroupCrossRefs(cases.flatMap { case ->
+            case.groups.map { CaseGroupCrossRefEntity(case.id, it.id) }
+        })
+        dao.insertCaseTagCrossRefs(cases.flatMap { case ->
+            case.tags.map { CaseTagCrossRefEntity(case.id, it.id) }
+        })
     }
 }
 
