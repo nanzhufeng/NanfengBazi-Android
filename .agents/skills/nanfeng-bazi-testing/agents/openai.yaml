@@ -1,0 +1,4 @@
+interface:
+  display_name: "南枫八字测试"
+  short_description: "Run safe Android verification and report evidence boundaries clearly"
+  default_prompt: "Use $nanfeng-bazi-testing to validate a 南枫八字 Android change."

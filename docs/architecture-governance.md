@@ -122,8 +122,8 @@
 | 单命例附件包导出 | `.nfbcase` v1；manifest 绑定 `case.json` 与每个附件的 ID/路径/大小/SHA-256，可明文或密码保护 | `MainActivity` SAF → `StageTwoViewModel` → `SingleCaseBundleService.export` | Android 系统文件明文/加密往返；附件字节与引用完整 |
 | 单命例附件包预览/提交 | 私有临时区防御性展开；提交重读同一来源并复核 manifest/文档，重建附件身份及引用 | `SingleCaseBundleService.preview/commitImport/commitMerge` → 共享附件事务 | 零写入预览、错密码拒绝、来源变化拒绝、失败回滚与重试 |
 | 单命例附件包密码容器 | 独立 magic/type 的保护版本 1；ZIP 流式进入 PBKDF2-HMAC-SHA256 + AES-256-GCM | `SingleCaseBundleEncryption`，只由 `SingleCaseBundleService` 调用 | 不整包入内存；预览和提交分别输入密码并认证 |
-| 完整备份导出 | 明文风险确认后写出 ZIP，或把 ZIP 流式写入独立 v1 密码容器 `.nfbak` | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP/密码容器、manifest/文件哈希与导出计数 |
-| 完整备份只读预览 | 系统打开文档；密码文件先认证解密，再校验 ZIP、写入独立临时 Room 数据库完整读回，并逐命例对照当前库稳定 ID/出生输入/四柱 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 临时库约束/实体/领域聚合往返通过；普通/密码文件显示候选原因、本地 revision 与回收站状态；非空库零写入 |
+| 完整备份导出 | 明文风险确认后逐条流式写 ZIP，或把 ZIP 流式写入独立 v1 密码容器 `.nfbak`；清单首遍只计算大小/SHA-256，禁止整表 JSON／ByteArray | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.export` | 真实系统 ZIP/密码容器、manifest/文件哈希与导出计数 |
+| 完整备份只读预览 | 系统打开文档；密码文件先认证解密，再从文件流解码、写入完成后删除的独立磁盘临时 Room 数据库并完整读回，逐命例对照当前库稳定 ID/出生输入/四柱 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.preview` | 临时库约束/实体/领域聚合往返通过；普通/密码文件显示候选原因、本地 revision 与回收站状态；非空库零写入 |
 | 完整备份密码容器 | 独立保护版本 1；PBKDF2-HMAC-SHA256 600,000 次、AES-256-GCM 与参数 AAD；不整包入内存 | `BackupEncryption`，只由 `CaseBackupService` 调用 | 参数边界、认证失败、明文不可见及 Android `.nfbak` 往返 |
 | 完整备份恢复计划 | Android 逐例选择按原 ID/跳过/保留两份/范围合并；全部覆盖后重新读取当前冲突并绑定 manifest | `FullBackupPreviewDialog` → `StageTwoViewModel` → `CaseBackupService.prepareRestorePlan` | 决策完备性、目标/范围约束、回收站拒绝和 `PREVIEW_STALE`；计划通过仍零写入 |
 | 完整备份恢复执行 | 明文/密码备份最终确认后重读同一文件并再次执行独立临时库预演；按原 ID、保留两份、跳过或范围合并 | `MainActivity` SAF → `StageTwoViewModel` → `CaseBackupService.executeRestorePlan` | 文件与完整来源聚合一致、临时库再次通过、提交前冲突复查、子项 ID 重建、Room 原子事务 |
@@ -165,10 +165,12 @@
 | 页面消费 | `StageTwoViewModel` → 专业细盘 | 五层点击由 UI 传 `ProfessionalFortuneSelection(layer, observedAt)`，ViewModel 调用领域 `select()` 并在成功后原子替换观察时间和结果；校验失败保留原结果。自由日期与今天继续走 `locate()`。九列与时间轴只消费领域输出，UI 不计算年龄、藏干、月界或父层归属 |
 | 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v4` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，按稳定优先级每柱最多展示 5 项，并以实际干支为行首逐时间柱输出；UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
+| 命局结构候选 | `BaziEngine.calculate()` → `BaziStructuralProfileAnalyzer` → `CalculationResult.structuralProfile` | 以最终四柱、月令、藏干、透干、通根与天干生扶克泄耗形成旺衰与格局候选并保存证据；不生成喜忌、用神、吉凶或现实结论。问真自定旺衰／格局仍作为独立来源记录，不覆盖算法候选 |
 | 问真用户列表正式提交 | `ScreenshotImportCommitter` → `FourPillarsLookup` → `BaziEngine.calculate()` → `CaseRepository` | 只按同一公历日期保留两种子时口径下可复算的民用候选；全部标记 `DOUBLE_HOUR_ONLY`，无解显式拒绝，不按时支硬填整点、不推算真太阳时 |
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
 | 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
+| 八字合盘 | 对应性别活动用户命例 → `CaseRepository.findByIds()` → `BaziCompatibilityAnalyzer` → `BaziCompatibilityHistoryStore` → `BaziCompatibilityScreen` | 固定男方／女方双卡及始终可进入的合盘记录；缺一方时可直接进入已预设性别的录入页并在有效保存后返回；两方明确选择并点击开始后，才读取两个不同用户命例的已采用快照。旺衰／格局只投影其中的 `structuralProfile`；旧报告只依其冻结四柱补齐候选，绝不重排或回写命例。有效报告作为本机无备份独立快照去重保存，记录列表直达该报告而非单命例；规则版本、柱位、协调/沟通信号和时刻/口径提示不重算、不上传、不输出匹配分数或现实婚配结论 |
 | 记录高级筛选 | `StageTwoViewModel` → `CaseSearchRequest.advancedFilter` → `RoomCaseRepository` | 干支、四柱干／支与各自十神、地区、旺相休囚死和神煞一次进入仓储查询；天干十神与地支本气十神一律取自已采用快照的 `BasicChartDetails`，Compose 只维护草稿与展示，不计算十神 |
 | 四柱反查 | 首页地区／时间 → `FourPillarsLookup.search()` → `TymeFourPillarsLookup` → `BaziEngine.calculate()` 复核 → 用户点选回填 `CaseFormState` | 首页地区是时区的唯一来源；四柱面板只编辑四柱与年份范围，不重复显示或修改地区／时区。只查 1800–2200 的民用时，DST 重叠按 offset 分列、不存在时刻排除；`getSolarTimes` 所需全局 provider 只在适配器锁内临时切换并恢复；原始反查为空时仅在适配器内按 60 日周期扫描民用代表时刻且仍由唯一正向引擎复算；点选只回填日期、时辰和 offset 并标记 `DOUBLE_HOUR_ONLY`，不改写地区／时区，不伪造真太阳时/精确分钟，候选不自动保存 |
 | 北京时间默认 | `BaziTimeZoneDefaults` → 新建/恢复/导入/国内地点/备份命名 | `Asia/Shanghai` 是唯一默认值与备份文件名时区；只在缺失值时回退，历史命例与用户选择的 IANA 时区保持原样 |

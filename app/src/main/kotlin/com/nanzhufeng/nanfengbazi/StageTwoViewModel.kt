@@ -39,6 +39,10 @@ import com.nanzhufeng.nanfengbazi.data.exchange.SingleCaseValueChoice
 import com.nanzhufeng.nanfengbazi.domain.AlmanacContract
 import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityAnalyzer
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityReport
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityResult
 import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptContract
 import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptRequest
 import com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptResult
@@ -172,6 +176,8 @@ import kotlinx.coroutines.withTimeout
 sealed interface AppDestination {
     data object CaseList : AppDestination
     data object CaseComparison : AppDestination
+    data object BaziCompatibility : AppDestination
+    data object BaziCompatibilityReport : AppDestination
     data object FourPillarsLookup : AppDestination
     data object Almanac : AppDestination
     data object RecordHub : AppDestination
@@ -252,6 +258,22 @@ class StageTwoNavigator {
 
     fun openCaseComparison(): AppDestination {
         return push(AppDestination.CaseComparison)
+    }
+
+    fun openBaziCompatibility(): AppDestination = push(AppDestination.BaziCompatibility)
+
+    fun openBaziCompatibilityReport(): AppDestination = push(AppDestination.BaziCompatibilityReport)
+
+    fun openCompatibilityParticipantCreate(): AppDestination = push(AppDestination.CreateCase)
+
+    fun openCompatibilityParticipantList(): AppDestination = push(AppDestination.CaseList)
+
+    fun returnToBaziCompatibility(): AppDestination {
+        val target = stack.indexOfLast { it == AppDestination.BaziCompatibility }
+        if (target >= 0) {
+            while (stack.lastIndex > target) stack.removeAt(stack.lastIndex)
+        }
+        return current
     }
 
     fun openFourPillarsLookup(): AppDestination {
@@ -341,6 +363,18 @@ class StageTwoNavigator {
             AppDestination.CaseComparison -> {
                 stack += AppDestination.CaseList
                 stack += destination
+            }
+
+            AppDestination.BaziCompatibility -> {
+                stack += AppDestination.CreateCase
+                stack += destination
+            }
+
+            AppDestination.BaziCompatibilityReport -> {
+                // 合盘结果本身是本次会话的瞬时阅读页；进程恢复时回到可重新发起的合盘页，
+                // 不显示一个缺少双方快照的空结果页。
+                stack += AppDestination.CreateCase
+                stack += AppDestination.BaziCompatibility
             }
 
             AppDestination.FourPillarsLookup -> {
@@ -466,6 +500,22 @@ data class StageTwoUiState(
     val comparisonReport: CaseComparisonReport? = null,
     val comparisonLoading: Boolean = false,
     val comparisonError: String? = null,
+    val compatibilityCandidates: List<CaseSummary> = emptyList(),
+    val compatibilityLeftCaseId: String? = null,
+    val compatibilityRightCaseId: String? = null,
+    val compatibilityReport: BaziCompatibilityReport? = null,
+    val compatibilityLoading: Boolean = false,
+    val compatibilityError: String? = null,
+    val compatibilityParticipantRole: SexForFortuneDirection? = null,
+    val compatibilityParticipantSelectionRole: SexForFortuneDirection? = null,
+    val compatibilityParticipantReplacementFromReport: Boolean = false,
+    val compatibilityHistory: List<BaziCompatibilityRecord> = emptyList(),
+    /** Prevent the records page from treating its initial empty list as a real empty state. */
+    val compatibilityHistoryLoading: Boolean = false,
+    /** Read/write failures keep the existing file and surface recovery instead of pretending history is empty. */
+    val compatibilityHistoryError: String? = null,
+    val compatibilityHistoryRecordId: String? = null,
+    val compatibilityHistoryReplacementRecordId: String? = null,
     val fourPillarsLookupForm: FourPillarsLookupFormState =
         FourPillarsLookupFormState(),
     val fourPillarsLookupCandidates: List<FourPillarsLookupCandidate> = emptyList(),
@@ -628,6 +678,11 @@ private data class CaseListProjection(
     val groupCaseCounts: Map<String, Int>,
 )
 
+private fun SexForFortuneDirection.compatibilityRoleName(): String = when (this) {
+    SexForFortuneDirection.MAN -> "男方"
+    SexForFortuneDirection.WOMAN -> "女方"
+}
+
 /**
  * The record toolbar and its rows are one user-visible session.  A projection
  * produced for an earlier session must never be published into a later tab.
@@ -707,6 +762,8 @@ class StageTwoViewModel(
     private val backupWorkRoot: Path? = null,
     private val calculationPreferenceStore: CalculationPreferenceStore =
         InMemoryCalculationPreferenceStore(),
+    private val compatibilityHistoryStore: BaziCompatibilityHistoryStore =
+        InMemoryBaziCompatibilityHistoryStore(),
     private val aiCommentarySettings: AiCommentarySettingsStore? = null,
     private val aiCommentaryGenerator: AiCommentaryGenerator? = null,
     private val aiCommentaryCallLog: AiCommentaryCallLogStore? = null,
@@ -764,8 +821,12 @@ class StageTwoViewModel(
         ): Boolean = size > FORTUNE_POSITION_CACHE_SIZE
     }
     private var comparisonJob: Job? = null
+    private var compatibilityJob: Job? = null
+    /** Invalidates a pending history read whenever a newer history mutation wins. */
+    private var compatibilityHistoryGeneration: Long = 0
     private var fourPillarsLookupJob: Job? = null
     private var almanacJob: Job? = null
+    private var almanacEntryJob: Job? = null
     private var detailOpeningJob: Job? = null
     private val detailPrefetchJobs = LinkedHashMap<String, Job>()
     private var fortunePositionJob: Job? = null
@@ -775,6 +836,8 @@ class StageTwoViewModel(
     private var preparedCaseSaveAttempt: PreparedCaseSaveAttempt? = null
     private var almanacRequestId: Long = 0
     private var pendingAlmanacQuery: AlmanacMonthQuery? = null
+    private var warmedAlmanacView: AlmanacMonthView? = null
+    private var almanacWarmJob: Job? = null
     private var birthPickerTodayJob: Job? = null
     private var caseNotesAutoSaveJob: Job? = null
     private var caseNotesHydrationJob: Job? = null
@@ -931,6 +994,9 @@ class StageTwoViewModel(
         if (mutableState.value.destination == AppDestination.CaseComparison) {
             loadComparisonWorkspace()
         }
+        if (mutableState.value.destination == AppDestination.BaziCompatibility) {
+            loadCompatibilityWorkspace()
+        }
         if (
             mutableState.value.destination == AppDestination.FourPillarsLookup &&
             mutableState.value.fourPillarsLookupHasSearched
@@ -939,6 +1005,8 @@ class StageTwoViewModel(
         }
         if (mutableState.value.destination == AppDestination.Almanac) {
             loadAlmanac()
+        } else {
+            warmCurrentAlmanacView()
         }
         // 根页面初次组成时不会主动切换筛选条件；这里必须加载一次，避免首次打开
         // 记录页显示空列表、只能靠用户手动切换后才出现已有案例。
@@ -3826,6 +3894,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         mutableState.update {
             it.copy(
                 destination = navigator.openCreate(),
+                compatibilityParticipantRole = null,
                 visibility = CaseVisibility.ACTIVE,
                 libraryType = CaseLibraryType.CELEBRITY,
                 selectedGroupId = null,
@@ -3853,6 +3922,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         mutableState.update {
             it.copy(
                 destination = navigator.openCreate(),
+                compatibilityParticipantRole = null,
                 visibility = CaseVisibility.ACTIVE,
                 libraryType = CaseLibraryType.USER,
                 selectedGroupId = null,
@@ -3895,6 +3965,170 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         if (!cachedReady) loadComparisonWorkspace()
     }
 
+    fun openBaziCompatibility() {
+        val cachedReady = mutableState.value.compatibilityCandidates.isNotEmpty()
+        mutableState.update {
+            it.copy(
+                destination = navigator.openBaziCompatibility(),
+                compatibilityLoading = !cachedReady,
+                compatibilityError = null,
+                compatibilityHistoryLoading = true,
+                compatibilityHistoryError = null,
+                message = null,
+            )
+        }
+        loadCompatibilityHistory()
+        if (!cachedReady) loadCompatibilityWorkspace()
+    }
+
+    fun createCompatibilityParticipant(sex: SexForFortuneDirection) {
+        val groups = cachedGroupsForLibrary(CaseLibraryType.USER)
+        mutableState.update {
+            it.copy(
+                destination = navigator.openCompatibilityParticipantCreate(),
+                compatibilityParticipantRole = sex,
+                visibility = CaseVisibility.ACTIVE,
+                libraryType = CaseLibraryType.USER,
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                availableGroups = groups,
+                availableFormGroups = groups,
+                form = it.form.copy(
+                    alias = "",
+                    name = "",
+                    sex = sex,
+                    libraryType = CaseLibraryType.USER,
+                ),
+                formError = null,
+                duplicateCandidates = emptyList(),
+                previewing = false,
+                instantCalculation = null,
+                mutationError = null,
+                message = null,
+            )
+        }
+        refreshCreateGroupsIfCatalogUnavailable()
+    }
+
+    fun openCompatibilityParticipantList(sex: SexForFortuneDirection) {
+        val groups = cachedGroupsForLibrary(CaseLibraryType.USER)
+        mutableState.update {
+            it.copy(
+                destination = navigator.openCompatibilityParticipantList(),
+                compatibilityParticipantSelectionRole = sex,
+                compatibilityParticipantReplacementFromReport =
+                    it.destination == AppDestination.BaziCompatibilityReport ||
+                        it.compatibilityHistoryRecordId != null,
+                visibility = CaseVisibility.ACTIVE,
+                libraryType = CaseLibraryType.USER,
+                query = "",
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(sex = sex),
+                availableGroups = groups,
+                listError = null,
+                message = null,
+            )
+        }
+        refreshCasesFromCache()
+    }
+
+    fun cancelCompatibilityParticipantList() {
+        val current = mutableState.value
+        if (current.compatibilityParticipantSelectionRole == null) return
+        val destination = if (current.compatibilityParticipantReplacementFromReport) {
+            // 从报告或历史详情进入时，列表的直接上级就是打开它的报告。
+            navigator.back()
+        } else {
+            navigator.returnToBaziCompatibility()
+        }
+        mutableState.update {
+            it.copy(
+                destination = destination,
+                compatibilityParticipantSelectionRole = null,
+                compatibilityParticipantReplacementFromReport = false,
+                query = "",
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                listError = null,
+            )
+        }
+    }
+
+    fun selectCompatibilityParticipantFromList(caseId: String) {
+        val current = mutableState.value
+        val role = current.compatibilityParticipantSelectionRole ?: return
+        val selected = current.cases.firstOrNull {
+            it.id == caseId && it.sexForFortuneDirection == role
+        } ?: return
+        val leftCaseId = if (role == SexForFortuneDirection.MAN) {
+            selected.id
+        } else {
+            current.compatibilityLeftCaseId
+        }
+        val rightCaseId = if (role == SexForFortuneDirection.WOMAN) {
+            selected.id
+        } else {
+            current.compatibilityRightCaseId
+        }
+        val returnToReport = current.compatibilityParticipantReplacementFromReport
+        val historyReplacementRecordId = current.compatibilityHistoryRecordId
+        val destination = if (returnToReport) {
+            navigator.returnToBaziCompatibility()
+            navigator.openBaziCompatibilityReport()
+        } else {
+            navigator.returnToBaziCompatibility()
+        }
+        mutableState.update {
+            val candidates = (it.compatibilityCandidates.filterNot { candidate ->
+                candidate.id == selected.id
+            } + selected)
+            it.copy(
+                destination = destination,
+                compatibilityParticipantSelectionRole = null,
+                compatibilityParticipantReplacementFromReport = false,
+                compatibilityCandidates = candidates,
+                compatibilityLeftCaseId = leftCaseId,
+                compatibilityRightCaseId = rightCaseId,
+                compatibilityReport = null,
+                compatibilityHistoryRecordId = null,
+                compatibilityHistoryReplacementRecordId = historyReplacementRecordId,
+                compatibilityError = null,
+                compatibilityLoading = returnToReport,
+                query = "",
+                selectedGroupId = null,
+                selectedTagId = null,
+                advancedFilter = CaseAdvancedFilter(),
+                listError = null,
+            )
+        }
+        if (returnToReport && leftCaseId != null && rightCaseId != null) {
+            loadCompatibilityReport(leftCaseId, rightCaseId)
+        }
+    }
+
+    fun cancelCompatibilityParticipantCreate() {
+        if (mutableState.value.compatibilityParticipantRole == null) return
+        mutableState.update {
+            it.copy(
+                destination = navigator.returnToBaziCompatibility(),
+                compatibilityParticipantRole = null,
+                form = CaseFormState(
+                    ratHourRule = it.defaultRatHourRule,
+                    libraryType = CaseLibraryType.USER,
+                ),
+                formError = null,
+                duplicateCandidates = emptyList(),
+                previewing = false,
+                instantCalculation = null,
+                mutationError = null,
+                message = null,
+            )
+        }
+    }
+
     fun openFourPillarsLookup(pillars: List<String> = emptyList()) {
         mutableState.update {
             val selected = if (pillars.size == 4) {
@@ -3921,19 +4155,73 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openAlmanac() {
-        val today = LocalDate.now(observationClock)
+        val query = currentAlmanacQuery()
+        val visibleSeed = warmedAlmanacView?.takeIf { it.query == query }
+            ?: mutableState.value.almanacView?.takeIf { it.query == query }
+        // 冷启动时预热已经在读取同一份“今天”视图。不能为了立即换路由先把页面
+        // 置成空白：等待这份本地读取完成后一次性进入，避免用户看见闪屏/子时默认值。
+        val runningWarmup = almanacWarmJob?.takeIf { it.isActive }
+        if (visibleSeed == null && runningWarmup != null) {
+            almanacEntryJob?.cancel()
+            almanacEntryJob = viewModelScope.launch {
+                runningWarmup.join()
+                val warmedSeed = warmedAlmanacView?.takeIf { it.query == query }
+                enterAlmanac(query, warmedSeed)
+                if (warmedSeed == null) loadAlmanac(query)
+            }
+            return
+        }
+        enterAlmanac(query, visibleSeed)
+        if (visibleSeed == null) loadAlmanac(query)
+    }
+
+    private fun enterAlmanac(
+        query: AlmanacMonthQuery,
+        visibleSeed: AlmanacMonthView?,
+    ) {
         mutableState.update {
             it.copy(
                 destination = navigator.openAlmanac(),
-                almanacYear = today.year,
-                almanacMonth = today.monthValue,
-                almanacSelectedDay = today.dayOfMonth,
-                almanacView = null,
+                almanacYear = query.year,
+                almanacMonth = query.month,
+                almanacSelectedDay = query.selectedDay,
+                almanacSelectedDoubleHourIndex = query.selectedDoubleHourIndex,
+                almanacView = visibleSeed,
+                almanacLoading = visibleSeed == null,
+                almanacRefreshingSelection = false,
                 almanacError = null,
                 message = null,
             )
         }
-        loadAlmanac()
+    }
+
+    /** 首屏预热只保存月视图，不改变当前页面，避免万年历入口先空白再补齐。 */
+    private fun warmCurrentAlmanacView() {
+        val reader = almanacReader ?: return
+        val query = currentAlmanacQuery()
+        if (warmedAlmanacView?.query == query || almanacWarmJob?.isActive == true) return
+        almanacWarmJob?.cancel()
+        almanacWarmJob = viewModelScope.launch {
+            val result = try {
+                withContext(ioDispatcher) { reader.loadMonth(query) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            warmedAlmanacView = (result as? AlmanacResult.Completed)?.month
+        }
+    }
+
+    private fun currentAlmanacQuery(): AlmanacMonthQuery {
+        val now = LocalDateTime.now(observationClock)
+        return AlmanacMonthQuery(
+            year = now.year,
+            month = now.monthValue,
+            selectedDay = now.dayOfMonth,
+            selectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(now.hour),
+            ratHourRule = mutableState.value.defaultRatHourRule,
+        )
     }
 
     fun prepareBirthPickerToday() {
@@ -4604,6 +4892,330 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         }
     }
 
+    fun selectCompatibilityLeft(caseId: String) {
+        val candidates = mutableState.value.compatibilityCandidates
+        val selected = candidates.firstOrNull { it.id == caseId }
+            ?.takeIf { it.sexForFortuneDirection == SexForFortuneDirection.MAN }
+            ?: return
+        val rightCaseId = mutableState.value.compatibilityRightCaseId?.takeUnless { it == caseId }
+        mutableState.update {
+            it.copy(
+                compatibilityLeftCaseId = selected.id,
+                compatibilityRightCaseId = rightCaseId,
+                compatibilityReport = null,
+                compatibilityHistoryRecordId = null,
+                compatibilityError = null,
+                compatibilityLoading = false,
+            )
+        }
+    }
+
+    fun selectCompatibilityRight(caseId: String) {
+        val candidates = mutableState.value.compatibilityCandidates
+        val selected = candidates.firstOrNull { it.id == caseId }
+            ?.takeIf { it.sexForFortuneDirection == SexForFortuneDirection.WOMAN }
+            ?: return
+        val leftCaseId = mutableState.value.compatibilityLeftCaseId?.takeUnless { it == caseId }
+        mutableState.update {
+            it.copy(
+                compatibilityLeftCaseId = leftCaseId,
+                compatibilityRightCaseId = selected.id,
+                compatibilityReport = null,
+                compatibilityHistoryRecordId = null,
+                compatibilityError = null,
+                compatibilityLoading = false,
+            )
+        }
+    }
+
+    fun retryBaziCompatibility() {
+        val state = mutableState.value
+        val leftCaseId = state.compatibilityLeftCaseId
+        val rightCaseId = state.compatibilityRightCaseId
+        if (
+            state.destination == AppDestination.BaziCompatibilityReport &&
+                leftCaseId != null && rightCaseId != null
+        ) {
+            loadCompatibilityReport(leftCaseId, rightCaseId)
+        } else {
+            loadCompatibilityWorkspace()
+        }
+    }
+
+    fun openCompatibilityHistoryRecord(recordId: String) {
+        val record = mutableState.value.compatibilityHistory.firstOrNull { it.id == recordId } ?: return
+        mutableState.update {
+            it.copy(
+                compatibilityHistoryRecordId = record.id,
+                compatibilityLeftCaseId = record.report.left.caseId,
+                compatibilityRightCaseId = record.report.right.caseId,
+                compatibilityReport = record.report,
+                compatibilityLoading = false,
+                compatibilityError = null,
+            )
+        }
+    }
+
+    fun closeCompatibilityHistoryRecord() {
+        mutableState.update {
+            it.copy(
+                compatibilityHistoryRecordId = null,
+                compatibilityHistoryReplacementRecordId = null,
+                compatibilityReport = null,
+                compatibilityError = null,
+            )
+        }
+    }
+
+    fun deleteCompatibilityHistoryRecords(recordIds: Set<String>) {
+        if (recordIds.isEmpty()) return
+        viewModelScope.launch {
+            val deleted = withContext(ioDispatcher) {
+                compatibilityHistoryStore.delete(recordIds)
+            }
+            if (deleted == 0) return@launch
+            compatibilityHistoryGeneration += 1
+            mutableState.update { current ->
+                current.copy(
+                    compatibilityHistory = current.compatibilityHistory.filterNot { it.id in recordIds },
+                    compatibilityHistoryRecordId = current.compatibilityHistoryRecordId
+                        ?.takeUnless { it in recordIds },
+                    compatibilityHistoryReplacementRecordId = current.compatibilityHistoryReplacementRecordId
+                        ?.takeUnless { it in recordIds },
+                    compatibilityHistoryLoading = false,
+                    compatibilityHistoryError = null,
+                )
+            }
+        }
+    }
+
+    fun retryCompatibilityHistory() {
+        mutableState.update {
+            it.copy(
+                compatibilityHistoryLoading = true,
+                compatibilityHistoryError = null,
+            )
+        }
+        loadCompatibilityHistory()
+    }
+
+    fun analyzeBaziCompatibility() {
+        val state = mutableState.value
+        val leftCaseId = state.compatibilityLeftCaseId
+        val rightCaseId = state.compatibilityRightCaseId
+        if (leftCaseId == null || rightCaseId == null) {
+            mutableState.update {
+                it.copy(
+                    compatibilityError = "请先分别选择男方和女方的已保存命例。",
+                    compatibilityLoading = false,
+                )
+            }
+            return
+        }
+        mutableState.update {
+            it.copy(
+                destination = navigator.openBaziCompatibilityReport(),
+                compatibilityHistoryRecordId = null,
+                compatibilityHistoryReplacementRecordId = null,
+            )
+        }
+        loadCompatibilityReport(leftCaseId, rightCaseId)
+    }
+
+    private fun loadCompatibilityWorkspace() {
+        compatibilityJob?.cancel()
+        compatibilityJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    compatibilityLoading = true,
+                    compatibilityError = null,
+                    compatibilityReport = null,
+                )
+            }
+            val candidates = try {
+                withContext(ioDispatcher) {
+                    caseRepository.search(
+                        CaseSearchRequest(
+                            sortOrder = CaseSortOrder.UPDATED_DESC,
+                            visibility = CaseVisibility.ACTIVE,
+                            libraryType = CaseLibraryType.USER,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.update {
+                    it.copy(
+                        compatibilityLoading = false,
+                        compatibilityError = "无法读取合盘命例，请重试。",
+                    )
+                }
+                return@launch
+            }
+            val current = mutableState.value
+            mutableState.update {
+                it.copy(
+                    compatibilityCandidates = candidates,
+                    compatibilityLeftCaseId = current.compatibilityLeftCaseId
+                        ?.takeIf { id -> candidates.any { it.id == id } },
+                    compatibilityRightCaseId = current.compatibilityRightCaseId
+                        ?.takeIf { id -> id != current.compatibilityLeftCaseId && candidates.any { it.id == id } },
+                    compatibilityReport = null,
+                    compatibilityLoading = false,
+                    compatibilityError = null,
+                )
+            }
+        }
+    }
+
+    private fun loadCompatibilityHistory() {
+        val requestGeneration = ++compatibilityHistoryGeneration
+        viewModelScope.launch {
+            val records = try {
+                withContext(ioDispatcher) {
+                    val stored = compatibilityHistoryStore.list()
+                    val historyCaseIds = stored.flatMap { record ->
+                        listOf(record.report.left.caseId, record.report.right.caseId)
+                    }.toSet()
+                    val cases = if (historyCaseIds.isEmpty()) {
+                        emptyMap()
+                    } else {
+                        runCatching { caseRepository.findByIds(historyCaseIds) }
+                            .getOrDefault(emptyMap())
+                    }
+                    stored.map { record ->
+                        val hydrated = BaziCompatibilityAnalyzer.hydrateHistoricalReport(
+                            report = record.report,
+                            leftCase = cases[record.report.left.caseId],
+                            rightCase = cases[record.report.right.caseId],
+                        )
+                        if (hydrated == record.report) record else compatibilityHistoryStore.replace(record.copy(report = hydrated))
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.update { current ->
+                    if (requestGeneration != compatibilityHistoryGeneration) current else current.copy(
+                        compatibilityHistoryLoading = false,
+                        compatibilityHistoryError = "合盘记录无法读取，原文件已保留。请从完整备份恢复，或联系支持导出诊断后再试。",
+                    )
+                }
+                return@launch
+            }
+            mutableState.update { current ->
+                if (requestGeneration != compatibilityHistoryGeneration) current else current.copy(
+                    compatibilityHistory = records,
+                    compatibilityHistoryLoading = false,
+                    compatibilityHistoryError = null,
+                )
+            }
+        }
+    }
+
+    private fun loadCompatibilityReport(leftCaseId: String, rightCaseId: String) {
+        compatibilityJob?.cancel()
+        compatibilityJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    compatibilityLoading = true,
+                    compatibilityError = null,
+                    compatibilityReport = null,
+                )
+            }
+            loadCompatibilityReportInCurrentJob(leftCaseId, rightCaseId)
+        }
+    }
+
+    private suspend fun loadCompatibilityReportInCurrentJob(
+        leftCaseId: String,
+        rightCaseId: String,
+    ) {
+        val result = try {
+            val cases = withContext(ioDispatcher) {
+                caseRepository.findByIds(setOf(leftCaseId, rightCaseId))
+            }
+            val left = cases[leftCaseId]
+            val right = cases[rightCaseId]
+            if (left == null || right == null) null else BaziCompatibilityAnalyzer.analyze(left, right)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        val historyReplacementRecordId = mutableState.value.compatibilityHistoryReplacementRecordId
+        val savedRecord = try {
+            (result as? BaziCompatibilityResult.Ready)?.let { ready ->
+                withContext(ioDispatcher) {
+                    val existing = historyReplacementRecordId?.let { recordId ->
+                        compatibilityHistoryStore.list().firstOrNull { it.id == recordId }
+                    }
+                    if (existing == null) {
+                        compatibilityHistoryStore.save(ready.report, clock.millis())
+                    } else {
+                        compatibilityHistoryStore.replace(existing.copy(report = ready.report))
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            compatibilityHistoryGeneration += 1
+            mutableState.update {
+                if (
+                    it.compatibilityLeftCaseId != leftCaseId ||
+                    it.compatibilityRightCaseId != rightCaseId ||
+                    result !is BaziCompatibilityResult.Ready
+                ) {
+                    it
+                } else {
+                    it.copy(
+                        compatibilityReport = result.report,
+                        compatibilityHistoryReplacementRecordId = null,
+                        compatibilityLoading = false,
+                        compatibilityError = null,
+                        compatibilityHistoryLoading = false,
+                        compatibilityHistoryError = "合盘已生成，但记录无法保存；原文件已保留。请处理合盘记录后再试。",
+                    )
+                }
+            }
+            return
+        }
+        if (savedRecord != null) compatibilityHistoryGeneration += 1
+        mutableState.update {
+            if (
+                it.compatibilityLeftCaseId != leftCaseId ||
+                it.compatibilityRightCaseId != rightCaseId
+            ) {
+                it
+            } else when (result) {
+                is BaziCompatibilityResult.Ready -> it.copy(
+                    compatibilityReport = result.report,
+                    compatibilityHistory = savedRecord?.let { record ->
+                        listOf(record) + it.compatibilityHistory.filterNot { existing -> existing.id == record.id }
+                    } ?: it.compatibilityHistory,
+                    compatibilityHistoryRecordId = null,
+                    compatibilityHistoryReplacementRecordId = null,
+                    compatibilityLoading = false,
+                    compatibilityError = null,
+                    compatibilityHistoryLoading = false,
+                    compatibilityHistoryError = null,
+                )
+                is BaziCompatibilityResult.Rejected -> it.copy(
+                    compatibilityHistoryReplacementRecordId = null,
+                    compatibilityLoading = false,
+                    compatibilityError = result.reasons.joinToString("\n") { reason -> reason.message },
+                )
+                null -> it.copy(
+                    compatibilityHistoryReplacementRecordId = null,
+                    compatibilityLoading = false,
+                    compatibilityError = "命例已变化或无法读取，请刷新后重新选择。",
+                )
+            }
+        }
+    }
+
     fun openSettings() {
         mutableState.update {
             it.copy(
@@ -4904,6 +5516,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 updateCachedCaseCatalog { catalog ->
                     catalog.filterNot { it.id == result.caseId } + result.case.toCaseSummary()
                 }
+                val createdForCompatibility = mutableState.value.compatibilityParticipantRole
                 mutableState.update {
                     val showingPendingDetail =
                         it.destination == AppDestination.CaseDetail(pendingCase.id) &&
@@ -4911,9 +5524,21 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                             it.form == form
                     val stillOnCreatePage =
                         it.destination == AppDestination.CreateCase && it.form == form
-                    val shouldOpenSavedCase = showingPendingDetail || stillOnCreatePage
+                    val returnToCompatibility = createdForCompatibility != null &&
+                        (showingPendingDetail || stillOnCreatePage)
+                    val shouldOpenSavedCase = !returnToCompatibility &&
+                        (showingPendingDetail || stillOnCreatePage)
+                    val compatibilityCandidates = if (returnToCompatibility) {
+                        (it.compatibilityCandidates.filterNot { candidate -> candidate.id == result.caseId } +
+                            result.case.toCaseSummary())
+                            .sortedByDescending { candidate -> candidate.updatedAt }
+                    } else {
+                        it.compatibilityCandidates
+                    }
                     it.copy(
-                        destination = if (shouldOpenSavedCase) {
+                        destination = if (returnToCompatibility) {
+                            navigator.returnToBaziCompatibility()
+                        } else if (shouldOpenSavedCase) {
                             if (showingPendingDetail) {
                                 navigator.replaceCurrentDetail(result.caseId)
                             } else {
@@ -4926,8 +5551,29 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         form = if (it.form == form) CaseFormState() else it.form,
                         saving = false,
                         instantCalculation = if (shouldOpenSavedCase) null else it.instantCalculation,
+                        compatibilityCandidates = compatibilityCandidates,
+                        compatibilityLeftCaseId = if (
+                            returnToCompatibility && createdForCompatibility == SexForFortuneDirection.MAN
+                        ) {
+                            result.caseId
+                        } else {
+                            it.compatibilityLeftCaseId
+                        },
+                        compatibilityRightCaseId = if (
+                            returnToCompatibility && createdForCompatibility == SexForFortuneDirection.WOMAN
+                        ) {
+                            result.caseId
+                        } else {
+                            it.compatibilityRightCaseId
+                        },
+                        compatibilityReport = if (returnToCompatibility) null else it.compatibilityReport,
+                        compatibilityLoading = false,
+                        compatibilityError = null,
+                        compatibilityParticipantRole = if (returnToCompatibility) null else {
+                            it.compatibilityParticipantRole
+                        },
                         duplicateCandidates = emptyList(),
-                        detail = if (shouldOpenSavedCase) result.case else it.detail,
+                        detail = if (shouldOpenSavedCase) result.case else if (returnToCompatibility) null else it.detail,
                         caseNotesCaseId = if (shouldOpenSavedCase) {
                             result.case.id
                         } else {
@@ -4949,7 +5595,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                             it.caseNotesSavedDraft
                         },
                         caseNotesHydrating = false,
-                        detailIsTransient = if (shouldOpenSavedCase) false else it.detailIsTransient,
+                        detailIsTransient = if (shouldOpenSavedCase || returnToCompatibility) false else it.detailIsTransient,
                         detailSavePending = false,
                         detailSaveError = null,
                         detailSaveDialogVisible = false,
@@ -4993,8 +5639,15 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         },
                         detailLoading = false,
                         detailError = null,
-                        message = "命例已完成排盘并保存。",
+                        message = if (returnToCompatibility) {
+                            "${createdForCompatibility?.compatibilityRoleName() ?: "对方"}命例已保存，可继续选择另一方并开始合盘。"
+                        } else {
+                            "命例已完成排盘并保存。"
+                        },
                     )
+                }
+                if (createdForCompatibility != null) {
+                    loadCompatibilityWorkspace()
                 }
                 refreshCasesFromCache()
             }
@@ -8030,6 +8683,20 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun navigateBack() {
+        if (
+            mutableState.value.destination == AppDestination.CreateCase &&
+                mutableState.value.compatibilityParticipantRole != null
+        ) {
+            cancelCompatibilityParticipantCreate()
+            return
+        }
+        if (
+            mutableState.value.destination == AppDestination.CaseList &&
+                mutableState.value.compatibilityParticipantSelectionRole != null
+        ) {
+            cancelCompatibilityParticipantList()
+            return
+        }
         if (mutableState.value.destination == AppDestination.FourPillarsLookup) {
             fourPillarsLookupJob?.cancel()
         }
@@ -8336,11 +9003,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             }
             val decoded = try {
                 withContext(ioDispatcher) {
-                    val raw = openInput()?.bufferedReader()?.use { it.readText() }
+                    val raw = openInput()?.use { it.readUtf8Bounded(WENZHEN_IMPORT_MAX_BYTES) }
                         ?: error("无法读取所选文件。")
-                    require(raw.length <= WENZHEN_IMPORT_MAX_CHARACTERS) {
-                        "问真数据包体积异常，已停止读取。"
-                    }
                     wenzhenImporter.decode(raw)
                 }
             } catch (cancelled: CancellationException) {
@@ -8439,11 +9103,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             }
             val decoded = try {
                 withContext(ioDispatcher) {
-                    val raw = openInput()?.bufferedReader()?.use { it.readText() }
+                    val raw = openInput()?.use { it.readUtf8Bounded(CURATED_CELEBRITY_IMPORT_MAX_BYTES) }
                         ?: error("无法读取内置名人案例统一资料库。")
-                    require(raw.length <= CURATED_CELEBRITY_IMPORT_MAX_CHARACTERS) {
-                        "名人案例统一资料库体积异常，已停止读取。"
-                    }
                     curatedCelebrityImporter.decode(raw)
                 }
             } catch (cancelled: CancellationException) {
@@ -8540,11 +9201,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         builtInCelebrityCatalogSyncJob = viewModelScope.launch {
             val data = try {
                 withContext(ioDispatcher) {
-                    val raw = openInput()?.bufferedReader()?.use { it.readText() }
+                    val raw = openInput()?.use { it.readUtf8Bounded(CURATED_CELEBRITY_IMPORT_MAX_BYTES) }
                         ?: error("无法读取内置名人案例统一资料库。")
-                    require(raw.length <= CURATED_CELEBRITY_IMPORT_MAX_CHARACTERS) {
-                        "名人案例统一资料库体积异常，已停止读取。"
-                    }
                     unifiedCelebrityCatalogImporter.decode(raw)
                 }
             } catch (cancelled: CancellationException) {
@@ -8653,6 +9311,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 backupAttachmentRoot = container.backupAttachmentRoot,
                 backupWorkRoot = container.backupWorkRoot,
                 calculationPreferenceStore = container.calculationPreferenceStore,
+                compatibilityHistoryStore = container.baziCompatibilityHistoryStore,
                 aiCommentarySettings = container.aiCommentarySettings,
                 aiCommentaryGenerator = container.aiCommentaryGenerator,
                 aiCommentaryCallLog = container.aiCommentaryCallLog,
@@ -8668,8 +9327,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         const val MAX_EXPORT_PASSWORD_LENGTH = 256
         const val SINGLE_CASE_FORMAT_PROBE_BYTES = 64
         const val CASE_NOTES_AUTO_SAVE_DELAY_MILLIS = 2_000L
-        const val WENZHEN_IMPORT_MAX_CHARACTERS = 8_000_000
-        const val CURATED_CELEBRITY_IMPORT_MAX_CHARACTERS = 2_000_000
+        const val WENZHEN_IMPORT_MAX_BYTES = 8 * 1024 * 1024
+        const val CURATED_CELEBRITY_IMPORT_MAX_BYTES = 4 * 1024 * 1024
         const val RETAINED_DETAIL_CACHE_SIZE = 12
         const val FORTUNE_POSITION_CACHE_SIZE = 96
         const val PREFETCH_ITEMS_PER_FORTUNE_LAYER = 1
@@ -12695,6 +13354,8 @@ private fun AppDestination.caseIdOrNull(): String? = when (this) {
     is AppDestination.EditEvent -> caseId
     AppDestination.CaseList,
     AppDestination.CaseComparison,
+    AppDestination.BaziCompatibility,
+    AppDestination.BaziCompatibilityReport,
     AppDestination.FourPillarsLookup,
     AppDestination.Almanac,
     AppDestination.RecordHub,
@@ -12722,6 +13383,9 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("selectedTagId", selectedTagId)
     putString("comparisonLeftCaseId", comparisonLeftCaseId)
     putString("comparisonRightCaseId", comparisonRightCaseId)
+    putString("compatibilityLeftCaseId", compatibilityLeftCaseId)
+    putString("compatibilityRightCaseId", compatibilityRightCaseId)
+    putString("compatibilityParticipantRole", compatibilityParticipantRole?.name)
     putBundle(
         "fourPillarsLookupForm",
         fourPillarsLookupForm.toSavedStateBundle(),
@@ -12806,6 +13470,12 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         comparisonLeftCaseId = getString("comparisonLeftCaseId"),
         comparisonRightCaseId = getString("comparisonRightCaseId"),
         comparisonLoading = destination == AppDestination.CaseComparison,
+        compatibilityLeftCaseId = getString("compatibilityLeftCaseId"),
+        compatibilityRightCaseId = getString("compatibilityRightCaseId"),
+        compatibilityParticipantRole = enumValueOrNull<SexForFortuneDirection>(
+            getString("compatibilityParticipantRole"),
+        ),
+        compatibilityLoading = destination == AppDestination.BaziCompatibility,
         fourPillarsLookupForm = getBundle("fourPillarsLookupForm")
             ?.toFourPillarsLookupFormState()
             ?: FourPillarsLookupFormState(),
@@ -12928,6 +13598,8 @@ private fun AppDestination.toSavedStateBundle(): Bundle = Bundle().apply {
     when (this@toSavedStateBundle) {
         AppDestination.CaseList -> putString("type", "case_list")
         AppDestination.CaseComparison -> putString("type", "case_comparison")
+        AppDestination.BaziCompatibility -> putString("type", "bazi_compatibility")
+        AppDestination.BaziCompatibilityReport -> putString("type", "bazi_compatibility")
         AppDestination.FourPillarsLookup -> putString("type", "four_pillars_lookup")
         AppDestination.Almanac -> putString("type", "almanac")
         AppDestination.RecordHub -> putString("type", "record_hub")
@@ -12986,6 +13658,7 @@ private fun Bundle.toAppDestination(): AppDestination {
     return when (getString("type")) {
         "case_list", "record_hub" -> AppDestination.CaseList
         "case_comparison" -> AppDestination.CaseComparison
+        "bazi_compatibility" -> AppDestination.BaziCompatibility
         "four_pillars_lookup" -> AppDestination.FourPillarsLookup
         "almanac" -> AppDestination.Almanac
         "settings" -> AppDestination.Settings

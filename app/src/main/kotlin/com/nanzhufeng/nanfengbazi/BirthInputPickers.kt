@@ -512,12 +512,14 @@ internal fun BirthDateTimePickerSheet(
 private fun BirthPickerQuickLocateInput(
     value: String,
     onValueChange: (String) -> Unit,
+    inputContentDescription: String = "快速定位出生年月日时分",
+    tag: String = "birth_quick_locate_input",
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .testTag("birth_quick_locate_input"),
+            .testTag(tag),
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(
@@ -555,9 +557,9 @@ private fun BirthPickerQuickLocateInput(
                             onValueChange(candidate)
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "快速定位出生年月日时分" },
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = inputContentDescription },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = NanfengInk),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
@@ -1162,6 +1164,7 @@ internal fun ObservationDateTimePickerSheet(
     supportingText: String = "用于定位当前大运、流年与流月",
     confirmTag: String = "confirm_fortune_observation",
     sheetTag: String = "fortune_observation_picker_sheet",
+    showQuickLocateInput: Boolean = false,
 ) {
     val now = remember { LocalDateTime.now() }
     val parsedDate = remember(currentDate) {
@@ -1175,12 +1178,22 @@ internal fun ObservationDateTimePickerSheet(
     var day by remember { mutableIntStateOf(parsedDate.dayOfMonth) }
     var hour by remember { mutableIntStateOf(parsedTime.hour) }
     var minute by remember { mutableIntStateOf(parsedTime.minute) }
+    var quickLocateText by remember(currentDate, currentTime) { mutableStateOf("") }
     val maxDay = remember(year, month) {
         runCatching { LocalDate.of(year, month, 1).lengthOfMonth() }.getOrDefault(31)
     }
     val haptic = rememberAppHapticFeedback()
     LaunchedEffect(maxDay) {
         if (day > maxDay) day = maxDay
+    }
+    LaunchedEffect(showQuickLocateInput, quickLocateText) {
+        if (!showQuickLocateInput) return@LaunchedEffect
+        val quickLocate = parseBirthPickerQuickLocate(quickLocateText) ?: return@LaunchedEffect
+        quickLocate.year?.takeIf { it in SupportedPickerYears }?.let { year = it }
+        quickLocate.month?.takeIf { it in 1..12 }?.let { month = it }
+        quickLocate.day?.takeIf { it in 1..31 }?.let { day = it }
+        quickLocate.hour?.takeIf { it in 0..23 }?.let { hour = it }
+        quickLocate.minute?.takeIf { it in 0..59 }?.let { minute = it }
     }
 
     FixedPickerSheet(
@@ -1216,6 +1229,14 @@ internal fun ObservationDateTimePickerSheet(
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.testTag(confirmTag),
                 ) { Text("确定") }
+            }
+            if (showQuickLocateInput) {
+                BirthPickerQuickLocateInput(
+                    value = quickLocateText,
+                    onValueChange = { quickLocateText = it },
+                    inputContentDescription = "快速定位观察日期与时刻",
+                    tag = "fortune_quick_locate_input",
+                )
             }
             WheelSelectionPanel(
                 modifier = Modifier.fillMaxWidth().height(ObservationWheelViewportHeight),

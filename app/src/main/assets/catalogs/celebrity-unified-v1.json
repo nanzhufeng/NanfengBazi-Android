@@ -1,7 +1,7 @@
 {
   "format": "nanfeng-bazi-unified-celebrity-catalog",
   "version": 1,
-  "catalogVersion": "2026.08.21-unified-r7",
+  "catalogVersion": "2026.08.22-unified-r8",
   "compiledAt": "2026-08-21",
   "groups": [
     {
@@ -25257,6 +25257,32 @@
         "useTrueSolarTime": false,
         "timeSourceType": "OFFICIAL_RECORD",
         "sourceNote": "问真网页名人案例；来源阳历：1916-01-28 04:00:00；来源四柱：乙卯己丑甲子丙寅；君主出生日期按公开史料校正：公元前5年1月15日；https://zh.wikipedia.org/wiki/%E6%B1%89%E5%85%89%E6%AD%A6%E5%B8%9D；公开史料未载出生时刻，12:00 仅为排盘占位，不是出生时刻。"
+      },
+      "calculationBirthInput": {
+        "calendarInput": {
+          "_type": "com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar",
+          "dateTime": {
+            "year": 1916,
+            "month": 1,
+            "day": 28,
+            "hour": 4,
+            "minute": 0,
+            "second": 0
+          }
+        },
+        "sexForFortuneDirection": "MAN",
+        "timePrecision": "EXACT_TO_MINUTE",
+        "timeZoneId": "Asia/Shanghai",
+        "resolvedUtcOffsetSeconds": null,
+        "timeZoneDataVersion": null,
+        "locationName": null,
+        "longitude": null,
+        "latitude": null,
+        "coordinateSource": null,
+        "useTrueSolarTime": false,
+        "timeSourceType": "WENZHEN_WEB_IMPORT",
+          "sourceNote": "历史人物排盘代理日期：原问真来源输入 1916-01-28 04:00:00，仅用于复算已记录四柱乙卯、己丑、甲子、丙寅；不改变公元前5年1月15日史实出生日期。",
+          "isHistoricalCalculationProxy": true
       },
       "birthTimeCandidates": [],
       "groupId": "unified-celebrity-emperor",

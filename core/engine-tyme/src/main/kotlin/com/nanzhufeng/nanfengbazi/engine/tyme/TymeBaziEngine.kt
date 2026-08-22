@@ -1,6 +1,7 @@
 package com.nanzhufeng.nanfengbazi.engine.tyme
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
+import com.nanzhufeng.nanfengbazi.domain.BaziStructuralProfileAnalyzer
 import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolution
 import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolver
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
@@ -112,16 +113,21 @@ class TymeBaziEngine(
                 birthYear = solar.year,
                 decades = decades,
             )
+            val fourPillars = FourPillars(
+                year = eightChar.year.name,
+                month = eightChar.month.name,
+                day = eightChar.day.name,
+                hour = eightChar.hour.name,
+            )
+            val basicChartDetails = buildBasicChartDetails(
+                civilSolarTime = solar,
+                eightChar = eightChar,
+            )
 
             CalculationResult(
                 normalizedInput = normalizedInput,
                 profile = profile,
-                fourPillars = FourPillars(
-                    year = eightChar.year.name,
-                    month = eightChar.month.name,
-                    day = eightChar.day.name,
-                    hour = eightChar.hour.name,
-                ),
+                fourPillars = fourPillars,
                 ownSign = eightChar.ownSign.name,
                 bodySign = eightChar.bodySign.name,
                 fetalOrigin = eightChar.fetalOrigin.name,
@@ -154,9 +160,10 @@ class TymeBaziEngine(
                     lunarDateTime = lunarHour.toDomain(),
                 ),
                 trueSolarTimeEvidence = trueSolarEvidence,
-                basicChartDetails = buildBasicChartDetails(
-                    civilSolarTime = solar,
-                    eightChar = eightChar,
+                basicChartDetails = basicChartDetails,
+                structuralProfile = BaziStructuralProfileAnalyzer.analyze(
+                    fourPillars = fourPillars,
+                    basicChartDetails = basicChartDetails,
                 ),
                 warnings = buildList {
                     if (trueSolarEvidence != null) {

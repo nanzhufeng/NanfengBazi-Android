@@ -373,6 +373,25 @@ def curated_birth_input(source: dict):
     }
 
 
+def historical_calculation_proxy(name: str, evidence: list[dict]) -> dict | None:
+    """Return a source-preserving chart input for the one verified BCE exception."""
+    if name != "汉世祖光武帝":
+        return None
+    original = next(
+        (item.get("originalBirthInput") for item in evidence if item.get("originalBirthInput")),
+        None,
+    )
+    if original is None:
+        raise RuntimeError("汉世祖光武帝缺少问真原始排盘输入，不能生成历史排盘代理")
+    proxy = normalize_calendar_discriminator(original)
+    proxy["sourceNote"] = (
+        "历史人物排盘代理日期：原问真来源输入 1916-01-28 04:00:00，仅用于复算已记录"
+        "四柱乙卯、己丑、甲子、丙寅；不改变公元前5年1月15日史实出生日期。"
+    )
+    proxy["isHistoricalCalculationProxy"] = True
+    return proxy
+
+
 def compile_catalog(db_path: Path, curated_path: Path, view_model: Path, output: Path):
     aliases, verified, corrections = load_rules(view_model)
     historical = load_historical_cases(db_path, aliases, verified, corrections)
@@ -426,6 +445,9 @@ def compile_catalog(db_path: Path, curated_path: Path, view_model: Path, output:
 
     cases = sorted(canonical.values(), key=lambda item: (item["canonicalName"], item["caseId"]))
     for item in cases:
+        proxy = historical_calculation_proxy(item["canonicalName"], item["sourceEvidence"])
+        if proxy is not None:
+            item["calculationBirthInput"] = proxy
         item["supersededCaseIds"] = sorted(
             set(item["supersededCaseIds"]) |
             LEGACY_SUPERSEDED_CASE_IDS.get(item["canonicalName"], set()),
@@ -442,7 +464,7 @@ def compile_catalog(db_path: Path, curated_path: Path, view_model: Path, output:
     output.write_text(json.dumps({
         "format": "nanfeng-bazi-unified-celebrity-catalog",
         "version": 1,
-        "catalogVersion": "2026.08.21-unified-r7",
+        "catalogVersion": "2026.08.22-unified-r8",
         "compiledAt": date.today().isoformat(),
         "groups": [{"id": key, "name": value} for key, value in UNIFIED_GROUPS.items()],
         "cases": cases,

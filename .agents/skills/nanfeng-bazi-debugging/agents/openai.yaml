@@ -1,0 +1,4 @@
+interface:
+  display_name: "南枫八字排错"
+  short_description: "Diagnose Android defects from reproducible code and layout evidence"
+  default_prompt: "Use $nanfeng-bazi-debugging to diagnose a 南枫八字 Android defect."

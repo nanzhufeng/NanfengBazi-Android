@@ -28,6 +28,7 @@ import com.nanzhufeng.nanfengbazi.data.repository.hasSameBirthIdentity
 import com.nanzhufeng.nanfengbazi.data.repository.toDomainCases
 import com.nanzhufeng.nanfengbazi.domain.CaseWriteResult
 import com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaults
+import com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord
 import com.nanzhufeng.nanfengbazi.domain.model.BirthInput
 import com.nanzhufeng.nanfengbazi.domain.model.BaziCase
 import com.nanzhufeng.nanfengbazi.domain.model.CaseCalculationSnapshot
@@ -53,8 +54,11 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.decodeFromStream
 
 interface CaseBackupOperations {
     suspend fun export(
@@ -135,6 +139,7 @@ class CaseBackupService(
     passwordKdfIterations: Int = PasswordCrypto.DEFAULT_KDF_ITERATIONS,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
     private val stagingDatabaseContext: Context? = null,
+    private val compatibilityHistoryFile: Path? = null,
 ) : CaseBackupOperations {
     private val dao = database.caseDao()
     private val encryption = BackupEncryption(secureRandom, passwordKdfIterations)
@@ -740,6 +745,7 @@ class CaseBackupService(
                     }
                 }
             }
+            restoreCompatibilityHistory(validated.extracted)
             committed = true
             journal?.let { restoreJournal ->
                 runCatching {
@@ -968,6 +974,7 @@ class CaseBackupService(
                 Files.createDirectories(attachmentRoot.parent)
                 moveDirectory(stagedAttachments, attachmentRoot)
             }
+            restoreCompatibilityHistory(extracted)
             deleteRecursively(stagingRoot)
 
             BackupRestoreResult.Success(
@@ -1014,6 +1021,48 @@ class CaseBackupService(
             caseGroupCrossRefs = sourceDao.allCaseGroupCrossRefs(),
             caseTagCrossRefs = sourceDao.allCaseTagCrossRefs(),
         )
+    }
+
+    /** Merges portable report snapshots without making a later case restore erase local history. */
+    private fun restoreCompatibilityHistory(extracted: Map<String, Path>) {
+        val target = compatibilityHistoryFile ?: return
+        val source = extracted[COMPATIBILITY_HISTORY_PATH] ?: return
+        val imported = DomainJson.decodeFromString(
+            ListSerializer(BaziCompatibilityRecord.serializer()),
+            readUtf8(source),
+        )
+        val local = if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) &&
+            Files.size(target) <= MAX_COMPATIBILITY_HISTORY_BYTES
+        ) {
+            runCatching {
+                DomainJson.decodeFromString(
+                    ListSerializer(BaziCompatibilityRecord.serializer()),
+                    readUtf8(target),
+            ) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        val merged = (imported + local)
+            .sortedByDescending(BaziCompatibilityRecord::createdAtEpochMillis)
+            .distinctBy { record -> record.id }
+            .take(MAX_COMPATIBILITY_HISTORY_RECORDS)
+        val bytes = DomainJson.encodeToString(
+            ListSerializer(BaziCompatibilityRecord.serializer()),
+            merged,
+        ).encodeToByteArray()
+        check(bytes.size <= MAX_COMPATIBILITY_HISTORY_BYTES) { "合盘记录恢复后超过安全大小上限。" }
+        Files.createDirectories(target.parent)
+        val temporary = target.resolveSibling("${target.fileName}.restore-${UUID.randomUUID()}")
+        try {
+            Files.write(temporary, bytes)
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
     }
 
     private suspend fun readValidatedExecutionSource(
@@ -1404,47 +1453,7 @@ class CaseBackupService(
         snapshot: RoomDataSnapshot,
         attachmentRoot: Path?,
     ): List<EntrySource>? {
-        val notes = snapshot.textRecords.filter {
-            it.type == "NOTE" || it.type == "OWNER_FEEDBACK"
-        }
-        val analysis = snapshot.textRecords.filter {
-            it.type == "MASTER_COMMENTARY" || it.type == "ANALYSIS"
-        }
-        val revisionsByType = snapshot.textRecordRevisions.groupBy { entity ->
-            DomainJson.decodeFromString(
-                CaseTextRecordRevision.serializer(),
-                entity.revisionJson,
-            ).snapshot.type.name
-        }
-        val noteRevisions = revisionsByType["NOTE"].orEmpty() +
-            revisionsByType["OWNER_FEEDBACK"].orEmpty()
-        val analysisRevisions = revisionsByType["MASTER_COMMENTARY"].orEmpty() +
-            revisionsByType["ANALYSIS"].orEmpty()
-        val jsonSources = listOf(
-            CASES_PATH to DomainJson.encodeToString(CasesFile(snapshot.cases)),
-            SNAPSHOTS_PATH to DomainJson.encodeToString(
-                SnapshotsFile(snapshot.calculationSnapshots),
-            ),
-            NOTES_PATH to DomainJson.encodeToString(
-                TextRecordsFile(notes, noteRevisions),
-            ),
-            ANALYSIS_PATH to DomainJson.encodeToString(
-                TextRecordsFile(analysis, analysisRevisions),
-            ),
-            EVENTS_PATH to DomainJson.encodeToString(
-                EventsFile(snapshot.events, snapshot.eventRevisions),
-            ),
-            GROUPS_PATH to DomainJson.encodeToString(
-                GroupsFile(snapshot.groups, snapshot.caseGroupCrossRefs),
-            ),
-            TAGS_PATH to DomainJson.encodeToString(
-                TagsFile(snapshot.tags, snapshot.caseTagCrossRefs),
-            ),
-            SETTINGS_PATH to DomainJson.encodeToString(SettingsFile()),
-            IMPORTS_PATH to DomainJson.encodeToString(
-                ImportsFile(snapshot.attachments, snapshot.fieldEvidence),
-            ),
-        ).map { (path, json) -> EntrySource.fromBytes(path, json.encodeToByteArray()) }
+        val jsonSources = buildStreamingJsonEntrySources(snapshot)
 
         val attachmentSources = snapshot.attachments.map { attachment ->
             val root = attachmentRoot ?: return null
@@ -1454,16 +1463,15 @@ class CaseBackupService(
             if (sha256(file) != attachment.sha256) return null
             EntrySource.fromFile("$ATTACHMENTS_DIRECTORY/${attachment.relativePath}", file)
         }
-        return jsonSources + attachmentSources
+        return jsonSources + attachmentSources + compatibilityHistorySource()
     }
 
     /**
-     * Builds the cloud-only entry set without assembling entire database tables into a
-     * String or ByteArray.  The normal user backup path keeps its existing behaviour;
-     * this path is intentionally separate because automatic sync must remain safe on
-     * large real-world libraries.
+     * Writes each JSON entry row by row.  The manifest still gets deterministic byte
+     * counts and digests from a first pass, but no database table is materialized as
+     * one large String or ByteArray before the ZIP write begins.
      */
-    private fun buildCloudEntrySources(snapshot: RoomDataSnapshot): List<EntrySource> {
+    private fun buildStreamingJsonEntrySources(snapshot: RoomDataSnapshot): List<EntrySource> {
         val notes = snapshot.textRecords.filter {
             it.type == "NOTE" || it.type == "OWNER_FEEDBACK"
         }
@@ -1480,7 +1488,6 @@ class CaseBackupService(
             revisionsByType["OWNER_FEEDBACK"].orEmpty()
         val analysisRevisions = revisionsByType["MASTER_COMMENTARY"].orEmpty() +
             revisionsByType["ANALYSIS"].orEmpty()
-
         return listOf(
             EntrySource.fromStreaming(CASES_PATH) { output ->
                 writeJsonListEnvelope(output, "cases", snapshot.cases, CaseEntity.serializer())
@@ -1514,9 +1521,25 @@ class CaseBackupService(
                 }
             },
             EntrySource.fromStreaming(IMPORTS_PATH) { output ->
-                writeImportsEnvelope(output, emptyList(), emptyList())
+                writeImportsEnvelope(output, snapshot.attachments, snapshot.fieldEvidence)
             },
         )
+    }
+
+    private fun buildCloudEntrySources(snapshot: RoomDataSnapshot): List<EntrySource> =
+        buildStreamingJsonEntrySources(snapshot) + compatibilityHistorySource()
+
+    /** Compatibility reports are user-created snapshots and must travel with every backup. */
+    private fun compatibilityHistorySource(): List<EntrySource> {
+        val file = compatibilityHistoryFile ?: return emptyList()
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return emptyList()
+        check(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            "合盘记录文件不是有效的普通文件，已停止导出以避免遗漏。"
+        }
+        check(Files.size(file) <= MAX_COMPATIBILITY_HISTORY_BYTES) {
+            "合盘记录超过 4 MiB 安全上限，已停止导出以避免遗漏。"
+        }
+        return listOf(EntrySource.fromFile(COMPATIBILITY_HISTORY_PATH, file))
     }
 
     private fun writeTextRecordsEnvelope(
@@ -1698,7 +1721,11 @@ class CaseBackupService(
                         if (count < 0) break
                         entryBytes += count
                         totalBytes += count
-                        if (entryBytes > MAX_SINGLE_ENTRY_BYTES || totalBytes > MAX_TOTAL_BYTES) {
+                        if (
+                            entryBytes > MAX_SINGLE_ENTRY_BYTES ||
+                            totalBytes > MAX_TOTAL_BYTES ||
+                            !hasStagingSpace(stagingRoot, count.toLong())
+                        ) {
                             return null
                         }
                         output.write(buffer, 0, count)
@@ -1762,6 +1789,19 @@ class CaseBackupService(
                 return "FILE_HASH_MISMATCH" to "文件 ${file.path} 的大小或 SHA-256 不一致。"
             }
         }
+        extracted[COMPATIBILITY_HISTORY_PATH]?.let { historyPath ->
+            if (Files.size(historyPath) > MAX_COMPATIBILITY_HISTORY_BYTES) {
+                return "COMPATIBILITY_HISTORY_TOO_LARGE" to "合盘记录文件超过安全大小上限。"
+            }
+            runCatching {
+                DomainJson.decodeFromString(
+                    ListSerializer(BaziCompatibilityRecord.serializer()),
+                    readUtf8(historyPath),
+                )
+            }.getOrElse {
+                return "COMPATIBILITY_HISTORY_INVALID" to "合盘记录文件无法读取。"
+            }
+        }
         return null
     }
 
@@ -1795,8 +1835,9 @@ class CaseBackupService(
         )
     }
 
+    @OptIn(ExperimentalSerializationApi::class)
     private inline fun <reified T> decode(path: Path): T =
-        DomainJson.decodeFromString(readUtf8(path))
+        Files.newInputStream(path).buffered().use { DomainJson.decodeFromStream(it) }
 
     private fun validateReferences(
         snapshot: RoomDataSnapshot,
@@ -1919,9 +1960,11 @@ class CaseBackupService(
         snapshot: RoomDataSnapshot,
     ): Pair<String, String>? {
         val context = stagingDatabaseContext ?: return null
-        val stagingDatabase = Room.inMemoryDatabaseBuilder(
+        val databaseName = "nanfeng-bazi-restore-preflight-${UUID.randomUUID()}.db"
+        val stagingDatabase = Room.databaseBuilder(
             context.applicationContext,
             NanfengBaziDatabase::class.java,
+            databaseName,
         ).build()
         return try {
             stagingDatabase.withTransaction {
@@ -1943,6 +1986,7 @@ class CaseBackupService(
                 "备份无法完整写入独立临时数据库，已停止恢复且未触碰正式数据。"
         } finally {
             stagingDatabase.close()
+            context.applicationContext.deleteDatabase(databaseName)
         }
     }
 
@@ -2127,6 +2171,7 @@ class CaseBackupService(
         private const val TAGS_PATH = "tags.json"
         private const val SETTINGS_PATH = "settings.json"
         private const val IMPORTS_PATH = "imports.json"
+        private const val COMPATIBILITY_HISTORY_PATH = "compatibility-history.json"
         private const val ATTACHMENTS_DIRECTORY = "attachments"
         private const val RESTORE_STAGING_DIRECTORY = RESTORE_STAGING_DIRECTORY_NAME
         private const val RESTORE_JOURNAL_DIRECTORY = RESTORE_JOURNAL_DIRECTORY_NAME
@@ -2140,8 +2185,10 @@ class CaseBackupService(
         // across a thousand-case library.  It remains bounded well below the general
         // entry limit and is still checked against the manifest hash before restore.
         private const val MAX_JSON_BYTES = 64L * 1024 * 1024
-        private const val MAX_SINGLE_ENTRY_BYTES = 512L * 1024 * 1024
-        private const val MAX_TOTAL_BYTES = 2L * 1024 * 1024 * 1024
+        private const val MAX_SINGLE_ENTRY_BYTES = 256L * 1024 * 1024
+        private const val MAX_TOTAL_BYTES = 512L * 1024 * 1024
+        private const val MAX_COMPATIBILITY_HISTORY_BYTES = 4L * 1024 * 1024
+        private const val MAX_COMPATIBILITY_HISTORY_RECORDS = 60
         private val FILE_NAME_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmm")
         private val RESTORE_GENERATED_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
         private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
@@ -2159,6 +2206,10 @@ private fun resolveContained(root: Path, relative: String): Path? {
     val resolved = normalizedRoot.resolve(relative).normalize()
     return resolved.takeIf { it.startsWith(normalizedRoot) }
 }
+
+private fun hasStagingSpace(root: Path, nextBytes: Long): Boolean = runCatching {
+    Files.getFileStore(root).usableSpace - nextBytes >= 128L * 1024 * 1024
+}.getOrDefault(false)
 
 private fun sha256(path: Path): String {
     val digest = MessageDigest.getInstance("SHA-256")

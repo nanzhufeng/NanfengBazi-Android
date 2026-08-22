@@ -39,6 +39,7 @@ private const val QWEN_AI_READ_TIMEOUT_MILLIS = 180_000
 private const val OPEN_ROUTER_MAX_AUTOMATIC_RETRY_DELAY_MILLIS = 5_000L
 private const val OPEN_ROUTER_FALLBACK_RETRY_DELAY_MILLIS = 750L
 private const val MAX_AUTOMATIC_RESPONSE_RETRIES = 1
+private const val MAX_AI_RESPONSE_BYTES = 4 * 1024 * 1024
 
 enum class AiCommentaryProviderId(val displayName: String) {
     OPEN_ROUTER("OpenRouter"),
@@ -571,7 +572,7 @@ internal class OpenAiCompatibleAiCommentaryGenerator(
         val code = connection.responseCode
         val retryAfterHeader = connection.getHeaderField("Retry-After")
         val payload = (if (code in 200..299) connection.inputStream else connection.errorStream)
-            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            ?.use { it.readUtf8Bounded(MAX_AI_RESPONSE_BYTES) }.orEmpty()
         connection.disconnect()
         if (code in 200..299) {
             HttpResult.Success(payload)

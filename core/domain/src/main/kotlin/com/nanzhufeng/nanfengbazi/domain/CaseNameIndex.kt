@@ -49,3 +49,12 @@ fun String.caseNameInitial(): Char {
 
 internal fun compareCaseNames(left: String, right: String): Int =
     chineseNameCollator.get().compare(left, right)
+
+/**
+ * Keeps the A–Z list order and its visible section headers on the same key.
+ * Chinese names use their pinyin initial; Latin names use their own initial.
+ */
+internal fun compareCaseNameGroups(left: String, right: String): Int {
+    val initialOrder = left.caseNameInitial().compareTo(right.caseNameInitial())
+    return if (initialOrder != 0) initialOrder else compareCaseNames(left, right)
+}

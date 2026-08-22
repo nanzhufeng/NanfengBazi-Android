@@ -98,7 +98,9 @@ import com.nanzhufeng.nanfengbazi.domain.model.TimeSourceType
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeAlmanacReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -220,7 +222,7 @@ class StageTwoViewModelTest {
         )
         testScheduler.advanceUntilIdle()
 
-        assertEquals("2026.08.21-unified-r7", installedVersion)
+        assertEquals("2026.08.22-unified-r8", installedVersion)
         assertEquals(userCase, repository.stored.getValue(userCase.id))
         assertEquals(574, repository.stored.values.count { it.libraryType == CaseLibraryType.CELEBRITY })
         assertEquals(1, repository.stored.values.count { it.libraryType == CaseLibraryType.USER })
@@ -648,6 +650,7 @@ class StageTwoViewModelTest {
         assertEquals(7, viewModel.state.value.almanacMonth)
         assertEquals(30, viewModel.state.value.almanacSelectedDay)
         assertNotNull(viewModel.state.value.almanacView)
+        assertEquals(AlmanacDoubleHours.indexForCivilHour(8), viewModel.state.value.almanacSelectedDoubleHourIndex)
 
         viewModel.moveAlmanacMonth(1)
         viewModel.selectAlmanacDate(
@@ -745,6 +748,27 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `万年历入口优先采用预热的今天视图而不先清空`() = runTest {
+        val reader = GateableAlmanacReader()
+        reader.gate = CompletableDeferred()
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            almanacReader = reader,
+        )
+
+        viewModel.openAlmanac()
+
+        assertFalse(viewModel.state.value.destination == AppDestination.Almanac)
+        reader.gate?.complete(Unit)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(AppDestination.Almanac, viewModel.state.value.destination)
+        assertNotNull(viewModel.state.value.almanacView)
+        assertFalse(viewModel.state.value.almanacLoading)
+        assertFalse(viewModel.state.value.almanacRefreshingSelection)
+    }
+
+    @Test
     fun `出生时间今天同时准备公历农历与当前四柱`() = runTest {
         val viewModel = createViewModel(
             repository = FakeCaseRepository(),
@@ -809,6 +833,362 @@ class StageTwoViewModelTest {
 
         assertNull(viewModel.state.value.comparisonReport)
         assertTrue(viewModel.state.value.comparisonError?.contains("至少需要两个") == true)
+    }
+
+    @Test
+    fun `八字合盘只读取两个用户命例并用单次批量快照生成报告`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["left"] = sampleStoredCase("left").copy(alias = "甲方")
+            stored["right"] = sampleStoredCase("right").copy(
+                alias = "乙方",
+                sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            )
+            stored["celebrity"] = sampleStoredCase("celebrity").copy(
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+
+        val state = viewModel.state.value
+        assertEquals(AppDestination.BaziCompatibility, state.destination)
+        assertEquals(setOf("left", "right"), state.compatibilityCandidates.map { it.id }.toSet())
+        assertNull(state.compatibilityReport)
+        assertFalse(state.compatibilityLoading)
+        assertNull(state.compatibilityError)
+        assertTrue(repository.searchRequests.any { it.libraryType == CaseLibraryType.USER })
+        assertTrue(repository.findByIdsRequests.isEmpty())
+
+        viewModel.selectCompatibilityLeft("right")
+        viewModel.selectCompatibilityRight("left")
+        assertNull(viewModel.state.value.compatibilityLeftCaseId)
+        assertNull(viewModel.state.value.compatibilityRightCaseId)
+
+        viewModel.selectCompatibilityLeft("left")
+        viewModel.selectCompatibilityRight("right")
+        viewModel.analyzeBaziCompatibility()
+
+        assertEquals(AppDestination.BaziCompatibilityReport, viewModel.state.value.destination)
+        assertNotNull(viewModel.state.value.compatibilityReport)
+        assertEquals(listOf(setOf("left", "right")), repository.findByIdsRequests)
+        assertTrue(repository.findByIdRequests.isEmpty())
+        assertEquals(1, viewModel.state.value.compatibilityHistory.size)
+        val record = viewModel.state.value.compatibilityHistory.single()
+        viewModel.openCompatibilityHistoryRecord(record.id)
+        assertEquals(record.id, viewModel.state.value.compatibilityHistoryRecordId)
+        assertEquals(record.report, viewModel.state.value.compatibilityReport)
+        assertEquals("left", viewModel.state.value.compatibilityLeftCaseId)
+        assertEquals("right", viewModel.state.value.compatibilityRightCaseId)
+        viewModel.closeCompatibilityHistoryRecord()
+        assertNull(viewModel.state.value.compatibilityHistoryRecordId)
+    }
+
+    @Test
+    fun `打开合盘记录前保持加载态而不把未读历史误显示为空`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["left"] = sampleStoredCase("left")
+            stored["right"] = sampleStoredCase("right").copy(
+                sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            )
+        }
+        val historyStore = InMemoryBaziCompatibilityHistoryStore()
+        val writer = createViewModel(
+            repository = repository,
+            compatibilityHistoryStore = historyStore,
+        )
+        writer.openBaziCompatibility()
+        writer.selectCompatibilityLeft("left")
+        writer.selectCompatibilityRight("right")
+        writer.analyzeBaziCompatibility()
+        assertTrue(historyStore.list().isNotEmpty())
+        val currentRecord = historyStore.list().single()
+        val legacyRecord = historyStore.save(
+            currentRecord.report.copy(ruleVersion = "compatibility-v1"),
+            createdAtEpochMillis = 1L,
+        )
+        val refreshedRecord = historyStore.save(
+            currentRecord.report,
+            createdAtEpochMillis = 2L,
+        )
+        assertEquals(legacyRecord.id, refreshedRecord.id)
+        assertEquals("compatibility-v3", historyStore.list().single().report.ruleVersion)
+
+        val reader = createViewModel(
+            repository = repository,
+            compatibilityHistoryStore = historyStore,
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        reader.openBaziCompatibility()
+
+        assertTrue(reader.state.value.compatibilityHistoryLoading)
+        assertTrue(reader.state.value.compatibilityHistory.isEmpty())
+        testScheduler.advanceUntilIdle()
+        assertFalse(reader.state.value.compatibilityHistoryLoading)
+        assertEquals(1, reader.state.value.compatibilityHistory.size)
+    }
+
+    @Test
+    fun `合盘记录读取失败不能伪装成空记录`() {
+        val repository = FakeCaseRepository()
+        val unreadableHistory = object : BaziCompatibilityHistoryStore {
+            override fun list(): List<com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord> =
+                throw IllegalStateException("corrupt")
+
+            override fun save(
+                report: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityReport,
+                createdAtEpochMillis: Long,
+            ): com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord = error("unused")
+
+            override fun replace(
+                record: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord,
+            ): com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord = error("unused")
+
+            override fun delete(ids: Set<String>): Int = 0
+        }
+        val viewModel = createViewModel(repository, compatibilityHistoryStore = unreadableHistory)
+
+        viewModel.openBaziCompatibility()
+
+        assertFalse(viewModel.state.value.compatibilityHistoryLoading)
+        assertTrue(viewModel.state.value.compatibilityHistory.isEmpty())
+        assertTrue(viewModel.state.value.compatibilityHistoryError?.contains("原文件已保留") == true)
+    }
+
+    @Test
+    fun `合盘结果换例会替换对应一方并直接重新生成报告`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["man-a"] = sampleStoredCase("man-a")
+            stored["man-b"] = sampleStoredCase("man-b").copy(alias = "另一位男方")
+            stored["woman"] = sampleStoredCase("woman").copy(
+                sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+        viewModel.selectCompatibilityLeft("man-a")
+        viewModel.selectCompatibilityRight("woman")
+        viewModel.analyzeBaziCompatibility()
+        viewModel.openCompatibilityParticipantList(SexForFortuneDirection.MAN)
+        testScheduler.advanceUntilIdle()
+        viewModel.selectCompatibilityParticipantFromList("man-b")
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(AppDestination.BaziCompatibilityReport, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.compatibilityParticipantSelectionRole)
+        assertEquals("man-b", viewModel.state.value.compatibilityReport?.left?.caseId)
+        assertEquals("woman", viewModel.state.value.compatibilityReport?.right?.caseId)
+    }
+
+    @Test
+    fun `合盘记录更换一方会覆盖原记录而非新增重复记录`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["man-a"] = sampleStoredCase("man-a")
+            stored["man-b"] = sampleStoredCase("man-b").copy(alias = "替换后的男方")
+            stored["woman"] = sampleStoredCase("woman").copy(sexForFortuneDirection = SexForFortuneDirection.WOMAN)
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+        viewModel.selectCompatibilityLeft("man-a")
+        viewModel.selectCompatibilityRight("woman")
+        viewModel.analyzeBaziCompatibility()
+        val originalRecordId = viewModel.state.value.compatibilityHistory.single().id
+        viewModel.openCompatibilityHistoryRecord(originalRecordId)
+        viewModel.openCompatibilityParticipantList(SexForFortuneDirection.MAN)
+        testScheduler.advanceUntilIdle()
+        viewModel.selectCompatibilityParticipantFromList("man-b")
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(AppDestination.BaziCompatibilityReport, viewModel.state.value.destination)
+        assertEquals(1, viewModel.state.value.compatibilityHistory.size)
+        assertEquals(originalRecordId, viewModel.state.value.compatibilityHistory.single().id)
+        assertEquals("man-b", viewModel.state.value.compatibilityHistory.single().report.left.caseId)
+        assertEquals("woman", viewModel.state.value.compatibilityHistory.single().report.right.caseId)
+    }
+
+    @Test
+    fun `删除合盘记录只移除报告快照且同步关闭已打开记录`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["man"] = sampleStoredCase("man")
+            stored["woman"] = sampleStoredCase("woman").copy(sexForFortuneDirection = SexForFortuneDirection.WOMAN)
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+        viewModel.selectCompatibilityLeft("man")
+        viewModel.selectCompatibilityRight("woman")
+        viewModel.analyzeBaziCompatibility()
+        val recordId = viewModel.state.value.compatibilityHistory.single().id
+        viewModel.openCompatibilityHistoryRecord(recordId)
+        viewModel.deleteCompatibilityHistoryRecords(setOf(recordId))
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.compatibilityHistory.isEmpty())
+        assertNull(viewModel.state.value.compatibilityHistoryRecordId)
+        assertTrue(repository.stored.containsKey("man"))
+        assertTrue(repository.stored.containsKey("woman"))
+    }
+
+    @Test
+    fun `合盘报告更换案例取消时返回当前报告而非合盘首页`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["man"] = sampleStoredCase("man")
+            stored["woman"] = sampleStoredCase("woman").copy(sexForFortuneDirection = SexForFortuneDirection.WOMAN)
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+        viewModel.selectCompatibilityLeft("man")
+        viewModel.selectCompatibilityRight("woman")
+        viewModel.analyzeBaziCompatibility()
+        viewModel.openCompatibilityParticipantList(SexForFortuneDirection.MAN)
+        viewModel.cancelCompatibilityParticipantList()
+
+        assertEquals(AppDestination.BaziCompatibilityReport, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.compatibilityParticipantSelectionRole)
+        assertNotNull(viewModel.state.value.compatibilityReport)
+    }
+
+    @Test
+    fun `全部二级页面返回各自的直接父级`() {
+        val navigator = StageTwoNavigator()
+
+        fun assertReturn(parent: AppDestination, open: () -> AppDestination) {
+            open()
+            assertEquals(parent, navigator.back())
+        }
+
+        assertReturn(AppDestination.CreateCase, navigator::openCaseComparison)
+        assertReturn(AppDestination.CreateCase, navigator::openBaziCompatibility)
+        navigator.openBaziCompatibility()
+        assertReturn(AppDestination.BaziCompatibility, navigator::openBaziCompatibilityReport)
+        assertReturn(AppDestination.BaziCompatibility, navigator::openCompatibilityParticipantCreate)
+        assertReturn(AppDestination.BaziCompatibility, navigator::openCompatibilityParticipantList)
+        assertEquals(AppDestination.CreateCase, navigator.back())
+
+        assertReturn(AppDestination.CreateCase, navigator::openFourPillarsLookup)
+        assertReturn(AppDestination.CreateCase, navigator::openAlmanac)
+        assertReturn(AppDestination.CreateCase, navigator::openScreenshotImportReview)
+
+        navigator.openRecordHub()
+        val detail = AppDestination.CaseDetail("case-1")
+        assertReturn(AppDestination.CaseList) { navigator.openDetail("case-1") }
+        navigator.openDetail("case-1")
+        assertReturn(detail) { navigator.openObjectiveSummary("case-1") }
+        assertReturn(detail) { navigator.openExternalAnalysisBridge("case-1") }
+        assertReturn(detail) { navigator.openMasterCommentaryCandidates("case-1", "record-1") }
+        assertReturn(detail) { navigator.openFeedbackThemeCandidates("case-1", "record-1") }
+        assertReturn(detail) { navigator.openEditCase("case-1") }
+        assertReturn(detail) { navigator.openBirthTimeCandidate("case-1") }
+        assertReturn(detail) { navigator.openMetadata("case-1") }
+        assertReturn(detail) { navigator.openTextRecord("case-1", "record-1") }
+        assertReturn(detail) { navigator.openEvent("case-1", "event-1") }
+        assertEquals(AppDestination.CaseList, navigator.back())
+    }
+
+    @Test
+    fun `合盘选人直接复用用户列表并固定性别与姓名搜索`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["man-a"] = sampleStoredCase("man-a").copy(alias = "陈先生")
+            stored["man-b"] = sampleStoredCase("man-b").copy(alias = "李先生")
+            stored["woman"] = sampleStoredCase("woman").copy(
+                alias = "王女士",
+                sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            )
+            stored["celebrity"] = sampleStoredCase("celebrity").copy(
+                alias = "名人男",
+                libraryType = CaseLibraryType.CELEBRITY,
+                sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
+            )
+        }
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+        viewModel.openCompatibilityParticipantList(SexForFortuneDirection.MAN)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(SexForFortuneDirection.MAN, viewModel.state.value.compatibilityParticipantSelectionRole)
+        assertEquals(CaseLibraryType.USER, viewModel.state.value.libraryType)
+        assertEquals(CaseVisibility.ACTIVE, viewModel.state.value.visibility)
+        assertEquals(SexForFortuneDirection.MAN, viewModel.state.value.advancedFilter.sex)
+        assertEquals(listOf("man-a", "man-b"), viewModel.state.value.cases.map { it.id })
+
+        viewModel.updateQuery("李先生")
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf("man-b"), viewModel.state.value.cases.map { it.id })
+
+        viewModel.selectCompatibilityParticipantFromList("man-b")
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.compatibilityParticipantSelectionRole)
+        assertEquals("man-b", viewModel.state.value.compatibilityLeftCaseId)
+        assertEquals(CaseAdvancedFilter(), viewModel.state.value.advancedFilter)
+    }
+
+    @Test
+    fun `合盘选择与录入子页面返回时回到合盘而不退出应用`() = runTest {
+        val viewModel = createViewModel(FakeCaseRepository())
+
+        viewModel.openBaziCompatibility()
+        viewModel.openCompatibilityParticipantList(SexForFortuneDirection.MAN)
+        viewModel.navigateBack()
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.compatibilityParticipantSelectionRole)
+
+        viewModel.createCompatibilityParticipant(SexForFortuneDirection.WOMAN)
+        viewModel.navigateBack()
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.compatibilityParticipantRole)
+    }
+
+    @Test
+    fun `合盘录入入口预设对应性别并保留返回合盘的导航路径`() = runTest {
+        val viewModel = createViewModel(FakeCaseRepository())
+
+        viewModel.openBaziCompatibility()
+        viewModel.createCompatibilityParticipant(SexForFortuneDirection.WOMAN)
+
+        assertEquals(AppDestination.CreateCase, viewModel.state.value.destination)
+        assertEquals(SexForFortuneDirection.WOMAN, viewModel.state.value.form.sex)
+        assertEquals(CaseLibraryType.USER, viewModel.state.value.form.libraryType)
+        assertEquals(SexForFortuneDirection.WOMAN, viewModel.state.value.compatibilityParticipantRole)
+        assertNull(viewModel.state.value.message)
+    }
+
+    @Test
+    fun `从合盘录入命例保存后回到对应角色卡`() = runTest {
+        val repository = FakeCaseRepository()
+        val viewModel = createViewModel(repository)
+
+        viewModel.openBaziCompatibility()
+        viewModel.createCompatibilityParticipant(SexForFortuneDirection.MAN)
+        viewModel.updateForm { validForm().copy(sex = SexForFortuneDirection.MAN) }
+        viewModel.submitCase()
+
+        val savedId = repository.stored.keys.single()
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+        assertEquals(savedId, viewModel.state.value.compatibilityLeftCaseId)
+        assertNull(viewModel.state.value.compatibilityRightCaseId)
+        assertEquals(SexForFortuneDirection.MAN, repository.stored.getValue(savedId).sexForFortuneDirection)
+        assertTrue(viewModel.state.value.compatibilityCandidates.any { it.id == savedId })
+        assertNull(viewModel.state.value.compatibilityParticipantRole)
+    }
+
+    @Test
+    fun `取消合盘录入回到合盘页并丢弃未保存草稿`() = runTest {
+        val viewModel = createViewModel(FakeCaseRepository())
+
+        viewModel.openBaziCompatibility()
+        viewModel.createCompatibilityParticipant(SexForFortuneDirection.MAN)
+        viewModel.updateForm { it.copy(alias = "未保存") }
+        viewModel.cancelCompatibilityParticipantCreate()
+
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+        assertNull(viewModel.state.value.compatibilityParticipantRole)
+        assertTrue(viewModel.state.value.form.alias.isBlank())
     }
 
     @Test
@@ -3727,6 +4107,9 @@ class StageTwoViewModelTest {
         almanacReader: AlmanacReader? = null,
         calculationPreferenceStore: CalculationPreferenceStore =
             InMemoryCalculationPreferenceStore(),
+        compatibilityHistoryStore: BaziCompatibilityHistoryStore =
+            InMemoryBaziCompatibilityHistoryStore(),
+        ioDispatcher: CoroutineDispatcher = dispatcher,
         savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
         restoredUiStateOverride: StageTwoUiState? = null,
     ): StageTwoViewModel {
@@ -3792,8 +4175,9 @@ class StageTwoViewModelTest {
             backupAttachmentRoot = backupRoot?.resolve("attachments"),
             backupWorkRoot = backupRoot?.resolve("work"),
             calculationPreferenceStore = calculationPreferenceStore,
+            compatibilityHistoryStore = compatibilityHistoryStore,
             baziEngine = engine,
-            ioDispatcher = dispatcher,
+            ioDispatcher = ioDispatcher,
             fortuneCalculationDispatcher = dispatcher,
             searchDebounceMillis = 0L,
             savedStateHandle = savedStateHandle,

@@ -100,6 +100,12 @@ data class BirthInput(
     val useTrueSolarTime: Boolean = false,
     val timeSourceType: TimeSourceType = TimeSourceType.UNKNOWN,
     val sourceNote: String? = null,
+    /**
+     * Catalog-only marker for a source-verified modern date used to reproduce
+     * a historical chart when the engine cannot represent the historical
+     * calendar. The owning [BaziCase] keeps the historical birth input.
+     */
+    val isHistoricalCalculationProxy: Boolean = false,
 ) {
     init {
         require(timeZoneId.isNotBlank()) { "时区标识不能为空" }

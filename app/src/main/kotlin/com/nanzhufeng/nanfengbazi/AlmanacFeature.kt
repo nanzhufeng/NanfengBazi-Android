@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -71,25 +72,29 @@ import java.time.LocalTime
 @Composable
 internal fun AlmanacHomeEntry(
     onClick: () -> Unit,
+    compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
+            .fillMaxHeight()
             .semantics { contentDescription = "打开万年历" }
             .testTag("open_almanac"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
+        shape = HomeQuickEntryPillShape,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
         ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp),
+            ) {
             Surface(
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(if (compact) 42.dp else 52.dp),
                 shape = CircleShape,
                 color = Color(0xFFF6EFE2),
             ) {
@@ -97,35 +102,19 @@ internal fun AlmanacHomeEntry(
                     Icon(
                         imageVector = Icons.Filled.DateRange,
                         contentDescription = null,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(if (compact) 21.dp else 25.dp),
                         tint = NanfengGold,
                     )
                 }
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 14.dp),
-            ) {
-                Text(
-                    "万年历",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = NanfengInk,
-                )
-                Text(
-                    "公历、农历、节气与每日宜忌",
-                    modifier = Modifier.padding(top = 2.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                imageVector = Icons.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            Text(
+                "万年历",
+                style = if (compact) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengInk,
             )
         }
+    }
     }
 }
 
@@ -195,6 +184,8 @@ internal fun AlmanacScreen(
                 )
                 AlmanacDetailsCard(
                     details = month?.selected,
+                    loading = state.almanacLoading,
+                    error = state.almanacError,
                     selectedDoubleHourIndex = state.almanacSelectedDoubleHourIndex,
                     onSelectDoubleHour = onSelectDoubleHour,
                 )
@@ -565,6 +556,8 @@ private fun AlmanacDayCell(
 @Composable
 private fun AlmanacDetailsCard(
     details: AlmanacDayDetails?,
+    loading: Boolean,
+    error: String?,
     selectedDoubleHourIndex: Int,
     onSelectDoubleHour: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -581,7 +574,15 @@ private fun AlmanacDetailsCard(
                     .height(220.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                } else {
+                    Text(
+                        text = error ?: "万年历内容暂不可用。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             return@Card
         }

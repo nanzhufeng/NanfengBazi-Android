@@ -159,7 +159,7 @@ private fun CaseSortOrder.summaryComparator(): Comparator<CaseSummary> {
     val selected = when (this) {
         CaseSortOrder.NAME_ASC ->
             Comparator { left, right ->
-                compareCaseNames(left.displayName(), right.displayName())
+                compareCaseNameGroups(left.displayName(), right.displayName())
             }
         CaseSortOrder.LAST_VIEWED_DESC ->
             compareByDescending<CaseSummary> { it.lastViewedAt }.thenByDescending { it.updatedAt }

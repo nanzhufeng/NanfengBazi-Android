@@ -7,6 +7,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.FortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.LunarDateTime
 import com.nanzhufeng.nanfengbazi.domain.model.SexForFortuneDirection
 import com.nanzhufeng.nanfengbazi.domain.model.SolarTimeMode
+import com.nanzhufeng.nanfengbazi.domain.model.completedAgeRangeDisplay
+import com.nanzhufeng.nanfengbazi.domain.model.solarBirthDateTimeForFortuneDisplay
 import kotlin.math.abs
 
 enum class CaseComparisonOutcome {
@@ -162,10 +164,10 @@ object CaseComparisonEngine {
                         row(
                             "120 年大运",
                             leftResult?.decadeFortunes?.take(12)?.joinToString(" · ") {
-                                "${it.name} ${it.startAge}-${it.endAge}岁"
+                                "${it.name} ${it.completedAgeRangeDisplay(leftResult.solarBirthDateTimeForFortuneDisplay())}"
                             },
                             rightResult?.decadeFortunes?.take(12)?.joinToString(" · ") {
-                                "${it.name} ${it.startAge}-${it.endAge}岁"
+                                "${it.name} ${it.completedAgeRangeDisplay(rightResult.solarBirthDateTimeForFortuneDisplay())}"
                             },
                         ),
                     ),

@@ -30,6 +30,10 @@ class StageTwoNavigatorTest {
         assertEquals(AppDestination.CaseComparison, navigator.openCaseComparison())
         assertEquals(AppDestination.CaseList, navigator.back())
         assertEquals(AppDestination.CreateCase, navigator.openCreate())
+        assertEquals(AppDestination.BaziCompatibility, navigator.openBaziCompatibility())
+        assertEquals(AppDestination.BaziCompatibilityReport, navigator.openBaziCompatibilityReport())
+        assertEquals(AppDestination.BaziCompatibility, navigator.back())
+        assertEquals(AppDestination.CreateCase, navigator.back())
         assertEquals(AppDestination.CaseList, navigator.backToList())
         assertEquals(
             AppDestination.CaseDetail("case-1"),

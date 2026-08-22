@@ -69,6 +69,12 @@ data class UnifiedCelebrityCatalogCase(
     val canonicalName: String,
     val sex: SexForFortuneDirection,
     val birthInput: BirthInput,
+    /**
+     * A catalog-only, source-verified calculation proxy for historical dates the
+     * current engine cannot represent.  The public [birthInput] remains the
+     * historical fact and the UI must show both dates when they differ.
+     */
+    val calculationBirthInput: BirthInput? = null,
     val birthTimeCandidates: List<BirthTimeCandidate>,
     val groupId: String,
     val tags: List<String>,
@@ -305,10 +311,18 @@ class UnifiedCelebrityCatalogImporter(
         val built = originals.mapIndexed { index, original ->
             val candidateId = original.id.ifBlank { unifiedStableId("time", "$caseId:$index") }
             val snapshotId = unifiedStableId("snapshot", "$caseId:$candidateId")
-            val calculationInput = original.birthInput.toSupportedHistoricalCalculationInput()
+            val calculationInput = calculationBirthInput
+                ?: original.birthInput.toSupportedHistoricalCalculationInput()
             val calculation = baziEngine.calculate(calculationInput, CalculationProfile.tymeDefault())
-            val historicalBceInput = original.birthInput.hasBceCalendarYear()
-            val normalized = if (historicalBceInput) original.birthInput else calculation.normalizedInput
+            val historicalBceInput =
+                calculationBirthInput == null && original.birthInput.hasBceCalendarYear()
+            val normalized = if (historicalBceInput) {
+                original.birthInput
+            } else {
+                calculation.normalizedInput.copy(
+                    isHistoricalCalculationProxy = calculationInput.isHistoricalCalculationProxy,
+                )
+            }
             val persistedCalculation = if (historicalBceInput) {
                 calculation.copy(
                     normalizedInput = original.birthInput,
@@ -325,6 +339,10 @@ class UnifiedCelebrityCatalogImporter(
             BirthTimeCandidate(
                 id = candidateId,
                 label = original.label.ifBlank { "统一资料候选" },
+                // Candidates are calculation inputs and must stay aligned with
+                // their adopted snapshot. A historical proxy therefore lives
+                // here, while BaziCase.birthInput below remains the public
+                // historical fact shown by the UI.
                 birthInput = normalized,
                 calculationSnapshotId = snapshotId,
                 adopted = index == adoptedIndex,
@@ -343,7 +361,11 @@ class UnifiedCelebrityCatalogImporter(
             name = com.nanzhufeng.nanfengbazi.domain.model.ExplicitText.present(canonicalName),
             sexForFortuneDirection = sex,
             sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
-            birthInput = built[adoptedIndex].first.birthInput,
+            birthInput = if (calculationBirthInput == null) {
+                built[adoptedIndex].first.birthInput
+            } else {
+                birthInput
+            },
             libraryType = CaseLibraryType.CELEBRITY,
             birthTimeCandidates = built.map { it.first },
             calculationSnapshots = built.map { it.second },

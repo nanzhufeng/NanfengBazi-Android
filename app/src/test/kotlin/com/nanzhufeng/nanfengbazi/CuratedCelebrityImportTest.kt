@@ -6,6 +6,7 @@ import com.nanzhufeng.nanfengbazi.domain.model.CaseSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseEvent
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecord
 import com.nanzhufeng.nanfengbazi.domain.model.CaseTextRecordType
+import com.nanzhufeng.nanfengbazi.domain.model.FourPillars
 import com.nanzhufeng.nanfengbazi.domain.model.TextRecordSourceType
 import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine
@@ -125,6 +126,12 @@ class CuratedCelebrityImportTest {
             com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar).dateTime
         assertEquals(Triple(-4, 1, 15), Triple(guangwuDate.year, guangwuDate.month, guangwuDate.day))
         assertTrue(guangwu.birthInput.sourceNote.orEmpty().contains("公元前5年1月15日"))
+        val guangwuCalculationDate = (requireNotNull(guangwu.calculationBirthInput).calendarInput as
+            com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar).dateTime
+        assertEquals(
+            Triple(1916, 1, 28),
+            Triple(guangwuCalculationDate.year, guangwuCalculationDate.month, guangwuCalculationDate.day),
+        )
         assertTrue(sourceOnlyHistorical.all { sourceCase ->
             sourceCase.birthInput.timePrecision == TimePrecision.DOUBLE_HOUR_ONLY ||
                 sourceCase.birthInput.sourceNote.orEmpty().contains("君主出生日期按公开史料校正")
@@ -152,6 +159,12 @@ class CuratedCelebrityImportTest {
         assertEquals(1, repository.stored.values.count { it.libraryType == CaseLibraryType.USER })
         assertEquals(575, repository.stored.values.count { it.libraryType == CaseLibraryType.CELEBRITY })
         assertEquals(10, repository.groupCatalog.count { it.libraryType == CaseLibraryType.CELEBRITY })
+        val storedGuangwu = repository.stored.getValue(guangwu.caseId)
+        assertEquals(guangwu.birthInput, storedGuangwu.birthInput)
+        val storedGuangwuCalculation =
+            storedGuangwu.calculationSnapshots.single { it.adopted }.result.normalizedInput
+        assertEquals(guangwu.calculationBirthInput?.calendarInput, storedGuangwuCalculation.calendarInput)
+        assertTrue(storedGuangwuCalculation.isHistoricalCalculationProxy)
 
         val repeat = importer.synchronize(source)
         assertEquals(0, repeat.created)
@@ -235,6 +248,11 @@ class CuratedCelebrityImportTest {
         assertTrue(result.errors.joinToString(separator = "\n"), result.invalid == 0)
         assertEquals(574, result.created)
         assertEquals(574, repository.stored.values.count { it.libraryType == CaseLibraryType.CELEBRITY })
+        val guangwu = repository.stored.values.single { it.alias == "汉世祖光武帝" }
+        val adopted = guangwu.calculationSnapshots.single { it.adopted }.result
+        assertEquals(FourPillars("乙卯", "己丑", "甲子", "丙寅"), adopted.fourPillars)
+        assertTrue(adopted.normalizedInput.calendarInput != guangwu.birthInput.calendarInput)
+        assertTrue(adopted.warnings.none { it.code == "HISTORICAL_BCE_CALCULATION_UNAVAILABLE" })
     }
 
     @Test

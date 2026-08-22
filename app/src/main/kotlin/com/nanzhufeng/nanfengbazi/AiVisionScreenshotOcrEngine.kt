@@ -139,7 +139,7 @@ internal class AiVisionScreenshotOcrEngine(
         }
         val code = connection.responseCode
         val payload = (if (code in 200..299) connection.inputStream else connection.errorStream)
-            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            ?.use { it.readUtf8Bounded(MAX_VISION_RESPONSE_BYTES) }.orEmpty()
         connection.disconnect()
         require(code in 200..299) {
             when (code) {
@@ -276,8 +276,12 @@ private fun JsonObject.boundingBox(width: Int?, height: Int?): EvidenceBoundingB
 private fun ByteArray.forVisionUpload(sourceMimeType: String): VisionUploadImage {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(this, 0, size, bounds)
+    require(
+        bounds.outWidth > 0 && bounds.outHeight > 0 &&
+            bounds.outWidth.toLong() * bounds.outHeight <= MAX_VISION_SOURCE_PIXELS,
+    ) { "图片像素尺寸异常，已停止识别。" }
     val largest = maxOf(bounds.outWidth, bounds.outHeight)
-    if (largest <= VISION_MAX_EDGE_PX || bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+    if (largest <= VISION_MAX_EDGE_PX) {
         return VisionUploadImage(this, sourceMimeType)
     }
     val sampleSize = generateSequence(1) { it * 2 }
@@ -313,3 +317,5 @@ private data class VisionUploadImage(
 )
 
 private const val VISION_MAX_EDGE_PX = 2048
+private const val MAX_VISION_RESPONSE_BYTES = 4 * 1024 * 1024
+private const val MAX_VISION_SOURCE_PIXELS = 48_000_000L
