@@ -5,6 +5,16 @@
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
 
+## 2026-08-23：合盘记录卡去除重复关系与命盘小字 r130
+
+- 合盘记录列表每张卡删除底部“亲密／家庭／地支”关系摘要；男／女双方摘要删除“生肖”与“日主”，保留角色、姓名、出生时刻和四柱。完整关系解析与报告数据未改，只在打开对应记录后查看。
+- `InteractionShapeContractTest` 锁定上述文本和关系摘要均不在列表卡渲染；包含结果页提示删除在内的全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 已通过，发布状态随 PR #4 继续更新。
+
+## 2026-08-23：合盘结果删除资料与口径提示 r129
+
+- 合盘结果页删除“资料与口径提示”标题与技术提示列表，不添加替代文案、卡片或留白。`BaziCompatibilityReport.warnings` 继续保留为冻结报告数据，供历史兼容和 AI 指令使用，未改写双方命例、排盘结果或关系解析。
+- `InteractionShapeContractTest` 锁定结果内容不再渲染该区块；验证与发布状态随 PR #4 的增量更新。
+
 ## 2026-08-23：合盘记录首屏直出与会话缓存 r128
 
 - 根因：`openBaziCompatibility()` 每次都重置 `compatibilityHistoryLoading` 并调用历史加载；加载协程又将历史文件读取、双方命例批量查询、旧报告 `hydrateHistoricalReport()` 和必要 `replace()` 串行完成，导致已保存的冻结报告不能及时进入正常列表。
