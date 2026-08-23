@@ -59,6 +59,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
@@ -70,6 +71,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -5804,7 +5806,15 @@ private fun BaziCompatibilityScreen(
             CenterAlignedTopAppBar(
                 title = { Text("合盘记录", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    TextButton(onClick = onCloseHistoryRecord) { Text("返回合盘") }
+                    IconButton(
+                        onClick = onCloseHistoryRecord,
+                        modifier = Modifier.testTag("compatibility_history_record_back"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回合盘记录",
+                        )
+                    }
                 },
             )
             BaziCompatibilityReportContent(
@@ -5834,10 +5844,15 @@ private fun BaziCompatibilityScreen(
         CenterAlignedTopAppBar(
             title = { Text("八字合盘", fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
-                TextButton(
+                IconButton(
                     onClick = onBack,
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("back_from_bazi_compatibility"),
-                ) { Text("返回") }
+                    modifier = Modifier.testTag("back_from_bazi_compatibility"),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                    )
+                }
             },
         )
         CompatibilitySetupPanel(
@@ -5873,10 +5888,15 @@ private fun BaziCompatibilityReportScreen(
         CenterAlignedTopAppBar(
             title = { Text("合盘结果", fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
-                TextButton(
+                IconButton(
                     onClick = onBack,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("返回") }
+                    modifier = Modifier.testTag("compatibility_report_back"),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回八字合盘",
+                    )
+                }
             },
         )
         when {
@@ -6131,25 +6151,28 @@ private fun CompatibilityHistoryScreen(
     Column(modifier = modifier.fillMaxSize().testTag("bazi_compatibility_history")) {
         CenterAlignedTopAppBar(
             title = { Text("合盘记录", fontWeight = FontWeight.SemiBold) },
-            navigationIcon = { TextButton(onClick = onBack) { Text("返回合盘") } },
+            navigationIcon = {
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.testTag("compatibility_history_back"),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回合盘",
+                    )
+                }
+            },
             actions = {
-                if (selectionMode) {
-                    TextButton(
-                        onClick = {
-                            selectedRecordIds = if (allSelected) emptySet() else records.mapTo(linkedSetOf()) { it.id }
-                        },
-                        enabled = records.isNotEmpty(),
-                    ) { Text(if (allSelected) "取消全选" else "全选") }
-                    TextButton(
-                        onClick = { pendingDeleteRecordIds = selectedRecordIds },
-                        enabled = selectedRecordIds.isNotEmpty(),
-                    ) { Text("删除 ${selectedRecordIds.size}", color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = {
-                        selectionMode = false
-                        selectedRecordIds = emptySet()
-                    }) { Text("完成") }
-                } else if (records.isNotEmpty()) {
-                    TextButton(onClick = { selectionMode = true }) { Text("管理") }
+                if (!selectionMode && records.isNotEmpty()) {
+                    IconButton(
+                        onClick = { selectionMode = true },
+                        modifier = Modifier.testTag("compatibility_history_manage"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "管理合盘记录",
+                        )
+                    }
                 }
             },
         )
@@ -6227,14 +6250,83 @@ private fun CompatibilityHistoryScreen(
                         color = Color.White,
                         shadowElevation = 8.dp,
                     ) {
-                        Button(
-                            onClick = { pendingDeleteRecordIds = selectedRecordIds },
-                            enabled = selectedRecordIds.isNotEmpty(),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(52.dp)
-                                .testTag("compatibility_history_batch_delete"),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            shape = RoundedCornerShape(16.dp),
-                        ) { Text("删除已选 ${selectedRecordIds.size} 条") }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    selectedRecordIds = if (allSelected) {
+                                        emptySet()
+                                    } else {
+                                        records.mapTo(linkedSetOf()) { it.id }
+                                    }
+                                },
+                                enabled = records.isNotEmpty(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("compatibility_history_select_all"),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.SelectAll,
+                                        contentDescription = null,
+                                    )
+                                    Text(if (allSelected) "取消全选" else "全选")
+                                }
+                            }
+                            IconButton(
+                                onClick = { pendingDeleteRecordIds = selectedRecordIds },
+                                enabled = selectedRecordIds.isNotEmpty(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("compatibility_history_batch_delete"),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                    Text(
+                                        "删除 ${selectedRecordIds.size}",
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = {
+                                    selectionMode = false
+                                    selectedRecordIds = emptySet()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("compatibility_history_manage_done"),
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Done,
+                                        contentDescription = null,
+                                    )
+                                    Text("完成")
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1,9 +1,19 @@
 # 当前交接：v1.0.0 正式发布基线
 
-更新日期：2026-08-23
+更新日期：2026-08-24
 
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
+
+## 2026-08-24：合盘全链路顶栏返回统一为图标 r137
+
+- 八字合盘主页、合盘结果、合盘记录列表和点进记录详情的顶栏返回现全部使用同一返回箭头；语义由无障碍 `contentDescription` 保留。`InteractionShapeContractTest` 锁定四处图标入口及其 2＋1＋1 个箭头分布，防止再回退成文字按钮。
+- 全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 53 warnings`（既有图标弃用警告）。按授权把 Debug `1.0.9 (10041)` 同签名覆盖到 OPPO `3B157F009E800000`：短路径成品为 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.9.apk`，大小 `91,169,337` 字节、SHA-256 为 `7eb56410392263d3ff18567dedf75404c2d73baf257e640d8b01f205d035f831`；签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。安装后设备 `base.apk` 哈希一致，`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 仍为 `1222090/1857315`；未运行 `connected*AndroidTest`、未卸载、清数据或自动启动 App，临时 APK 已清理。仍待你在真实外屏／内屏确认图标视觉。
+
+## 2026-08-24：合盘记录管理操作统一到底部 r136
+
+- 合盘记录常态的顶栏为返回箭头、居中标题和管理图标；不再显示“返回合盘”或“管理”文字。点管理后，顶栏不再放全选、删除、完成，底部才出现一组等宽的图文操作：全选／取消全选、删除 `N`、完成。删除确认与读取失败的重试保持文字，避免破坏风险说明和恢复语义。
+- 未修改合盘冻结报告、选择状态、删除确认或存储链路；`InteractionShapeContractTest` 锁定顶栏和底部管理操作的图标、文字与测试标签。全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 53 warnings`（既有图标弃用警告）。按授权把 Debug `1.0.8 (10040)` 同签名覆盖到 OPPO `3B157F009E800000`：短路径成品为 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.8.apk`，大小 `91,169,337` 字节、SHA-256 为 `3a91ee77b06f1be6a94c503232feba263815917845dae28a4bd9555c33a5c009`；签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。安装后设备 `base.apk` 哈希一致，`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 仍为 `1222090/1857315`；未运行 `connected*AndroidTest`、未卸载、清数据或自动启动 App，临时 APK 已清理。仍待真实设备在外屏／内屏确认视觉。
 
 ## 2026-08-23：r134 覆盖安装验收 r135
 
