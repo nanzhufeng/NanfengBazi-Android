@@ -252,6 +252,11 @@ class StageTwoNavigator {
         return openRoot(AppDestination.CreateCase)
     }
 
+    fun openCelebrityCreate(): AppDestination {
+        if (current != AppDestination.CaseList) openRoot(AppDestination.CaseList)
+        return push(AppDestination.CreateCase)
+    }
+
     fun openRecordHub(): AppDestination = openRoot(AppDestination.CaseList)
 
     fun openSettings(): AppDestination = openRoot(AppDestination.Settings)
@@ -261,6 +266,14 @@ class StageTwoNavigator {
     }
 
     fun openBaziCompatibility(): AppDestination = push(AppDestination.BaziCompatibility)
+
+    fun restoreCompatibilityParticipantSelection(): AppDestination {
+        stack.clear()
+        stack += AppDestination.CreateCase
+        stack += AppDestination.BaziCompatibility
+        stack += AppDestination.CaseList
+        return current
+    }
 
     fun openBaziCompatibilityReport(): AppDestination = push(AppDestination.BaziCompatibilityReport)
 
@@ -516,6 +529,8 @@ data class StageTwoUiState(
     val compatibilityHistoryLoaded: Boolean = false,
     /** Read/write failures keep the existing file and surface recovery instead of pretending history is empty. */
     val compatibilityHistoryError: String? = null,
+    /** 合盘记录列表是合盘页的子路由；窗口重组时必须留在当前列表。 */
+    val compatibilityHistoryListVisible: Boolean = false,
     val compatibilityHistoryRecordId: String? = null,
     val compatibilityHistoryReplacementRecordId: String? = null,
     val fourPillarsLookupForm: FourPillarsLookupFormState =
@@ -988,6 +1003,9 @@ class StageTwoViewModel(
             }
         }
         navigator.restore(mutableState.value.destination)
+        if (mutableState.value.compatibilityParticipantSelectionRole != null) {
+            navigator.restoreCompatibilityParticipantSelection()
+        }
         savedStateHandle.setSavedStateProvider(SAVED_UI_STATE_KEY) {
             mutableState.value.toSavedStateBundle()
         }
@@ -998,6 +1016,18 @@ class StageTwoViewModel(
         }
         if (mutableState.value.destination == AppDestination.BaziCompatibility) {
             loadCompatibilityWorkspace()
+            if (
+                mutableState.value.compatibilityHistoryListVisible ||
+                mutableState.value.compatibilityHistoryRecordId != null
+            ) {
+                mutableState.update {
+                    it.copy(
+                        compatibilityHistoryLoading = true,
+                        compatibilityHistoryError = null,
+                    )
+                }
+                loadCompatibilityHistory()
+            }
         }
         if (
             mutableState.value.destination == AppDestination.FourPillarsLookup &&
@@ -3646,9 +3676,11 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     fun reorderCaseGroups(groupIds: List<String>) {
         if (mutableState.value.mutationSaving) return
         viewModelScope.launch {
+            mutableState.update { it.copy(mutationSaving = true, mutationError = null) }
             val saved = caseRepository.reorderGroups(groupIds, mutableState.value.libraryType)
             mutableState.update {
                 it.copy(
+                    mutationSaving = false,
                     mutationError = if (saved) null else "分组顺序保存失败。",
                     message = if (saved) "分组顺序已更新。" else it.message,
                 )
@@ -3895,7 +3927,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         val groups = cachedGroupsForLibrary(CaseLibraryType.CELEBRITY)
         mutableState.update {
             it.copy(
-                destination = navigator.openCreate(),
+                // 名人录入是案例库的子页面，必须保留列表作为系统返回的父级。
+                destination = navigator.openCelebrityCreate(),
                 compatibilityParticipantRole = null,
                 visibility = CaseVisibility.ACTIVE,
                 libraryType = CaseLibraryType.CELEBRITY,
@@ -3978,11 +4011,38 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 compatibilityError = null,
                 compatibilityHistoryLoading = historyNeedsInitialRead,
                 compatibilityHistoryError = if (historyNeedsInitialRead) null else it.compatibilityHistoryError,
+                compatibilityHistoryListVisible = false,
+                compatibilityHistoryRecordId = null,
+                compatibilityHistoryReplacementRecordId = null,
                 message = null,
             )
         }
         if (historyNeedsInitialRead) loadCompatibilityHistory()
         if (!cachedReady) loadCompatibilityWorkspace()
+    }
+
+    fun openCompatibilityHistory() {
+        val current = mutableState.value
+        val historyNeedsRead = !current.compatibilityHistoryLoaded && !current.compatibilityHistoryLoading
+        mutableState.update {
+            it.copy(
+                compatibilityHistoryListVisible = true,
+                compatibilityHistoryLoading = it.compatibilityHistoryLoading || historyNeedsRead,
+                compatibilityHistoryError = if (historyNeedsRead) null else it.compatibilityHistoryError,
+                message = null,
+            )
+        }
+        if (historyNeedsRead) loadCompatibilityHistory()
+    }
+
+    fun closeCompatibilityHistory() {
+        mutableState.update {
+            it.copy(
+                compatibilityHistoryListVisible = false,
+                compatibilityHistoryRecordId = null,
+                compatibilityHistoryReplacementRecordId = null,
+            )
+        }
     }
 
     fun createCompatibilityParticipant(sex: SexForFortuneDirection) {
@@ -4950,6 +5010,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         val record = mutableState.value.compatibilityHistory.firstOrNull { it.id == recordId } ?: return
         mutableState.update {
             it.copy(
+                compatibilityHistoryListVisible = true,
                 compatibilityHistoryRecordId = record.id,
                 compatibilityLeftCaseId = record.report.left.caseId,
                 compatibilityRightCaseId = record.report.right.caseId,
@@ -4963,6 +5024,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     fun closeCompatibilityHistoryRecord() {
         mutableState.update {
             it.copy(
+                compatibilityHistoryListVisible = true,
                 compatibilityHistoryRecordId = null,
                 compatibilityHistoryReplacementRecordId = null,
                 compatibilityReport = null,
@@ -5020,6 +5082,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         mutableState.update {
             it.copy(
                 destination = navigator.openBaziCompatibilityReport(),
+                compatibilityHistoryListVisible = false,
                 compatibilityHistoryRecordId = null,
                 compatibilityHistoryReplacementRecordId = null,
             )
@@ -13406,6 +13469,13 @@ private fun StageTwoUiState.toSavedStateBundle(): Bundle = Bundle().apply {
     putString("compatibilityLeftCaseId", compatibilityLeftCaseId)
     putString("compatibilityRightCaseId", compatibilityRightCaseId)
     putString("compatibilityParticipantRole", compatibilityParticipantRole?.name)
+    putString(
+        "compatibilityParticipantSelectionRole",
+        compatibilityParticipantSelectionRole?.name,
+    )
+    putBoolean("compatibilityHistoryListVisible", compatibilityHistoryListVisible)
+    putString("compatibilityHistoryRecordId", compatibilityHistoryRecordId)
+    putString("compatibilityHistoryReplacementRecordId", compatibilityHistoryReplacementRecordId)
     putBundle(
         "fourPillarsLookupForm",
         fourPillarsLookupForm.toSavedStateBundle(),
@@ -13495,6 +13565,12 @@ private fun Bundle.toStageTwoUiState(): StageTwoUiState {
         compatibilityParticipantRole = enumValueOrNull<SexForFortuneDirection>(
             getString("compatibilityParticipantRole"),
         ),
+        compatibilityParticipantSelectionRole = enumValueOrNull<SexForFortuneDirection>(
+            getString("compatibilityParticipantSelectionRole"),
+        ),
+        compatibilityHistoryListVisible = getBoolean("compatibilityHistoryListVisible"),
+        compatibilityHistoryRecordId = getString("compatibilityHistoryRecordId"),
+        compatibilityHistoryReplacementRecordId = getString("compatibilityHistoryReplacementRecordId"),
         compatibilityLoading = destination == AppDestination.BaziCompatibility,
         fourPillarsLookupForm = getBundle("fourPillarsLookupForm")
             ?.toFourPillarsLookupFormState()

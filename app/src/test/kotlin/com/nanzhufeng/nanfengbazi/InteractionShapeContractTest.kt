@@ -145,6 +145,8 @@ class InteractionShapeContractTest {
 
         assertTrue(create.contains("BoxWithConstraints("))
         assertTrue(create.contains("val homeQuickEntryEdgeGap = 10.dp"))
+        assertTrue(create.contains("val showHomeQuickEntries"))
+        assertTrue(create.contains("form.libraryType == CaseLibraryType.USER"))
         assertTrue(create.contains("val quickEntryNavigationBottomInset"))
         assertTrue(create.contains("ROOT_NAVIGATION_BAR_HEIGHT"))
         assertTrue(create.contains("ROOT_NAVIGATION_BOTTOM_MARGIN"))
@@ -159,6 +161,7 @@ class InteractionShapeContractTest {
         assertTrue(create.contains("onClick = onOpenBaziCompatibility"))
         assertTrue(create.contains("AlmanacHomeEntry("))
         assertTrue(create.contains("onClick = onOpenAlmanac"))
+        assertTrue(create.contains("if (showHomeQuickEntries)"))
         assertTrue(create.contains("maxWidth >= INNER_DISPLAY_HOME_MIN_WIDTH"))
         assertTrue(!create.contains("maxHeight < 780.dp"))
         assertTrue(screens.contains("private val INNER_DISPLAY_HOME_MIN_WIDTH = 600.dp"))
@@ -183,6 +186,50 @@ class InteractionShapeContractTest {
         assertTrue(almanac.contains("shape = HomeQuickEntryPillShape"))
         assertTrue(almanac.contains("modifier = Modifier.fillMaxSize(),\n            contentAlignment = Alignment.Center"))
         assertTrue(screens.contains("internal val HomeQuickEntryPillShape = RoundedCornerShape(percent = 50)"))
+    }
+
+    @Test
+    fun celebrityCaseEntryIsABackNavigableInputOnlySubpage() {
+        val screens = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val viewModel = File(locateSourceRoot(), "StageTwoViewModel.kt").readText()
+        val create = screens.substringAfter("private fun WenzhenCreateCaseScreen(")
+            .substringBefore("private fun BaziCompatibilityHomeEntry(")
+
+        assertTrue(viewModel.contains("fun openCelebrityCreate(): AppDestination {"))
+        assertTrue(viewModel.contains("if (current != AppDestination.CaseList) openRoot(AppDestination.CaseList)"))
+        assertTrue(viewModel.contains("destination = navigator.openCelebrityCreate()"))
+        assertTrue(screens.contains("val returnsToCelebrityLibrary"))
+        assertTrue(screens.contains("returnsToCelebrityLibrary,"))
+        assertTrue(screens.contains("state.form.libraryType == CaseLibraryType.CELEBRITY"))
+        assertTrue(create.contains("val showHomeQuickEntries"))
+        assertTrue(create.contains("form.libraryType == CaseLibraryType.USER"))
+        assertTrue(create.contains("if (showHomeQuickEntries)"))
+    }
+
+    @Test
+    fun sharedWhiteCardStyleKeepsSoftShadowAndPillGeometry() {
+        val theme = File(locateSourceRoot(), "NanfengBaziTheme.kt").readText()
+        val screens = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val aiCard = screens.substringAfter("private fun AiServiceDestinationCard(")
+            .substringBefore("private fun SettingsGroupTitle(")
+        val professional = screens.substringAfter("private fun ProfessionalFortuneLoading(")
+            .substringBefore("private fun ProfessionalPillarCell(")
+
+        assertTrue(theme.contains("internal val NanfengSoftWhiteCardShape = RoundedCornerShape(24.dp)"))
+        assertTrue(theme.contains("internal val NanfengSoftWhitePillShape = RoundedCornerShape(26.dp)"))
+        assertTrue(theme.contains("ambientShadowColor = NanfengInk.copy(alpha = 0.035f)"))
+        assertTrue(theme.contains("spotShadowColor = NanfengInk.copy(alpha = 0.09f)"))
+        assertTrue(aiCard.contains("nanfengSoftWhiteCardShadow(NanfengSoftWhitePillShape)"))
+        assertTrue(aiCard.contains("shape = NanfengSoftWhitePillShape"))
+        assertTrue(aiCard.contains("shadowElevation = 0.dp"))
+        assertTrue(professional.contains("professional_fortune_warm_start"))
+        assertTrue(professional.contains("professional_fortune_position"))
+        assertTrue(professional.contains("shape = NanfengSoftWhiteCardShape"))
+        val compatibility = screens.substringAfter("private fun CompatibilitySetupPanel(")
+            .substringBefore("private fun CompatibilityHistoryRecordCard(")
+        assertTrue(compatibility.contains("bazi_compatibility_history_entry"))
+        assertTrue(compatibility.contains("nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)"))
+        assertTrue(compatibility.contains("border = NanfengSoftWhiteCardBorder"))
     }
 
     @Test
@@ -251,9 +298,8 @@ class InteractionShapeContractTest {
         assertTrue(source.contains("CompatibilityParticipantHeader("))
         val participantHeader = source.substringAfter("private fun CompatibilityParticipantHeader(")
             .substringBefore("private fun CompatibilityBasicChartGrid(")
-        assertTrue(participantHeader.contains("background(Color(0xFF1F1D19))"))
         assertTrue(participantHeader.contains(".fillMaxHeight()"))
-        assertTrue(source.contains(".height(IntrinsicSize.Min)\n                    .background(Color(0xFF1F1D19))"))
+        assertTrue(source.contains("// 先由整条容器填满黑色"))
         assertTrue(participantHeader.contains("Icons.Filled.SwapHoriz"))
         assertTrue(participantHeader.contains("contentDescription = \"更换\${role}八字\""))
         assertTrue(participantHeader.contains("LocalMinimumInteractiveComponentEnforcement provides false"))
@@ -266,6 +312,14 @@ class InteractionShapeContractTest {
         assertTrue(!participantHeader.contains("overflow = TextOverflow.Ellipsis"))
         assertTrue(!participantHeader.contains("Text(\"换例\""))
         assertTrue(source.contains("CompatibilityPairedDecadeTimeline(report.left, report.right)"))
+        val pairedChart = source.substringAfter("private fun CompatibilitySideBySideChart(")
+            .substringBefore("private fun CompatibilityParticipantHeader(")
+        assertEquals(1, pairedChart.split("VerticalDivider(").size - 1)
+        assertTrue(pairedChart.contains(".background(Color(0xFF1F1D19))"))
+        assertTrue(pairedChart.contains("modifier = Modifier.fillMaxHeight()"))
+        assertFalse(pairedChart.contains("Modifier.align(Alignment.Center).fillMaxHeight()"))
+        assertFalse(pairedChart.contains("BorderStroke(0.5.dp"))
+        assertFalse(pairedChart.contains("HorizontalDivider("))
         val pairedDecades = source.substringAfter("private fun CompatibilityPairedDecadeTimeline(")
             .substringBefore("private fun CompatibilityImportantParameterTable(")
         assertTrue(pairedDecades.contains("val pairedSteps = (0 until maxOf(left.decadeFortunes.size, right.decadeFortunes.size))"))
@@ -396,6 +450,7 @@ class InteractionShapeContractTest {
     @Test
     fun compatibilityHistoryUsesCompactPairedIdentityCardsInsteadOfBareNames() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val viewModel = File(locateSourceRoot(), "StageTwoViewModel.kt").readText()
         val history = source.substringAfter("private fun CompatibilityHistoryScreen(")
             .substringBefore("private fun BaziCompatibilityReportContent(")
 
@@ -414,8 +469,28 @@ class InteractionShapeContractTest {
         assertTrue(history.contains("仅删除本机保存的合盘报告"))
         assertTrue(history.contains("roleLabel = \"男方\""))
         assertTrue(history.contains("roleLabel = \"女方\""))
-        assertTrue(history.contains("participant.solarDateTimeText"))
+        assertTrue(history.contains("solarDateTimeText"))
+        assertTrue(history.contains("ConstellationBadge("))
+        assertTrue(history.contains("size = constellationSize"))
+        assertTrue(history.contains("compatibility_history_male_constellation"))
+        assertTrue(history.contains("compatibility_history_female_constellation"))
+        assertTrue(history.contains("Alignment.CenterStart else Alignment.CenterEnd"))
+        assertTrue(history.contains("LocalConfiguration.current.screenWidthDp < 480"))
+        assertTrue(history.contains("outerBadgeClearance"))
+        assertTrue(history.contains("historyHorizontalInset"))
+        assertTrue(history.contains("val participantProfileText = if (compactHistoryLayout)"))
+        assertTrue(history.contains("pillarsText"))
+        assertTrue(history.contains("joinToString(separator = \"  \")"))
+        assertTrue(history.contains("overflow = TextOverflow.Ellipsis"))
+        assertTrue(history.contains("compatibilityCompactSolarDateTime"))
+        assertTrue(history.contains("maxLines = 1"))
+        assertTrue(history.contains("horizontalAlignment = Alignment.CenterHorizontally"))
+        assertTrue(history.contains("horizontalArrangement = Arrangement.Center"))
+        assertEquals(2, history.split("textAlign = TextAlign.Center").size - 1)
         assertFalse(history.contains("生肖 \${participant.zodiac"))
+        assertTrue(viewModel.contains("val compatibilityHistoryListVisible: Boolean = false"))
+        assertTrue(viewModel.contains("putBoolean(\"compatibilityHistoryListVisible\""))
+        assertTrue(viewModel.contains("getBoolean(\"compatibilityHistoryListVisible\""))
         assertFalse(history.contains("日主 \${participant.dayMaster}"))
         assertFalse(history.contains("CompatibilityHistoryRelationshipFocus"))
         assertFalse(history.contains("亲密："))
@@ -433,7 +508,9 @@ class InteractionShapeContractTest {
             .substringBefore("private fun CompatibilityHistoryRecordCard(")
 
         assertTrue(compatibility.contains("if (historyRecord != null) {\n        BackHandler(onBack = onCloseHistoryRecord)"))
-        assertTrue(compatibility.contains("onBack = { showCompatibilityHistory = false }"))
+        assertTrue(compatibility.contains("if (state.compatibilityHistoryListVisible)"))
+        assertTrue(compatibility.contains("onBack = onCloseHistory"))
+        assertFalse(compatibility.contains("showCompatibilityHistory by remember"))
         assertTrue(history.contains("BackHandler(onBack = onBack)"))
     }
 
@@ -747,6 +824,10 @@ class InteractionShapeContractTest {
         assertTrue(groupEditor.contains("record_group_reorder_\${group.id}"))
         assertTrue(groupEditor.contains("detectVerticalDragGestures"))
         assertTrue(groupEditor.contains("拖动排序\${group.name}"))
+        assertTrue(groupEditor.contains("val draggedId = draggedGroupId"))
+        assertTrue(groupEditor.contains("draggedCenter >= item.offset"))
+        assertTrue(groupEditor.contains("draggedOffsetY += draggedItem.offset"))
+        assertTrue(groupEditor.contains("if (orderedIds != groups.map { it.id }) onReorder(orderedIds)"))
         assertTrue(!groupEditor.contains("上移\${group.name}"))
         assertTrue(!groupEditor.contains("下移\${group.name}"))
     }

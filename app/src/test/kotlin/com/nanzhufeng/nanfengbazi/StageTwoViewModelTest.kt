@@ -1070,6 +1070,46 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `合盘记录子页与选人子页保留明确返回链`() = runTest {
+        val repository = FakeCaseRepository().apply {
+            stored["man"] = sampleStoredCase("man")
+            stored["woman"] = sampleStoredCase("woman").copy(
+                sexForFortuneDirection = SexForFortuneDirection.WOMAN,
+            )
+        }
+        val historyStore = InMemoryBaziCompatibilityHistoryStore()
+        val viewModel = createViewModel(
+            repository = repository,
+            compatibilityHistoryStore = historyStore,
+        )
+
+        viewModel.openBaziCompatibility()
+        viewModel.selectCompatibilityLeft("man")
+        viewModel.selectCompatibilityRight("woman")
+        viewModel.analyzeBaziCompatibility()
+        val recordId = viewModel.state.value.compatibilityHistory.single().id
+        viewModel.openBaziCompatibility()
+        viewModel.openCompatibilityHistory()
+        viewModel.openCompatibilityHistoryRecord(recordId)
+
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+        assertTrue(viewModel.state.value.compatibilityHistoryListVisible)
+        assertEquals(recordId, viewModel.state.value.compatibilityHistoryRecordId)
+        viewModel.closeCompatibilityHistoryRecord()
+        assertTrue(viewModel.state.value.compatibilityHistoryListVisible)
+        assertNull(viewModel.state.value.compatibilityHistoryRecordId)
+
+        viewModel.openCompatibilityParticipantList(SexForFortuneDirection.MAN)
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(
+            SexForFortuneDirection.MAN,
+            viewModel.state.value.compatibilityParticipantSelectionRole,
+        )
+        viewModel.cancelCompatibilityParticipantList()
+        assertEquals(AppDestination.BaziCompatibility, viewModel.state.value.destination)
+    }
+
+    @Test
     fun `合盘报告更换案例取消时返回当前报告而非合盘首页`() = runTest {
         val repository = FakeCaseRepository().apply {
             stored["man"] = sampleStoredCase("man")
@@ -2957,6 +2997,11 @@ class StageTwoViewModelTest {
             listOf("celebrity-group"),
             viewModel.state.value.availableFormGroups.map { it.id },
         )
+
+        viewModel.navigateBack()
+
+        assertEquals(AppDestination.CaseList, viewModel.state.value.destination)
+        assertEquals(CaseLibraryType.CELEBRITY, viewModel.state.value.libraryType)
 
         viewModel.openCreate()
 
