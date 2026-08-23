@@ -6326,8 +6326,14 @@ private fun CompatibilityHistoryParticipantSummary(
     modifier: Modifier = Modifier,
 ) {
     val roleAccent = if (roleLabel == "男方") CompatibilityMaleAccent else CompatibilityFemaleAccent
-    Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = roleAccent.copy(alpha = 0.10f),
@@ -6350,15 +6356,21 @@ private fun CompatibilityHistoryParticipantSummary(
         }
         Text(
             participant.solarDateTimeText.ifBlank { "出生日期未保存" },
-            modifier = Modifier.padding(top = 6.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
         Text(
             listOf(participant.pillars.year, participant.pillars.month, participant.pillars.day, participant.pillars.hour).joinToString(" "),
-            modifier = Modifier.padding(top = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
