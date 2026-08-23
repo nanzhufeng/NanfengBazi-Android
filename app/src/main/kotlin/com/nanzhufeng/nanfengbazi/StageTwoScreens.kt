@@ -6315,30 +6315,8 @@ private fun CompatibilityHistoryRecordCard(
                     modifier = Modifier.weight(1f),
                 )
             }
-            CompatibilityHistoryRelationshipFocus(record.report)
         }
     }
-}
-
-@Composable
-private fun CompatibilityHistoryRelationshipFocus(report: BaziCompatibilityReport) {
-    val intimate = report.compatibilityRelationSnapshot(
-        leftPosition = PillarPosition.DAY,
-        rightPosition = PillarPosition.DAY,
-        scope = "亲密关系与相处模式",
-    )
-    val family = report.compatibilityRelationSnapshot(
-        leftPosition = PillarPosition.YEAR,
-        rightPosition = PillarPosition.YEAR,
-        scope = "成长家庭与长辈互动",
-    )
-    Text(
-        "亲密：${intimate.headline}  ·  家庭：${family.headline}",
-        modifier = Modifier.fillMaxWidth(),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
 }
 
 @Composable
@@ -6371,13 +6349,13 @@ private fun CompatibilityHistoryParticipantSummary(
             )
         }
         Text(
-            "${participant.solarDateTimeText.ifBlank { "出生日期未保存" }} · 生肖 ${participant.zodiac.ifBlank { "未保存" }}",
+            participant.solarDateTimeText.ifBlank { "出生日期未保存" },
             modifier = Modifier.padding(top = 6.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            "日主 ${participant.dayMaster} · ${listOf(participant.pillars.year, participant.pillars.month, participant.pillars.day, participant.pillars.hour).joinToString(" ")}",
+            listOf(participant.pillars.year, participant.pillars.month, participant.pillars.day, participant.pillars.hour).joinToString(" "),
             modifier = Modifier.padding(top = 2.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -6414,18 +6392,6 @@ private fun BaziCompatibilityReportContent(
         }
         item {
             CompatibilityImportantParameterTable(report)
-        }
-        if (report.warnings.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
-                    Text("资料与口径提示", fontWeight = FontWeight.SemiBold)
-                    Column(modifier = Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        report.warnings.forEach { warning ->
-                            Text("• ${warning.message}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
         }
         item {
             CompatibilityRelationshipTable(
