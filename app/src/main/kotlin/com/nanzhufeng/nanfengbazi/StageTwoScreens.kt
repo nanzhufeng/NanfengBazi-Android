@@ -362,6 +362,9 @@ fun NanfengBaziApp(
     val returnsToCompatibilityCreate =
         state.destination == AppDestination.CreateCase &&
             state.compatibilityParticipantRole != null
+    val returnsToCelebrityLibrary =
+        state.destination == AppDestination.CreateCase &&
+            state.form.libraryType == CaseLibraryType.CELEBRITY
     val hasBackStackDestination = state.destination !in setOf(
             AppDestination.CaseList,
             AppDestination.RecordHub,
@@ -371,7 +374,8 @@ fun NanfengBaziApp(
     BackHandler(
         enabled = hasBackStackDestination ||
             state.compatibilityParticipantSelectionRole != null ||
-            returnsToCompatibilityCreate,
+            returnsToCompatibilityCreate ||
+            returnsToCelebrityLibrary,
     ) {
         if (returnsToCompatibilityCreate) {
             viewModel.cancelCompatibilityParticipantCreate()
@@ -663,6 +667,8 @@ fun NanfengBaziApp(
                         state = state,
                         onBack = viewModel::navigateBack,
                         onOpenParticipantList = viewModel::openCompatibilityParticipantList,
+                        onOpenHistory = viewModel::openCompatibilityHistory,
+                        onCloseHistory = viewModel::closeCompatibilityHistory,
                         onOpenHistoryRecord = viewModel::openCompatibilityHistoryRecord,
                         onCloseHistoryRecord = viewModel::closeCompatibilityHistoryRecord,
                         onDeleteHistoryRecords = viewModel::deleteCompatibilityHistoryRecords,
@@ -752,6 +758,8 @@ fun NanfengBaziApp(
                         state = state,
                         onBack = if (state.compatibilityParticipantRole != null) {
                             viewModel::cancelCompatibilityParticipantCreate
+                        } else if (state.form.libraryType == CaseLibraryType.CELEBRITY) {
+                            viewModel::navigateBack
                         } else {
                             viewModel::backToList
                         },
@@ -2675,10 +2683,12 @@ private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .testTag("record_case_${summary.id}"),
         color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(18.dp),
-        shadowElevation = 1.dp,
+        shape = NanfengSoftWhiteCardShape,
+        shadowElevation = 0.dp,
+        border = NanfengSoftWhiteCardBorder,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -3045,11 +3055,13 @@ private fun AiServiceDestinationCard(
             // Keep the requested compact 68 dp at normal text, while allowing the two text
             // lines to grow rather than top-clipping at an accessibility font scale.
             .heightIn(min = 68.dp)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhitePillShape)
             .testTag(tag),
-        shape = RoundedCornerShape(18.dp),
+        shape = NanfengSoftWhitePillShape,
         color = Color.White,
         tonalElevation = 0.dp,
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
+        border = NanfengSoftWhiteCardBorder,
     ) {
         Row(
             modifier = Modifier
@@ -3114,9 +3126,12 @@ private fun SettingsActionGroup(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(18.dp),
+        shape = NanfengSoftWhiteCardShape,
+        border = NanfengSoftWhiteCardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(content = { content() })
     }
@@ -4578,23 +4593,24 @@ private fun RecordGroupEditorDialog(
                                                         onVerticalDrag = { change, dragAmount ->
                                                             change.consume()
                                                             val currentGroups = displayedGroupsState
+                                                            val draggedId = draggedGroupId ?: return@detectVerticalDragGestures
                                                             val currentIndex = currentGroups.indexOfFirst {
-                                                                it.id == group.id
+                                                                it.id == draggedId
                                                             }
                                                             if (currentIndex < 0) return@detectVerticalDragGestures
                                                             draggedOffsetY += dragAmount
                                                             val draggedItem = groupListState.layoutInfo
                                                                 .visibleItemsInfo
-                                                                .firstOrNull { it.key == group.id }
+                                                                .firstOrNull { it.key == draggedId }
                                                                 ?: return@detectVerticalDragGestures
                                                             val draggedCenter = draggedItem.offset +
                                                                 draggedOffsetY + draggedItem.size / 2f
                                                             val targetItem = groupListState.layoutInfo
                                                                 .visibleItemsInfo
                                                                 .firstOrNull { item ->
-                                                                    item.key != group.id &&
-                                                                        draggedCenter in item.offset.toFloat()..
-                                                                            (item.offset + item.size).toFloat()
+                                                                    item.key != draggedId &&
+                                                                        draggedCenter >= item.offset &&
+                                                                        draggedCenter < item.offset + item.size
                                                                 }
                                                             val targetIndex = targetItem?.let { item ->
                                                                 currentGroups.indexOfFirst { it.id == item.key }
@@ -4603,14 +4619,17 @@ private fun RecordGroupEditorDialog(
                                                                 displayedGroups = currentGroups.toMutableList().apply {
                                                                     add(targetIndex, removeAt(currentIndex))
                                                                 }
-                                                                draggedOffsetY = 0f
+                                                                // 重排后项目的布局基线会跳到目标槽位；抵消这段基线变化，
+                                                                // 让正在拖动的行仍紧贴手指，而不是闪回或突然静止。
+                                                                draggedOffsetY += draggedItem.offset -
+                                                                    requireNotNull(targetItem).offset
                                                             }
                                                         },
                                                         onDragEnd = {
                                                             val orderedIds = displayedGroupsState.map { it.id }
-                                                            if (orderedIds != groups.map { it.id }) onReorder(orderedIds)
                                                             draggedGroupId = null
                                                             draggedOffsetY = 0f
+                                                            if (orderedIds != groups.map { it.id }) onReorder(orderedIds)
                                                         },
                                                         onDragCancel = {
                                                             draggedGroupId = null
@@ -5399,12 +5418,14 @@ private fun String?.constellationIconRes(): Int? = when (this?.removeSuffix("座
 @Composable
 private fun ConstellationBadge(
     westernZodiac: String?,
+    size: Dp = 46.dp,
     modifier: Modifier = Modifier,
 ) {
     val display = westernZodiac?.removeSuffix("座")?.let { "${it}座" } ?: "待计算"
+    val scale = (size.value / 46f).coerceAtMost(1f)
     Surface(
         modifier = modifier
-            .size(46.dp)
+            .size(size)
             .semantics { contentDescription = "星座：$display" },
         shape = CircleShape,
         color = NanfengNavigation,
@@ -5419,22 +5440,25 @@ private fun ConstellationBadge(
                 Icon(
                     painter = painterResource(iconRes),
                     contentDescription = null,
-                    modifier = Modifier.size(17.dp),
+                    modifier = Modifier.size(17.dp * scale),
                     tint = NanfengGold,
                 )
             } else {
                 Icon(
                     imageVector = Icons.Filled.Star,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(16.dp * scale),
                     tint = NanfengGold,
                 )
             }
             Text(
                 display,
-                modifier = Modifier.padding(top = 1.dp),
+                modifier = Modifier.padding(top = 1.dp * scale),
                 color = NanfengGold,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = (10f * scale).sp,
+                    lineHeight = (14f * scale).sp,
+                ),
                 maxLines = 1,
                 textAlign = TextAlign.Center,
             )
@@ -5761,6 +5785,8 @@ private fun BaziCompatibilityScreen(
     state: StageTwoUiState,
     onBack: () -> Unit,
     onOpenParticipantList: (SexForFortuneDirection) -> Unit,
+    onOpenHistory: () -> Unit,
+    onCloseHistory: () -> Unit,
     onOpenHistoryRecord: (String) -> Unit,
     onCloseHistoryRecord: () -> Unit,
     onDeleteHistoryRecords: (Set<String>) -> Unit,
@@ -5769,7 +5795,6 @@ private fun BaziCompatibilityScreen(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showCompatibilityHistory by remember { mutableStateOf(false) }
     val historyRecord = state.compatibilityHistory.firstOrNull {
         it.id == state.compatibilityHistoryRecordId
     }
@@ -5790,12 +5815,12 @@ private fun BaziCompatibilityScreen(
         }
         return
     }
-    if (showCompatibilityHistory) {
+    if (state.compatibilityHistoryListVisible) {
         CompatibilityHistoryScreen(
             records = state.compatibilityHistory,
             loading = state.compatibilityHistoryLoading,
             error = state.compatibilityHistoryError,
-            onBack = { showCompatibilityHistory = false },
+            onBack = onCloseHistory,
             onOpenRecord = onOpenHistoryRecord,
             onDeleteRecords = onDeleteHistoryRecords,
             onRetry = onRetryHistory,
@@ -5818,7 +5843,7 @@ private fun BaziCompatibilityScreen(
         CompatibilitySetupPanel(
             state = state,
             onOpenParticipantPicker = onOpenParticipantList,
-            onOpenHistory = { showCompatibilityHistory = true },
+            onOpenHistory = onOpenHistory,
             onAnalyze = onAnalyze,
             onRetry = onRetry,
             modifier = Modifier
@@ -5891,13 +5916,15 @@ private fun CompatibilitySetupPanel(
             onClick = onOpenHistory,
             modifier = Modifier
                 .fillMaxWidth()
+                .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
                 .semantics { contentDescription = "查看合盘记录" }
                 .testTag("bazi_compatibility_history_entry"),
-            shape = RoundedCornerShape(24.dp),
+            shape = NanfengSoftWhiteCardShape,
             color = Color.White,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 0.dp,
-            shadowElevation = 2.dp,
+            shadowElevation = 0.dp,
+            border = NanfengSoftWhiteCardBorder,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -5996,11 +6023,13 @@ private fun CompatibilityParticipantCard(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 248.dp)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .testTag("${tagPrefix}_card"),
-        shape = RoundedCornerShape(24.dp),
+        shape = NanfengSoftWhiteCardShape,
         color = Color.White,
         tonalElevation = 0.dp,
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
+        border = NanfengSoftWhiteCardBorder,
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(18.dp),
@@ -6096,6 +6125,7 @@ private fun CompatibilityHistoryScreen(
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var selectedRecordIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingDeleteRecordIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val historyHorizontalInset = if (LocalConfiguration.current.screenWidthDp < 480) 10.dp else 16.dp
     val allSelected = records.isNotEmpty() && records.all { it.id in selectedRecordIds }
     BackHandler(onBack = onBack)
     Column(modifier = modifier.fillMaxSize().testTag("bazi_compatibility_history")) {
@@ -6137,10 +6167,12 @@ private fun CompatibilityHistoryScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape),
+                    shape = NanfengSoftWhiteCardShape,
                     color = Color.White,
                     tonalElevation = 0.dp,
-                    shadowElevation = 2.dp,
+                    shadowElevation = 0.dp,
+                    border = NanfengSoftWhiteCardBorder,
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 34.dp, vertical = 30.dp),
@@ -6161,7 +6193,12 @@ private fun CompatibilityHistoryScreen(
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = if (selectionMode) 92.dp else 16.dp),
+                    contentPadding = PaddingValues(
+                        start = historyHorizontalInset,
+                        top = 16.dp,
+                        end = historyHorizontalInset,
+                        bottom = if (selectionMode) 92.dp else 16.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(records, key = { it.id }) { record ->
@@ -6241,12 +6278,17 @@ private fun CompatibilityHistoryRecordCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .testTag("compatibility_history_${record.id}"),
-        shape = RoundedCornerShape(24.dp),
+        shape = NanfengSoftWhiteCardShape,
         color = Color.White,
         tonalElevation = 0.dp,
-        shadowElevation = 2.dp,
-        border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, NanfengGreen) else null,
+        shadowElevation = 0.dp,
+        border = if (selected) {
+            androidx.compose.foundation.BorderStroke(1.dp, NanfengGreen)
+        } else {
+            NanfengSoftWhiteCardBorder
+        },
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -6326,54 +6368,122 @@ private fun CompatibilityHistoryParticipantSummary(
     modifier: Modifier = Modifier,
 ) {
     val roleAccent = if (roleLabel == "男方") CompatibilityMaleAccent else CompatibilityFemaleAccent
-    Column(
+    val compactHistoryLayout = LocalConfiguration.current.screenWidthDp < 480
+    val constellationSize = if (compactHistoryLayout) 24.dp else 28.dp
+    val outerBadgeClearance = if (compactHistoryLayout) constellationSize + 5.dp else 0.dp
+    val pillarsText = listOf(
+        participant.pillars.year,
+        participant.pillars.month,
+        participant.pillars.day,
+        participant.pillars.hour,
+    ).joinToString(separator = "  ")
+    val participantProfileText = if (compactHistoryLayout) {
+        pillarsText
+    } else {
+        "${participant.compatibilityCompactSolarDateTime()} · $pillarsText"
+    }
+    Box(
         modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+        ConstellationBadge(
+            westernZodiac = participant.compatibilityWesternZodiac(),
+            size = constellationSize,
+            modifier = Modifier
+                .align(
+                    if (roleLabel == "男方") Alignment.CenterStart else Alignment.CenterEnd,
+                )
+                .testTag(
+                    if (roleLabel == "男方") {
+                        "compatibility_history_male_constellation"
+                    } else {
+                        "compatibility_history_female_constellation"
+                    },
+                ),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (roleLabel == "男方") {
+                        Modifier.padding(start = outerBadgeClearance)
+                    } else {
+                        Modifier.padding(end = outerBadgeClearance)
+                    },
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = roleAccent.copy(alpha = 0.10f),
-                contentColor = roleAccent,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = roleAccent.copy(alpha = 0.10f),
+                    contentColor = roleAccent,
+                ) {
+                    Text(
+                        roleLabel,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 Text(
-                    roleLabel,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelSmall,
+                    participant.alias,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .weight(1f, fill = false),
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = NanfengInk,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(
-                participant.alias,
-                modifier = Modifier.padding(start = 6.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = NanfengInk,
+                participantProfileText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 5.dp),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    letterSpacing = (-0.2).sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
-            participant.solarDateTimeText.ifBlank { "出生日期未保存" },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            listOf(participant.pillars.year, participant.pillars.month, participant.pillars.day, participant.pillars.hour).joinToString(" "),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
     }
 }
+
+private fun com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant.compatibilityWesternZodiac(): String? {
+    val month = solarDateValues.getOrNull(1)?.filter(Char::isDigit)?.toIntOrNull() ?: return null
+    val day = solarDateValues.getOrNull(2)?.filter(Char::isDigit)?.toIntOrNull() ?: return null
+    return when (month) {
+        1 -> if (day <= 19) "摩羯" else "水瓶"
+        2 -> if (day <= 18) "水瓶" else "双鱼"
+        3 -> if (day <= 20) "双鱼" else "白羊"
+        4 -> if (day <= 19) "白羊" else "金牛"
+        5 -> if (day <= 20) "金牛" else "双子"
+        6 -> if (day <= 21) "双子" else "巨蟹"
+        7 -> if (day <= 22) "巨蟹" else "狮子"
+        8 -> if (day <= 22) "狮子" else "处女"
+        9 -> if (day <= 22) "处女" else "天秤"
+        10 -> if (day <= 23) "天秤" else "天蝎"
+        11 -> if (day <= 22) "天蝎" else "射手"
+        12 -> if (day <= 21) "射手" else "摩羯"
+        else -> null
+    }
+}
+
+private fun com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityParticipant.compatibilityCompactSolarDateTime(): String =
+    solarDateTimeText
+        .replaceFirst(Regex("^(\\d{2})\\d{2}-"), "$1-")
+        .ifBlank { "日期未保存" }
 
 private fun formatCompatibilityHistoryCreatedAt(epochMillis: Long): String =
     java.time.Instant.ofEpochMilli(epochMillis)
@@ -6438,46 +6548,53 @@ private fun CompatibilitySideBySideChart(
         modifier = Modifier.fillMaxWidth().testTag("compatibility_side_by_side_chart"),
         color = Color.White,
         shape = RoundedCornerShape(0.dp),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFE2E0DB)),
     ) {
         Column {
-            Row(
+            // 先由整条容器填满黑色，避免两端因为子项权重或重绘露出白缝。
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
                     .background(Color(0xFF1F1D19)),
             ) {
-                CompatibilityParticipantHeader(
-                    modifier = Modifier.weight(1f),
-                    role = "男方",
-                    participant = report.left,
-                    roleAccent = CompatibilityMaleAccent,
-                    onReplace = onReplaceParticipant?.let { { it(SexForFortuneDirection.MAN) } },
-                )
-                VerticalDivider(color = Color(0xFF45413A))
-                CompatibilityParticipantHeader(
-                    modifier = Modifier.weight(1f),
-                    role = "女方",
-                    participant = report.right,
-                    roleAccent = CompatibilityFemaleAccent,
-                    onReplace = onReplaceParticipant?.let { { it(SexForFortuneDirection.WOMAN) } },
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                ) {
+                        CompatibilityParticipantHeader(
+                            modifier = Modifier.weight(1f),
+                            role = "男方",
+                            participant = report.left,
+                            roleAccent = CompatibilityMaleAccent,
+                            onReplace = onReplaceParticipant?.let { { it(SexForFortuneDirection.MAN) } },
+                        )
+                        CompatibilityParticipantHeader(
+                            modifier = Modifier.weight(1f),
+                            role = "女方",
+                            participant = report.right,
+                            roleAccent = CompatibilityFemaleAccent,
+                            onReplace = onReplaceParticipant?.let { { it(SexForFortuneDirection.WOMAN) } },
+                        )
+                    }
             }
-            HorizontalDivider(color = Color(0xFF45413A))
             Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 CompatibilityBasicChartGrid(
                     modifier = Modifier.weight(1f),
                     participant = report.left,
                     role = "男方",
                 )
-                VerticalDivider(color = Color(0xFFE2E0DB))
+                // 分割线只存在于双方八字表之间，顶部身份黑条保持完整纯黑。
+                VerticalDivider(
+                    modifier = Modifier.fillMaxHeight(),
+                    color = Color(0xFFE2E0DB),
+                    thickness = 0.5.dp,
+                )
                 CompatibilityBasicChartGrid(
                     modifier = Modifier.weight(1f),
                     participant = report.right,
                     role = "女方",
                 )
             }
-            HorizontalDivider(color = Color(0xFFE2E0DB))
             CompatibilityPairedDecadeTimeline(report.left, report.right)
         }
     }
@@ -6495,7 +6612,6 @@ private fun CompatibilityParticipantHeader(
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .background(Color(0xFF1F1D19))
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -6634,7 +6750,6 @@ private fun CompatibilityBasicHiddenStemGridRow(
             strong = false,
         )
         values.forEach { entries ->
-            VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color(0xFFE5E4E0), thickness = 0.5.dp)
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -6675,7 +6790,6 @@ private fun CompatibilityBasicHiddenStemGridRow(
             }
         }
     }
-    HorizontalDivider(color = Color(0xFFE5E4E0))
 }
 
 @Composable
@@ -6700,7 +6814,6 @@ private fun CompatibilityBasicGridRow(
             strong = false,
         )
         values.forEachIndexed { index, value ->
-            VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color(0xFFE5E4E0), thickness = 0.5.dp)
             CompatibilityBasicGridCell(
                 value = value,
                 modifier = Modifier.weight(1f),
@@ -6709,7 +6822,6 @@ private fun CompatibilityBasicGridRow(
             )
         }
     }
-    HorizontalDivider(color = Color(0xFFE5E4E0))
 }
 
 @Composable
@@ -8408,12 +8520,15 @@ private fun CaseSummaryCard(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .semantics { contentDescription = "打开命例：${summary.alias}" }
             .testTag("case_${summary.id}"),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
-        shape = RoundedCornerShape(16.dp),
+        shape = NanfengSoftWhiteCardShape,
+        border = NanfengSoftWhiteCardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -8883,6 +8998,8 @@ private fun WenzhenCreateCaseScreen(
             val saveRowHeight = if (compactHomeLayout) 42.dp else 46.dp
             val submitButtonHeight = if (compactHomeLayout) 48.dp else 50.dp
             // 入口卡两边都由明确的 10dp 规则约束，不再把可用高度留成无定义空白。
+            val showHomeQuickEntries =
+                form.libraryType == CaseLibraryType.USER && !isCompatibilityParticipantCreate
             val homeQuickEntryEdgeGap = 10.dp
             val quickEntryNavigationBottomInset =
                 ROOT_NAVIGATION_BAR_HEIGHT +
@@ -8894,10 +9011,10 @@ private fun WenzhenCreateCaseScreen(
                     .padding(horizontal = 16.dp)
                     .padding(top = contentVerticalPadding)
                     .padding(
-                        bottom = bottomContentInset + if (isCompatibilityParticipantCreate) {
-                            0.dp
-                        } else {
+                        bottom = bottomContentInset + if (showHomeQuickEntries) {
                             quickEntryNavigationBottomInset
+                        } else {
+                            0.dp
                         },
                     ),
             ) {
@@ -8913,9 +9030,12 @@ private fun WenzhenCreateCaseScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
                             .testTag("home_input_card"),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(22.dp),
+                        shape = NanfengSoftWhiteCardShape,
+                        border = NanfengSoftWhiteCardBorder,
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = formVerticalPadding)) {
                     Row(
@@ -9150,7 +9270,7 @@ private fun WenzhenCreateCaseScreen(
                         )
                     }
                 }
-                if (!isCompatibilityParticipantCreate) {
+                if (showHomeQuickEntries) {
                     Spacer(modifier = Modifier.height(homeQuickEntryEdgeGap))
                     Box(
                         modifier = Modifier
@@ -14521,12 +14641,14 @@ private fun DetailSection(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 14.dp),
+            .padding(bottom = 14.dp)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = NanfengSoftWhiteCardShape,
+        border = NanfengSoftWhiteCardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
             Text(
@@ -14607,11 +14729,13 @@ private fun ProfessionalFortuneLoading(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .testTag("professional_fortune_warm_start"),
         color = Color.White,
-        shape = RoundedCornerShape(16.dp),
-        shadowElevation = 2.dp,
+        shape = NanfengSoftWhiteCardShape,
+        shadowElevation = 0.dp,
         tonalElevation = 0.dp,
+        border = NanfengSoftWhiteCardBorder,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
@@ -14664,11 +14788,13 @@ private fun ProfessionalPillarMatrix(columns: List<ProfessionalPillarColumn>) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 3.dp)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .testTag("professional_fortune_position"),
         color = Color.White,
-        shape = RoundedCornerShape(16.dp),
+        shape = NanfengSoftWhiteCardShape,
         tonalElevation = 0.dp,
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
+        border = NanfengSoftWhiteCardBorder,
     ) {
         Column(modifier = Modifier.background(Color.White)) {
             val groupDividerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
@@ -14934,9 +15060,12 @@ private fun ProfessionalTimelineRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp)
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .testTag(tag),
         colors = CardDefaults.cardColors(containerColor = professionalTimelineCardColor(title)),
-        shape = RoundedCornerShape(14.dp),
+        shape = NanfengSoftWhiteCardShape,
+        border = NanfengSoftWhiteCardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
             modifier = Modifier

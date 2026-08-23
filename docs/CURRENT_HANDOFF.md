@@ -5,6 +5,31 @@
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
 
+## 2026-08-23：r134 覆盖安装验收 r135
+
+- 已按用户授权把 Debug `1.0.7 (10039)` 同签名覆盖到 OPPO `3B157F009E800000`。最终成品固定在短路径 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.7.apk`，大小 `91,169,337` 字节、SHA-256 为 `fa017ca58a8203826394c60fe4750fd47e80ac2c2ab5a93f24e1e9cdd5801dfb`；包名为 `com.nanzhufeng.nanfengbazi`、`DEBUGGABLE`，v2 签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。
+- 安装后设备回读版本 `1.0.7 (10039)`，`base.apk` SHA-256 与短路径成品一致；`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 分别仍为 `1222090/1857315`。通过 `pm install -r --user 0` 覆盖，未卸载、清数据、启动应用或运行 `connected*AndroidTest`；`/data/local/tmp/NanfengBazi-v1.0.7.apk` 已清理。用户仍需在真实内外屏上手动确认本轮合盘视觉。
+
+## 2026-08-23：合盘窗口恢复、窄屏记录与双盘表格收口 r134
+
+- 合盘记录列表不再由 Compose 局部 `remember` 控制，改为 `StageTwoUiState.compatibilityHistoryListVisible` 持有，并与记录详情 ID、选人角色一起写入／读取可恢复状态；窗口由外屏切内屏或反向切换造成 Activity 重建时，继续停留在合盘记录、记录详情或选人子页，不再跳回合盘首页。选人子页恢复时重建“新建 → 合盘 → 案例选择”的最小返回链；历史详情恢复仍以合盘记录列表为其上级。
+- 合盘记录外屏（小于 `480dp`）仅显示四柱，四柱之间固定两个空格；内屏保留“日期 · 四柱”。顶部双方资料黑条现在由整条外层直接填满黑色，确保两侧不透白；男女之间的细线只留在下方双方八字表之间，移除表格其余横线、柱内竖线和外框。
+- `StageTwoViewModelTest` 与 `InteractionShapeContractTest` 共 183 项通过；`lintDebug`、`assembleDebug` 与 `git diff --check` 通过。未运行 `connected*AndroidTest`、未安装或启动任何设备；当前 Debug APK 仍是旧的 `1.0.6 (10038)`，下一次获授权“覆盖安装”时须递增为 `1.0.7 (10039)` 并先放入短路径 `release/` 再核验。
+
+## 2026-08-23：合盘记录外屏宽度与合盘白卡收口 r133
+
+- 合盘记录两侧星座改为直接复用已有 `ConstellationBadge`：黑底、金色符号和星座文字保持完整，只按比例缩小；男方固定左缘、女方固定右缘。外屏（小于 `480dp`）把徽章缩至 `24dp` 并为各自资料预留 `29dp` 外缘，姓名强制单行省略，出生时间与四柱仍保持同一行；记录列表页边距由 `16dp` 收至 `10dp`，展开内屏维持原密度与留白。
+- 八字合盘入口、男方／女方选择卡及合盘记录空态均改用共享白卡令牌（`24dp` 圆角、低对比描边、`4dp` 柔和短阴影），去除默认 `2dp` Material 硬阴影。未改变合盘记录的快照读取、打开、删除或合盘计算链路。
+- `InteractionShapeContractTest` 定向 50 项、全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 仅保留既有 `Icons.Filled` 弃用警告。按授权以短路径 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.6.apk` 覆盖 OPPO `3B157F009E800000` 至 Debug `1.0.6 (10038)`：现装与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `b426e7a1b418bc5e16677886cda3bf15d86dc9650a458b8677cb58ea9d98f8f8`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`。未运行 `connected*AndroidTest`、卸载、清数据或启动应用；待用户在外屏与内屏真实记录数据下确认视觉。
+
+## 2026-08-23：名人录入返回、合盘记录紧凑资料与白卡材质 r132
+
+- 名人案例录入现在始终从案例库压栈进入：Android 系统边缘返回回到案例库，不会退出应用；该录入子页只保留表单，删除“八字合盘／万年历”两个首页快捷入口及其填充式异常大卡。
+- 分组排序拖动改为拖动期间只维护本地顺序，跨过目标行时补偿布局基线，保证行持续跟手；松手才一次写入，写入期间锁定重复提交。避免原先重排时位置闪回、不同步或卡死。
+- 合盘记录卡双方维持半区居中：男方左缘、女方右缘各有一枚 20dp 对应星座小图案，星座只从冻结报告保存的公历月日派生；出生日期时间与四柱压成一行，列表不再因图案或资料拆行增高。
+- 共享白卡令牌统一为 `24dp` 长卡、`26dp` 胶囊、低对比描边与 `4dp` 柔和短阴影。专业细盘顶部／时间轴、AI 模型服务、设置、录入、记录及合盘历史已采用；悬浮根导航保留自己的下投影合同。
+- `InteractionShapeContractTest` 与 `StageTwoViewModelTest` 定向 182 项通过；全量 `test`、`lintDebug`、`assembleDebug` 和 `git diff --check` 通过，Lint 仅保留既有 `Icons.Filled` 弃用警告。按授权以短路径 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.5.apk` 覆盖 OPPO `3B157F009E800000` 至 Debug `1.0.5 (10037)`：现装与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `0cf75d312342365ee6af744518676dffbcc49c5d43d97420d5957d94ac0687b4`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`。未运行 `connected*AndroidTest`、卸载、清数据或启动应用；待用户手工验收视觉与拖拽。
+
 ## 2026-08-23：合盘记录双人资料按半区居中 r131
 
 - 合盘记录卡保留两侧等宽资料区和中央“合”字；男方／女方的角色与姓名行、出生时刻、四柱现在均以各自半区居中对齐，不再从半区左缘开始排列。没有新增资料、操作或计算，既有记录快照读取与点击链路不变。

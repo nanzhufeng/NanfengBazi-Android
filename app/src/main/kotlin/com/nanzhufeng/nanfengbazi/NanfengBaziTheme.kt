@@ -1,5 +1,6 @@
 package com.nanzhufeng.nanfengbazi
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -31,6 +32,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -65,6 +68,25 @@ internal val NanfengGoldText = Color(0xFF856526)
 internal val NanfengGoldLight = Color(0xFFF0D7A4)
 internal val NanfengWarmTint = Color(0xFFF8F5EF)
 internal val NanfengControlSurface = Color(0xFFF3F3F2)
+
+// 白卡以细描边界定轮廓、以极浅短阴影抬升。Surface 本身仍持有同一 Shape，
+// 因此可见面、按压反馈和阴影不会各自形成不同的硬边。
+internal val NanfengSoftWhiteCardShape = RoundedCornerShape(24.dp)
+internal val NanfengSoftWhitePillShape = RoundedCornerShape(26.dp)
+internal val NanfengSoftWhiteCardBorder = BorderStroke(
+    width = 0.75.dp,
+    color = NanfengInk.copy(alpha = 0.055f),
+)
+
+internal fun Modifier.nanfengSoftWhiteCardShadow(
+    shape: Shape,
+) = graphicsLayer {
+    shadowElevation = 4.dp.toPx()
+    this.shape = shape
+    clip = false
+    ambientShadowColor = NanfengInk.copy(alpha = 0.035f)
+    spotShadowColor = NanfengInk.copy(alpha = 0.09f)
+}
 
 internal enum class NanfengPopupPlacement {
     AUTO,

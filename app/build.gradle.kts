@@ -36,8 +36,8 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10036
-        versionName = "1.0.4"
+        versionCode = 10039
+        versionName = "1.0.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "NANFENG_CLOUD_URL", quotedBuildConfig(localValue("nanfeng.cloud.url")))
         buildConfigField(
@@ -102,7 +102,7 @@ android {
 }
 
 base {
-    archivesName.set("NanfengBazi-Android-v1.0.4")
+    archivesName.set("NanfengBazi-Android-v1.0.7")
 }
 
 dependencies {
