@@ -199,7 +199,7 @@ class InteractionShapeContractTest {
         assertTrue(caseList.contains("onSelectCompatibilityCase"))
         assertTrue(caseList.contains("选择\${compatibilityRoleLabel}八字"))
         assertTrue(caseList.contains(".testTag(\"case_search\")"))
-        assertTrue(caseList.contains("if (isCompatibilitySelection) {\n                            CaseSummaryRow("))
+        assertTrue(caseList.contains("if (isCompatibilitySelection) {\n                            Box(modifier = Modifier.padding(end = 28.dp))"))
         assertTrue(caseList.contains("if (!isCompatibilitySelection) Surface("))
     }
 
@@ -370,6 +370,25 @@ class InteractionShapeContractTest {
         assertTrue(source.contains("笔记内容｜对应命盘/岁运依据｜吻合程度"))
         assertTrue(!source.contains("compatibility_ai_prompt_privacy_row"))
         assertTrue(!source.contains("结尾强调结果仅供传统文化与自我沟通参考"))
+    }
+
+    @Test
+    fun compatibilityTopBarsKeepEveryTitleCentered() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val compatibility = source.substringAfter("private fun BaziCompatibilityScreen(")
+            .substringBefore("private fun BaziCompatibilityReportScreen(")
+        val result = source.substringAfter("private fun BaziCompatibilityReportScreen(")
+            .substringBefore("private fun CompatibilitySetupPanel(")
+        val history = source.substringAfter("private fun CompatibilityHistoryScreen(")
+            .substringBefore("private fun BaziCompatibilityReportContent(")
+
+        assertEquals(2, compatibility.split("CenterAlignedTopAppBar(").size - 1)
+        assertTrue(compatibility.contains("Text(\"合盘记录\", fontWeight = FontWeight.SemiBold)"))
+        assertTrue(compatibility.contains("Text(\"八字合盘\", fontWeight = FontWeight.SemiBold)"))
+        assertEquals(1, result.split("CenterAlignedTopAppBar(").size - 1)
+        assertTrue(result.contains("Text(\"合盘结果\", fontWeight = FontWeight.SemiBold)"))
+        assertEquals(1, history.split("CenterAlignedTopAppBar(").size - 1)
+        assertTrue(history.contains("Text(\"合盘记录\", fontWeight = FontWeight.SemiBold)"))
     }
 
     @Test
@@ -579,6 +598,7 @@ class InteractionShapeContractTest {
         assertTrue(recordPage.contains("contentAlignment = Alignment.CenterEnd"))
         assertTrue(recordPage.contains(".fillMaxHeight(0.92f)"))
         assertTrue(recordPage.contains(".offset(y = 10.dp)"))
+        assertTrue(recordPage.contains(".padding(end = 3.dp, top = 8.dp, bottom = 8.dp)"))
         assertTrue(recordPage.contains("firstPinnedCaseIndex"))
         assertTrue(recordPage.contains("pinnedActive = activeAlphabetInitial == '星'"))
         assertTrue(recordPage.contains("onPinnedClick = {"))

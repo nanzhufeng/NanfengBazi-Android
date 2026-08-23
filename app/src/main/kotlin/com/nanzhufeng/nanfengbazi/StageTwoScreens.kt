@@ -82,6 +82,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog as MaterialAlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -3719,10 +3720,12 @@ private fun CaseListScreen(
                             )
                         }
                         if (isCompatibilitySelection) {
-                            CaseSummaryRow(
-                                summary = summary,
-                                onClick = { requireNotNull(onSelectCompatibilityCase)(summary.id) },
-                            )
+                            Box(modifier = Modifier.padding(end = 28.dp)) {
+                                CaseSummaryRow(
+                                    summary = summary,
+                                    onClick = { requireNotNull(onSelectCompatibilityCase)(summary.id) },
+                                )
+                            }
                         } else {
                             Box(modifier = Modifier.padding(end = 28.dp)) {
                                 SwipeableCaseSummaryRow(
@@ -5773,7 +5776,7 @@ private fun BaziCompatibilityScreen(
     if (historyRecord != null) {
         BackHandler(onBack = onCloseHistoryRecord)
         Column(modifier = modifier.fillMaxSize().testTag("bazi_compatibility_history_record")) {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = { Text("合盘记录", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     TextButton(onClick = onCloseHistoryRecord) { Text("返回合盘") }
@@ -5803,7 +5806,7 @@ private fun BaziCompatibilityScreen(
     Column(
         modifier = modifier.fillMaxSize().testTag("bazi_compatibility_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("八字合盘", fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
                 TextButton(
@@ -5842,7 +5845,7 @@ private fun BaziCompatibilityReportScreen(
             .background(Color.White)
             .testTag("bazi_compatibility_report_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("合盘结果", fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
                 TextButton(
@@ -6096,7 +6099,7 @@ private fun CompatibilityHistoryScreen(
     val allSelected = records.isNotEmpty() && records.all { it.id in selectedRecordIds }
     BackHandler(onBack = onBack)
     Column(modifier = modifier.fillMaxSize().testTag("bazi_compatibility_history")) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("合盘记录", fontWeight = FontWeight.SemiBold) },
             navigationIcon = { TextButton(onClick = onBack) { Text("返回合盘") } },
             actions = {
