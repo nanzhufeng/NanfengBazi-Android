@@ -512,6 +512,8 @@ data class StageTwoUiState(
     val compatibilityHistory: List<BaziCompatibilityRecord> = emptyList(),
     /** Prevent the records page from treating its initial empty list as a real empty state. */
     val compatibilityHistoryLoading: Boolean = false,
+    /** A successfully read empty history is still ready and must not be read again on every entry. */
+    val compatibilityHistoryLoaded: Boolean = false,
     /** Read/write failures keep the existing file and surface recovery instead of pretending history is empty. */
     val compatibilityHistoryError: String? = null,
     val compatibilityHistoryRecordId: String? = null,
@@ -3966,18 +3968,20 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openBaziCompatibility() {
-        val cachedReady = mutableState.value.compatibilityCandidates.isNotEmpty()
+        val current = mutableState.value
+        val cachedReady = current.compatibilityCandidates.isNotEmpty()
+        val historyNeedsInitialRead = !current.compatibilityHistoryLoaded
         mutableState.update {
             it.copy(
                 destination = navigator.openBaziCompatibility(),
                 compatibilityLoading = !cachedReady,
                 compatibilityError = null,
-                compatibilityHistoryLoading = true,
-                compatibilityHistoryError = null,
+                compatibilityHistoryLoading = historyNeedsInitialRead,
+                compatibilityHistoryError = if (historyNeedsInitialRead) null else it.compatibilityHistoryError,
                 message = null,
             )
         }
-        loadCompatibilityHistory()
+        if (historyNeedsInitialRead) loadCompatibilityHistory()
         if (!cachedReady) loadCompatibilityWorkspace()
     }
 
@@ -4993,6 +4997,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         mutableState.update {
             it.copy(
                 compatibilityHistoryLoading = true,
+                compatibilityHistoryLoaded = false,
                 compatibilityHistoryError = null,
             )
         }
@@ -5074,8 +5079,31 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         viewModelScope.launch {
             val records = try {
                 withContext(ioDispatcher) {
-                    val stored = compatibilityHistoryStore.list()
-                    val historyCaseIds = stored.flatMap { record ->
+                    compatibilityHistoryStore.list()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.update { current ->
+                    if (requestGeneration != compatibilityHistoryGeneration) current else current.copy(
+                        compatibilityHistoryLoading = false,
+                        compatibilityHistoryLoaded = false,
+                        compatibilityHistoryError = "合盘记录无法读取，原文件已保留。请从完整备份恢复，或联系支持导出诊断后再试。",
+                    )
+                }
+                return@launch
+            }
+            mutableState.update { current ->
+                if (requestGeneration != compatibilityHistoryGeneration) current else current.copy(
+                    compatibilityHistory = records,
+                    compatibilityHistoryLoading = false,
+                    compatibilityHistoryLoaded = true,
+                    compatibilityHistoryError = null,
+                )
+            }
+            val hydratedRecords = try {
+                withContext(ioDispatcher) {
+                    val historyCaseIds = records.flatMap { record ->
                         listOf(record.report.left.caseId, record.report.right.caseId)
                     }.toSet()
                     val cases = if (historyCaseIds.isEmpty()) {
@@ -5084,7 +5112,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         runCatching { caseRepository.findByIds(historyCaseIds) }
                             .getOrDefault(emptyMap())
                     }
-                    stored.map { record ->
+                    records.map { record ->
                         val hydrated = BaziCompatibilityAnalyzer.hydrateHistoricalReport(
                             report = record.report,
                             leftCase = cases[record.report.left.caseId],
@@ -5096,19 +5124,11 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                mutableState.update { current ->
-                    if (requestGeneration != compatibilityHistoryGeneration) current else current.copy(
-                        compatibilityHistoryLoading = false,
-                        compatibilityHistoryError = "合盘记录无法读取，原文件已保留。请从完整备份恢复，或联系支持导出诊断后再试。",
-                    )
-                }
                 return@launch
             }
             mutableState.update { current ->
                 if (requestGeneration != compatibilityHistoryGeneration) current else current.copy(
-                    compatibilityHistory = records,
-                    compatibilityHistoryLoading = false,
-                    compatibilityHistoryError = null,
+                    compatibilityHistory = hydratedRecords,
                 )
             }
         }

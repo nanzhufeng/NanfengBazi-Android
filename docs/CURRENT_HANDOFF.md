@@ -5,6 +5,12 @@
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
 
+## 2026-08-23：合盘记录首屏直出与会话缓存 r128
+
+- 根因：`openBaziCompatibility()` 每次都重置 `compatibilityHistoryLoading` 并调用历史加载；加载协程又将历史文件读取、双方命例批量查询、旧报告 `hydrateHistoricalReport()` 和必要 `replace()` 串行完成，导致已保存的冻结报告不能及时进入正常列表。
+- 现将读取拆层：首次只读合盘历史快照并立即原子提交列表／已就绪标记；旧报告补齐与写回移到后台，任何补齐失败均保留可读快照。空列表成功读取后同样标记已就绪；同一 ViewModel 会话再次进入八字合盘复用缓存，不再重读文件或显示全屏“正在读取合盘记录”。用户点“重新读取”才清除就绪标记并重新加载。
+- `StageTwoViewModelTest` 新增“已读取的合盘记录再次进入时直接复用缓存”，并继续覆盖首次读取及错误边界。全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过。按授权在 OPPO `3B157F009E800000` 同签名覆盖至 Debug `1.0.2 (10034)`：安装前后证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `2b2e0e4680dd8b42295cef37e6c3e46eaf6995e88f0e06b88f361f625421007c`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`；未执行 `connected*AndroidTest`、卸载、清数据或启动应用。仍待用户在真实记录数据下确认首屏进入时机。
+
 ## 2026-08-23：合盘顶部与选人列表收口 r127
 
 - “八字合盘”、合盘结果、合盘记录列表和记录详情的顶栏统一使用 `CenterAlignedTopAppBar`，标题按完整顶栏宽度居中；返回和管理等现有导航／操作仍留在各自槽位。

@@ -926,7 +926,44 @@ class StageTwoViewModelTest {
         assertTrue(reader.state.value.compatibilityHistory.isEmpty())
         testScheduler.advanceUntilIdle()
         assertFalse(reader.state.value.compatibilityHistoryLoading)
+        assertTrue(reader.state.value.compatibilityHistoryLoaded)
         assertEquals(1, reader.state.value.compatibilityHistory.size)
+    }
+
+    @Test
+    fun `已读取的合盘记录再次进入时直接复用缓存`() = runTest {
+        val historyStore = object : BaziCompatibilityHistoryStore {
+            private val delegate = InMemoryBaziCompatibilityHistoryStore()
+            var listCalls = 0
+
+            override fun list() = delegate.list().also { listCalls++ }
+
+            override fun save(
+                report: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityReport,
+                createdAtEpochMillis: Long,
+            ) = delegate.save(report, createdAtEpochMillis)
+
+            override fun replace(
+                record: com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityRecord,
+            ) = delegate.replace(record)
+
+            override fun delete(ids: Set<String>) = delegate.delete(ids)
+        }
+        val viewModel = createViewModel(
+            repository = FakeCaseRepository(),
+            compatibilityHistoryStore = historyStore,
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.openBaziCompatibility()
+        testScheduler.advanceUntilIdle()
+        assertTrue(viewModel.state.value.compatibilityHistoryLoaded)
+        assertEquals(1, historyStore.listCalls)
+
+        viewModel.openBaziCompatibility()
+
+        assertFalse(viewModel.state.value.compatibilityHistoryLoading)
+        assertEquals(1, historyStore.listCalls)
     }
 
     @Test
