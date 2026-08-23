@@ -506,6 +506,7 @@ OPPO 真机安装、进程重启后的持久读取及真实问真迁移仍需独
 4. 地区入口必须打开与首页相同的 `BirthplacePickerSheet`，遮罩可关闭；仓储测试使用完整标准地区名并验证精确匹配。筛选抽屉、四柱选择层、排序弹层和分组管理层的外部空白遮罩必须可点击关闭，关闭不提交草稿。
 5. `DatabaseMigrationTest` 固定 schema 8→9 的分组顺序列及 9→10 的 `libraryType=USER` 默认迁移；`RoomCaseRepositoryTest` 覆盖案例库类型往返与隔离、分组新增／重命名／排序／删除，以及批量置顶和软删除的真实持久化结果。
 6. 1140×2616、442dpi 视觉核对检查右侧筛选抽屉可滚动、底部操作区固定且不被手势条遮挡；分组添加按钮和列表编辑操作条必须与手势条保留可见安全间距。OPPO 只覆盖安装主 APK并用宿主机 ADB/UIAutomator 操作现有应用验收，不安装测试 APK，不运行 instrumentation 或 Gradle `connected*AndroidTest`。
+7. `InteractionShapeContractTest` 必须锁定合盘选人行与普通记录行相同的右侧 `28dp` 收口，并锁定八字合盘、合盘结果、合盘记录列表与详情的标题均使用居中顶栏；该静态合同不替代 OPPO 上的实际视觉验收。
 
 ## 记录编辑、左滑、长图与十列时间轴门禁
 
