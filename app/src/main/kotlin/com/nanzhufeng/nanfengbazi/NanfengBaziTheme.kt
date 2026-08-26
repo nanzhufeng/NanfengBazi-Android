@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -96,6 +97,7 @@ internal enum class NanfengPopupPlacement {
 internal val LocalBaziSkin = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART }
 internal val LocalBaziSkinTokens = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.tokens }
 internal val LocalBaziSkinVisualRecipe = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.visualRecipe }
+internal val LocalAppFontSizePreference = staticCompositionLocalOf { AppFontSizePreference.STANDARD }
 
 private fun baziColorScheme(tokens: BaziSkinTokens) = lightColorScheme(
     primary = tokens.primary,
@@ -133,9 +135,22 @@ private val NanfengBaziShapes = Shapes(
 )
 
 private const val AppFontAssetPath = "fonts/noto_sans_sc_variable.ttf"
+private const val MinimumAppFontSizeSp = 8f
+
+internal fun resolveAppFontSize(
+    size: TextUnit,
+    preference: AppFontSizePreference,
+): TextUnit =
+    (size.value + preference.adjustmentSp).coerceAtLeast(MinimumAppFontSizeSp).sp
 
 @Composable
-private fun rememberNanfengBaziTypography(): Typography {
+internal fun appFontSize(size: TextUnit): TextUnit =
+    resolveAppFontSize(size, LocalAppFontSizePreference.current)
+
+@Composable
+private fun rememberNanfengBaziTypography(
+    fontSizePreference: AppFontSizePreference,
+): Typography {
     val context = LocalContext.current
     val fontFamily = remember(context) {
         FontFamily(
@@ -145,18 +160,18 @@ private fun rememberNanfengBaziTypography(): Typography {
             appFont(context.assets, FontWeight.Bold),
         )
     }
-    return remember(fontFamily) {
+    return remember(fontFamily, fontSizePreference) {
         Typography(
-            headlineMedium = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Bold, fontSize = 22.sp, lineHeight = 28.sp),
-            headlineSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp),
-            titleLarge = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, lineHeight = 24.sp),
-            titleMedium = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 21.sp),
-            titleSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 22.sp),
-            bodyLarge = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
-            bodyMedium = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 18.sp),
-            bodySmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Normal, fontSize = 11.sp, lineHeight = 16.sp),
-            labelLarge = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 17.sp),
-            labelSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 14.sp),
+            headlineMedium = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Bold, fontSize = resolveAppFontSize(22.sp, fontSizePreference), lineHeight = 28.sp),
+            headlineSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Bold, fontSize = resolveAppFontSize(20.sp, fontSizePreference), lineHeight = 26.sp),
+            titleLarge = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold, fontSize = resolveAppFontSize(18.sp, fontSizePreference), lineHeight = 24.sp),
+            titleMedium = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold, fontSize = resolveAppFontSize(15.sp, fontSizePreference), lineHeight = 21.sp),
+            titleSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Bold, fontSize = resolveAppFontSize(16.sp, fontSizePreference), lineHeight = 22.sp),
+            bodyLarge = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Normal, fontSize = resolveAppFontSize(14.sp, fontSizePreference), lineHeight = 20.sp),
+            bodyMedium = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Normal, fontSize = resolveAppFontSize(12.sp, fontSizePreference), lineHeight = 18.sp),
+            bodySmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Normal, fontSize = resolveAppFontSize(11.sp, fontSizePreference), lineHeight = 16.sp),
+            labelLarge = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.SemiBold, fontSize = resolveAppFontSize(12.sp, fontSizePreference), lineHeight = 17.sp),
+            labelSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Medium, fontSize = resolveAppFontSize(10.sp, fontSizePreference), lineHeight = 14.sp),
         )
     }
 }
@@ -174,13 +189,15 @@ private fun appFont(
 @Composable
 internal fun NanfengBaziTheme(
     skin: BaziSkin = BaziSkin.INK_STAR_CHART,
+    fontSizePreference: AppFontSizePreference = AppFontSizePreference.STANDARD,
     content: @Composable () -> Unit,
 ) {
-    val typography = rememberNanfengBaziTypography()
+    val typography = rememberNanfengBaziTypography(fontSizePreference)
     CompositionLocalProvider(
         LocalBaziSkin provides skin,
         LocalBaziSkinTokens provides skin.tokens,
         LocalBaziSkinVisualRecipe provides skin.visualRecipe,
+        LocalAppFontSizePreference provides fontSizePreference,
     ) {
         MaterialTheme(
             colorScheme = baziColorScheme(skin.tokens),

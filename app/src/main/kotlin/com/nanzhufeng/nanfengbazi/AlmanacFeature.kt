@@ -496,7 +496,7 @@ private fun AlmanacDayCell(
                 Text(
                     day.marker ?: day.lunarDayText,
                     modifier = Modifier.padding(top = 1.dp),
-                    fontSize = 12.sp,
+                    fontSize = appFontSize(12.sp),
                     lineHeight = 13.sp,
                     color = if (selected) Color.White.copy(alpha = 0.9f) else {
                         if (solarTermDay) NanfengSolarTermRed
@@ -514,14 +514,14 @@ private fun AlmanacDayCell(
                             }
                         }
                     },
-                    fontSize = 11.sp,
+                    fontSize = appFontSize(11.sp),
                     fontWeight = FontWeight.SemiBold,
                 )
             } else {
                 Text(
                     day.marker ?: day.lunarDayText,
                     modifier = Modifier.padding(top = 1.dp),
-                    fontSize = 9.sp,
+                    fontSize = appFontSize(9.sp),
                     lineHeight = 11.sp,
                     color = if (selected) Color.White.copy(alpha = 0.9f) else {
                         if (solarTermDay) NanfengSolarTermRed
@@ -543,7 +543,7 @@ private fun AlmanacDayCell(
                             ) { append(character) }
                         }
                     },
-                    fontSize = 9.sp,
+                    fontSize = appFontSize(9.sp),
                     lineHeight = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,

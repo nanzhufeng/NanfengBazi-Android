@@ -77,6 +77,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
@@ -316,8 +317,12 @@ fun NanfengBaziApp(
     val context = LocalContext.current
     val cloudContainer = (context.applicationContext as? NanfengBaziApplication)?.container
     val skinPreferenceStore = remember(cloudContainer) { cloudContainer?.baziSkinPreferenceStore }
+    val fontSizePreferenceStore = remember(cloudContainer) { cloudContainer?.appFontSizePreferenceStore }
     var selectedSkin by remember(skinPreferenceStore) {
         mutableStateOf(skinPreferenceStore?.read() ?: BaziSkin.INK_STAR_CHART)
+    }
+    var selectedFontSize by remember(fontSizePreferenceStore) {
+        mutableStateOf(fontSizePreferenceStore?.read() ?: AppFontSizePreference.STANDARD)
     }
     val rootView = LocalView.current
     val coroutineScope = rememberCoroutineScope()
@@ -385,7 +390,10 @@ fun NanfengBaziApp(
             viewModel.navigateBack()
         }
     }
-    NanfengBaziTheme(skin = selectedSkin) {
+    NanfengBaziTheme(
+        skin = selectedSkin,
+        fontSizePreference = selectedFontSize,
+    ) {
         state.wenzhenImportPreview?.let { preview ->
             AlertDialog(
                 onDismissRequest = viewModel::cancelWenzhenWebImport,
@@ -724,10 +732,15 @@ fun NanfengBaziApp(
                         state = state,
                         aiCommentaryState = state.aiCommentary,
                         selectedSkin = selectedSkin,
+                        selectedFontSize = selectedFontSize,
                         onSkinPreview = { selectedSkin = it },
                         onSkinCommitted = { skin ->
                             selectedSkin = skin
                             skinPreferenceStore?.write(skin)
+                        },
+                        onFontSizeCommitted = { preference ->
+                            selectedFontSize = preference
+                            fontSizePreferenceStore?.write(preference)
                         },
                         screenshotImportState = screenshotImportState,
                         onRatHourRuleChange = viewModel::updateDefaultRatHourRule,
@@ -2739,8 +2752,10 @@ private fun SettingsHomeScreen(
     state: StageTwoUiState,
     aiCommentaryState: AiCommentaryUiState,
     selectedSkin: BaziSkin,
+    selectedFontSize: AppFontSizePreference,
     onSkinPreview: (BaziSkin) -> Unit,
     onSkinCommitted: (BaziSkin) -> Unit,
+    onFontSizeCommitted: (AppFontSizePreference) -> Unit,
     screenshotImportState: ScreenshotImportUiState,
     onRatHourRuleChange: (RatHourRule) -> Unit,
     onImportScreenshots: () -> Unit,
@@ -2759,6 +2774,7 @@ private fun SettingsHomeScreen(
     modifier: Modifier = Modifier,
 ) {
     var showSkinPicker by rememberSaveable { mutableStateOf(false) }
+    var showFontSizePicker by rememberSaveable { mutableStateOf(false) }
     var showRatHourRulePicker by rememberSaveable { mutableStateOf(false) }
     var showAiServicePage by rememberSaveable { mutableStateOf(false) }
     var showCloudSettings by rememberSaveable { mutableStateOf(false) }
@@ -2808,6 +2824,17 @@ private fun SettingsHomeScreen(
             onClick = { showSkinPicker = true },
             modifier = Modifier.padding(horizontal = 16.dp),
         )
+        SettingsGroupTitle("显示")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "字体大小",
+                description = null,
+                icon = Icons.Filled.TextFields,
+                onClick = { showFontSizePicker = true },
+                tag = "settings_font_size",
+                accent = NanfengGreen,
+            )
+        }
         SettingsGroupTitle("南枫云")
         SettingsActionGroup {
             val cloudState by (cloudSyncCoordinator?.state
@@ -2918,6 +2945,49 @@ private fun SettingsHomeScreen(
             onSkinPreview = onSkinPreview,
             onSkinCommitted = onSkinCommitted,
             onDismissRequest = { showSkinPicker = false },
+        )
+    }
+    if (showFontSizePicker) {
+        AlertDialog(
+            onDismissRequest = { showFontSizePicker = false },
+            title = { Text("字体大小") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AppFontSizePreference.entries.forEach { preference ->
+                        Surface(
+                            onClick = {
+                                onFontSizeCommitted(preference)
+                                showFontSizePicker = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (selectedFontSize == preference) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = selectedFontSize == preference,
+                                    onClick = null,
+                                )
+                                Text(
+                                    preference.displayName,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showFontSizePicker = false }) { Text("取消") }
+            },
         )
     }
     if (showRatHourRulePicker) {
@@ -3142,7 +3212,7 @@ private fun SettingsActionGroup(content: @Composable () -> Unit) {
 @Composable
 private fun SettingsActionRow(
     title: String,
-    description: String,
+    description: String?,
     icon: ImageVector,
     onClick: () -> Unit,
     tag: String,
@@ -3177,11 +3247,13 @@ private fun SettingsActionRow(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Medium)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            description?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Icon(
             Icons.Filled.KeyboardArrowRight,
@@ -5140,7 +5212,7 @@ private fun RecordTopTab(
         ) {
             Text(
                 label,
-                fontSize = 12.sp,
+                fontSize = appFontSize(12.sp),
                 lineHeight = 16.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) {
@@ -5158,7 +5230,7 @@ private fun RecordTopTab(
                     modifier = Modifier
                         .padding(start = 4.dp)
                         .widthIn(min = 18.dp),
-                    fontSize = 9.sp,
+                    fontSize = appFontSize(9.sp),
                     lineHeight = 12.sp,
                     fontWeight = FontWeight.Medium,
                     color = if (selected) accent else accent.copy(alpha = 0.78f),
@@ -5207,7 +5279,7 @@ private fun RecordCategoryTab(
                 )
                 Text(
                     label,
-                    fontSize = if (compactText) 9.sp else 11.sp,
+                    fontSize = appFontSize(if (compactText) 9.sp else 11.sp),
                     lineHeight = if (compactText) 12.sp else 15.sp,
                     maxLines = 1,
                     softWrap = false,
@@ -5222,7 +5294,7 @@ private fun RecordCategoryTab(
                 count?.let {
                     Text(
                         it,
-                        fontSize = if (compactText) 8.sp else 9.sp,
+                        fontSize = appFontSize(if (compactText) 8.sp else 9.sp),
                         lineHeight = if (compactText) 10.sp else 12.sp,
                         maxLines = 1,
                         softWrap = false,
@@ -5377,7 +5449,7 @@ private fun RecordAlphabetIndex(
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             initial.toString(),
-                            fontSize = if (active) 12.sp else 10.sp,
+                            fontSize = appFontSize(if (active) 12.sp else 10.sp),
                             lineHeight = if (active) 14.sp else 12.sp,
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                             color = if (visualActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -5458,7 +5530,7 @@ private fun ConstellationBadge(
                 modifier = Modifier.padding(top = 1.dp * scale),
                 color = NanfengGold,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = (10f * scale).sp,
+                    fontSize = appFontSize((10f * scale).sp),
                     lineHeight = (14f * scale).sp,
                 ),
                 maxLines = 1,
@@ -6540,7 +6612,7 @@ private fun CompatibilityHistoryParticipantSummary(
                     .fillMaxWidth()
                     .padding(top = 5.dp),
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.sp,
+                    fontSize = appFontSize(9.sp),
                     letterSpacing = (-0.2).sp,
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -11993,7 +12065,7 @@ private fun WenzhenCaseIdentityHeader(
                                         .fillMaxWidth()
                                         .testTag("notes_identity_name"),
                                     color = NanfengGoldLight,
-                                    fontSize = 15.sp,
+                                    fontSize = appFontSize(15.sp),
                                     lineHeight = 19.sp,
                                     fontWeight = FontWeight.Medium,
                                     textAlign = TextAlign.Center,
@@ -12012,7 +12084,7 @@ private fun WenzhenCaseIdentityHeader(
                                         .fillMaxWidth()
                                         .testTag("notes_identity_sex"),
                                     color = Color.White.copy(alpha = 0.90f),
-                                    fontSize = 14.sp,
+                                    fontSize = appFontSize(14.sp),
                                     lineHeight = 18.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     textAlign = TextAlign.Center,
@@ -12039,7 +12111,7 @@ private fun WenzhenCaseIdentityHeader(
                                             pillar.take(1),
                                             modifier = Modifier.testTag("notes_identity_stem_$index"),
                                             color = Color.White,
-                                            fontSize = 16.sp,
+                                            fontSize = appFontSize(16.sp),
                                             lineHeight = 18.sp,
                                             fontWeight = FontWeight.Medium,
                                         )
@@ -12047,7 +12119,7 @@ private fun WenzhenCaseIdentityHeader(
                                             pillar.drop(1).take(1),
                                             modifier = Modifier.testTag("notes_identity_branch_$index"),
                                             color = Color.White,
-                                            fontSize = 16.sp,
+                                            fontSize = appFontSize(16.sp),
                                             lineHeight = 18.sp,
                                             fontWeight = FontWeight.Medium,
                                         )
@@ -12065,7 +12137,7 @@ private fun WenzhenCaseIdentityHeader(
                             "大运",
                             modifier = Modifier.width(34.dp),
                             color = NanfengGold,
-                            fontSize = 10.sp,
+                            fontSize = appFontSize(10.sp),
                             lineHeight = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -12076,7 +12148,7 @@ private fun WenzhenCaseIdentityHeader(
                                     .weight(1f)
                                     .testTag("notes_decade_$index"),
                                 color = Color.White,
-                                fontSize = 10.sp,
+                                fontSize = appFontSize(10.sp),
                                 lineHeight = 12.sp,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1,
@@ -14944,7 +15016,7 @@ private fun ProfessionalPillarCell(
         ) {
             Text(
                 column.label,
-                fontSize = 9.sp,
+                fontSize = appFontSize(9.sp),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -14971,7 +15043,7 @@ private fun ProfessionalPillarCell(
                     stem.toString(),
                     modifier = Modifier.testTag("${column.key}_stem_text"),
                     color = baziElementColor(stem),
-                    fontSize = 20.sp,
+                    fontSize = appFontSize(20.sp),
                     lineHeight = 22.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -14983,7 +15055,7 @@ private fun ProfessionalPillarCell(
                     .padding(top = 5.dp)
                     .testTag("${column.key}_branch_text"),
                 color = baziElementColor(branch),
-                fontSize = 20.sp,
+                fontSize = appFontSize(20.sp),
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -15027,7 +15099,7 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                                     ),
                                     color = hidden.heavenStem.firstOrNull()
                                         ?.let(::baziElementColor) ?: NanfengInk,
-                                    fontSize = 12.sp,
+                                    fontSize = appFontSize(12.sp),
                                     lineHeight = 15.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -15036,7 +15108,7 @@ private fun ProfessionalHiddenStemGrid(columns: List<ProfessionalPillarColumn>) 
                                     modifier = Modifier.testTag(
                                         "${column.key}_hidden_ten_god_$rowIndex",
                                     ),
-                                    fontSize = 10.sp,
+                                    fontSize = appFontSize(10.sp),
                                     lineHeight = 15.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -15066,11 +15138,13 @@ private fun ProfessionalTenGodLabel(
         } else {
             Modifier.padding(vertical = if (compact) 0.dp else 1.dp)
         }).then(if (tag == null) Modifier else Modifier.testTag(tag)),
-        fontSize = when {
-            segmented -> 11.sp
-            compact -> 8.sp
-            else -> 10.sp
-        },
+        fontSize = appFontSize(
+            when {
+                segmented -> 11.sp
+                compact -> 8.sp
+                else -> 10.sp
+            },
+        ),
         lineHeight = when {
             segmented -> 15.sp
             compact -> 9.sp
@@ -15176,7 +15250,7 @@ private fun ProfessionalTimelineRow(
                 title.forEach { character ->
                     Text(
                         text = character.toString(),
-                        fontSize = 10.sp,
+                        fontSize = appFontSize(10.sp),
                         lineHeight = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -15286,7 +15360,7 @@ private fun ProfessionalTimelineCell(
             Text(
                 item.label,
                 modifier = Modifier.testTag("timeline_${item.key}_label"),
-                fontSize = if (compact) 8.sp else 9.sp,
+                fontSize = appFontSize(if (compact) 8.sp else 9.sp),
                 lineHeight = if (compact) 9.sp else 11.sp,
                 color = if (selected) NanfengGold else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -15298,7 +15372,7 @@ private fun ProfessionalTimelineCell(
                 Text(
                     stageLabel.take(1),
                     modifier = Modifier.testTag("timeline_${item.key}_upper"),
-                    fontSize = if (compact) 14.sp else 15.sp,
+                    fontSize = appFontSize(if (compact) 14.sp else 15.sp),
                     lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -15309,7 +15383,7 @@ private fun ProfessionalTimelineCell(
                     modifier = Modifier
                         .padding(top = 2.dp)
                         .testTag("timeline_${item.key}_lower"),
-                    fontSize = if (compact) 14.sp else 15.sp,
+                    fontSize = appFontSize(if (compact) 14.sp else 15.sp),
                     lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -15323,7 +15397,7 @@ private fun ProfessionalTimelineCell(
                     stem.toString(),
                     modifier = Modifier.testTag("timeline_${item.key}_stem"),
                     color = baziElementColor(stem),
-                    fontSize = if (compact) 14.sp else 15.sp,
+                    fontSize = appFontSize(if (compact) 14.sp else 15.sp),
                     lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -15335,7 +15409,7 @@ private fun ProfessionalTimelineCell(
                         .padding(top = 2.dp)
                         .testTag("timeline_${item.key}_branch"),
                     color = baziElementColor(branch),
-                    fontSize = if (compact) 14.sp else 15.sp,
+                    fontSize = appFontSize(if (compact) 14.sp else 15.sp),
                     lineHeight = if (compact) 15.sp else 17.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -15347,7 +15421,7 @@ private fun ProfessionalTimelineCell(
                     .padding(top = 2.dp)
                     .testTag("timeline_${item.key}_subtitle"),
                 textAlign = TextAlign.Center,
-                fontSize = 8.sp,
+                fontSize = appFontSize(8.sp),
                 lineHeight = 9.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -15366,7 +15440,7 @@ private fun ProfessionalTimelineBranchDetail(
         item.hiddenStems.joinToString(separator = "") { tenGodAbbreviation(it.tenGod) },
         modifier = Modifier
             .testTag("timeline_${item.key}_branch_detail"),
-        fontSize = if (compact) 8.sp else 9.sp,
+        fontSize = appFontSize(if (compact) 8.sp else 9.sp),
         lineHeight = if (compact) 9.sp else 11.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -15421,7 +15495,7 @@ private fun ProfessionalSelectedDateBar(
                         )
                         Text(
                             "阳历 $date $time　${detail.ifBlank { "农历未记录" }}",
-                            fontSize = 9.sp,
+                            fontSize = appFontSize(9.sp),
                             lineHeight = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -15443,14 +15517,14 @@ private fun ProfessionalSelectedDateBar(
                 Text(
                     "起运  ${calculation.fortuneStart.direction.displayName()} · " +
                         calculation.fortuneStart.ageDurationDisplay(),
-                    fontSize = 10.sp,
+                    fontSize = appFontSize(10.sp),
                     lineHeight = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     "交运  ${calculation.fortuneStart.endAt.display()}",
                     modifier = Modifier.padding(top = 1.dp),
-                    fontSize = 10.sp,
+                    fontSize = appFontSize(10.sp),
                     lineHeight = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -15464,7 +15538,7 @@ private fun ProfessionalSelectedDateBar(
                 Text(
                     "$completedAge 岁",
                     modifier = Modifier.testTag("fortune_completed_age"),
-                    fontSize = 15.sp,
+                    fontSize = appFontSize(15.sp),
                     lineHeight = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = NanfengInk,
@@ -15492,7 +15566,7 @@ private fun ProfessionalSelectedDateBar(
                         )
                         Text(
                             "今",
-                            fontSize = 12.sp,
+                            fontSize = appFontSize(12.sp),
                             fontWeight = FontWeight.SemiBold,
                             color = NanfengGold,
                         )
@@ -15504,7 +15578,7 @@ private fun ProfessionalSelectedDateBar(
             Text(
                 it,
                 modifier = Modifier.padding(top = 2.dp),
-                fontSize = 8.sp,
+                fontSize = appFontSize(8.sp),
                 color = MaterialTheme.colorScheme.error,
             )
         }
@@ -15532,7 +15606,7 @@ private fun ProfessionalTextSections(
             title,
             modifier = Modifier.fillMaxWidth().background(themeBackground)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
-            fontSize = 13.sp,
+            fontSize = appFontSize(13.sp),
             fontWeight = FontWeight.SemiBold,
             color = themeText,
         )
@@ -15544,7 +15618,7 @@ private fun ProfessionalTextSections(
                 Text(
                     group.title,
                     modifier = Modifier.width(66.dp),
-                    fontSize = 10.sp,
+                    fontSize = appFontSize(10.sp),
                     color = NanfengGold,
                 )
                 if (stackLines) {
@@ -15563,7 +15637,7 @@ private fun ProfessionalTextSections(
                                     .fillMaxWidth()
                                     .testTag("${tag}_line_${groupIndex}_$lineIndex")
                                     .padding(bottom = if (lineIndex == group.lines.lastIndex) 0.dp else 3.dp),
-                                fontSize = 10.sp,
+                                fontSize = appFontSize(10.sp),
                                 lineHeight = 15.sp,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
@@ -15573,7 +15647,7 @@ private fun ProfessionalTextSections(
                     Text(
                         group.lines.ifEmpty { listOf("无") }.joinToString("；"),
                         modifier = Modifier.weight(1f),
-                        fontSize = 10.sp,
+                        fontSize = appFontSize(10.sp),
                         lineHeight = 15.sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -15792,14 +15866,14 @@ private fun BasicChartHiddenStemRow(
                         Text(
                             hidden.heavenStem,
                             textAlign = TextAlign.Center,
-                            fontSize = 12.sp,
+                            fontSize = appFontSize(12.sp),
                             lineHeight = 15.sp,
                             color = baziElementColor(hidden.element),
                         )
                         Text(
                             hidden.tenGod,
                             modifier = Modifier.padding(start = 2.dp),
-                            fontSize = 11.sp,
+                            fontSize = appFontSize(11.sp),
                             lineHeight = 15.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

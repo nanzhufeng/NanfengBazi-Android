@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import androidx.compose.ui.unit.sp
 
 class InteractionShapeContractTest {
     @Test
@@ -15,10 +16,10 @@ class InteractionShapeContractTest {
 
         assertTrue(notesHeader.contains("case.name.value ?: case.alias"))
         assertTrue(notesHeader.contains(".testTag(\"notes_identity_name\")"))
-        assertTrue(notesHeader.contains("fontSize = 15.sp"))
+        assertTrue(notesHeader.contains("fontSize = appFontSize(15.sp)"))
         assertTrue(notesHeader.contains(".testTag(\"notes_identity_sex\")"))
         assertTrue(notesHeader.contains("case.sexForFortuneDirection.displayName()"))
-        assertTrue(notesHeader.contains("fontSize = 14.sp"))
+        assertTrue(notesHeader.contains("fontSize = appFontSize(14.sp)"))
         assertTrue(notesHeader.contains("Spacer(modifier = Modifier.width(136.dp))"))
         assertTrue(notesHeader.contains("contentAlignment = Alignment.Center"))
         assertTrue(!notesHeader.contains(".align(Alignment.CenterStart)"))
@@ -755,8 +756,8 @@ class InteractionShapeContractTest {
             .substringBefore("private fun String.recordLabelAndCount()")
         assertTrue(categoryTab.contains(".width(92.dp)"))
         assertTrue(categoryTab.contains("val compactText = label.length + (count?.length ?: 0) >= 6"))
-        assertTrue(categoryTab.contains("fontSize = if (compactText) 9.sp else 11.sp"))
-        assertTrue(categoryTab.contains("fontSize = if (compactText) 8.sp else 9.sp"))
+        assertTrue(categoryTab.contains("fontSize = appFontSize(if (compactText) 9.sp else 11.sp)"))
+        assertTrue(categoryTab.contains("fontSize = appFontSize(if (compactText) 8.sp else 9.sp)"))
         assertTrue(categoryTab.contains("softWrap = false"))
         assertTrue(categoryTab.contains("if (selected) MaterialTheme.colorScheme.primaryContainer else Color.White"))
         assertTrue(categoryTab.contains("fontWeight = FontWeight.Medium"))
@@ -775,6 +776,58 @@ class InteractionShapeContractTest {
         assertTrue(choiceGroup.contains(".width(itemWidth)"))
         assertTrue(choiceGroup.contains("style = MaterialTheme.typography.bodyMedium"))
         assertTrue(!choiceGroup.contains("fontSize = 11.sp"))
+    }
+
+    @Test
+    fun appFontSizePreferenceKeepsCurrentScaleStandardAndBoundsMicroLabels() {
+        assertEquals(14.sp, resolveAppFontSize(14.sp, AppFontSizePreference.STANDARD))
+        assertEquals(12.sp, resolveAppFontSize(14.sp, AppFontSizePreference.SMALL))
+        assertEquals(15.sp, resolveAppFontSize(14.sp, AppFontSizePreference.LARGE))
+        assertEquals(8.sp, resolveAppFontSize(8.sp, AppFontSizePreference.SMALL))
+    }
+
+    @Test
+    fun settingsOffersPersistentThreeStepGlobalFontSizePreference() {
+        val sourceRoot = locateSourceRoot()
+        val settings = File(sourceRoot, "StageTwoScreens.kt").readText()
+            .substringAfter("private fun SettingsHomeScreen(")
+            .substringBefore("private fun cloudDescription(")
+        val theme = File(sourceRoot, "NanfengBaziTheme.kt").readText()
+        val container = File(sourceRoot, "AppContainer.kt").readText()
+        val preference = File(sourceRoot, "AppFontSizePreference.kt").readText()
+
+        assertTrue(settings.contains("SettingsGroupTitle(\"显示\")"))
+        assertTrue(settings.contains("tag = \"settings_font_size\""))
+        assertTrue(settings.contains("description = null"))
+        assertTrue(
+            settings.indexOf("SettingsGroupTitle(\"显示\")") >
+                settings.indexOf("SettingsGroupTitle(\"皮肤\")"),
+        )
+        assertTrue(settings.contains("AppFontSizePreference.entries.forEach"))
+        assertTrue(settings.contains("onFontSizeCommitted(preference)"))
+        assertFalse(settings.contains("preference.description"))
+        assertTrue(theme.contains("LocalAppFontSizePreference provides fontSizePreference"))
+        assertTrue(theme.contains("fontSizePreference: AppFontSizePreference"))
+        assertTrue(container.contains("val appFontSizePreferenceStore: AppFontSizePreferenceStore"))
+        assertTrue(preference.contains("SMALL(\"small\", \"小号\""))
+        assertTrue(preference.contains("STANDARD(\"standard\", \"标准\""))
+        assertTrue(preference.contains("LARGE(\"large\", \"大号\""))
+    }
+
+    @Test
+    fun everyExplicitAppTextSizeUsesTheSharedFontScale() {
+        locateSourceRoot().listFiles().orEmpty()
+            .filter { it.extension == "kt" }
+            .forEach { source ->
+                source.readLines()
+                    .filter { it.contains("fontSize =") }
+                    .forEach { line ->
+                        assertTrue(
+                            "${source.name} 的显式字号必须走统一字体比例：$line",
+                            line.contains("appFontSize(") || line.contains("resolveAppFontSize("),
+                        )
+                    }
+            }
     }
 
     @Test

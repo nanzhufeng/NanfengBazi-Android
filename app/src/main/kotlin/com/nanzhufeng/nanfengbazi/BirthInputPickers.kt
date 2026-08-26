@@ -1439,7 +1439,7 @@ internal fun <T> ValueWheel(
                     ) {
                         Text(
                             display(values[valueIndex]),
-                            fontSize = if (selected) 20.sp else 15.sp,
+                            fontSize = appFontSize(if (selected) 20.sp else 15.sp),
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             color = if (selected) NanfengInk else NanfengNavigationMuted,
                             maxLines = 1,

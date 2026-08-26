@@ -5,6 +5,11 @@
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
 
+## 2026-08-26：全局三档应用内字体大小
+
+- 设置页在“皮肤”下方新增“显示 → 字体大小”：小号、标准和大号均点选即生效、下次启动仍保留；标准保持当前视觉基线，小号／大号分别为 `-2sp`／`+1sp`，微型标注在小号下不低于 `8sp`。设置行及选择弹层均不再显示辅助小字。根主题与所有明确 `fontSize` 的页面统一经同一缩放入口，未触碰命例、排盘、备份或云同步数据链路。
+- `InteractionShapeContractTest` 新增三档数值、下限、设置弹层、持久化入口及显式字号全覆盖合同。全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 55 warnings`（已有 Material 图标弃用告警）。按授权将同签名 Debug `1.0.13 (10045)` 覆盖到 OPPO `3B157F009E800000`：现装 `1.0.12 (10044)` 与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`；本地与设备 `base.apk` SHA-256 均为 `d76fdcdc26d2756a07f06844a9549373a774a3964e550bdbb2c9a476db518f57`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files/shared_prefs` inode 保持 `1222090/1857315/1567575`，文件数保持 `16`。未卸载、清数据、启动 App 或运行任何 `connected*AndroidTest`，临时 APK 已清理；仍待目标设备分别目检小号／标准／大号在外屏与内屏的密集命盘和万年历可读性。
+
 ## 2026-08-24：合盘全链路顶栏返回统一为图标 r137
 
 - 八字合盘主页、合盘结果、合盘记录列表和点进记录详情的顶栏返回现全部使用同一返回箭头；语义由无障碍 `contentDescription` 保留。`InteractionShapeContractTest` 锁定四处图标入口及其 2＋1＋1 个箭头分布，防止再回退成文字按钮。
