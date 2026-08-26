@@ -53,6 +53,7 @@ interface AppContainer {
     val calculationPreferenceStore: CalculationPreferenceStore
     val baziCompatibilityHistoryStore: BaziCompatibilityHistoryStore
     val baziSkinPreferenceStore: BaziSkinPreferenceStore
+    val appFontSizePreferenceStore: AppFontSizePreferenceStore
     val aiCommentarySettings: AiCommentarySettingsStore
     val aiCommentaryGenerator: AiCommentaryGenerator
     val aiCommentaryCallLog: AiCommentaryCallLogStore
@@ -70,6 +71,8 @@ class DefaultAppContainer(
         LocalBaziCompatibilityHistoryStore(application)
     override val baziSkinPreferenceStore: BaziSkinPreferenceStore =
         BaziSkinPreferenceStore(application)
+    override val appFontSizePreferenceStore: AppFontSizePreferenceStore =
+        AppFontSizePreferenceStore(application)
     override val aiCommentarySettings: AiCommentarySettingsStore =
         SecureAiCommentarySettings(application)
     override val aiCommentaryGenerator: AiCommentaryGenerator =
