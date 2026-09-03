@@ -124,7 +124,9 @@ data class BaziCompatibilityParticipant(
 
 /** 兼容旧合盘快照：只根据其冻结四柱补齐结构候选，不读取或改写单命例。 */
 fun BaziCompatibilityParticipant.structuralProfileOrAnalyze(): BaziStructuralProfile =
-    structuralProfile ?: BaziStructuralProfileAnalyzer.analyze(pillars)
+    structuralProfile
+        ?.takeIf { it.ruleVersion == BAZI_STRUCTURAL_PROFILE_RULE_VERSION }
+        ?: BaziStructuralProfileAnalyzer.analyze(pillars)
 
 @Serializable
 data class BaziDayMasterRelation(

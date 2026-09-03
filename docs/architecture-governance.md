@@ -165,10 +165,11 @@
 | 页面消费 | `StageTwoViewModel` → 专业细盘 | 五层点击由 UI 传 `ProfessionalFortuneSelection(layer, observedAt)`，ViewModel 调用领域 `select()` 并在成功后原子替换观察时间和结果；校验失败保留原结果。自由日期与今天继续走 `locate()`。九列与时间轴只消费领域输出，UI 不计算年龄、藏干、月界或父层归属 |
 | 专业细盘关系与基础神煞 | `ProfessionalFortuneResolver` → `professional-detail-relations-shensha-v4` | 以已采用原局上下文和九列干支统一输出去重后的干支关系与版本化基础神煞；神煞只显示实际命中条目，按稳定优先级每柱最多展示 5 项，并以实际干支为行首逐时间柱输出；UI 不重算、不回写问真截图来源对照、不生成吉凶断语 |
 | 问真基本资料衍生字段 | `BaziEngine.calculate()` → `BasicChartDetails` | 前后“节”与相邻二十四节气分别保存；胎元、胎息、命宫、身宫及前后节只在正式提交后对照，不由 OCR 决定算法真值 |
-| 命局结构候选 | `BaziEngine.calculate()` → `BaziStructuralProfileAnalyzer` → `CalculationResult.structuralProfile` | 以最终四柱、月令、藏干、透干、通根与天干生扶克泄耗形成旺衰与格局候选并保存证据；不生成喜忌、用神、吉凶或现实结论。问真自定旺衰／格局仍作为独立来源记录，不覆盖算法候选 |
+| 命局结构与旺衰 | `BaziEngine.calculate()` → `BaziStructuralProfileAnalyzer`／`WangShuaiProfileAnalyzer` → `CalculationResult` | 结构模块以最终四柱、月令、藏干、透干、通根与天干生扶克泄耗形成格局候选及证据；旺衰模块以 `month-command-hour-root-v1` 冻结月令主导、生扶／克泄耗比例及条件性时支补根。均不生成喜忌、用神、吉凶或现实结论。问真自定旺衰／格局仍是独立来源记录，不覆盖算法快照。 |
+| 基本信息辅助、盲派与称骨参考 | 已采用 `CalculationResult` → `NanfengAuxiliaryReferenceCard`／`MangPaiReferenceCard`／`FolkBoneWeightReferenceCard` | 辅助卡投影结构候选、`mangpai-surface-distribution-v1` 盘面五行统计与旺衰比例；盲派卡固定在称骨上方，读取 `mangpai-binzhu-zuogong-v1` 的宾主、体用、跨主宾做功候选和取象；称骨按版本化农历查表显示当前性别评语与完整男命／女命目录。均不改写命例，不构成现实结论。 |
 | 问真用户列表正式提交 | `ScreenshotImportCommitter` → `FourPillarsLookup` → `BaziEngine.calculate()` → `CaseRepository` | 只按同一公历日期保留两种子时口径下可复算的民用候选；全部标记 `DOUBLE_HOUR_ONLY`，无解显式拒绝，不按时支硬填整点、不推算真太阳时 |
 | 计算档案升级差异 | `CaseCalculationSnapshot` → `compareCalculationSnapshots()` → 基本排盘页 | 当前采用快照只与最近历史快照比较；输入或规则配置变化优先阻断版本归因，输入和口径一致时才把引擎/规则版本变化标为可核对升级 |
-| 问真无算法字段 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页 | 星宿、命卦、五行与党派比例、自定旺衰/格局和四柱神煞只保留原文、规范值、修正、置信度、原图框；提交后仍禁止 calculatedValue/一致性 |
+| 问真来源字段与五行统计 | `WenzhenSourceFidelityContract` → parser v8 → 字段证据/核对页；`BaziElementDistributionAnalyzer` → `CalculationResult.elementDistribution` | 星宿、命卦、自定旺衰/格局和四柱神煞只保留来源证据；截图五行与党派比例也保留原文，但本机显示统一使用版本化五行统计，不用任一方覆盖另一方。 |
 | 命例客观对比 | `CaseRepository` → `CaseComparisonEngine` → `CaseComparisonScreen` | 只读取两个活动命例及各自已采用快照，分出生历法、基础命盘、岁运、计算档案和研究资料显示相同/不同/缺失；禁止生成吉凶、合婚或关系结论 |
 | 八字合盘 | 对应性别活动用户命例 → `CaseRepository.findByIds()` → `BaziCompatibilityAnalyzer` → `BaziCompatibilityHistoryStore` → `BaziCompatibilityScreen` | 固定男方／女方双卡及始终可进入的合盘记录；缺一方时可直接进入已预设性别的录入页并在有效保存后返回；两方明确选择并点击开始后，才读取两个不同用户命例的已采用快照。旺衰／格局只投影其中的 `structuralProfile`；旧报告只依其冻结四柱补齐候选，绝不重排或回写命例。有效报告作为本机无备份独立快照去重保存，记录列表直达该报告而非单命例；规则版本、柱位、协调/沟通信号和时刻/口径提示不重算、不上传、不输出匹配分数或现实婚配结论 |
 | 记录高级筛选 | `StageTwoViewModel` → `CaseSearchRequest.advancedFilter` → `RoomCaseRepository` | 干支、四柱干／支与各自十神、地区、旺相休囚死和神煞一次进入仓储查询；天干十神与地支本气十神一律取自已采用快照的 `BasicChartDetails`，Compose 只维护草稿与展示，不计算十神 |

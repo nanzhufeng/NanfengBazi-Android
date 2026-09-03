@@ -26,7 +26,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -206,7 +205,7 @@ private fun AiCommentaryCallHistoryDialog(
                     Column(Modifier.weight(1f)) {
                         Text("调用记录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "仅记录模型、用量和运行状态",
+                            "仅记录模型、用量、估算金额和运行状态",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -265,6 +264,14 @@ private fun AiCallRecordCard(record: AiCommentaryCallRecord) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (record.succeeded && (record.inputTokens != null || record.outputTokens != null)) {
+                val amount = record.estimatedCostOrNull()?.let(AiCommentaryCnyMoneyDisplay::label)
+                Text(
+                    "估算金额：${amount ?: "暂不可估算"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             record.errorSummary?.takeIf(String::isNotBlank)?.let { error ->
                 Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }

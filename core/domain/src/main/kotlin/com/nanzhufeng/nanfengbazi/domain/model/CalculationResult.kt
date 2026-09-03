@@ -1,6 +1,10 @@
 package com.nanzhufeng.nanfengbazi.domain.model
 
 import com.nanzhufeng.nanfengbazi.domain.BaziStructuralProfile
+import com.nanzhufeng.nanfengbazi.domain.BaziElementDistribution
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeight
+import com.nanzhufeng.nanfengbazi.domain.MangPaiProfile
+import com.nanzhufeng.nanfengbazi.domain.WangShuaiProfile
 import java.time.Instant
 import kotlinx.serialization.Serializable
 
@@ -183,4 +187,12 @@ data class CalculationResult(
     val basicChartDetails: BasicChartDetails? = null,
     /** 月令、通根、透干与生扶克泄耗形成的本机结构候选；问真来源字段仍独立保真。 */
     val structuralProfile: BaziStructuralProfile? = null,
+    /** 五行能量、表层个数与藏干个数的版本化统计。 */
+    val elementDistribution: BaziElementDistribution? = null,
+    /** 盲派宾主、体用、做功候选与柱位取象的冻结事实快照。 */
+    val mangPaiProfile: MangPaiProfile? = null,
+    /** 月令主导、时支条件性补根的旺衰比例快照。 */
+    val wangShuaiProfile: WangShuaiProfile? = null,
+    /** 传统民俗称骨的版本化查表结果；不属于四柱排盘真值。 */
+    val folkBoneWeight: FolkBoneWeight? = null,
 )

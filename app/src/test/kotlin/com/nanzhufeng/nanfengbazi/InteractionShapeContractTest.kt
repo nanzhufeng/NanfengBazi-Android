@@ -9,6 +9,20 @@ import androidx.compose.ui.unit.sp
 
 class InteractionShapeContractTest {
     @Test
+    fun aiCallHistoryShowsAClearlyLabeledLocalEstimate() {
+        val dialogs = File(locateSourceRoot(), "AiCommentaryDialogs.kt").readText()
+        val record = File(locateSourceRoot(), "AiCommentaryFeature.kt").readText()
+        val estimator = File(locateSourceRoot(), "AiCommentaryCostEstimator.kt").readText()
+
+        assertTrue(dialogs.contains("仅记录模型、用量、估算金额和运行状态"))
+        assertTrue(dialogs.contains("估算金额："))
+        assertTrue(dialogs.contains("暂不可估算"))
+        assertTrue(record.contains("val estimatedCost: AiCommentaryEstimatedCost? = null"))
+        assertTrue(estimator.contains("Unknown models and automatic routing remain unpriced"))
+        assertTrue(estimator.contains("return \"≈ ¥${'$'}amount（估算）\""))
+    }
+
+    @Test
     fun notesIdentityHeaderCentersBalancedNameAndSexAroundThePillars() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val notesHeader = source.substringAfter("CaseDetailSection.RECORDS -> {")
@@ -367,8 +381,9 @@ class InteractionShapeContractTest {
         )
         assertEquals(3, importantParameters.split("columnWeights = CompatibilityReportColumnWeights").size - 1)
         assertTrue(importantParameters.contains("表层五行缺失"))
-        assertTrue(importantParameters.contains("日主旺衰（候选）"))
-        assertTrue(importantParameters.contains("格局（候选）"))
+        assertTrue(importantParameters.contains("日主旺衰"))
+        assertTrue(importantParameters.contains("格局"))
+        assertTrue(!importantParameters.contains("候选"))
         assertTrue(importantParameters.contains("compatibilityStrengthEvidence"))
         assertTrue(importantParameters.contains("compatibilityPatternEvidence"))
         assertTrue(!importantParameters.contains("格局（来源）"))
@@ -565,17 +580,21 @@ class InteractionShapeContractTest {
     }
 
     @Test
-    fun recordLibraryTabsKeepStableGeometryWithDistinctSemanticTextColors() {
+    fun recordLibraryTabsKeepStableGeometryWithNeutralTextColors() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val topTabs = source.substringAfter("private fun RecordTopTab(")
             .substringBefore("private fun RecordCategoryTab(")
 
-        assertTrue(source.contains("tag = \"visibility_active\",\n                            accent = NanfengGreen"))
-        assertTrue(source.contains("tag = \"visibility_celebrity\",\n                            accent = NanfengGoldText"))
-        assertTrue(source.contains("tag = \"visibility_trashed\",\n                            accent = NanfengSolarTermRed"))
-        assertTrue(topTabs.contains("accent: Color"))
-        assertTrue(topTabs.contains("accent.copy(alpha = 0.78f)"))
-        assertTrue(topTabs.contains("if (selected) accent.copy(alpha = 0.22f)"))
+        assertTrue(source.contains("tag = \"visibility_active\","))
+        assertTrue(source.contains("tag = \"visibility_celebrity\","))
+        assertTrue(source.contains("tag = \"visibility_trashed\","))
+        assertTrue(!topTabs.contains("accent: Color"))
+        assertTrue(!topTabs.contains("NanfengGreen"))
+        assertTrue(!topTabs.contains("NanfengGoldText"))
+        assertTrue(!topTabs.contains("NanfengSolarTermRed"))
+        assertTrue(topTabs.contains("MaterialTheme.colorScheme.onSurface"))
+        assertTrue(topTabs.contains("MaterialTheme.colorScheme.onSurfaceVariant"))
+        assertTrue(topTabs.contains("MaterialTheme.colorScheme.outlineVariant"))
     }
 
     @Test
@@ -784,6 +803,19 @@ class InteractionShapeContractTest {
         assertEquals(12.sp, resolveAppFontSize(14.sp, AppFontSizePreference.SMALL))
         assertEquals(15.sp, resolveAppFontSize(14.sp, AppFontSizePreference.LARGE))
         assertEquals(8.sp, resolveAppFontSize(8.sp, AppFontSizePreference.SMALL))
+    }
+
+    @Test
+    fun appIconScaleTracksTheThreeFontSizePreferencesWithoutChangingLayoutContracts() {
+        assertEquals(0.80f, appIconScale(AppFontSizePreference.SMALL), 0.001f)
+        assertEquals(1.00f, appIconScale(AppFontSizePreference.STANDARD), 0.001f)
+        assertEquals(1.12f, appIconScale(AppFontSizePreference.LARGE), 0.001f)
+
+        val theme = File(locateSourceRoot(), "NanfengBaziTheme.kt").readText()
+        assertTrue(theme.contains("LocalAppIconScale provides appIconScale(fontSizePreference)"))
+        assertTrue(theme.contains("modifier.graphicsLayer"))
+        assertTrue(theme.contains("scaleX = scale"))
+        assertTrue(theme.contains("scaleY = scale"))
     }
 
     @Test
@@ -1256,6 +1288,81 @@ class InteractionShapeContractTest {
         assertTrue(almanac.contains("AlmanacMutedBackgroundAlpha = 0.5f"))
         assertTrue(rail.contains("else almanacMutedBackgroundColor()"))
         assertTrue(table.contains("color = almanacMutedBackgroundColor()"))
+    }
+
+    @Test
+    fun basicInfoUsesSnapshotBackedAuxiliaryAndGenderedFolkReferenceCards() {
+        val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val basicInfo = source.substringAfter("private fun ReferenceBasicInfo(")
+            .substringBefore("private fun ReferenceBasicChart(")
+        val auxiliary = source.substringAfter("private fun NanfengAuxiliaryReferenceCard(")
+            .substringBefore("private fun AuxiliaryReferenceFact(")
+        val mangPai = source.substringAfter("private fun MangPaiReferenceCard(")
+            .substringBefore("private fun MangPaiRoleFact(")
+        val folk = source.substringAfter("private fun FolkBoneWeightReferenceCard(")
+            .substringBefore("private fun FolkBoneWeightCatalogPage(")
+        val catalog = source.substringAfter("private fun FolkBoneWeightCatalogPage(")
+            .substringBefore("private fun FolkBoneWeightCatalogRow(")
+
+        assertTrue(basicInfo.contains("NanfengAuxiliaryReferenceCard("))
+        assertTrue(basicInfo.contains("MangPaiReferenceCard("))
+        assertTrue(basicInfo.contains("FolkBoneWeightReferenceCard("))
+        assertTrue(basicInfo.indexOf("WenzhenSectionHeader(\n            \"命盘摘要\"") < basicInfo.indexOf("WenzhenFactRow(\n                \"分组标签\""))
+        assertTrue(basicInfo.indexOf("WenzhenFactRow(\n                \"分组标签\"") < basicInfo.indexOf("WenzhenFactRow(\"四柱\""))
+        assertTrue(basicInfo.indexOf("WenzhenFactRow(\n                \"分组标签\"") < basicInfo.indexOf("NanfengAuxiliaryReferenceCard("))
+        assertTrue(basicInfo.indexOf("MangPaiReferenceCard(") < basicInfo.indexOf("FolkBoneWeightReferenceCard("))
+        assertTrue(auxiliary.contains("result.structuralProfileOrAnalyze()"))
+        assertTrue(auxiliary.contains("result.elementDistributionOrAnalyze()"))
+        assertTrue(auxiliary.contains("result.wangShuaiProfileOrAnalyze()"))
+        assertTrue(auxiliary.contains("SamePartyBalanceBar("))
+        assertTrue(auxiliary.contains("samePartyPercent = wangShuai.samePartyPercent"))
+        assertTrue(auxiliary.contains("differentPartyPercent = wangShuai.differentPartyPercent"))
+        assertTrue(auxiliary.contains("\$displayValue \${metric.tenGodGroup}"))
+        assertTrue(auxiliary.contains("result.fourPillars.yinYangBalance()"))
+        assertTrue(auxiliary.contains("value = yinYang.displayName"))
+        assertTrue(!auxiliary.contains("yinYangForStem"))
+        assertTrue(auxiliary.contains("valueColor = baziElementColor(dayElement)"))
+        assertTrue(auxiliary.contains("ReferenceModuleHeader(\"南枫辅助参考\")"))
+        assertTrue(auxiliary.contains("结构依据"))
+        assertTrue(auxiliary.contains("五行能量"))
+        assertTrue(auxiliary.contains("五行个数"))
+        assertTrue(auxiliary.contains("含藏数量"))
+        assertTrue(!auxiliary.contains("盘面统计："))
+        assertTrue(source.contains("private fun AuxiliaryReferenceFact("))
+        assertTrue(source.contains("horizontalAlignment = Alignment.CenterHorizontally"))
+        assertTrue(source.contains("textAlign = TextAlign.Center"))
+        assertTrue(mangPai.contains("盲派宾主做功与取象"))
+        assertTrue(mangPai.contains("ReferenceModuleHeader(\"盲派宾主做功与取象\")"))
+        assertTrue(!mangPai.contains("当前已采用快照尚未记录盲派结构"))
+        assertTrue(mangPai.contains("当前宾主做功"))
+        assertTrue(mangPai.contains("八字逐字取象"))
+        assertTrue(mangPai.contains("profile.characterImagery.forEach"))
+        assertTrue(mangPai.contains("mangpai_reference"))
+        assertTrue(folk.contains("袁天罡称骨"))
+        assertTrue(!folk.contains("传统民俗参考"))
+        assertTrue(folk.contains("val skinRecipe = LocalBaziSkin.current.visualRecipe"))
+        assertTrue(folk.contains("BaziSkinArtwork("))
+        assertTrue(folk.contains("skinRecipe.headerScrimColor"))
+        assertTrue(!folk.contains("Color(0xFF172821), Color(0xFF305B4C), Color(0xFF94733B)"))
+        assertTrue(folk.contains("open_folk_bone_weight_catalog"))
+        assertTrue(folk.contains("color = skinRecipe.headerContentColor.copy(alpha = 0.16f)"))
+        assertTrue(!folk.contains("查看全部称骨评语"))
+        assertTrue(!folk.contains("Icons.Filled.Star"))
+        assertTrue(folk.contains("RoundedCornerShape(99.dp)"))
+        assertTrue(folk.contains("verticalArrangement = Arrangement.spacedBy(5.dp)"))
+        assertTrue(folk.contains("listOf(\"年 \${bone.yearQian.folkBoneWeightText()}\", \"月 \${bone.monthQian.folkBoneWeightText()}\")"))
+        assertTrue(folk.contains("listOf(\"日 \${bone.dayQian.folkBoneWeightText()}\", \"时 \${bone.hourQian.folkBoneWeightText()}\")"))
+        assertTrue(folk.contains("textAlign = TextAlign.Center"))
+        assertTrue(!folk.contains("当前评语"))
+        assertTrue(catalog.contains("fillMaxSize()"))
+        assertTrue(catalog.contains("folk_bone_weight_catalog_page"))
+        assertTrue(catalog.contains("CenterAlignedTopAppBar("))
+        assertTrue(catalog.contains("FolkBoneWeightVerdictsV1.maleCatalog()"))
+        assertTrue(catalog.contains("FolkBoneWeightVerdictsV1.femaleCatalog()"))
+        assertTrue(catalog.contains("folk_bone_weight_catalog_man"))
+        assertTrue(catalog.contains("folk_bone_weight_catalog_woman"))
+        assertTrue(source.contains("folkBoneWeightOrRefreshVerdict"))
+        assertTrue(!basicInfo.contains("TymeBaziEngine"))
     }
 
     @Test

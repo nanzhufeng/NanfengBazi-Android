@@ -275,6 +275,7 @@ data class AiCommentaryCallRecord(
     val succeeded: Boolean,
     val inputTokens: Long? = null,
     val outputTokens: Long? = null,
+    val estimatedCost: AiCommentaryEstimatedCost? = null,
     val errorSummary: String? = null,
 )
 

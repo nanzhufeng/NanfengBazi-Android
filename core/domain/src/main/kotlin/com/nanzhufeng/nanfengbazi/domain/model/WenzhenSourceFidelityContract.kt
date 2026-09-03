@@ -12,14 +12,13 @@ data class SourceFidelityFieldDefinition(
 )
 
 /**
- * 问真页面中当前没有版本化本机算法的字段合同。
+ * 问真页面中仍需保留来源原文的字段合同。
  *
  * 这些字段允许保存 OCR 原文、规范值、人工修正、置信度和原图框，但不得生成
- * calculatedValue，也不得参与本地命盘真值。
+ * calculatedValue。五行与党派比例另由版本化的本机统计生成，两者不相互覆盖。
  */
 object WenzhenSourceFidelityContract {
-    const val CALCULATION_MESSAGE =
-        "仅保留问真来源证据；当前无版本化算法，不自动复算"
+    const val CALCULATION_MESSAGE = "仅保留问真来源证据；不以截图数值覆盖本机计算"
     const val FIELD_STAR_LODGE = "chart.star_lodge"
     const val FIELD_LIFE_GUA = "chart.life_gua"
     const val FIELD_DAY_MASTER_ATTRIBUTE = "chart.day_master_attribute"
@@ -60,7 +59,8 @@ object WenzhenSourceFidelityContract {
                 )
             }
 
-    fun isSourceOnly(fieldKey: String): Boolean = definitionFor(fieldKey) != null
+    fun isSourceOnly(fieldKey: String): Boolean = definitionFor(fieldKey) != null &&
+        fieldKey !in COMPUTED_ELEMENT_FIELD_KEYS
 
     fun isPercentage(fieldKey: String): Boolean =
         definitionFor(fieldKey)?.valueKind == SourceFidelityValueKind.PERCENTAGE
@@ -81,4 +81,14 @@ object WenzhenSourceFidelityContract {
 
     private val SPIRITS_FIELD_PATTERN =
         Regex("chart\\.(year|month|day|hour)\\.spirits")
+
+    private val COMPUTED_ELEMENT_FIELD_KEYS = setOf(
+        FIELD_SAME_PARTY_PERCENT,
+        FIELD_OPPOSING_PARTY_PERCENT,
+        FIELD_WOOD_PERCENT,
+        FIELD_FIRE_PERCENT,
+        FIELD_EARTH_PERCENT,
+        FIELD_METAL_PERCENT,
+        FIELD_WATER_PERCENT,
+    )
 }

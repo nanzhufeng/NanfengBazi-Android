@@ -28,6 +28,26 @@ import org.junit.Test
 
 class BaziCompatibilityAnalyzerTest {
     @Test
+    fun `阴阳分布按四柱干支给出具体类别与计数`() {
+        val pureYang = FourPillars("甲子", "丙寅", "戊午", "庚申").yinYangBalance()
+        val partialYang = FourPillars("甲子", "丙寅", "戊丑", "丁卯").yinYangBalance()
+        val yinDominant = FourPillars("乙丑", "丁卯", "己巳", "庚午").yinYangBalance()
+        val balanced = FourPillars("甲子", "乙丑", "丙寅", "丁卯").yinYangBalance()
+
+        assertEquals("纯阳", pureYang.classification)
+        assertEquals("纯阳 · 阳8 阴0", pureYang.displayName)
+        assertEquals("偏阳", partialYang.classification)
+        assertEquals(5, partialYang.yangCount)
+        assertEquals(3, partialYang.yinCount)
+        assertEquals("阴盛", yinDominant.classification)
+        assertEquals(2, yinDominant.yangCount)
+        assertEquals(6, yinDominant.yinCount)
+        assertEquals("阴阳平衡", balanced.classification)
+        assertEquals(4, balanced.yangCount)
+        assertEquals(4, balanced.yinCount)
+    }
+
+    @Test
     fun `日主生克明确说明支持与制约方向`() {
         val born = BaziCompatibilityAnalyzer.analyze(
             chart("left", FourPillars("甲子", "乙丑", "甲寅", "丁卯")),
@@ -242,6 +262,23 @@ class BaziCompatibilityAnalyzerTest {
             chart("man-right", FourPillars("己丑", "庚寅", "辛卯", "壬辰")),
         ) as BaziCompatibilityResult.Rejected
         assertTrue(manOnRight.reasons.any { it.code == BaziCompatibilityRejectionCode.RIGHT_NOT_WOMAN })
+    }
+
+    @Test
+    fun `旧快照从冻结四柱补齐所有派生参考模块`() {
+        val legacy = chart("legacy", FourPillars("甲子", "丙寅", "壬午", "辛亥"))
+            .calculationSnapshots
+            .single()
+            .result
+
+        assertEquals(null, legacy.structuralProfile)
+        assertEquals(null, legacy.elementDistribution)
+        assertEquals(null, legacy.mangPaiProfile)
+        assertEquals(null, legacy.wangShuaiProfile)
+        assertEquals("壬", legacy.structuralProfileOrAnalyze().dayMaster)
+        assertEquals("水", legacy.elementDistributionOrAnalyze().dayMasterElement)
+        assertTrue(legacy.mangPaiProfileOrAnalyze().pillarImagery.isNotEmpty())
+        assertEquals("壬", legacy.wangShuaiProfileOrAnalyze().dayMaster)
     }
 
     private fun chart(

@@ -1,5 +1,7 @@
 package com.nanzhufeng.nanfengbazi.domain
 
+import kotlinx.serialization.Serializable
+
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
 
 data class AlmanacDate(
@@ -114,6 +116,7 @@ data class AlmanacPillarRelation(
 )
 
 /** 民俗称骨的纯查表结果；与 Tyme4j 历法/四柱真值完全分离。 */
+@Serializable
 data class FolkBoneWeight(
     val version: String,
     val verdictVersion: String,

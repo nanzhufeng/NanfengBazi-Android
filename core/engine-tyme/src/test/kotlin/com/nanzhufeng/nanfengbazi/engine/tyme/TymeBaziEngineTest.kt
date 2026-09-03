@@ -53,8 +53,10 @@ class TymeBaziEngineTest {
         assertEquals("己未", result.fourPillars.hour)
         val structuralProfile = requireNotNull(result.structuralProfile)
         assertEquals("癸", structuralProfile.dayMaster)
-        assertEquals("正财格候选", structuralProfile.selectedPattern.name)
+        assertEquals("正财格", structuralProfile.selectedPattern.name)
         assertTrue(structuralProfile.strengthEvidence.isNotEmpty())
+        assertEquals("mangpai-binzhu-zuogong-v3", result.mangPaiProfile?.ruleVersion)
+        assertEquals("blind-month-command-hour-branch-v2", result.wangShuaiProfile?.ruleVersion)
         assertEquals("癸巳", result.ownSign)
         assertEquals("辛丑", result.bodySign)
         assertEquals("甲申", result.fetalOrigin)
@@ -136,6 +138,7 @@ class TymeBaziEngineTest {
             lunar.calendarConversion?.solarDateTime,
         )
         assertEquals(CalendarSystem.LUNAR, lunar.calendarConversion?.inputCalendarSystem)
+        assertEquals(31, lunar.folkBoneWeight?.totalQian)
     }
 
     @Test

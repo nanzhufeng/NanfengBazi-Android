@@ -3,16 +3,24 @@ package com.nanzhufeng.nanfengbazi.domain
 /**
  * 公开流传的男女称骨歌诀摘录版本。它是民俗文本，不是排盘真值或事实断言。
  *
- * 资料存在版本差异，因此与权重表独立版本化；这里固定为本地 `gendered-verses-v1`。
+ * 资料存在版本差异，因此与权重表独立版本化；这里固定为本地双句版歌诀。
  */
 object FolkBoneWeightVerdictsV1 {
-    const val VERSION = "folk-bone-gendered-verses-v1"
+    const val VERSION = "folk-bone-gendered-couplets-v2"
 
-    fun male(totalQian: Int): String = maleVerses[totalQian]
-        ?: "该骨重在本民俗歌诀版本中没有可用男命断语。"
+    fun male(totalQian: Int): String = maleVerses[totalQian]?.asTwoLineCouplet()
+        ?: "当前骨重暂无男命评语。\n请核对农历资料后重试。"
 
-    fun female(totalQian: Int): String = femaleVerses[totalQian]
-        ?: "该骨重在本民俗歌诀版本中没有可用女命断语。"
+    fun female(totalQian: Int): String = femaleVerses[totalQian]?.asTwoLineCouplet()
+        ?: "当前骨重暂无女命评语。\n请核对农历资料后重试。"
+
+    fun maleCatalog(): List<FolkBoneWeightVerdict> = maleVerses.map { (totalQian, verse) ->
+        FolkBoneWeightVerdict(totalQian, verse.asTwoLineCouplet())
+    }
+
+    fun femaleCatalog(): List<FolkBoneWeightVerdict> = femaleVerses.map { (totalQian, verse) ->
+        FolkBoneWeightVerdict(totalQian, verse.asTwoLineCouplet())
+    }
 
     private val maleVerses = mapOf(
         21 to "短命非业谓大空，平生灾难事重重，凶祸频临陷逆境，终世困苦事不成。",
@@ -124,3 +132,20 @@ object FolkBoneWeightVerdictsV1 {
         72 to "此格世间罕有生，万中无一最超群。富贵荣华人敬仰，一生事业定乾坤。",
     )
 }
+
+/** 将四个七言式分句规整为等宽的上下两句，供当前评语与完整目录共用。 */
+private fun String.asTwoLineCouplet(): String {
+    val clauses = split(Regex("[，。、】【、！？；]+"))
+        .filter { it.isNotBlank() }
+    return if (clauses.size == 4) {
+        "${clauses[0]}，${clauses[1]}。\n${clauses[2]}，${clauses[3]}。"
+    } else {
+        this
+    }
+}
+
+/** 版本化民俗歌诀的只读目录条目，不参与排盘真值。 */
+data class FolkBoneWeightVerdict(
+    val totalQian: Int,
+    val verse: String,
+)

@@ -289,7 +289,7 @@ class ScreenshotImportViewModelTest {
         }
         assertEquals("金比例（%）", sourceOnlyReview.label)
         assertEquals(
-            "仅保留问真来源证据；当前无版本化算法，不自动复算",
+            "提交后与本机基础排盘自动对照；不会覆盖本地排盘",
             sourceOnlyReview.calculationValue,
         )
         assertTrue(!initial.reviewCandidates.single().longTexts.single().adopted)

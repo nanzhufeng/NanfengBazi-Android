@@ -22,6 +22,15 @@ enum class AppFontSizePreference(
     }
 }
 
+/**
+ * App 内图标与字号同步，但只缩放图形本身；布局尺寸和触控范围保持原值。
+ */
+internal fun appIconScale(preference: AppFontSizePreference): Float = when (preference) {
+    AppFontSizePreference.SMALL -> 0.80f
+    AppFontSizePreference.STANDARD -> 1.00f
+    AppFontSizePreference.LARGE -> 1.12f
+}
+
 class AppFontSizePreferenceStore(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 

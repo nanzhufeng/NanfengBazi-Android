@@ -14,7 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
+import androidx.compose.material3.Icon as MaterialIcon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInWindow
@@ -98,6 +100,7 @@ internal val LocalBaziSkin = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART 
 internal val LocalBaziSkinTokens = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.tokens }
 internal val LocalBaziSkinVisualRecipe = staticCompositionLocalOf { BaziSkin.INK_STAR_CHART.visualRecipe }
 internal val LocalAppFontSizePreference = staticCompositionLocalOf { AppFontSizePreference.STANDARD }
+internal val LocalAppIconScale = staticCompositionLocalOf { 1f }
 
 private fun baziColorScheme(tokens: BaziSkinTokens) = lightColorScheme(
     primary = tokens.primary,
@@ -146,6 +149,46 @@ internal fun resolveAppFontSize(
 @Composable
 internal fun appFontSize(size: TextUnit): TextUnit =
     resolveAppFontSize(size, LocalAppFontSizePreference.current)
+
+/** 全局图标入口：只缩放可见图形，不改变既有布局、间距或最小触控区域。 */
+@Composable
+internal fun Icon(
+    imageVector: ImageVector,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = LocalContentColor.current,
+) {
+    val scale = LocalAppIconScale.current
+    MaterialIcon(
+        imageVector = imageVector,
+        contentDescription = contentDescription,
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
+        tint = tint,
+    )
+}
+
+/** Drawable/Bitmap 图标同样走全局视觉缩放。 */
+@Composable
+internal fun Icon(
+    painter: Painter,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = LocalContentColor.current,
+) {
+    val scale = LocalAppIconScale.current
+    MaterialIcon(
+        painter = painter,
+        contentDescription = contentDescription,
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
+        tint = tint,
+    )
+}
 
 @Composable
 private fun rememberNanfengBaziTypography(
@@ -198,6 +241,7 @@ internal fun NanfengBaziTheme(
         LocalBaziSkinTokens provides skin.tokens,
         LocalBaziSkinVisualRecipe provides skin.visualRecipe,
         LocalAppFontSizePreference provides fontSizePreference,
+        LocalAppIconScale provides appIconScale(fontSizePreference),
     ) {
         MaterialTheme(
             colorScheme = baziColorScheme(skin.tokens),

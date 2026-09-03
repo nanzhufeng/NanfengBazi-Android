@@ -59,4 +59,33 @@ object FolkBoneWeightRulesV1 {
             femaleVerdict = FolkBoneWeightVerdictsV1.female(year + month + day + hour),
         )
     }
+
+    /**
+     * 供已保存的农历出生资料复用的入口。农历年干支与四柱的立春年柱不是同一口径，
+     * 因此不能由展示层拿四柱年柱替代。
+     */
+    fun calculateForLunarDateTime(
+        lunarYear: Int,
+        lunarMonth: Int,
+        lunarDay: Int,
+        isLeapMonth: Boolean,
+        hour: Int,
+    ): FolkBoneWeight? = calculate(
+        lunarYearPillar = lunarYearPillarFor(lunarYear),
+        lunarMonth = lunarMonth,
+        lunarDay = lunarDay,
+        isLeapMonth = isLeapMonth,
+        doubleHourIndex = doubleHourIndexFor(hour),
+    )
+
+    fun lunarYearPillarFor(lunarYear: Int): String {
+        val index = Math.floorMod(lunarYear - 4, 60)
+        return "甲乙丙丁戊己庚辛壬癸"[index % 10].toString() +
+            "子丑寅卯辰巳午未申酉戌亥"[index % 12]
+    }
+
+    fun doubleHourIndexFor(hour: Int): Int {
+        require(hour in 0..23) { "小时必须在 0..23" }
+        return ((hour + 1) / 2) % 12
+    }
 }

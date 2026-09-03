@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  * 它只消费已确定的四柱与基础盘明细：月令为提纲，再记录藏干透出、通根和生扶克泄耗。
  * 结果是可回溯的传统文化候选，不生成喜忌、用神、吉凶或现实关系结论。
  */
-const val BAZI_STRUCTURAL_PROFILE_RULE_VERSION = "structural-profile-v1"
+const val BAZI_STRUCTURAL_PROFILE_RULE_VERSION = "structural-profile-v3"
 
 @Serializable
 enum class BaziStructuralConfidence(val displayName: String) {
@@ -22,9 +22,9 @@ enum class BaziStructuralConfidence(val displayName: String) {
 
 @Serializable
 enum class BaziDayMasterStrength(val displayName: String) {
-    STRONG_LEANING("偏旺候选"),
-    BALANCED_LEANING("中和候选"),
-    WEAK_LEANING("偏弱候选"),
+    STRONG_LEANING("偏旺"),
+    BALANCED_LEANING("中和"),
+    WEAK_LEANING("偏弱"),
 }
 
 @Serializable
@@ -193,33 +193,57 @@ object BaziStructuralProfileAnalyzer {
         monthHidden: List<String>,
         inheritedReviewItems: List<String>,
     ): PatternAnalysis {
-        val transparent = monthHidden.mapIndexedNotNull { index, stem ->
-            val positions = pillars.filter { it.position != PillarPosition.DAY && it.stem == stem }.map { it.position }
-            positions.takeIf { it.isNotEmpty() }?.let { TransparentStem(stem, index, it) }
+        val regularMonthHidden = monthHidden.mapIndexedNotNull { index, stem ->
+            if (index > 1) return@mapIndexedNotNull null
+            val deity = tenGod(dayMaster, stem)
+            deity.takeIf(::isRegularPatternDeity)?.let { RegularPatternSource(stem, index, it) }
         }
-        val selected = transparent.firstOrNull() ?: TransparentStem(monthHidden.first(), 0, emptyList())
-        val candidates = (transparent + TransparentStem(monthHidden.first(), 0, emptyList()))
+        val transparent = regularMonthHidden.mapNotNull { source ->
+            val positions = pillars
+                .filter { it.position != PillarPosition.DAY && it.stem == source.stem }
+                .map { it.position }
+            positions.takeIf { it.isNotEmpty() }
+                ?.let { TransparentStem(source.stem, source.index, source.deity, it) }
+        }
+        val primaryRegular = regularMonthHidden.firstOrNull { it.index == 0 }
+        val selected = transparent.firstOrNull()
+            ?.let { source -> RegularPatternSource(source.stem, source.index, source.deity) }
+            ?: primaryRegular
+        val candidates = transparent
+            .plus(listOfNotNull(primaryRegular?.let { main ->
+                TransparentStem(main.stem, main.index, main.deity, emptyList())
+            }))
             .distinctBy { it.stem }
             .map { source ->
-                val deity = tenGod(dayMaster, source.stem)
                 BaziPatternCandidate(
-                    name = patternName(dayMaster, monthPillar.branch, deity),
+                    name = patternName(source.deity),
                     confidence = when {
                         source.index == 0 && source.positions.isNotEmpty() && transparent.size == 1 -> BaziStructuralConfidence.HIGH
-                        transparent.size <= 1 -> BaziStructuralConfidence.MEDIUM
+                        source.positions.isNotEmpty() || source.index == 0 -> BaziStructuralConfidence.MEDIUM
                         else -> BaziStructuralConfidence.LOW
                     },
                     evidence = buildList {
-                        add(BaziStructuralEvidence("月令藏干", "月支${monthPillar.branch}${hiddenLevel(source.index)}${source.stem}为$deity"))
+                        add(BaziStructuralEvidence("月令藏干", "月支${monthPillar.branch}${hiddenLevel(source.index)}${source.stem}为${source.deity}"))
                         if (source.positions.isNotEmpty()) {
                             add(BaziStructuralEvidence("透干", "${source.positions.joinToString("、") { it.displayName }}干透出${source.stem}"))
                         } else {
-                            add(BaziStructuralEvidence("透干", "未见${source.stem}透于年、月、时干，按月令本气保留候选"))
+                            add(BaziStructuralEvidence("透干", "未见主气、中气透于年、月、时干，按月令主气取格"))
                         }
                     },
                 )
             }
-        val selectedCandidate = candidates.first { it.name == patternName(dayMaster, monthPillar.branch, tenGod(dayMaster, selected.stem)) }
+        val selectedCandidate = selected
+            ?.let { source -> candidates.first { it.name == patternName(source.deity) } }
+            ?: BaziPatternCandidate(
+                name = "未取格",
+                confidence = BaziStructuralConfidence.LOW,
+                evidence = listOf(
+                    BaziStructuralEvidence(
+                        "月令",
+                        "月支${monthPillar.branch}主气为${tenGod(dayMaster, monthHidden.first())}，比劫只作为旺衰依据，不以比劫取格",
+                    ),
+                ),
+            )
         val reviewItems = inheritedReviewItems.toMutableList()
         val branchSet = pillars.map { it.branch }.toSet()
         THREE_HARMONIES.forEach { (branches, label) ->
@@ -237,17 +261,19 @@ object BaziStructuralProfileAnalyzer {
         return PatternAnalysis(selectedCandidate, candidates, reviewItems.distinct())
     }
 
-    private fun patternName(dayMaster: String, monthBranch: String, deity: String): String = when (deity) {
-        "正官" -> "正官格候选"
-        "七杀" -> "七杀格候选"
-        "正财" -> "正财格候选"
-        "偏财" -> "偏财格候选"
-        "正印" -> "正印格候选"
-        "偏印" -> "偏印格候选"
-        "食神" -> "食神格候选"
-        "伤官" -> "伤官格候选"
-        else -> if (JIAN_LU_BRANCHES[dayMaster] == monthBranch) "建禄格候选" else "月劫格候选"
+    private fun patternName(deity: String): String = when (deity) {
+        "正官" -> "正官格"
+        "七杀" -> "七杀格"
+        "正财" -> "正财格"
+        "偏财" -> "偏财格"
+        "正印" -> "正印格"
+        "偏印" -> "偏印格"
+        "食神" -> "食神格"
+        "伤官" -> "伤官格"
+        else -> error("比劫不能用于八正格取格：$deity")
     }
+
+    private fun isRegularPatternDeity(deity: String): Boolean = deity in REGULAR_PATTERN_DEITIES
 
     private fun monthJudgement(deity: String): String = when (deity) {
         "比肩", "劫财" -> "得令（比劫当令）"
@@ -281,7 +307,13 @@ object BaziStructuralProfileAnalyzer {
         val branch: String get() = value.last().toString()
     }
 
-    private data class TransparentStem(val stem: String, val index: Int, val positions: List<PillarPosition>)
+    private data class RegularPatternSource(val stem: String, val index: Int, val deity: String)
+    private data class TransparentStem(
+        val stem: String,
+        val index: Int,
+        val deity: String,
+        val positions: List<PillarPosition>,
+    )
     private data class StrengthAnalysis(
         val status: BaziDayMasterStrength,
         val confidence: BaziStructuralConfidence,
@@ -308,17 +340,17 @@ object BaziStructuralProfileAnalyzer {
     )
     private val ROOT_WEIGHTS = listOf(1.75, 1.0, 0.5)
     private val STEM_POSITION_WEIGHTS = mapOf(PillarPosition.YEAR to 0.8, PillarPosition.MONTH to 1.2, PillarPosition.HOUR to 1.0)
-    private val JIAN_LU_BRANCHES = mapOf("甲" to "寅", "乙" to "卯", "丙" to "巳", "丁" to "午", "戊" to "巳", "己" to "午", "庚" to "申", "辛" to "酉", "壬" to "亥", "癸" to "子")
+    private val REGULAR_PATTERN_DEITIES = setOf("正官", "七杀", "正财", "偏财", "正印", "偏印", "食神", "伤官")
     private val STEM_COMBINATIONS = mapOf("甲" to "己", "己" to "甲", "乙" to "庚", "庚" to "乙", "丙" to "辛", "辛" to "丙", "丁" to "壬", "壬" to "丁", "戊" to "癸", "癸" to "戊")
     private val THREE_HARMONIES = listOf(
-        setOf("申", "子", "辰") to "申子辰三合水局候选",
-        setOf("亥", "卯", "未") to "亥卯未三合木局候选",
-        setOf("寅", "午", "戌") to "寅午戌三合火局候选",
-        setOf("巳", "酉", "丑") to "巳酉丑三合金局候选",
-        setOf("亥", "子", "丑") to "亥子丑三会水方候选",
-        setOf("寅", "卯", "辰") to "寅卯辰三会木方候选",
-        setOf("巳", "午", "未") to "巳午未三会火方候选",
-        setOf("申", "酉", "戌") to "申酉戌三会金方候选",
+        setOf("申", "子", "辰") to "申子辰三合水局复核",
+        setOf("亥", "卯", "未") to "亥卯未三合木局复核",
+        setOf("寅", "午", "戌") to "寅午戌三合火局复核",
+        setOf("巳", "酉", "丑") to "巳酉丑三合金局复核",
+        setOf("亥", "子", "丑") to "亥子丑三会水方复核",
+        setOf("寅", "卯", "辰") to "寅卯辰三会木方复核",
+        setOf("巳", "午", "未") to "巳午未三会火方复核",
+        setOf("申", "酉", "戌") to "申酉戌三会金方复核",
     )
 }
 

@@ -8286,6 +8286,12 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                     succeeded = true,
                     inputTokens = result.draft.inputTokens,
                     outputTokens = result.draft.outputTokens,
+                    estimatedCost = AiCommentaryCostEstimator.estimate(
+                        model = result.draft.model,
+                        inputTokens = result.draft.inputTokens,
+                        outputTokens = result.draft.outputTokens,
+                        requestedAt = requestedAt,
+                    ),
                 )
                 is AiCommentaryGenerationResult.Failure -> AiCommentaryCallRecord(
                     id = java.util.UUID.randomUUID().toString(),

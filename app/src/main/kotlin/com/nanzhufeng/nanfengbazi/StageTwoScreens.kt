@@ -79,7 +79,6 @@ import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerticalAlignTop
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog as MaterialAlertDialog
@@ -136,6 +135,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.geometry.CornerRadius
@@ -206,8 +206,15 @@ import com.nanzhufeng.nanfengbazi.domain.FeedbackThemeCandidateStatus
 import com.nanzhufeng.nanfengbazi.domain.FortunePosition
 import com.nanzhufeng.nanfengbazi.domain.FortunePositionStatus
 import com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContract
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeight
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightRulesV1
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightVerdict
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightVerdictsV1
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidate
 import com.nanzhufeng.nanfengbazi.domain.MasterCommentaryCandidateStatus
+import com.nanzhufeng.nanfengbazi.domain.MangPaiProfile
+import com.nanzhufeng.nanfengbazi.domain.MangPaiGuestHostRole
+import com.nanzhufeng.nanfengbazi.domain.MangPaiTiyongCategory
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer
 import com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection
@@ -269,7 +276,11 @@ import com.nanzhufeng.nanfengbazi.cloud.BaziGoogleSignInClient
 import com.nanzhufeng.nanfengbazi.domain.CaseImageDeliveryMode
 import com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummary
 import com.nanzhufeng.nanfengbazi.domain.displayName
+import com.nanzhufeng.nanfengbazi.domain.elementDistributionOrAnalyze
+import com.nanzhufeng.nanfengbazi.domain.mangPaiProfileOrAnalyze
 import com.nanzhufeng.nanfengbazi.domain.structuralProfileOrAnalyze
+import com.nanzhufeng.nanfengbazi.domain.wangShuaiProfileOrAnalyze
+import com.nanzhufeng.nanfengbazi.domain.yinYangBalance
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -3464,7 +3475,6 @@ private fun CaseListScreen(
                             onClick = { onSelectLibrary(CaseLibraryType.USER) },
                             modifier = Modifier.weight(1f),
                             tag = "visibility_active",
-                            accent = NanfengGreen,
                         )
                         RecordTopTab(
                             text = "名人案例 ${state.libraryCaseCounts[CaseLibraryType.CELEBRITY] ?: 0}",
@@ -3473,7 +3483,6 @@ private fun CaseListScreen(
                             onClick = { onSelectLibrary(CaseLibraryType.CELEBRITY) },
                             modifier = Modifier.weight(1f),
                             tag = "visibility_celebrity",
-                            accent = NanfengGoldText,
                         )
                         RecordTopTab(
                             text = "回收站 ${state.trashedCaseCount}",
@@ -3481,7 +3490,6 @@ private fun CaseListScreen(
                             onClick = { onSelectVisibility(CaseVisibility.TRASHED) },
                             modifier = Modifier.weight(1f),
                             tag = "visibility_trashed",
-                            accent = NanfengSolarTermRed,
                         )
                     }
                 }
@@ -5189,7 +5197,6 @@ private fun RecordTopTab(
     onClick: () -> Unit,
     modifier: Modifier,
     tag: String,
-    accent: Color,
 ) {
     val (label, count) = text.recordLabelAndCount()
     Surface(
@@ -5201,7 +5208,7 @@ private fun RecordTopTab(
         color = if (selected) Color.White else Color.Transparent,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (selected) accent.copy(alpha = 0.22f) else Color.Transparent,
+            if (selected) MaterialTheme.colorScheme.outlineVariant else Color.Transparent,
         ),
         shadowElevation = if (selected) 1.dp else 0.dp,
     ) {
@@ -5216,9 +5223,9 @@ private fun RecordTopTab(
                 lineHeight = 16.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (selected) {
-                    accent
+                    MaterialTheme.colorScheme.onSurface
                 } else {
-                    accent.copy(alpha = 0.78f)
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 },
                 maxLines = 1,
                 softWrap = false,
@@ -5233,7 +5240,11 @@ private fun RecordTopTab(
                     fontSize = appFontSize(9.sp),
                     lineHeight = 12.sp,
                     fontWeight = FontWeight.Medium,
-                    color = if (selected) accent else accent.copy(alpha = 0.78f),
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip,
@@ -7186,13 +7197,13 @@ private fun CompatibilityImportantParameterTable(report: BaziCompatibilityReport
                 "按各自采用快照四柱的显性干支展示未出现项；未出现不等同喜忌，也不能单独解释为互补。",
             ),
             listOf(
-                "日主旺衰（候选）",
+                "日主旺衰",
                 leftStructure.compatibilityStrengthLabel(),
                 rightStructure.compatibilityStrengthLabel(),
                 "${report.left.alias}：${leftStructure.compatibilityStrengthEvidence()}；${report.right.alias}：${rightStructure.compatibilityStrengthEvidence()}。依据月令、通根及天干生扶克泄耗，不以字符数量直接判旺衰。",
             ),
             listOf(
-                "格局（候选）",
+                "格局",
                 leftStructure.selectedPattern.name,
                 rightStructure.selectedPattern.name,
                 "${report.left.alias}：${leftStructure.compatibilityPatternEvidence()}；${report.right.alias}：${rightStructure.compatibilityPatternEvidence()}。先取月令藏干，再看透干；从格、专旺与合化只列复核项，不作定格。",
@@ -12570,6 +12581,16 @@ private fun ReferenceBasicInfo(
             "命盘摘要",
             modifier = Modifier.padding(top = 14.dp),
         )
+        if (case.groups.isNotEmpty() || case.tags.isNotEmpty()) {
+            WenzhenFactRow(
+                "分组标签",
+                buildList {
+                    addAll(case.groups.map { it.name })
+                    addAll(case.tags.map { it.name })
+                }.joinToString(" · "),
+                alternate = nextAlternate(),
+            )
+        }
         WenzhenFactRow("四柱", result.fourPillars.display(), alternate = nextAlternate())
         WenzhenDualFactRow(
             "日主",
@@ -12586,8 +12607,21 @@ private fun ReferenceBasicInfo(
             result.fortuneStart.endAt.year.toString(),
             alternate = nextAlternate(),
         )
+        NanfengAuxiliaryReferenceCard(
+            result = result,
+            modifier = Modifier.padding(top = 18.dp),
+        )
+        MangPaiReferenceCard(
+            profile = result.mangPaiProfileOrAnalyze(),
+            modifier = Modifier.padding(top = 14.dp),
+        )
+        FolkBoneWeightReferenceCard(
+            bone = result.folkBoneWeightOrRefreshVerdict(),
+            sex = case.sexForFortuneDirection,
+            modifier = Modifier.padding(top = 14.dp),
+        )
     }
-    if (case.groups.isNotEmpty() || case.tags.isNotEmpty()) {
+    if (result == null && (case.groups.isNotEmpty() || case.tags.isNotEmpty())) {
         WenzhenFactRow(
             "分组标签",
             buildList {
@@ -12647,6 +12681,725 @@ private fun ReferenceBasicInfo(
         }
     }
 }
+
+/** 这张卡只投影已采用快照中的结构候选、基础盘明细及版本化五行统计。 */
+@Composable
+private fun NanfengAuxiliaryReferenceCard(
+    result: CalculationResult,
+    modifier: Modifier = Modifier,
+) {
+    var selectedElementMetric by rememberSaveable { mutableStateOf(0) }
+    val profile = result.structuralProfileOrAnalyze()
+    val distribution = result.elementDistributionOrAnalyze()
+    val dayStem = profile.dayMaster
+    val dayElement = distribution.dayMasterElement
+    val wangShuai = result.wangShuaiProfileOrAnalyze()
+    val yinYang = result.fourPillars.yinYangBalance()
+    val strength = wangShuai.level.displayName
+    val pattern = profile.selectedPattern.name
+    val evidence = profile.strengthEvidence.take(3)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("nanfeng_auxiliary_reference"),
+        shape = NanfengSoftWhiteCardShape,
+        color = Color.White,
+        border = NanfengSoftWhiteCardBorder,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            ReferenceModuleHeader("南枫辅助参考")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                AuxiliaryReferenceFact(
+                    label = "日干",
+                    value = listOf(dayStem, dayElement).filter { it.isNotBlank() }.joinToString(separator = ""),
+                    valueColor = baziElementColor(dayElement),
+                    modifier = Modifier.weight(1f),
+                )
+                AuxiliaryReferenceFact(
+                    label = "阴阳",
+                    value = yinYang.displayName,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                AuxiliaryReferenceFact(
+                    label = "旺衰",
+                    value = strength,
+                    modifier = Modifier.weight(1f),
+                )
+                AuxiliaryReferenceFact(
+                    label = "格局",
+                    value = pattern,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            run {
+                SamePartyBalanceBar(
+                    samePartyPercent = wangShuai.samePartyPercent,
+                    differentPartyPercent = wangShuai.differentPartyPercent,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Surface(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .fillMaxWidth()
+                        .testTag("nanfeng_element_distribution_tabs"),
+                    shape = RoundedCornerShape(99.dp),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        listOf("五行能量", "五行个数", "含藏数量").forEachIndexed { index, label ->
+                            val selected = selectedElementMetric == index
+                            Surface(
+                                onClick = { selectedElementMetric = index },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(99.dp),
+                                color = if (selected) NanfengGreen else Color.Transparent,
+                            ) {
+                                Text(
+                                    label,
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (selected) Color.White else NanfengInk,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                }
+                val countTotal = when (selectedElementMetric) {
+                    1 -> distribution.metrics.sumOf { it.surfaceCount }
+                    2 -> distribution.metrics.sumOf { it.hiddenStemCount }
+                    else -> 0
+                }.coerceAtLeast(1)
+                distribution.metrics.forEach { metric ->
+                    val displayValue = when (selectedElementMetric) {
+                        0 -> "${metric.energySharePercent.roundedPercent()}%"
+                        1 -> "${metric.surfaceCount} 个"
+                        else -> "${metric.hiddenStemCount} 个"
+                    }
+                    val barFraction = when (selectedElementMetric) {
+                        0 -> metric.energySharePercent / 100f
+                        1 -> metric.surfaceCount.toFloat() / countTotal
+                        else -> metric.hiddenStemCount.toFloat() / countTotal
+                    }.coerceIn(0f, 1f)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            metric.element,
+                            modifier = Modifier.width(28.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = baziElementColor(metric.element),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(9.dp)
+                                .clip(RoundedCornerShape(99.dp))
+                                .background(MaterialTheme.colorScheme.background),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(barFraction)
+                                    .fillMaxHeight()
+                                    .background(baziElementColor(metric.element)),
+                            )
+                        }
+                        Text(
+                            "$displayValue ${metric.tenGodGroup}",
+                            modifier = Modifier.padding(start = 12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NanfengInk,
+                        )
+                    }
+                }
+            }
+            if (evidence.isNotEmpty()) {
+                Text(
+                    "结构依据",
+                    modifier = Modifier.fillMaxWidth().padding(top = 15.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NanfengGold,
+                    textAlign = TextAlign.Center,
+                )
+                evidence.forEach { item ->
+                    Text(
+                        "${item.label} · ${item.detail}",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SamePartyBalanceBar(
+    samePartyPercent: Float,
+    differentPartyPercent: Float,
+    modifier: Modifier = Modifier,
+) {
+    val sameParty = samePartyPercent.roundedPercent().coerceIn(0, 100)
+    val differentParty = differentPartyPercent.roundedPercent().coerceIn(0, 100)
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "同党",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = NanfengInk,
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(24.dp)
+                .clip(RoundedCornerShape(99.dp))
+                .background(Color(0xFF347FE3)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(sameParty / 100f)
+                    .fillMaxHeight()
+                    .background(NanfengSolarTermRed),
+            )
+            if (sameParty > 0) {
+                Text(
+                    "$sameParty%",
+                    modifier = Modifier
+                        .fillMaxWidth(sameParty / 100f)
+                        .align(Alignment.CenterStart),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            if (differentParty > 0) {
+                Text(
+                    "$differentParty%",
+                    modifier = Modifier
+                        .fillMaxWidth(differentParty / 100f)
+                        .align(Alignment.CenterEnd),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        Text(
+            "异党",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = NanfengInk,
+        )
+    }
+}
+
+@Composable
+private fun AuxiliaryReferenceFact(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = NanfengInk,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 86.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                label,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                value.ifBlank { "—" },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = valueColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReferenceModuleHeader(title: String) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Text(
+            title,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = NanfengInk,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** 盲派模块显示当前原局的宾主、体用、做功路径及八字逐字取象。 */
+@Composable
+private fun MangPaiReferenceCard(
+    profile: MangPaiProfile,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("mangpai_reference"),
+        shape = NanfengSoftWhiteCardShape,
+        color = Color.White,
+        border = NanfengSoftWhiteCardBorder,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            ReferenceModuleHeader("盲派宾主做功与取象")
+            val host = profile.pillarImagery.filter { it.role == MangPaiGuestHostRole.HOST }
+            val closeGuest = profile.pillarImagery.firstOrNull { it.role == MangPaiGuestHostRole.CLOSE_GUEST }
+            val distantGuest = profile.pillarImagery.firstOrNull { it.role == MangPaiGuestHostRole.DISTANT_GUEST }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MangPaiRoleFact("主", host.joinToString(" · ") { it.pillar }, "日时", Modifier.weight(1f))
+                MangPaiRoleFact("近宾", closeGuest?.pillar ?: "—", "月柱", Modifier.weight(1f))
+                MangPaiRoleFact("远宾", distantGuest?.pillar ?: "—", "年柱", Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier.padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MangPaiCountTag("体 ${profile.bodyCount}", Modifier.weight(1f))
+                MangPaiCountTag("用 ${profile.useCount}", Modifier.weight(1f))
+                MangPaiCountTag("中性 ${profile.neutralCount}", Modifier.weight(1f))
+            }
+            Text(
+                "体用",
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengGold,
+                textAlign = TextAlign.Center,
+            )
+            profile.tiyongItems.forEach { item ->
+                val role = profile.pillarImagery.first { it.position == item.position }.role.displayName
+                val classification = buildString {
+                    append(item.category.displayName)
+                    item.bias?.let { append("（偏${it.displayName}）") }
+                }
+                Text(
+                    "${item.position.mangPaiDisplayName()}干 ${item.stem} · ${item.tenGod} · $classification · $role",
+                    modifier = Modifier.padding(top = 5.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "当前宾主做功",
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengGold,
+                textAlign = TextAlign.Center,
+            )
+            if (profile.workCandidates.isEmpty()) {
+                Text(
+                    "当前原局未见跨主宾的合、冲、刑、害、破或生克路径。",
+                    modifier = Modifier.padding(top = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                profile.workCandidates.forEach { candidate ->
+                    Text(
+                        "${candidate.kind} · ${candidate.characters} · ${candidate.description}",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(
+                "八字逐字取象",
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengGold,
+                textAlign = TextAlign.Center,
+            )
+            profile.characterImagery.forEach { item ->
+                Text(
+                    "${item.position.mangPaiDisplayName()}${item.layer} ${item.character} · ${item.tenGod} · " +
+                        "${item.role.displayName}：${item.imagery}",
+                    modifier = Modifier.padding(top = 5.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MangPaiRoleFact(
+    label: String,
+    value: String,
+    source: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                label,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                value,
+                modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NanfengInk,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                source,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MangPaiCountTag(label: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(99.dp),
+        color = NanfengGreen.copy(alpha = 0.08f),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(vertical = 7.dp),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = NanfengGreen,
+        )
+    }
+}
+
+private fun PillarPosition.mangPaiDisplayName(): String = when (this) {
+    PillarPosition.YEAR -> "年"
+    PillarPosition.MONTH -> "月"
+    PillarPosition.DAY -> "日"
+    PillarPosition.HOUR -> "时"
+}
+
+@Composable
+private fun FolkBoneWeightReferenceCard(
+    bone: FolkBoneWeight?,
+    sex: SexForFortuneDirection,
+    modifier: Modifier = Modifier,
+) {
+    var showCatalog by rememberSaveable { mutableStateOf(false) }
+    val skinRecipe = LocalBaziSkin.current.visualRecipe
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("folk_bone_weight_reference"),
+        shape = NanfengSoftWhiteCardShape,
+        color = Color.White,
+        border = NanfengSoftWhiteCardBorder,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 108.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = Color.Transparent,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BaziSkinArtwork(
+                        recipe = skinRecipe,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        skinRecipe.headerScrimColor.copy(alpha = skinRecipe.headerScrimAlpha),
+                                        skinRecipe.headerScrimColor.copy(alpha = skinRecipe.headerScrimAlpha * 0.55f),
+                                        Color.Transparent,
+                                    ),
+                                ),
+                            ),
+                    )
+                    Surface(
+                        onClick = { showCatalog = true },
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .testTag("open_folk_bone_weight_catalog"),
+                        shape = RoundedCornerShape(99.dp),
+                        color = skinRecipe.headerContentColor.copy(alpha = 0.16f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            skinRecipe.headerContentColor.copy(alpha = 0.42f),
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 26.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "袁天罡称骨",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = skinRecipe.headerContentColor,
+                            )
+                        }
+                    }
+                }
+            }
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                if (bone == null) {
+                    Text(
+                        "当前已采用快照缺少可用的农历资料，暂不能生成称骨结果。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "当前骨重",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                bone.totalQian.folkBoneWeightText(),
+                                modifier = Modifier.padding(top = 3.dp),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = NanfengGold,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            listOf(
+                                listOf("年 ${bone.yearQian.folkBoneWeightText()}", "月 ${bone.monthQian.folkBoneWeightText()}"),
+                                listOf("日 ${bone.dayQian.folkBoneWeightText()}", "时 ${bone.hourQian.folkBoneWeightText()}"),
+                            ).forEach { row ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    row.forEach { item ->
+                                        Text(
+                                            item,
+                                            modifier = Modifier.weight(1f),
+                                            textAlign = TextAlign.Center,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+                    Text(
+                        if (sex == SexForFortuneDirection.MAN) bone.maleVerdict else bone.femaleVerdict,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyLarge,
+                        lineHeight = 25.sp,
+                        color = NanfengInk,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+    }
+    if (showCatalog) {
+        FolkBoneWeightCatalogPage(onDismiss = { showCatalog = false })
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun FolkBoneWeightCatalogPage(onDismiss: () -> Unit) {
+    var selectedSex by rememberSaveable { mutableStateOf(SexForFortuneDirection.MAN) }
+    val catalog = if (selectedSex == SexForFortuneDirection.MAN) {
+        FolkBoneWeightVerdictsV1.maleCatalog()
+    } else {
+        FolkBoneWeightVerdictsV1.femaleCatalog()
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("folk_bone_weight_catalog_page"),
+            shape = RoundedCornerShape(0.dp),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            "袁天罡称骨评语",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                            )
+                        }
+                    },
+                )
+                TabRow(
+                    selectedTabIndex = SexForFortuneDirection.entries.indexOf(selectedSex),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    SexForFortuneDirection.entries.forEach { sex ->
+                        Tab(
+                            selected = selectedSex == sex,
+                            onClick = { selectedSex = sex },
+                            modifier = Modifier.testTag(
+                                if (sex == SexForFortuneDirection.MAN) {
+                                    "folk_bone_weight_catalog_man"
+                                } else {
+                                    "folk_bone_weight_catalog_woman"
+                                },
+                            ),
+                            text = { Text(if (sex == SexForFortuneDirection.MAN) "男命" else "女命") },
+                        )
+                    }
+                }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    items(catalog, key = { it.totalQian }) { verdict ->
+                        FolkBoneWeightCatalogRow(verdict)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolkBoneWeightCatalogRow(verdict: FolkBoneWeightVerdict) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Row(modifier = Modifier.padding(13.dp), verticalAlignment = Alignment.Top) {
+            Text(
+                verdict.totalQian.folkBoneWeightText(),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = NanfengGold,
+            )
+            Text(
+                verdict.verse,
+                modifier = Modifier.padding(start = 12.dp).weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                lineHeight = 23.sp,
+                color = NanfengInk,
+            )
+        }
+    }
+}
+
+private fun CalculationResult.folkBoneWeightOrRefreshVerdict(): FolkBoneWeight? =
+    folkBoneWeight?.takeIf { it.verdictVersion == FolkBoneWeightVerdictsV1.VERSION }
+        ?: calendarConversion?.lunarDateTime?.let { lunar ->
+        FolkBoneWeightRulesV1.calculateForLunarDateTime(
+            lunarYear = lunar.year,
+            lunarMonth = lunar.month,
+            lunarDay = lunar.day,
+            isLeapMonth = lunar.isLeapMonth,
+            hour = lunar.hour,
+        )
+    }
+
+private fun Int.folkBoneWeightText(): String = "${this / 10}两${this % 10}钱"
+
+private fun Float.roundedPercent(): Int = kotlin.math.round(this).toInt()
 
 @Composable
 private fun ReferenceBasicChart(

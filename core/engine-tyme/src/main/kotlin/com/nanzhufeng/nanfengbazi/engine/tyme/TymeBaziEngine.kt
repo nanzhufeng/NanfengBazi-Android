@@ -2,6 +2,10 @@ package com.nanzhufeng.nanfengbazi.engine.tyme
 
 import com.nanzhufeng.nanfengbazi.domain.BaziEngine
 import com.nanzhufeng.nanfengbazi.domain.BaziStructuralProfileAnalyzer
+import com.nanzhufeng.nanfengbazi.domain.BaziElementDistributionAnalyzer
+import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightRulesV1
+import com.nanzhufeng.nanfengbazi.domain.MangPaiProfileAnalyzer
+import com.nanzhufeng.nanfengbazi.domain.WangShuaiProfileAnalyzer
 import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolution
 import com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolver
 import com.nanzhufeng.nanfengbazi.domain.TimeZoneChoiceRequiredException
@@ -73,6 +77,7 @@ class TymeBaziEngine(
         return ChildLimitProviderGuard.withProvider(profile.luckStartRule) {
             val solar = resolved.solar
             val lunarHour = resolved.lunarHour
+            val lunarDateTime = lunarHour.toDomain()
             val civilEightChar = lunarHour.resolveEightChar(profile.ratHourRule)
             val eightChar = trueSolarEvidence?.let { evidence ->
                 val correctedEightChar = evidence.trueSolarDateTime
@@ -157,13 +162,26 @@ class TymeBaziEngine(
                 calendarConversion = CalendarConversionResult(
                     inputCalendarSystem = resolved.inputCalendarSystem,
                     solarDateTime = solar.toDomain(),
-                    lunarDateTime = lunarHour.toDomain(),
+                    lunarDateTime = lunarDateTime,
                 ),
                 trueSolarTimeEvidence = trueSolarEvidence,
                 basicChartDetails = basicChartDetails,
                 structuralProfile = BaziStructuralProfileAnalyzer.analyze(
                     fourPillars = fourPillars,
                     basicChartDetails = basicChartDetails,
+                ),
+                elementDistribution = BaziElementDistributionAnalyzer.analyze(
+                    fourPillars = fourPillars,
+                    basicChartDetails = basicChartDetails,
+                ),
+                mangPaiProfile = MangPaiProfileAnalyzer.analyze(fourPillars),
+                wangShuaiProfile = WangShuaiProfileAnalyzer.analyze(fourPillars),
+                folkBoneWeight = FolkBoneWeightRulesV1.calculateForLunarDateTime(
+                    lunarYear = lunarDateTime.year,
+                    lunarMonth = lunarDateTime.month,
+                    lunarDay = lunarDateTime.day,
+                    isLeapMonth = lunarDateTime.isLeapMonth,
+                    hour = lunarDateTime.hour,
                 ),
                 warnings = buildList {
                     if (trueSolarEvidence != null) {

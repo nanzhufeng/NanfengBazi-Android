@@ -49,13 +49,31 @@
   只在正式提交后从同一已采用快照生成计算值，不由页面或解析器重算。
 - 计算档案差异必须先比较规范化出生输入与六项规则配置，再比较引擎/规则版本和确定性
   结果。输入或口径变化时不得归因于引擎升级；历史快照只读保留，不改写旧结果。
-- `WenzhenSourceFidelityContract` 列出的星宿、命卦、五行/党派比例、日主/阴阳属性、
-  自定旺衰/格局及截图四柱神煞不是可自动对照的来源真值。它们可被提取、修正和采用为来源记录，但
-  `calculatedValue` 与 `consistencyConfidence` 必须保持为空；百分比只允许 0–100。
-- `BaziStructuralProfileAnalyzer` 是本机旺衰／格局候选的唯一入口：只消费最终采用四柱和
-  `BasicChartDetails`，以月令、藏干、透干、通根及天干生扶克泄耗形成带证据与置信度的候选。
-  候选必须保存进同一 `CalculationResult.structuralProfile`；禁止 UI、合盘、AI 指令或 OCR 解析器各自定格。
+- `WenzhenSourceFidelityContract` 列出的星宿、命卦、日主/阴阳属性、自定旺衰/格局及截图四柱神煞
+  不是可自动对照的来源真值。它们可被提取、修正和采用为来源记录，但 `calculatedValue` 与
+  `consistencyConfidence` 必须保持为空。截图中的五行/党派比例仍保留为来源证据；本机计算统一以
+  `BaziElementDistributionAnalyzer` 的版本化结果为准，二者不相互覆盖。
+- `BaziStructuralProfileAnalyzer` 是本机格局与结构证据入口：只消费最终采用四柱和
+  `BasicChartDetails`。`structural-profile-v3` 固定只以月令主气、中气为根、年／月／时透干优先；余气不参与取格。主气、中气均未透干时只取主气。只允许正官、七杀、正财、偏财、正印、偏印、食神、伤官八正格取格。比肩、劫财只纳入旺衰，不得作为格局输出；月令比劫而没有八正格透干时显示“未取格”。
+  结果必须保存进同一 `CalculationResult.structuralProfile`；禁止 UI、合盘、AI 指令或 OCR 解析器各自定格。
   从弱、专旺、合化与三合／三会只可作为复核项，不能写为已成立的定格；本模块不输出喜忌、用神、吉凶或现实结论。
+- 命例基本信息的“南枫辅助参考”只读取同一 `CalculationResult`：
+  `BaziElementDistribution` 与 `WangShuaiProfile` 均使用 `blind-month-command-hour-branch-v2`。旺衰能量
+  只取地支：月令 50%、时支 35%、日支 10%、年支 5%，严格保证“月令第一、时支第二”；每支再以藏干
+  本气／中气／余气 0.6／0.3／0.1 分配，故五行能量与同党／异党百分比均可复算且合计为 100%。
+  比例以用户确认的图示为标准；藏干 60／30／10 的结构由
+  [GitHub `bazi-skill` 五行表](https://github.com/jinchenma94/bazi-skill/blob/main/references/wuxing-tables.md)复核；
+  同党（印枭＋比劫）／异党（食伤＋财＋官杀）的归类由
+  [GitHub `bazi-report` 计算实现](https://github.com/Cyberseer-976/bazi-report/blob/main/scripts/calculate_bazi.py)复核。
+  五行个数只计表层八字，含藏数量只计四柱藏干；两项不与旺衰能量混用。
+  旺衰等级按同党占比：<10 极弱、10–<35 弱、35–<45 稍弱、45–<60 平衡、60–<85 偏旺、85–<95 旺、≥95 极旺。
+  图示未标出的 50–60 连续区间统一归为平衡，避免人为留下等级断层。
+  `MangPaiProfile` 使用 `mangpai-binzhu-zuogong-v3`：日时为主、月为近宾、年为远宾；体用按十神归类，
+  跨主宾的合冲刑害破与生克同气均输出为当前原局的做功路径，八个干支逐字保存十神、宾主位置与基础取象。
+  路径不直接断为做功已成、合化成立或现实吉凶。Compose 只显示这一领域快照，不另行定旺衰、定格或计算比例。
+  五行个数只计表层八字，含藏数量只计四柱藏干。
+  称骨以 `FolkBoneWeightRulesV1` 按农历年干支、农历月日和时辰查表；农历年干支不得由立春口径的
+  四柱年柱替代。新快照保存该结果，旧快照只可由已保存农历日期通过同一领域入口补算。
 - 原生专业细盘的合冲刑害与基础神煞由 `ProfessionalFortuneResolver` 一次返回，固定使用
   `professional-detail-relations-shensha-v4`。关系只输出去重后的干支事实（如“丙壬冲”“申亥相害”），
   不附流年／流月等来源标签；基础神煞由共享 `BasicShenShaRules` 以日干、年支、月令和原局根气计算，

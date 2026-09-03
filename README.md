@@ -6,6 +6,8 @@
 
 ## 软件预览
 
+当前首页预览来自 v1.0.14 的 API 35 模拟器构建（1140 × 2616）；其余页面预览保持独立手机视口。
+
 <p align="center">
   <img src="docs/screenshots/home.png" width="30%" alt="首页排盘" />
   <img src="docs/screenshots/records.png" width="30%" alt="命例记录" />

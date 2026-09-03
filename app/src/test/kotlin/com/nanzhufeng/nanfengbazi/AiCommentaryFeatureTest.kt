@@ -219,4 +219,77 @@ class AiCommentaryFeatureTest {
         assertFalse(payload.contains("promptText", ignoreCase = true))
         assertFalse(payload.contains("命盘正文"))
     }
+
+    @Test
+    fun `已知模型按请求时点生成版本化本地估算`() {
+        val offPeak = requireNotNull(
+            AiCommentaryCostEstimator.estimate(
+                model = "deepseek/deepseek-v4-pro",
+                inputTokens = 1_000_000,
+                outputTokens = 1_000_000,
+                requestedAt = Instant.parse("2026-08-30T00:30:00Z"),
+            ),
+        )
+        val peak = requireNotNull(
+            AiCommentaryCostEstimator.estimate(
+                model = "deepseek-v4-pro",
+                inputTokens = 1_000_000,
+                outputTokens = 1_000_000,
+                requestedAt = Instant.parse("2026-08-30T02:00:00Z"),
+            ),
+        )
+
+        assertEquals(AiCommentaryCostEstimator.DEEPSEEK_OFF_PEAK_PRICE_VERSION, offPeak.priceVersion)
+        assertEquals(2_640_000L, offPeak.totalMicros)
+        assertEquals(AiCommentaryCostEstimator.DEEPSEEK_PEAK_PRICE_VERSION, peak.priceVersion)
+        assertEquals(5_280_000L, peak.totalMicros)
+        assertEquals("≈ ¥17.741616（估算）", AiCommentaryCnyMoneyDisplay.label(offPeak))
+    }
+
+    @Test
+    fun `未知模型或不完整用量不制造估算金额`() {
+        assertEquals(
+            null,
+            AiCommentaryCostEstimator.estimate(
+                model = "openrouter/auto",
+                inputTokens = 120,
+                outputTokens = 80,
+                requestedAt = Instant.parse("2026-09-02T00:00:00Z"),
+            ),
+        )
+        assertEquals(
+            null,
+            AiCommentaryCostEstimator.estimate(
+                model = "openai/gpt-5.6-terra",
+                inputTokens = 120,
+                outputTokens = null,
+                requestedAt = Instant.parse("2026-09-02T00:00:00Z"),
+            ),
+        )
+    }
+
+    @Test
+    fun `调用记录保存估算快照但旧记录仍可按原时点补算`() {
+        val historical = AiCommentaryCallRecord(
+            id = "call-legacy",
+            requestedAtEpochMillis = Instant.parse("2026-08-30T00:30:00Z").toEpochMilli(),
+            durationMillis = 500,
+            providerName = "DeepSeek",
+            model = "deepseek-v4-flash",
+            succeeded = true,
+            inputTokens = 1_000,
+            outputTokens = 1_000,
+        )
+        val stored = historical.copy(
+            estimatedCost = AiCommentaryEstimatedCost(
+                priceVersion = "snapshot-v1",
+                currencyCode = "CNY",
+                totalMicros = 1_250_000,
+            ),
+        )
+
+        assertEquals(AiCommentaryCostEstimator.DEEPSEEK_OFF_PEAK_PRICE_VERSION, historical.estimatedCostOrNull()?.priceVersion)
+        assertEquals("snapshot-v1", stored.estimatedCostOrNull()?.priceVersion)
+        assertEquals("≈ ¥1.25（估算）", AiCommentaryCnyMoneyDisplay.label(requireNotNull(stored.estimatedCost)))
+    }
 }

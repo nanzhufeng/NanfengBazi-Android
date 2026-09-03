@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -214,15 +213,15 @@ private fun BaziCompatibilityReport.compatibilityAiPrompt(): String {
         appendLine("- 日主：${participant.dayMaster}")
         appendLine("- 五行表层计数：${participant.pillars.compatibilityElementSummary()}")
         val structuralProfile = participant.structuralProfileOrAnalyze()
-        appendLine("- 日主旺衰（算法候选）：${structuralProfile.strength.displayName}（${structuralProfile.strengthConfidence.displayName}置信）")
-        appendLine("- 格局（算法候选）：${structuralProfile.selectedPattern.name}")
+        appendLine("- 日主旺衰：${structuralProfile.strength.displayName}（${structuralProfile.strengthConfidence.displayName}置信）")
+        appendLine("- 格局：${structuralProfile.selectedPattern.name}")
         appendLine("- 旺衰依据：${structuralProfile.strengthEvidence.joinToString("；") { it.detail }}")
         appendLine("- 格局依据：${structuralProfile.selectedPattern.evidence.joinToString("；") { it.detail }}")
         if (structuralProfile.reviewItems.isNotEmpty()) {
             appendLine("- 结构复核项：${structuralProfile.reviewItems.joinToString("；")}")
         }
         if (participant.sourceStructureText.isNotBlank()) {
-            appendLine("- 问真记录格局：${participant.sourceStructureText}（仅作来源对照，不覆盖算法候选）")
+            appendLine("- 问真记录格局：${participant.sourceStructureText}（仅作来源对照，不覆盖本机计算）")
         }
         participant.pillarPresentation
             .sortedBy { it.position.ordinal }
