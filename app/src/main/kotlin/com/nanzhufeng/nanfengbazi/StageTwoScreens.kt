@@ -291,7 +291,6 @@ import kotlin.math.roundToInt
 
 // 历史页顶栏的搜索与库切换共用此轮廓，保证边框、按压面和阴影都是同一枚胶囊。
 private val RecordToolbarPillShape = RoundedCornerShape(24.dp)
-internal val HomeQuickEntryPillShape = RoundedCornerShape(percent = 50)
 
 @Composable
 fun NanfengBaziApp(
@@ -762,8 +761,10 @@ fun NanfengBaziApp(
                         onExportFullBackup = viewModel::requestFullBackupExport,
                         onRestoreFullBackup = onOpenFullBackupDocument,
                         onOpenAiServicePage = viewModel::openAiServicePage,
-                        onOpenAiSettings = viewModel::openAiCommentarySettings,
-                        onOpenAiHistory = viewModel::openAiCallHistory,
+                        onPrepareAiSettingsPage = viewModel::prepareAiServiceSettingsPage,
+                        onPrepareAiHistoryPage = viewModel::prepareAiServiceHistoryPage,
+                        onCloseAiSettingsPage = viewModel::closeAiCommentarySettings,
+                        onSaveAiProvider = viewModel::saveAiCommentaryProvider,
                         cloudSyncCoordinator = cloudContainer?.cloudSyncCoordinator,
                         googleSignInClient = cloudContainer?.googleSignInClient,
                         activityContext = context,
@@ -2757,6 +2758,11 @@ private fun RecordCaseRow(summary: CaseSummary, onClick: () -> Unit) {
     }
 }
 
+private enum class AiServiceSubpage {
+    MODEL_SETTINGS,
+    CALL_HISTORY,
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsHomeScreen(
@@ -2776,8 +2782,10 @@ private fun SettingsHomeScreen(
     onExportFullBackup: () -> Unit,
     onRestoreFullBackup: () -> Unit,
     onOpenAiServicePage: () -> Unit,
-    onOpenAiSettings: () -> Unit,
-    onOpenAiHistory: () -> Unit,
+    onPrepareAiSettingsPage: () -> Unit,
+    onPrepareAiHistoryPage: () -> Unit,
+    onCloseAiSettingsPage: () -> Unit,
+    onSaveAiProvider: (AiCommentaryProviderConfig, String?) -> Unit,
     cloudSyncCoordinator: BaziCloudSyncCoordinator?,
     googleSignInClient: BaziGoogleSignInClient?,
     activityContext: android.content.Context,
@@ -2788,17 +2796,43 @@ private fun SettingsHomeScreen(
     var showFontSizePicker by rememberSaveable { mutableStateOf(false) }
     var showRatHourRulePicker by rememberSaveable { mutableStateOf(false) }
     var showAiServicePage by rememberSaveable { mutableStateOf(false) }
+    var aiServiceSubpage by rememberSaveable { mutableStateOf<AiServiceSubpage?>(null) }
     var showCloudSettings by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = showAiServicePage) { showAiServicePage = false }
+    BackHandler(enabled = showAiServicePage) {
+        if (aiServiceSubpage == AiServiceSubpage.MODEL_SETTINGS) onCloseAiSettingsPage()
+        if (aiServiceSubpage != null) aiServiceSubpage = null else showAiServicePage = false
+    }
     if (showAiServicePage) {
-        AiServiceSettingsPage(
-            state = aiCommentaryState,
-            onBack = { showAiServicePage = false },
-            onOpenSettings = onOpenAiSettings,
-            onOpenHistory = onOpenAiHistory,
-            bottomContentInset = bottomContentInset,
-            modifier = modifier,
-        )
+        when (aiServiceSubpage) {
+            AiServiceSubpage.MODEL_SETTINGS -> AiCommentarySettingsPage(
+                state = aiCommentaryState,
+                onBack = {
+                    onCloseAiSettingsPage()
+                    aiServiceSubpage = null
+                },
+                onSave = onSaveAiProvider,
+                modifier = modifier,
+            )
+            AiServiceSubpage.CALL_HISTORY -> AiCommentaryCallHistoryPage(
+                records = aiCommentaryState.callRecords,
+                onBack = { aiServiceSubpage = null },
+                modifier = modifier,
+            )
+            null -> AiServiceSettingsPage(
+                state = aiCommentaryState,
+                onBack = { showAiServicePage = false },
+                onOpenSettings = {
+                    onPrepareAiSettingsPage()
+                    aiServiceSubpage = AiServiceSubpage.MODEL_SETTINGS
+                },
+                onOpenHistory = {
+                    onPrepareAiHistoryPage()
+                    aiServiceSubpage = AiServiceSubpage.CALL_HISTORY
+                },
+                bottomContentInset = bottomContentInset,
+                modifier = modifier,
+            )
+        }
         return
     }
     BackHandler(enabled = showCloudSettings) { showCloudSettings = false }
@@ -9487,10 +9521,13 @@ private fun BaziCompatibilityHomeEntry(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .semantics { contentDescription = "打开八字合盘" }
             .testTag("home_open_bazi_compatibility"),
-        shape = HomeQuickEntryPillShape,
+        shape = NanfengSoftWhiteCardShape,
         color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 0.dp,
+        border = NanfengSoftWhiteCardBorder,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Column(
@@ -12683,6 +12720,7 @@ private fun ReferenceBasicInfo(
 }
 
 /** 这张卡只投影已采用快照中的结构候选、基础盘明细及版本化五行统计。 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NanfengAuxiliaryReferenceCard(
     result: CalculationResult,
@@ -12757,26 +12795,32 @@ private fun NanfengAuxiliaryReferenceCard(
                     shape = RoundedCornerShape(99.dp),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(5.dp),
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    ) {
-                        listOf("五行能量", "五行个数", "含藏数量").forEachIndexed { index, label ->
-                            val selected = selectedElementMetric == index
-                            Surface(
-                                onClick = { selectedElementMetric = index },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(99.dp),
-                                color = if (selected) NanfengGreen else Color.Transparent,
-                            ) {
-                                Text(
-                                    label,
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (selected) Color.White else NanfengInk,
-                                    textAlign = TextAlign.Center,
-                                )
+                    // This is a compact metric selector, not a primary action. Keep the
+                    // original text-driven pill height and let the track measure from it.
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
+                        Row(
+                            // Keep the grey track only 1 dp taller than the selected face:
+                            // 0.5 dp above and below preserves the compact original rhythm.
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 0.5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            listOf("五行能量", "五行个数", "含藏数量").forEachIndexed { index, label ->
+                                val selected = selectedElementMetric == index
+                                Surface(
+                                    onClick = { selectedElementMetric = index },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(99.dp),
+                                    color = if (selected) NanfengGreen else Color.Transparent,
+                                ) {
+                                    Text(
+                                        label,
+                                        modifier = Modifier.padding(vertical = 10.dp),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (selected) Color.White else NanfengInk,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
                             }
                         }
                     }

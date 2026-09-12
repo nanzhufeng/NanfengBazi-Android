@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
@@ -474,18 +475,6 @@ private fun AiCommentarySettingsDialog(
     onDismiss: () -> Unit,
     onSave: (AiCommentaryProviderConfig, String?) -> Unit,
 ) {
-    var providerId by rememberSaveable { mutableStateOf(initialProvider) }
-    val stored = configs[providerId] ?: AiCommentaryProviderPresets.defaults(providerId)
-    var enabled by remember(providerId, stored) { mutableStateOf(stored.enabled) }
-    var model by remember(providerId, stored) {
-        mutableStateOf(AiCommentaryProviderPresets.selectedModel(providerId, stored.model))
-    }
-    var apiKey by remember(providerId, savedApiKeys) {
-        mutableStateOf(savedApiKeys[providerId].orEmpty())
-    }
-    var modelPickerExpanded by remember(providerId) { mutableStateOf(false) }
-    var revealApiKey by remember(providerId) { mutableStateOf(false) }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -515,17 +504,60 @@ private fun AiCommentarySettingsDialog(
                         )
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AiCommentaryProviderPresets.providerIds.forEach { candidate ->
-                        Surface(
-                            onClick = { providerId = candidate },
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                            color = if (providerId == candidate) NanfengGold.copy(alpha = 0.16f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
-                                Text(candidate.displayName, style = MaterialTheme.typography.labelLarge)
+                AiCommentarySettingsEditor(
+                    configs = configs,
+                    savedApiKeys = savedApiKeys,
+                    initialProvider = initialProvider,
+                    error = error,
+                    onCancel = onDismiss,
+                    onSave = onSave,
+                    saveLabel = "保存并关闭",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun AiCommentarySettingsEditor(
+    configs: Map<AiCommentaryProviderId, AiCommentaryProviderConfig>,
+    savedApiKeys: Map<AiCommentaryProviderId, String>,
+    initialProvider: AiCommentaryProviderId,
+    error: String?,
+    onCancel: () -> Unit,
+    onSave: (AiCommentaryProviderConfig, String?) -> Unit,
+    saveLabel: String,
+) {
+    var providerId by rememberSaveable { mutableStateOf(initialProvider) }
+    val stored = configs[providerId] ?: AiCommentaryProviderPresets.defaults(providerId)
+    var enabled by remember(providerId, stored) { mutableStateOf(stored.enabled) }
+    var model by remember(providerId, stored) {
+        mutableStateOf(AiCommentaryProviderPresets.selectedModel(providerId, stored.model))
+    }
+    var apiKey by remember(providerId, savedApiKeys) {
+        mutableStateOf(savedApiKeys[providerId].orEmpty())
+    }
+    var modelPickerExpanded by remember(providerId) { mutableStateOf(false) }
+    var revealApiKey by remember(providerId) { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(99.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                        AiCommentaryProviderPresets.providerIds.forEach { candidate ->
+                            Surface(
+                                onClick = { providerId = candidate },
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                color = if (providerId == candidate) NanfengGold.copy(alpha = 0.16f)
+                                else Color.Transparent,
+                                shape = RoundedCornerShape(99.dp),
+                            ) {
+                                Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
+                                    Text(candidate.displayName, style = MaterialTheme.typography.labelLarge)
+                                }
                             }
                         }
                     }
@@ -669,7 +701,7 @@ private fun AiCommentarySettingsDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+                    TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("取消") }
                     Button(
                         onClick = {
                             onSave(
@@ -682,8 +714,105 @@ private fun AiCommentarySettingsDialog(
                             )
                         },
                         modifier = Modifier.weight(1f).testTag("save_ai_provider_config"),
-                    ) { Text("保存并关闭") }
+                    ) { Text(saveLabel) }
                 }
+            }
+}
+
+@Composable
+internal fun AiCommentarySettingsPage(
+    state: AiCommentaryUiState,
+    onBack: () -> Unit,
+    onSave: (AiCommentaryProviderConfig, String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .testTag("ai_commentary_settings_page"),
+    ) {
+        Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("ai_commentary_settings_page_back")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回 AI 模型服务")
+                }
+                Text("AI 模型设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                "API Key 由 Android Keystore 加密，仅保存在本机",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            AiCommentarySettingsEditor(
+                configs = state.configs,
+                savedApiKeys = state.apiKeys,
+                initialProvider = state.selectedProvider,
+                error = state.error,
+                onCancel = onBack,
+                onSave = onSave,
+                saveLabel = "保存",
+            )
+        }
+    }
+}
+
+@Composable
+internal fun AiCommentaryCallHistoryPage(
+    records: List<AiCommentaryCallRecord>,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .testTag("ai_call_history_page"),
+    ) {
+        Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("ai_call_history_page_back")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回 AI 模型服务")
+                }
+                Column(Modifier.padding(start = 4.dp)) {
+                    Text("调用记录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
+                    Text(
+                        "仅记录模型、用量、估算金额和运行状态",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        if (records.isEmpty()) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text("暂无 AI 调用记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                records.forEach { record -> AiCallRecordCard(record) }
             }
         }
     }

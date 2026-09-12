@@ -79,10 +79,13 @@ internal fun AlmanacHomeEntry(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
+            .nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)
             .semantics { contentDescription = "打开万年历" }
             .testTag("open_almanac"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = HomeQuickEntryPillShape,
+        shape = NanfengSoftWhiteCardShape,
+        border = NanfengSoftWhiteCardBorder,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),

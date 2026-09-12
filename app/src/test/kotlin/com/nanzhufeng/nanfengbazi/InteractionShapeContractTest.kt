@@ -194,13 +194,19 @@ class InteractionShapeContractTest {
         assertTrue(compatibility.contains("compact: Boolean"))
         assertTrue(compatibility.contains("contentDescription = \"打开八字合盘\""))
         assertTrue(compatibility.contains("painterResource(R.drawable.ic_bazi_compatibility)"))
-        assertTrue(compatibility.contains("shape = HomeQuickEntryPillShape"))
+        assertTrue(compatibility.contains("nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)"))
+        assertTrue(compatibility.contains("shape = NanfengSoftWhiteCardShape"))
+        assertTrue(compatibility.contains("shadowElevation = 0.dp"))
+        assertTrue(compatibility.contains("border = NanfengSoftWhiteCardBorder"))
         assertTrue(!compatibility.contains("Icons.Filled.Share"))
         assertTrue(almanac.contains(".fillMaxHeight()"))
         assertTrue(almanac.contains("compact: Boolean"))
-        assertTrue(almanac.contains("shape = HomeQuickEntryPillShape"))
+        assertTrue(almanac.contains("nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)"))
+        assertTrue(almanac.contains("shape = NanfengSoftWhiteCardShape"))
+        assertTrue(almanac.contains("border = NanfengSoftWhiteCardBorder"))
+        assertTrue(almanac.contains("CardDefaults.cardElevation(defaultElevation = 0.dp)"))
         assertTrue(almanac.contains("modifier = Modifier.fillMaxSize(),\n            contentAlignment = Alignment.Center"))
-        assertTrue(screens.contains("internal val HomeQuickEntryPillShape = RoundedCornerShape(percent = 50)"))
+        assertTrue(!screens.contains("HomeQuickEntryPillShape"))
     }
 
     @Test
@@ -1202,6 +1208,31 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun aiServiceDestinationsUseFullPagesAndProviderSwitchUsesCapsules() {
+        val screens = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
+        val dialogs = locateSourceRoot().resolve("AiCommentaryDialogs.kt").readText()
+        val viewModel = locateSourceRoot().resolve("StageTwoViewModel.kt").readText()
+        val settingsPage = dialogs.substringAfter("internal fun AiCommentarySettingsPage(")
+            .substringBefore("internal fun AiCommentaryCallHistoryPage(")
+        val historyPage = dialogs.substringAfter("internal fun AiCommentaryCallHistoryPage(")
+            .substringBefore("private data class AiModelVendorStyle")
+        val editor = dialogs.substringAfter("internal fun AiCommentarySettingsEditor(")
+            .substringBefore("internal fun AiCommentarySettingsPage(")
+
+        assertTrue(screens.contains("private enum class AiServiceSubpage"))
+        assertTrue(screens.contains("AiCommentarySettingsPage("))
+        assertTrue(screens.contains("AiCommentaryCallHistoryPage("))
+        assertTrue(settingsPage.contains("ai_commentary_settings_page"))
+        assertTrue(!settingsPage.contains("Dialog("))
+        assertTrue(historyPage.contains("ai_call_history_page"))
+        assertTrue(!historyPage.contains("Dialog("))
+        assertTrue(editor.contains("shape = RoundedCornerShape(99.dp)"))
+        assertTrue(editor.contains("Modifier.weight(1f).heightIn(min = 48.dp)"))
+        assertTrue(viewModel.contains("fun prepareAiServiceSettingsPage()"))
+        assertTrue(viewModel.contains("fun prepareAiServiceHistoryPage()"))
+    }
+
+    @Test
     fun aiCommentaryVersionsAreSelectableAndLongImageKeepsEveryModel() {
         val source = locateSourceRoot().resolve("StageTwoScreens.kt").readText()
         val editor = source.substringAfter("private fun AiCommentaryEditor(")
@@ -1327,6 +1358,9 @@ class InteractionShapeContractTest {
         assertTrue(auxiliary.contains("五行能量"))
         assertTrue(auxiliary.contains("五行个数"))
         assertTrue(auxiliary.contains("含藏数量"))
+        assertTrue(auxiliary.contains("Modifier.padding(horizontal = 5.dp, vertical = 0.5.dp)"))
+        assertTrue(auxiliary.contains("LocalMinimumInteractiveComponentEnforcement provides false"))
+        assertTrue(!auxiliary.contains("Modifier.weight(1f).heightIn(min = 48.dp)"))
         assertTrue(!auxiliary.contains("盘面统计："))
         assertTrue(source.contains("private fun AuxiliaryReferenceFact("))
         assertTrue(source.contains("horizontalAlignment = Alignment.CenterHorizontally"))

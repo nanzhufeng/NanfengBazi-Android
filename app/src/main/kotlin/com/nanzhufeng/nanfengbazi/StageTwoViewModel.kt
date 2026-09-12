@@ -8070,6 +8070,41 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         }
     }
 
+    /** Prepares the settings subpage without activating the legacy dialog route. */
+    fun prepareAiServiceSettingsPage() {
+        val settings = aiCommentarySettings ?: return
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    serviceMenuVisible = false,
+                    settingsVisible = false,
+                    historyVisible = false,
+                    configs = settings.configs(),
+                    apiKeys = AiCommentaryProviderPresets.providerIds.associateWith { providerId ->
+                        settings.apiKey(providerId).orEmpty()
+                    },
+                    selectedProvider = settings.selectedProvider(),
+                    error = null,
+                ),
+            )
+        }
+    }
+
+    /** Prepares the call-ledger subpage without activating the legacy dialog route. */
+    fun prepareAiServiceHistoryPage() {
+        mutableState.update {
+            it.copy(
+                aiCommentary = it.aiCommentary.copy(
+                    serviceMenuVisible = false,
+                    settingsVisible = false,
+                    historyVisible = false,
+                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
+                    error = null,
+                ),
+            )
+        }
+    }
+
     fun closeAiCallHistory() {
         mutableState.update {
             it.copy(
@@ -8137,7 +8172,9 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         apiKeys = emptyMap(),
                         selectedProvider = settings.selectedProvider(),
                         settingsVisible = false,
-                        serviceMenuVisible = it.aiCommentary.dialogVisible.not(),
+                        // Configuration can be saved from a dedicated settings page as well
+                        // as from generation. Do not resurrect a modal service menu after it.
+                        serviceMenuVisible = false,
                         error = null,
                     ),
                     message = "${config.providerId.displayName} 配置已安全保存在本机。",
