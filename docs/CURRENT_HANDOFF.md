@@ -1,6 +1,6 @@
-# 当前交接：v1.0.0 正式发布基线
+# 当前交接：v1.0.15 发布基线
 
-更新日期：2026-08-24
+更新日期：2026-09-15
 
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
@@ -9,8 +9,10 @@
 
 - 入口：设置页新增“应用信息”分组，`关于南枫八字` 进入可返回的二级页面；页面使用居中“关于”顶栏与白色圆角信息卡，不新增弹窗或业务状态。
 - 信息：版本读取 `BuildConfig.VERSION_NAME`；构建时间由 Gradle 在每次构建时以 Asia/Shanghai 时区生成 `BuildConfig.APP_BUILD_TIME`；GitHub 指向当前 `origin` 的 `nanzhufeng/NanfengBazi-Android`。开发者、邮箱与版权按已确认信息显示。
-- 验证：`InteractionShapeContractTest` 新增入口、居中顶栏、实际 BuildConfig 字段、当前 GitHub 标识与 24dp 卡片圆角合同。使用 Android Studio JBR 定向运行该测试与 `:app:assembleDebug --no-daemon`，1 分 35 秒成功；`git diff --check` 通过。
-- 边界：未运行 `connected*AndroidTest`，未安装、启动或操作 OPPO；新页面尚无模拟器／真机视觉验收。
+- 发布：以 GitHub `main` 的 `v1.0.14 (10046)` 为基线合入本页后升级为 `v1.0.15 (10047)`；APK 文件名与 Manifest 版本同步为 `NanfengBazi-Android-v1.0.15-debug.apk`。
+- 验证：`InteractionShapeContractTest` 继续覆盖入口、居中顶栏、实际 BuildConfig 字段、当前 GitHub 标识与 24dp 卡片圆角合同。Android Studio JBR 的全量 `test + lintDebug + assembleDebug --no-daemon` 于 2026-09-15 成功（4 分 31 秒，28 份测试 XML 无失败／错误），`git diff --check` 通过。
+- OPPO 覆盖：设备 `3B157F009E800000` 从 Debug `1.0.14 (10046)` 同签名覆盖至 Debug `1.0.15 (10047)`；证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。发布 APK 与安装后 `base.apk` 的 SHA-256 均为 `36949ccb3a8e6b70a7169bfa489afc848315e7905cf2e6392a5d59e26bc8fc2f`，安装前后 `databases/files/shared_prefs` 顶层计数均为 `5/3/8`；未卸载、清数据、启动 App 或运行 `connected*AndroidTest`。
+- 边界：本次未新增模拟器视觉验收；“关于”页仍待用户在 OPPO 实际界面确认视觉。
 
 ## 2026-08-26：全局三档应用内字体大小
 
