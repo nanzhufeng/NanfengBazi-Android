@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -2798,6 +2799,7 @@ private fun SettingsHomeScreen(
     var showAiServicePage by rememberSaveable { mutableStateOf(false) }
     var aiServiceSubpage by rememberSaveable { mutableStateOf<AiServiceSubpage?>(null) }
     var showCloudSettings by rememberSaveable { mutableStateOf(false) }
+    var showAboutPage by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = showAiServicePage) {
         if (aiServiceSubpage == AiServiceSubpage.MODEL_SETTINGS) onCloseAiSettingsPage()
         if (aiServiceSubpage != null) aiServiceSubpage = null else showAiServicePage = false
@@ -2842,6 +2844,15 @@ private fun SettingsHomeScreen(
             googleSignInClient = googleSignInClient,
             activityContext = activityContext,
             onBack = { showCloudSettings = false },
+            modifier = modifier,
+        )
+        return
+    }
+    BackHandler(enabled = showAboutPage) { showAboutPage = false }
+    if (showAboutPage) {
+        AboutBaziScreen(
+            onBack = { showAboutPage = false },
+            bottomContentInset = bottomContentInset,
             modifier = modifier,
         )
         return
@@ -2982,6 +2993,17 @@ private fun SettingsHomeScreen(
                 accent = NanfengGreen,
             )
         }
+        SettingsGroupTitle("应用信息")
+        SettingsActionGroup {
+            SettingsActionRow(
+                title = "关于南枫八字",
+                description = "版本、开发者与源码信息",
+                icon = Icons.Filled.Info,
+                onClick = { showAboutPage = true },
+                tag = "settings_about",
+                accent = NanfengGreen,
+            )
+        }
         Spacer(modifier = Modifier.height(bottomContentInset))
     }
     if (showSkinPicker) {
@@ -3077,6 +3099,114 @@ private fun SettingsHomeScreen(
                 TextButton(onClick = { showRatHourRulePicker = false }) { Text("取消") }
             },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AboutBaziScreen(
+    onBack: () -> Unit,
+    bottomContentInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .testTag("about_bazi_screen"),
+    ) {
+        CenterAlignedTopAppBar(
+            title = {
+                Text(
+                    "关于",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("about_bazi_back")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回设置")
+                }
+            },
+            colors = androidx.compose.material3.TopAppBarDefaults.centerAlignedTopAppBarColors(
+                containerColor = Color.White,
+            ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 20.dp)
+                .padding(bottom = bottomContentInset),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 680.dp)
+                    .testTag("about_bazi_information_card"),
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                tonalElevation = 0.dp,
+                shadowElevation = 2.dp,
+            ) {
+                Column {
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp)) {
+                        Text(
+                            "南枫八字",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "本机排盘、命例与专业细盘。",
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    HorizontalDivider()
+                    AboutInfoSection(
+                        title = "版本信息",
+                        lines = listOf(
+                            "Android 版 ${BuildConfig.VERSION_NAME}",
+                            "构建时间 ${BuildConfig.APP_BUILD_TIME}",
+                        ),
+                    )
+                    HorizontalDivider()
+                    AboutInfoSection(
+                        title = "开发者信息",
+                        lines = listOf(
+                            "开发者：席瑞",
+                            "联系邮箱：nanzhufeng.studio@gmail.com",
+                            "源码与更新：GitHub · nanzhufeng/NanfengBazi-Android",
+                            "版权所有 © 2026 席瑞",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutInfoSection(
+    title: String,
+    lines: List<String>,
+) {
+    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        lines.forEach { line ->
+            Text(
+                line,
+                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
     }
 }
 

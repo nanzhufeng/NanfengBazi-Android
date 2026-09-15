@@ -1,4 +1,7 @@
 import java.util.Properties
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 plugins {
     id("com.android.application")
@@ -27,6 +30,8 @@ val hasReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword,
 ).all(String::isNotBlank)
+val appBuildTime = ZonedDateTime.now(ZoneId.of("Asia/Shanghai"))
+    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 
 android {
     namespace = "com.nanzhufeng.nanfengbazi"
@@ -39,6 +44,7 @@ android {
         versionCode = 10046
         versionName = "1.0.14"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "APP_BUILD_TIME", quotedBuildConfig(appBuildTime))
         buildConfigField("String", "NANFENG_CLOUD_URL", quotedBuildConfig(localValue("nanfeng.cloud.url")))
         buildConfigField(
             "String",

@@ -5,6 +5,13 @@
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
 
+## 2026-09-15：设置页“关于南枫八字”二级页面
+
+- 入口：设置页新增“应用信息”分组，`关于南枫八字` 进入可返回的二级页面；页面使用居中“关于”顶栏与白色圆角信息卡，不新增弹窗或业务状态。
+- 信息：版本读取 `BuildConfig.VERSION_NAME`；构建时间由 Gradle 在每次构建时以 Asia/Shanghai 时区生成 `BuildConfig.APP_BUILD_TIME`；GitHub 指向当前 `origin` 的 `nanzhufeng/NanfengBazi-Android`。开发者、邮箱与版权按已确认信息显示。
+- 验证：`InteractionShapeContractTest` 新增入口、居中顶栏、实际 BuildConfig 字段、当前 GitHub 标识与 24dp 卡片圆角合同。使用 Android Studio JBR 定向运行该测试与 `:app:assembleDebug --no-daemon`，1 分 35 秒成功；`git diff --check` 通过。
+- 边界：未运行 `connected*AndroidTest`，未安装、启动或操作 OPPO；新页面尚无模拟器／真机视觉验收。
+
 ## 2026-08-26：全局三档应用内字体大小
 
 - 设置页在“皮肤”下方新增“显示 → 字体大小”：小号、标准和大号均点选即生效、下次启动仍保留；标准保持当前视觉基线，小号／大号分别为 `-2sp`／`+1sp`，微型标注在小号下不低于 `8sp`。设置行及选择弹层均不再显示辅助小字。根主题与所有明确 `fontSize` 的页面统一经同一缩放入口，未触碰命例、排盘、备份或云同步数据链路。

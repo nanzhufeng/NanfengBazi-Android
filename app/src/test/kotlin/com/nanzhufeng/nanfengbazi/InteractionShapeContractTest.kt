@@ -1016,6 +1016,27 @@ class InteractionShapeContractTest {
     }
 
     @Test
+    fun settingsAboutPageUsesActualBuildAndRepositoryIdentity() {
+        val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
+        val settings = source.substringAfter("private fun SettingsHomeScreen(")
+            .substringBefore("if (showRatHourRulePicker)")
+        val about = source.substringAfter("private fun AboutBaziScreen(")
+            .substringBefore("private fun AboutInfoSection(")
+
+        assertTrue(settings.contains("SettingsGroupTitle(\"应用信息\")"))
+        assertTrue(settings.contains("title = \"关于南枫八字\""))
+        assertTrue(settings.contains("tag = \"settings_about\""))
+        assertTrue(settings.contains("showAboutPage = true"))
+        assertTrue(about.contains("CenterAlignedTopAppBar("))
+        assertTrue(about.contains("\"关于\""))
+        assertTrue(about.contains("BuildConfig.VERSION_NAME"))
+        assertTrue(about.contains("BuildConfig.APP_BUILD_TIME"))
+        assertTrue(about.contains("GitHub · nanzhufeng/NanfengBazi-Android"))
+        assertTrue(about.contains("RoundedCornerShape(24.dp)"))
+        assertTrue(BuildConfig.APP_BUILD_TIME.matches(Regex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}")))
+    }
+
+    @Test
     fun fullBackupExportUsesTheSameMinimalPasswordRouteAsSingleCaseExport() {
         val source = File(locateSourceRoot(), "StageTwoScreens.kt").readText()
         val export = source.substringAfter("if (state.fullBackupExportConfirmationVisible)")
