@@ -5,13 +5,15 @@
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
 
-## v1.0.16 GitHub 发布准备
+## v1.0.16 GitHub 发布完成
 
-- 发布仓库 nanzhufeng/NanfengBazi-Android，默认分支main。当前最终APK已同签名覆盖OPPO并逐字节读回确认，发布复用同一文件，不重新构建或重签。
-- 远端安装包名 NanfengBazi-Android-v1.0.16.apk，70604319字节；SHA256 3a5f9f37a56e85ae13416300991bb4936c98595bb58966e50547f010a6f4fcae。附SHA256SUMS.txt，Release构建、原项目既有签名、非Debug；正式发布而非预发布，保留签名范围说明。
-- README预览已更新：当前v1.0.16原APK、API35隔离模拟器、1080×2400，首页／记录／专业细盘，合成示例资料。仅本次emulator-5600，主设备本阶段未操作。
-- 当前提交显式包括app/core相关源码与测试、文档、脚本和预览；tmp与字节码忽略。原有docs/next-codex-prompt.md删除保持未暂存，不擅自恢复或提交。
-- 待完成：提交／推送main、v1.0.16标签与Release、远端附件回读校验和本人模拟器清理。
+- 全项目当前能力、验证缺口及同步快照见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。本段仅保留本轮交付接续事实。
+- 正式Release（非草稿／非预发布，Latest）：https://github.com/nanzhufeng/NanfengBazi-Android/releases/tag/v1.0.16 。标签源码提交 c2c4da75a1cb92a518f4819abfd5c897e97dcf12，后续发布收尾仅文档更新，不重新构建APK。
+- 附件 NanfengBazi-Android-v1.0.16.apk（70604319字节）与SHA256SUMS.txt（98字节）；完整GitHub下载回读SHA256 3a5f9f37a56e85ae13416300991bb4936c98595bb58966e50547f010a6f4fcae，与原冻结包、OPPO安装读回一致。元数据、尺寸、原签名身份、非Debug均确认。
+- main README已更新真实v1.0.16安装包的首页／记录／专业细盘，API35模拟器1080×2400合成演示。GitHub渲染与三张图片Git对象匹配。本轮本人emulator-5600已关闭，主设备在GitHub阶段未操作。
+- 推送首次遇HTTPS超时，核对未生效后用单次HTTP/1.1与临时请求缓冲设置成功推送，未改全局网络配置。无GitHub Actions工作流，本轮没有云端测试运行。
+- 安全范围：源码／测试／相关文档／README截图已显式提交；APK与校验文件仅Release附件，密钥、签名配置、临时验收目录与字节码未入Git。原有docs/next-codex-prompt.md删除保持未暂存，不恢复或提交。
+- 下一步：此交付已完成；仅按新用户反馈继续。下载包不可再次生成或重签后冒用此SHA；验证细节在本地tmp/github-release-v1.0.16-verification.json（未上传）。
 
 ## 2026-10-11：原签名保数据覆盖更新完成
 
