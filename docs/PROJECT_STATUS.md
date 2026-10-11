@@ -4,10 +4,10 @@
 
 ## Verified
 
-- Last verified: 2026-10-11 12:45 +08:00
+- Last verified: 2026-10-11 13:24 +08:00
 - Verified branch: main
 - Code baseline: c2c4da75a1cb92a518f4819abfd5c897e97dcf12
-- Verification scope: COMMIT；验证时为该提交对应工作树，提交仅补充文档／真实截图；冻结APK及设备读回哈希一致。
+- Verification scope: WORKTREE；生产源码与Code baseline一致，新增fresh_jvm_tests.init.gradle与本轮实跑临时副本字节一致；合同／经验文档增量与永久报告随本地checkpoint冻结。
 - Verified by: Codex
 - Status: Active
 
@@ -20,7 +20,7 @@
 
 ## In Progress
 
-- 无；本轮发布与回读校验已完成。
+- 无；本轮回归与增量正式沉淀已完成，随本地checkpoint冻结。
 
 ## Blocked
 
@@ -30,6 +30,9 @@
 
 | 检查 | 结论 | 时间／范围 | 命令或证据 |
 | --- | --- | --- | --- |
+| 全模块最终JVM回归 | PASS | 2026-10-11 13:08 +08:00；实际重跑1020项，0失败／错误、2跳过 | [永久验收报告](verification/checkpoint-20261011.json)，test＋fresh_jvm_tests.init.gradle |
+| 两变体最终Lint | PASS | 2026-10-11；各0错误、50警告、2信息 | lintDebug＋lintRelease |
+| 增量经验审计 | PASS | 2026-10-11；11个本地链接、无占位／疑似秘密 | app-experience-audit.md与project-context.md校验 |
 | Release构建 | PASS | 2026-10-11；当前源码 | :app:assembleRelease；本地最终门禁日志 |
 | Release单测 | PASS | 2026-10-11；327项，0失败／错误，跳过1真实问真包对账 | :app:testReleaseUnitTest |
 | Release Lint | PASS | 2026-10-11；零错误，既有警告仍存在 | :app:lintRelease |
@@ -48,11 +51,11 @@
 
 ## Sync & Safety
 
-- Sync checked at: 2026-10-11 12:45 +08:00；收尾文档提交之前的观察值。
+- Sync checked at: 2026-10-11 13:24 +08:00；checkpoint提交之前的观察值。
 - Code / docs sync: OK；当前版本、签名范围、正式发布及README预览一致。
-- Git working tree: DIRTY；原有docs/next-codex-prompt.md删除未暂存；本次状态／交接文档在此快照时LOCAL ONLY，随后按发布流程提交。
-- Remote sync: PUSHED；main及v1.0.16标签的代码基线已推送，Release已回读验证；此快照时收尾文档未推送。后续仅文档提交不改变代码验证基线。
-- Rollback point: UNKNOWN；本轮未重新验收旧版本回滚。
+- Checkpoint scope: 本轮合同、文档和fresh JVM执行脚本纳入本地checkpoint-v1.0.16-20261011-final；既有docs/next-codex-prompt.md删除保持未暂存。
+- Remote sync: LOCAL ONLY（本轮checkpoint增量）；Code baseline和v1.0.16已推送并发布，本轮只建本地checkpoint，不改变已发布APK。
+- Rollback point: 2d5871f57fe20f2e6753a093f17d2c9c6a7e389f；本地checkpoint-v1.0.16-20261011-pre-consolidation标签保留当前已验证代码与原文档；不代表设备降级验收。
 - Secrets/config risk: NONE（本次新增暂存内容扫描范围）；密钥、签名配置、APK和临时验收文件不入Git。
 
 ## Next

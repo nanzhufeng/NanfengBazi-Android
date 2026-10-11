@@ -1,0 +1,130 @@
+{
+  "verified_at": "2026-10-11T13:19:42+08:00",
+  "source_baseline": "2d5871f57fe20f2e6753a093f17d2c9c6a7e389f",
+  "scope": "production source unchanged; fresh-test init script equals executed temporary copy",
+  "regression_gate": {
+    "command": "./gradlew test lintDebug lintRelease",
+    "exit": 0
+  },
+  "fresh_test_gate": {
+    "command": "./gradlew test -I scripts/fresh_jvm_tests.init.gradle (executed through identical temporary copy)",
+    "exit": 0,
+    "init_script_sha256": "e9ae7cf93b93ced485fe02d94295a8ec0bf988ba0b6e8f37f0acbb7f3d8ea245"
+  },
+  "modules": {
+    "app:testDebugUnitTest": {
+      "tests": 327,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "last_report_at": "2026-10-11T13:08:20+08:00"
+    },
+    "app:testReleaseUnitTest": {
+      "tests": 327,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "last_report_at": "2026-10-11T13:08:41+08:00"
+    },
+    "core/solar-time:test": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:52+08:00"
+    },
+    "core/image-parser:testDebugUnitTest": {
+      "tests": 43,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:51+08:00"
+    },
+    "core/image-parser:testReleaseUnitTest": {
+      "tests": 43,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:52+08:00"
+    },
+    "core/engine-tyme:test": {
+      "tests": 57,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:51+08:00"
+    },
+    "core/data:testDebugUnitTest": {
+      "tests": 67,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:29+08:00"
+    },
+    "core/data:testReleaseUnitTest": {
+      "tests": 67,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:38+08:00"
+    },
+    "core/domain:test": {
+      "tests": 84,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "last_report_at": "2026-10-11T13:08:42+08:00"
+    }
+  },
+  "total": {
+    "tests": 1020,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2
+  },
+  "lint": {
+    "debug": {
+      "Warning": 50,
+      "Information": 2,
+      "Error": 0
+    },
+    "release": {
+      "Warning": 50,
+      "Information": 2,
+      "Error": 0
+    }
+  },
+  "sampler_safety_tests": {
+    "tests": 4,
+    "result": "PASS"
+  },
+  "delivered_apk": {
+    "version": "1.0.16",
+    "versionCode": 10048,
+    "sha256": "3a5f9f37a56e85ae13416300991bb4936c98595bb58966e50547f010a6f4fcae",
+    "unchanged": true,
+    "rebuild_this_checkpoint": false
+  },
+  "reused_evidence": {
+    "phone_same_signature_overwrite_and_readback": "PASS (prior completed stage)",
+    "github_full_attachment_readback": "PASS (prior completed stage)",
+    "isolated_ui": "PASS for recorded scopes; not rerun this checkpoint",
+    "real_ai_and_cloud": "NOT RUN"
+  },
+  "excluded": [
+    "pre-existing deletion docs/next-codex-prompt.md",
+    "private and temporary evidence",
+    "early visual and failed performance prototypes"
+  ],
+  "formal_distillation": {
+    "audit_and_context": "PASS; 11 local links checked",
+    "skill_quick_validation": {
+      "develop-apps-with-nanfeng-product-standards": "PASS",
+      "develop-nanfeng-bazi-android": "PASS"
+    },
+    "workflow_audit": "PASS; no hard errors; pre-existing global AGENTS soft length warning retained",
+    "shared_reference_scope": "3 existing references; per-file backups outside project; no new Skill or memory",
+    "new_core_asset": "scripts/fresh_jvm_tests.init.gradle",
+    "previous_core_assets_git_tracked": true
+  }
+}
