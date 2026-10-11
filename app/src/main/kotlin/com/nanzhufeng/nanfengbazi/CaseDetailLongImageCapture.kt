@@ -35,6 +35,9 @@ internal class CaseDetailPageCaptureRegistry {
     var pageBounds: Rect? by mutableStateOf(null)
         private set
 
+    var chartCaptureActive: Boolean by mutableStateOf(false)
+        private set
+
     var notesCaptureActive: Boolean by mutableStateOf(false)
         private set
 
@@ -56,6 +59,10 @@ internal class CaseDetailPageCaptureRegistry {
 
     fun updatePageBounds(bounds: Rect) {
         pageBounds = bounds
+    }
+
+    fun updateChartCaptureState(active: Boolean) {
+        chartCaptureActive = active
     }
 
     fun updateNotesCaptureState(active: Boolean) {
@@ -115,6 +122,8 @@ internal suspend fun captureCaseDetailLongImage(
     }
     val originalScrollPositions = mutableMapOf<CaseDetailSection, Int>()
     try {
+        registry.updateChartCaptureState(true)
+        awaitStableFrames()
         val chart = captureSections(
             rootView = rootView,
             registry = registry,
@@ -148,11 +157,15 @@ internal suspend fun captureCaseDetailLongImage(
         return CaseDetailLongImageCaptureResult.Rejected("真实页面长图生成失败，当前命例未被修改。")
     } finally {
         registry.updateNotesCaptureState(false)
-        selectSection(originalSection)
-        awaitStableFrames()
-        registry.targetFor(originalSection)
-            ?.scrollState
-            ?.scrollTo(originalScrollPositions[originalSection] ?: 0)
+        try {
+            selectSection(originalSection)
+            awaitStableFrames()
+            registry.targetFor(originalSection)
+                ?.scrollState
+                ?.scrollTo(originalScrollPositions[originalSection] ?: 0)
+        } finally {
+            registry.updateChartCaptureState(false)
+        }
     }
 }
 

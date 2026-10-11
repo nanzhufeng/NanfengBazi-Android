@@ -291,13 +291,21 @@ internal class LocalAiCommentaryCallLogStore(context: Context) : AiCommentaryCal
     )
     private val serializer = ListSerializer(AiCommentaryCallRecord.serializer())
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private var cachedPayload: String? = null
+    private var cachedRecords: List<AiCommentaryCallRecord>? = null
 
     @Synchronized
-    override fun records(): List<AiCommentaryCallRecord> = preferences
-        .getString(RECORDS, null)
-        ?.let { payload -> runCatching { json.decodeFromString(serializer, payload) }.getOrNull() }
-        .orEmpty()
-        .sortedByDescending(AiCommentaryCallRecord::requestedAtEpochMillis)
+    override fun records(): List<AiCommentaryCallRecord> {
+        val payload = preferences.getString(RECORDS, null)
+        cachedRecords?.takeIf { payload == cachedPayload }?.let { return it }
+        val records = payload
+            ?.let { runCatching { json.decodeFromString(serializer, it) }.getOrNull() }
+            .orEmpty()
+            .sortedByDescending(AiCommentaryCallRecord::requestedAtEpochMillis)
+        cachedPayload = payload
+        cachedRecords = records
+        return records
+    }
 
     @Synchronized
     override fun append(record: AiCommentaryCallRecord) {

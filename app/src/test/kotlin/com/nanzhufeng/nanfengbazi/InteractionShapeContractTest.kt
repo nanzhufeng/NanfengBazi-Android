@@ -1022,6 +1022,8 @@ class InteractionShapeContractTest {
             .substringBefore("if (showRatHourRulePicker)")
         val about = source.substringAfter("private fun AboutBaziScreen(")
             .substringBefore("private fun AboutInfoSection(")
+        val aboutDetails = source.substringAfter("private fun AboutInfoSection(")
+            .substringBefore("private fun cloudDescription(")
 
         assertTrue(settings.contains("SettingsGroupTitle(\"应用信息\")"))
         assertTrue(settings.contains("title = \"关于南枫八字\""))
@@ -1033,6 +1035,21 @@ class InteractionShapeContractTest {
         assertTrue(about.contains("BuildConfig.APP_BUILD_TIME"))
         assertTrue(about.contains("GitHub · nanzhufeng/NanfengBazi-Android"))
         assertTrue(about.contains("RoundedCornerShape(24.dp)"))
+        assertTrue(about.contains("SelectionContainer"))
+        assertTrue(about.contains("https://github.com/nanzhufeng/NanfengBazi-Android"))
+        assertTrue(aboutDetails.contains("NanfengOrange"))
+        assertTrue(aboutDetails.contains("TextDecoration.Underline"))
+        assertTrue(aboutDetails.contains("about_github_link"))
+        assertTrue(aboutDetails.contains("onClick(label = \"打开 GitHub 仓库\")"))
+        assertTrue(aboutDetails.contains("openAboutLinkWhenTapped"))
+        assertTrue(aboutDetails.contains("uriHandler.openUri(line.linkUrl)"))
+        val developerIndex = about.indexOf("开发者：")
+        val emailIndex = about.indexOf("联系邮箱：")
+        val githubIndex = about.indexOf("源码与更新：")
+        val copyrightIndex = about.indexOf("版权所有 © 2026")
+        assertTrue(developerIndex in 0 until emailIndex)
+        assertTrue(emailIndex in 0 until githubIndex)
+        assertTrue(githubIndex in 0 until copyrightIndex)
         assertTrue(BuildConfig.APP_BUILD_TIME.matches(Regex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}")))
     }
 
@@ -1137,9 +1154,12 @@ class InteractionShapeContractTest {
                 "NotesModeTab",
                 "ReferenceOtherNotes",
                 "ReferenceEventTimelineItem",
+                "ProfessionalTimelineCell",
             ),
         )
-        val clippedFunctions = setOf("AlmanacCalendarCard", "BaziCharacterSlot")
+        val clippedFunctions = setOf(
+            "AlmanacCalendarCard", "BaziCharacterSlot", "ProfessionalTimelineCell",
+        )
 
         val actual = sourceRoot.listFiles()
             .orEmpty()
@@ -1249,8 +1269,8 @@ class InteractionShapeContractTest {
         assertTrue(!historyPage.contains("Dialog("))
         assertTrue(editor.contains("shape = RoundedCornerShape(99.dp)"))
         assertTrue(editor.contains("Modifier.weight(1f).heightIn(min = 48.dp)"))
-        assertTrue(viewModel.contains("fun prepareAiServiceSettingsPage()"))
-        assertTrue(viewModel.contains("fun prepareAiServiceHistoryPage()"))
+        assertTrue(viewModel.contains("fun prepareAiServiceSettingsPage("))
+        assertTrue(viewModel.contains("fun prepareAiServiceHistoryPage("))
     }
 
     @Test

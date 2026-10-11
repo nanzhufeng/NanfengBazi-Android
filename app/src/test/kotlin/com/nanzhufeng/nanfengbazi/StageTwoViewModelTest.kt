@@ -111,6 +111,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -127,6 +128,16 @@ class StageTwoViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `已加载目录的搜索不额外等待固定防抖时间`() = runTest {
+        val repository = FakeCaseRepository().apply { stored["case-search-fast"] = sampleStoredCase("case-search-fast") }
+        val viewModel = createViewModel(repository, searchDebounceMillis = 180L)
+        viewModel.updateQuery("不存在的名字")
+        val casesBeforeTimer = viewModel.state.value.cases
+        testScheduler.advanceUntilIdle()
+        assertTrue(casesBeforeTimer.isEmpty())
     }
 
     @Test
@@ -609,6 +620,45 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `冷启动清理未完成时已有磁盘记录立即可见且校准不清空列表`() = runTest {
+        val cleanupGate = CompletableDeferred<Unit>()
+        val repository = FakeCaseRepository().apply {
+            stored["ready"] = sampleStoredCase("ready")
+            stored["placeholder"] = sampleStoredCase("placeholder").copy(
+                alias = "某某", name = ExplicitText.present("某某"),
+            )
+            beforeMoveCasesToTrash = { cleanupGate.await() }
+        }
+        val snapshot = CaseCatalogSnapshot(
+            repository.search(CaseSearchRequest(visibility = CaseVisibility.ALL))
+                .filter { it.id == "ready" },
+            CaseLibraryType.entries.associateWith { emptyList<CaseGroup>() },
+        )
+        repository.searchRequests.clear()
+        val cache = object : CaseCatalogSnapshotCache {
+            override suspend fun read() = snapshot
+            override suspend fun write(snapshot: CaseCatalogSnapshot) = Unit
+        }
+        val viewModel = createViewModel(
+            repository,
+            caseCatalogStore = RepositoryCaseCatalogStore(repository, dispatcher, cache),
+        )
+        try {
+            viewModel.openRecordHub()
+            assertEquals(listOf("ready"), viewModel.state.value.cases.map { it.id })
+            assertFalse(viewModel.state.value.listLoading)
+            assertEquals(0, repository.searchRequests.size)
+        } finally {
+            cleanupGate.complete(Unit)
+        }
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf("ready"), viewModel.state.value.cases.map { it.id })
+        assertFalse(viewModel.state.value.listLoading)
+        assertNotNull(repository.stored.getValue("placeholder").deletedAt)
+        assertEquals(1, repository.searchRequests.size)
+    }
+
+    @Test
     fun `子时口径从设置存储读取并同步到新排盘与四柱反查`() = runTest {
         val repository = FakeCaseRepository()
         val preferenceStore = InMemoryCalculationPreferenceStore(
@@ -699,7 +749,7 @@ class StageTwoViewModelTest {
     }
 
     @Test
-    fun `万年历今天刷新期间保持完整旧画面并在完成后原子替换`() = runTest {
+    fun `万年历未缓存日期保持旧画面原子替换而今天缓存立即返回`() = runTest {
         val reader = GateableAlmanacReader()
         val viewModel = createViewModel(
             repository = FakeCaseRepository(),
@@ -718,7 +768,10 @@ class StageTwoViewModelTest {
         val visibleBeforeToday = requireNotNull(viewModel.state.value.almanacView)
 
         reader.gate = CompletableDeferred()
-        viewModel.showTodayInAlmanac()
+        viewModel.selectAlmanacDateTime(
+            com.nanzhufeng.nanfengbazi.domain.AlmanacDate(2026, 10, 15),
+            civilHour = 13,
+        )
 
         assertEquals(8, viewModel.state.value.almanacMonth)
         assertEquals(visibleBeforeToday, viewModel.state.value.almanacView)
@@ -726,6 +779,12 @@ class StageTwoViewModelTest {
         assertTrue(viewModel.state.value.almanacRefreshingSelection)
 
         reader.gate?.complete(Unit)
+
+        assertEquals(10, viewModel.state.value.almanacMonth)
+        assertEquals(15, viewModel.state.value.almanacSelectedDay)
+        assertFalse(viewModel.state.value.almanacRefreshingSelection)
+        reader.gate = CompletableDeferred()
+        viewModel.showTodayInAlmanac()
 
         assertEquals(2026, viewModel.state.value.almanacYear)
         assertEquals(7, viewModel.state.value.almanacMonth)
@@ -742,9 +801,111 @@ class StageTwoViewModelTest {
         )
         assertFalse(viewModel.state.value.almanacRefreshingSelection)
 
+    }
+
+    @Test
+    fun `模型设置读取不占用点击线程并一次呈现完整配置`() = runTest {
+        val settings = PerformanceAiSettings()
+        val viewModel = createViewModel(
+            FakeCaseRepository(), aiSettings = settings,
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        testScheduler.runCurrent()
+        viewModel.prepareAiServiceSettingsPage()
+        val readsOnClick = settings.reads
+        testScheduler.runCurrent()
+        assertEquals(0, readsOnClick)
+        assertEquals(AiCommentaryProviderId.DEEPSEEK, viewModel.state.value.aiCommentary.selectedProvider)
+        assertTrue(viewModel.state.value.aiCommentary.configs.isNotEmpty())
+        assertTrue(viewModel.state.value.aiCommentary.apiKeys.values.all { it.isNotEmpty() })
+    }
+
+    @Test
+    fun `模型配置保存的加密写入不占用点击线程`() = runTest {
+        val settings = PerformanceAiSettings()
+        val viewModel = createViewModel(
+            FakeCaseRepository(), aiSettings = settings,
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        testScheduler.runCurrent()
+        viewModel.saveAiCommentaryProvider(
+            AiCommentaryProviderPresets.defaults(AiCommentaryProviderId.DEEPSEEK), null,
+        )
+        val savedOnClick = settings.saved
+        testScheduler.runCurrent()
+        assertFalse(savedOnClick)
+        assertTrue(settings.saved)
+        assertTrue(viewModel.state.value.aiCommentary.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun `关闭模型设置后待完成读取不再打开子页或暴露密钥`() = runTest {
+        val viewModel = createViewModel(
+            FakeCaseRepository(), aiSettings = PerformanceAiSettings(),
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        testScheduler.runCurrent()
+        var opened = false
+        viewModel.prepareAiServiceSettingsPage { opened = true }
+        viewModel.closeAiCommentarySettings()
+        testScheduler.runCurrent()
+        assertFalse(opened)
+        assertTrue(viewModel.state.value.aiCommentary.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun `生成点评的提示准备和密钥读取不占用点击线程`() = runTest {
+        val settings = PerformanceAiSettings()
+        val repository = FakeCaseRepository().apply {
+            stored["case-ai-performance"] = sampleStoredCase("case-ai-performance")
+        }
+        val viewModel = createViewModel(
+            repository, aiSettings = settings,
+            aiGenerator = AiCommentaryGenerator { AiCommentaryGenerationResult.Failure("offline-fixture", false) },
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        viewModel.openDetailFromList("case-ai-performance")
+        testScheduler.runCurrent()
+        viewModel.openAiCommentary()
+        testScheduler.runCurrent()
+        viewModel.setAiCommentaryPrivacyConfirmed(true)
+        viewModel.generateAiCommentary()
+        val readsOnClick = settings.keyReads
+        val generatingOnClick = viewModel.state.value.aiCommentary.generating
+        testScheduler.runCurrent()
+        assertEquals(0, readsOnClick)
+        assertTrue(generatingOnClick)
+        assertTrue(settings.keyReads > 0)
+        assertFalse(viewModel.state.value.aiCommentary.generating)
+    }
+
+    @Test
+    fun `万年历回看已完成日期立即呈现且不等待重新读取`() = runTest {
+        val reader = GateableAlmanacReader()
+        val viewModel = createViewModel(FakeCaseRepository(), almanacReader = reader)
+        viewModel.openAlmanac()
+        val firstDate = com.nanzhufeng.nanfengbazi.domain.AlmanacDate(2026, 8, 7)
+        viewModel.selectAlmanacDate(firstDate)
+        val completed = requireNotNull(viewModel.state.value.almanacView)
+        viewModel.selectAlmanacDate(firstDate.copy(day = 8))
         reader.gate = CompletableDeferred()
-        viewModel.showTodayInAlmanac()
-        assertFalse(viewModel.state.value.almanacRefreshingSelection)
+        viewModel.selectAlmanacDate(firstDate)
+        val revisited = viewModel.state.value
+        reader.gate?.complete(Unit)
+        assertSame(completed, revisited.almanacView)
+        assertFalse(revisited.almanacRefreshingSelection)
+        assertFalse(revisited.almanacLoading)
+    }
+
+    @Test
+    fun `万年历预热等待期间改去设置不被迟到结果拉回`() = runTest {
+        val reader = GateableAlmanacReader().apply { gate = CompletableDeferred() }
+        val viewModel = createViewModel(FakeCaseRepository(), almanacReader = reader)
+        viewModel.openAlmanac()
+        viewModel.openSettings()
+        reader.gate?.complete(Unit)
+        testScheduler.advanceUntilIdle()
+        assertEquals(AppDestination.Settings, viewModel.state.value.destination)
     }
 
     @Test
@@ -1580,6 +1741,92 @@ class StageTwoViewModelTest {
         assertTrue(firstFrameDetail === viewModel.state.value.detail)
         assertTrue(firstFramePosition === viewModel.state.value.professionalFortunePosition)
         assertEquals(2, repository.findByIdRequests.size)
+    }
+
+    @Test
+    fun `列表开始滑动后取消离开视口的详情预热`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var cancelledBeforeRead = false
+        val repository = FakeCaseRepository().apply {
+            stored["case-scroll-away"] = sampleStoredCase("case-scroll-away")
+            beforeFindById = {
+                try { gate.await() } finally { cancelledBeforeRead = !gate.isCompleted }
+            }
+        }
+        val viewModel = createViewModel(repository)
+        viewModel.prefetchVisibleCaseDetails(listOf("case-scroll-away"))
+        viewModel.prefetchVisibleCaseDetails(emptyList())
+        val cancellationObserved = cancelledBeforeRead
+        gate.complete(Unit)
+        assertTrue(cancellationObserved)
+    }
+
+    @Test
+    fun `专业细盘静置时不预计算无关候选阻塞点选`() = runTest {
+        val stored = sampleStoredCase("case-no-speculative-fortune")
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val delegate = com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver()
+        var backgroundSelects = 0
+        val resolver = object : com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver by delegate {
+            override fun select(
+                result: com.nanzhufeng.nanfengbazi.domain.model.CalculationResult,
+                current: com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition,
+                selection: com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection,
+            ): com.nanzhufeng.nanfengbazi.domain.ProfessionalFortunePosition {
+                backgroundSelects += 1
+                return delegate.select(result, current, selection)
+            }
+        }
+        val viewModel = createViewModel(repository, professionalFortuneResolver = resolver)
+
+        viewModel.openDetailFromList(stored.id)
+        assertNotNull(viewModel.state.value.professionalFortunePosition)
+        dispatcher.scheduler.advanceTimeBy(1_500)
+        dispatcher.scheduler.runCurrent()
+
+        assertEquals(0, backgroundSelects)
+    }
+
+    @Test
+    fun `专业候选计算不等待固定毫秒延迟`() = runTest {
+        val stored = sampleStoredCase("case-direct-fortune")
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository, professionalFortuneResolver =
+            com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver())
+        viewModel.openDetailFromList(stored.id)
+        val current = requireNotNull(viewModel.state.value.professionalFortunePosition)
+        val day = current.dailyTimeline.first { !it.selected }
+        viewModel.selectProfessionalFortuneObservation(
+            com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection(
+                com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer.DAILY, day.observedAt))
+        dispatcher.scheduler.runCurrent()
+        assertEquals(day.key, viewModel.state.value.professionalFortunePosition?.dailyTimeline
+            ?.single { it.selected }?.key)
+        assertTrue(!viewModel.state.value.fortunePositionLoading)
+    }
+
+    @Test
+    fun `精确交节候选显示和再定位保留秒数不退回上一流月`() = runTest {
+        val stored = sampleStoredCase("case-exact-jie")
+        val repository = FakeCaseRepository().apply { this.stored[stored.id] = stored }
+        val viewModel = createViewModel(repository, professionalFortuneResolver =
+            com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolver())
+        viewModel.openDetailFromList(stored.id)
+        viewModel.selectFortuneObservation(CivilDateTime(2026, 10, 10, 12, 0, 0))
+        dispatcher.scheduler.runCurrent()
+        val at = requireNotNull(viewModel.state.value.professionalFortunePosition).previousSolarTerm.at
+        assertTrue(at.second > 0)
+        viewModel.selectProfessionalFortuneObservation(
+            com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneSelection(
+                com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneLayer.HOURLY, at))
+        dispatcher.scheduler.runCurrent()
+        assertEquals("%02d:%02d:%02d".format(at.hour, at.minute, at.second),
+            viewModel.state.value.fortuneObservationTime)
+        assertEquals("戊戌", viewModel.state.value.professionalFortunePosition?.flowPillars?.month)
+        viewModel.updateFortuneObservation(viewModel.state.value.fortuneObservationDate,
+            viewModel.state.value.fortuneObservationTime)
+        dispatcher.scheduler.runCurrent()
+        assertEquals("戊戌", viewModel.state.value.professionalFortunePosition?.flowPillars?.month)
     }
 
     @Test
@@ -4187,6 +4434,9 @@ class StageTwoViewModelTest {
             com.nanzhufeng.nanfengbazi.domain.ProfessionalFortuneResolver? = null,
         fourPillarsLookup: FourPillarsLookup? = null,
         almanacReader: AlmanacReader? = null,
+        aiSettings: AiCommentarySettingsStore? = null,
+        aiGenerator: AiCommentaryGenerator? = null,
+        searchDebounceMillis: Long = 0L,
         calculationPreferenceStore: CalculationPreferenceStore =
             InMemoryCalculationPreferenceStore(),
         compatibilityHistoryStore: BaziCompatibilityHistoryStore =
@@ -4260,8 +4510,10 @@ class StageTwoViewModelTest {
             compatibilityHistoryStore = compatibilityHistoryStore,
             baziEngine = engine,
             ioDispatcher = ioDispatcher,
+            aiCommentarySettings = aiSettings,
+            aiCommentaryGenerator = aiGenerator,
             fortuneCalculationDispatcher = dispatcher,
-            searchDebounceMillis = 0L,
+            searchDebounceMillis = searchDebounceMillis,
             savedStateHandle = savedStateHandle,
             restoredUiStateOverride = restoredUiStateOverride,
         )
@@ -4283,6 +4535,25 @@ class StageTwoViewModelTest {
         override suspend fun loadMonth(query: AlmanacMonthQuery): AlmanacResult {
             gate?.await()
             return delegate.loadMonth(query)
+        }
+    }
+
+    private class PerformanceAiSettings : AiCommentarySettingsStore {
+        var reads = 0
+        var saved = false
+        var keyReads = 0
+        override fun configs(): Map<AiCommentaryProviderId, AiCommentaryProviderConfig> {
+            reads += 1
+            return AiCommentaryProviderPresets.providerIds.associateWith {
+                AiCommentaryProviderPresets.defaults(it).copy(enabled = true, hasApiKey = true)
+            }
+        }
+        override fun selectedProvider() = AiCommentaryProviderId.DEEPSEEK
+        override fun saveConfig(config: AiCommentaryProviderConfig, apiKey: String?) { saved = true }
+        override fun selectProvider(providerId: AiCommentaryProviderId) = Unit
+        override fun apiKey(providerId: AiCommentaryProviderId): String {
+            keyReads += 1
+            return "emulator-fixture-only"
         }
     }
 

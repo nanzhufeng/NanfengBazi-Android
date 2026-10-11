@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -1353,7 +1354,9 @@ internal fun <T> ValueWheel(
             } else {
                 selectedIndex
             }
-            listState.scrollToItem(targetIndex)
+            if (listState.firstVisibleItemIndex != targetIndex || listState.firstVisibleItemScrollOffset != 0) {
+                listState.scrollToItem(targetIndex)
+            }
         }
     }
 
@@ -1416,21 +1419,15 @@ internal fun <T> ValueWheel(
                     } else {
                         listIndex
                     }
-                    val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listIndex }
-                    val center = (
-                        listState.layoutInfo.viewportStartOffset +
-                            listState.layoutInfo.viewportEndOffset
-                        ) / 2f
-                    val distance = info?.let {
-                        abs(it.offset + it.size / 2f - center) / it.size.coerceAtLeast(1)
-                    } ?: 2f
-                    val proximity = (1f - distance).coerceIn(0f, 1f)
-                    val selected = proximity > 0.62f
+                    val selected by remember(listState, listIndex) {
+                        derivedStateOf { listState.wheelItemProximity(listIndex) > 0.62f }
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(BirthWheelItemHeight)
                             .graphicsLayer {
+                                val proximity = listState.wheelItemProximity(listIndex)
                                 alpha = 0.26f + 0.74f * proximity
                                 scaleX = 0.88f + 0.12f * proximity
                                 scaleY = 0.88f + 0.12f * proximity
@@ -1449,6 +1446,14 @@ internal fun <T> ValueWheel(
             }
         }
     }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListState.wheelItemProximity(index: Int): Float {
+    val layout = layoutInfo
+    val info = layout.visibleItemsInfo.firstOrNull { it.index == index } ?: return 0f
+    val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2f
+    val distance = abs(info.offset + info.size / 2f - center) / info.size.coerceAtLeast(1)
+    return (1f - distance).coerceIn(0f, 1f)
 }
 
 private fun circularWheelValueIndex(listIndex: Int, valueCount: Int): Int =

@@ -795,9 +795,6 @@ class StageTwoViewModel(
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     restoredUiStateOverride: StageTwoUiState? = null,
 ) : ViewModel() {
-    // Timeline speculation and the selected case share one calculation lane. This keeps
-    // cancellation/priority deterministic and avoids wrapping an injected dispatcher again.
-    private val fortunePrefetchDispatcher: CoroutineDispatcher = fortuneCalculationDispatcher
     private val restoredStateBundle = savedStateHandle.get<Bundle>(SAVED_UI_STATE_KEY)
     private val mutableState = MutableStateFlow(
         restoredUiStateOverride ?: restoredStateBundle?.toStageTwoUiState() ?: run {
@@ -847,15 +844,20 @@ class StageTwoViewModel(
     private var detailOpeningJob: Job? = null
     private val detailPrefetchJobs = LinkedHashMap<String, Job>()
     private var fortunePositionJob: Job? = null
-    private var fortunePrefetchJob: Job? = null
     private var fortunePositionRequestId: Long = 0
     private var saveCaseJob: Job? = null
     private var preparedCaseSaveAttempt: PreparedCaseSaveAttempt? = null
     private var almanacRequestId: Long = 0
     private var pendingAlmanacQuery: AlmanacMonthQuery? = null
     private var warmedAlmanacView: AlmanacMonthView? = null
+    private val completedAlmanacViews = object : LinkedHashMap<AlmanacMonthQuery, AlmanacMonthView>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<AlmanacMonthQuery, AlmanacMonthView>?): Boolean = size > 32
+    }
     private var almanacWarmJob: Job? = null
     private var birthPickerTodayJob: Job? = null
+    private var aiServiceReadJob: Job? = null
+    private var aiProviderSaveJob: Job? = null
+    private var aiGenerationRequestId = 0L
     private var caseNotesAutoSaveJob: Job? = null
     private var caseNotesHydrationJob: Job? = null
     private var pendingExportPassword: CharArray? = null
@@ -921,6 +923,16 @@ class StageTwoViewModel(
 
     private fun activeDetailPrefetchJob(caseId: String): Job? =
         synchronized(detailPrefetchJobs) { detailPrefetchJobs[caseId] }
+
+    fun prefetchVisibleCaseDetails(caseIds: List<String>) {
+        val visible = caseIds.distinct().take(3)
+        val foregroundCaseId = (mutableState.value.destination as? AppDestination.CaseDetail)?.caseId
+        synchronized(detailPrefetchJobs) {
+            val obsolete = detailPrefetchJobs.keys.filter { it !in visible && it != foregroundCaseId }
+            obsolete.forEach { detailPrefetchJobs.remove(it)?.cancel() }
+        }
+        visible.forEach(::prefetchCaseDetail)
+    }
 
     fun prefetchCaseDetail(caseId: String) {
         val retained = retainedCaseDetail(caseId)
@@ -1044,9 +1056,8 @@ class StageTwoViewModel(
         // 记录页显示空列表、只能靠用户手动切换后才出现已有案例。
         // 历史版本曾实现仓储清理却漏掉此入口，导致无断事的“某某/某某数字”占位仍留在用户列表。
         // 清理本身只走可恢复的生命周期软删除，不能误伤有记录、事件或名人案例。
-        // The cleanup continuation always performs the first catalog refresh.  Starting a
-        // parallel refresh here used two Room snapshots on every cold start and allowed the
-        // pre-cleanup projection to briefly win the list session.
+        // Restore the disposable memory/disk projection before maintenance. The continuation
+        // still owns the sole first Room calibration, so cold starts do not traverse Room twice.
         cleanUpLegacyEmptyPlaceholderCases()
     }
 
@@ -1476,8 +1487,9 @@ class StageTwoViewModel(
     ): CaseListProjection {
         val useUnifiedCelebrityPresentation = session.visibility == CaseVisibility.ACTIVE &&
             session.libraryType == CaseLibraryType.CELEBRITY
+        val unifiedCatalog = catalog.toUnifiedCelebrityPresentationCatalog()
         val presentationCatalog = if (useUnifiedCelebrityPresentation) {
-            catalog.toUnifiedCelebrityPresentationCatalog()
+            unifiedCatalog
         } else {
             catalog
         }
@@ -1506,8 +1518,7 @@ class StageTwoViewModel(
         // The top-level library counters must not depend on which tab happens to be selected.
         // In particular, celebrities always use the same date-corrected, verified-deduplicated
         // catalog as the celebrity list itself.
-        val unifiedActiveCelebrityCases = catalog
-            .toUnifiedCelebrityPresentationCatalog()
+        val unifiedActiveCelebrityCases = unifiedCatalog
             .count { it.libraryType == CaseLibraryType.CELEBRITY && it.deletedAt == null }
         return CaseListProjection(
             catalog = catalog,
@@ -3571,8 +3582,10 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun updateQuery(query: String) {
+        if (mutableState.value.query == query) return
         mutableState.update { it.copy(query = query) }
-        refreshCasesFromCache(delayMillis = searchDebounceMillis)
+        val catalogReady = caseSummaryCatalogCache != null || caseCatalogStore.cached() != null
+        refreshCasesFromCache(delayMillis = if (catalogReady) 0L else searchDebounceMillis)
     }
 
     fun selectGroup(groupId: String?) {
@@ -3953,6 +3966,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openCreate() {
+        almanacEntryJob?.cancel()
         val groups = cachedGroupsForLibrary(CaseLibraryType.USER)
         mutableState.update {
             it.copy(
@@ -3978,6 +3992,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openRecordHub() {
+        almanacEntryJob?.cancel()
         mutableState.update {
             it.copy(
                 destination = navigator.openRecordHub(),
@@ -4219,8 +4234,10 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openAlmanac() {
+        almanacEntryJob?.cancel()
         val query = currentAlmanacQuery()
         val visibleSeed = warmedAlmanacView?.takeIf { it.query == query }
+            ?: completedAlmanacViews[query]
             ?: mutableState.value.almanacView?.takeIf { it.query == query }
         // 冷启动时预热已经在读取同一份“今天”视图。不能为了立即换路由先把页面
         // 置成空白：等待这份本地读取完成后一次性进入，避免用户看见闪屏/子时默认值。
@@ -4274,6 +4291,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 null
             }
             warmedAlmanacView = (result as? AlmanacResult.Completed)?.month
+            warmedAlmanacView?.let { completedAlmanacViews[it.query] = it }
         }
     }
 
@@ -4303,10 +4321,10 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             ratHourRule = mutableState.value.defaultRatHourRule,
         )
         birthPickerTodayJob?.cancel()
-        mutableState.update { it.copy(birthPickerTodaySnapshot = null) }
         birthPickerTodayJob = viewModelScope.launch {
             val result = try {
-                withContext(ioDispatcher) { reader.loadMonth(query) }
+                completedAlmanacViews[query]?.let(AlmanacResult::Completed)
+                    ?: withContext(ioDispatcher) { reader.loadMonth(query) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -4589,6 +4607,11 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         almanacJob?.cancel()
         val requestId = ++almanacRequestId
         pendingAlmanacQuery = query
+        completedAlmanacViews[query]?.let { completed ->
+            pendingAlmanacQuery = null
+            mutableState.update { it.withCompletedAlmanac(completed) }
+            return
+        }
         almanacJob = viewModelScope.launch {
             val keepCurrentFrame = preserveVisibleContent && mutableState.value.almanacView != null
             mutableState.update {
@@ -4609,16 +4632,10 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             pendingAlmanacQuery = null
             mutableState.update {
                 when (result) {
-                    is AlmanacResult.Completed -> it.copy(
-                        almanacYear = query.year,
-                        almanacMonth = query.month,
-                        almanacSelectedDay = query.selectedDay,
-                        almanacSelectedDoubleHourIndex = query.selectedDoubleHourIndex,
-                        almanacView = result.month,
-                        almanacLoading = false,
-                        almanacRefreshingSelection = false,
-                        almanacError = null,
-                    )
+                    is AlmanacResult.Completed -> {
+                        completedAlmanacViews[query] = result.month
+                        it.withCompletedAlmanac(result.month)
+                    }
                     is AlmanacResult.Failed -> it.copy(
                         almanacLoading = false,
                         almanacRefreshingSelection = false,
@@ -4628,6 +4645,17 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             }
         }
     }
+
+    private fun StageTwoUiState.withCompletedAlmanac(month: AlmanacMonthView) = copy(
+        almanacYear = month.query.year,
+        almanacMonth = month.query.month,
+        almanacSelectedDay = month.query.selectedDay,
+        almanacSelectedDoubleHourIndex = month.query.selectedDoubleHourIndex,
+        almanacView = month,
+        almanacLoading = false,
+        almanacRefreshingSelection = false,
+        almanacError = null,
+    )
 
     fun updateDefaultRatHourRule(rule: RatHourRule) {
         calculationPreferenceStore.writeRatHourRule(rule)
@@ -5300,6 +5328,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openSettings() {
+        almanacEntryJob?.cancel()
         mutableState.update {
             it.copy(
                 destination = navigator.openSettings(),
@@ -5564,6 +5593,14 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
 
     private fun cleanUpLegacyEmptyPlaceholderCases() {
         viewModelScope.launch {
+            val restored = try {
+                caseCatalogStore.restoreCached()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null // A corrupt/missing disposable cache falls back to the repository.
+            }
+            if (restored != null) refreshCasesFromCache()
             val moved = try {
                 withContext(ioDispatcher) {
                     caseRepository.moveBlankPlaceholderCasesToTrash(clock.instant())
@@ -5831,7 +5868,6 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         ) return
         preparedCaseSaveAttempt = null
         fortunePositionJob?.cancel()
-        fortunePrefetchJob?.cancel()
         fortunePositionRequestId += 1
         mutableState.update {
             it.copy(
@@ -7169,7 +7205,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         time: String,
     ) {
         if (date.length > 10 || date.any { !it.isDigit() && it != '-' }) return
-        if (time.length > 5 || time.any { !it.isDigit() && it != ':' }) return
+        if (time.length > 8 || time.any { !it.isDigit() && it != ':' }) return
         mutableState.update {
             it.copy(
                 fortuneObservationDate = date,
@@ -7182,7 +7218,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun updateFortuneObservationTime(value: String) {
-        if (value.length > 5 || value.any { !it.isDigit() && it != ':' }) return
+        if (value.length > 8 || value.any { !it.isDigit() && it != ':' }) return
         mutableState.update {
             it.copy(
                 fortuneObservationTime = value,
@@ -7214,7 +7250,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                     value.month,
                     value.day,
                 ),
-                fortuneObservationTime = "%02d:%02d".format(value.hour, value.minute),
+                fortuneObservationTime = value.professionalObservationTime(),
                 fortunePositionError = null,
             )
         }
@@ -7347,7 +7383,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 day = date.dayOfMonth,
                 hour = time.hour,
                 minute = time.minute,
-                second = 0,
+                second = time.second,
             )
         val cacheKey = FortunePositionCacheKey(
             caseId = detail.id,
@@ -7363,32 +7399,19 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         observedAt.month,
                         observedAt.day,
                     ),
-                    fortuneObservationTime = "%02d:%02d".format(
-                        observedAt.hour,
-                        observedAt.minute,
-                    ),
+                    fortuneObservationTime = observedAt.professionalObservationTime(),
                     fortunePosition = cached.position,
                     professionalFortunePosition = cached.professionalPosition,
                     fortunePositionError = null,
                     fortunePositionLoading = false,
                 )
             }
-            cached.professionalPosition?.let { professional ->
-                prefetchProfessionalFortuneSelections(
-                    cacheKey = cacheKey,
-                    result = result,
-                    current = professional,
-                )
-            }
             return
         }
-        fortunePrefetchJob?.cancel()
         mutableState.update { it.copy(fortunePositionLoading = true) }
         fortunePositionJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            if (selection != null) {
-                // 连续横向点选时先让最新选中态完成一帧，再只计算最终落点，避免 CPU 任务堆叠。
-                delay(PROFESSIONAL_SELECTION_SETTLE_MILLIS)
-            }
+            // Yield lets immediately superseding input cancel this request without an artificial timer.
+            if (selection != null) kotlinx.coroutines.yield()
             val position = try {
                 Result.success(
                     withTimeout(FORTUNE_POSITION_TIMEOUT_MILLIS) {
@@ -7435,10 +7458,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                                     observedAt.month,
                                     observedAt.day,
                                 ),
-                                fortuneObservationTime = "%02d:%02d".format(
-                                    observedAt.hour,
-                                    observedAt.minute,
-                                ),
+                                fortuneObservationTime = observedAt.professionalObservationTime(),
                                 fortunePosition = resolved,
                                 professionalFortunePosition = professional,
                                 fortunePositionError = null,
@@ -7465,66 +7485,6 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         }
                     },
                 )
-            }
-            position.getOrNull()?.second?.let { professional ->
-                if (
-                    requestId == fortunePositionRequestId &&
-                    mutableState.value.matchesFortuneRequest(cacheKey)
-                ) {
-                    prefetchProfessionalFortuneSelections(
-                        cacheKey = cacheKey,
-                        result = result,
-                        current = professional,
-                    )
-                }
-            }
-        }
-    }
-
-    private fun prefetchProfessionalFortuneSelections(
-        cacheKey: FortunePositionCacheKey,
-        result: CalculationResult,
-        current: ProfessionalFortunePosition,
-    ) {
-        val resolver = professionalFortuneResolver ?: return
-        if (PREFETCH_ITEMS_PER_FORTUNE_LAYER == 0) return
-        val timelines = listOf(
-            ProfessionalFortuneLayer.HOURLY to current.hourlyTimeline,
-            ProfessionalFortuneLayer.DAILY to current.dailyTimeline,
-            ProfessionalFortuneLayer.MONTHLY to current.monthlyTimeline,
-            ProfessionalFortuneLayer.ANNUAL to current.annualTimeline,
-            ProfessionalFortuneLayer.DECADE to current.decadeTimeline,
-        )
-        val selections = buildList {
-            repeat(PREFETCH_ITEMS_PER_FORTUNE_LAYER) { index ->
-                timelines.forEach { (layer, items) ->
-                    items.getOrNull(index)?.let { item ->
-                        add(ProfessionalFortuneSelection(layer, item.observedAt))
-                    }
-                }
-            }
-        }.distinctBy { it.layer to it.observedAt }
-        fortunePrefetchJob?.cancel()
-        fortunePrefetchJob = viewModelScope.launch(fortunePrefetchDispatcher) {
-            delay(FORTUNE_PREFETCH_DELAY_MILLIS)
-            selections.forEach { selection ->
-                val itemKey = cacheKey.copy(
-                    observedAt = selection.observedAt,
-                    selectionLayer = selection.layer,
-                )
-                if (cachedFortunePosition(itemKey) == null) {
-                    try {
-                        val prefetched = resolver.select(result, current, selection)
-                        retainFortunePosition(
-                            itemKey,
-                            FortunePositionCacheValue(prefetched.position, prefetched),
-                        )
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        // 预取失败不影响当前真实结果，点击时仍可正常计算。
-                    }
-                }
             }
         }
     }
@@ -8000,6 +7960,47 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         }
     }
 
+    private fun prepareAiServiceState(
+        includeKeys: Boolean = false,
+        includeHistory: Boolean = false,
+        onReady: () -> Unit = {},
+        transform: (AiCommentaryUiState) -> AiCommentaryUiState,
+    ) {
+        val settings = aiCommentarySettings ?: return
+        val destination = mutableState.value.destination
+        aiServiceReadJob?.cancel()
+        aiServiceReadJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val snapshot = try {
+                withContext(ioDispatcher) {
+                    AiCommentaryUiState(
+                        configs = settings.configs(),
+                        selectedProvider = settings.selectedProvider(),
+                        apiKeys = if (includeKeys) {
+                            AiCommentaryProviderPresets.providerIds.associateWith { settings.apiKey(it).orEmpty() }
+                        } else emptyMap(),
+                        callRecords = if (includeHistory) aiCommentaryCallLog?.records().orEmpty() else emptyList(),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.update { it.copy(message = "AI 服务本机配置读取失败，请重试。") }
+                return@launch
+            }
+            if (mutableState.value.destination != destination) return@launch
+            mutableState.update {
+                it.copy(aiCommentary = transform(it.aiCommentary.copy(
+                    configs = snapshot.configs,
+                    selectedProvider = snapshot.selectedProvider,
+                    apiKeys = if (includeKeys) snapshot.apiKeys else it.aiCommentary.apiKeys,
+                    callRecords = if (includeHistory) snapshot.callRecords else it.aiCommentary.callRecords,
+                    error = null,
+                )))
+            }
+            onReady()
+        }
+    }
+
     fun openAiCommentary() {
         val detail = mutableState.value.detail ?: return
         if (detail.deletedAt != null) return
@@ -8010,102 +8011,62 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             }
             return
         }
-        mutableState.update {
-            it.copy(
-                aiCommentary = AiCommentaryUiState(
-                    dialogVisible = true,
-                    configs = settings.configs(),
-                    selectedProvider = settings.selectedProvider(),
-                ),
-            )
+        prepareAiServiceState { prepared ->
+            AiCommentaryUiState(dialogVisible = true, configs = prepared.configs, selectedProvider = prepared.selectedProvider)
         }
     }
 
     fun dismissAiCommentary() {
         if (mutableState.value.aiCommentary.generating || mutableState.value.aiCommentary.saving) return
+        aiServiceReadJob?.cancel()
         mutableState.update { it.copy(aiCommentary = AiCommentaryUiState()) }
     }
 
     fun openAiServiceMenu() {
-        val settings = aiCommentarySettings ?: return
-        mutableState.update {
-            it.copy(
-                aiCommentary = AiCommentaryUiState(
-                    serviceMenuVisible = true,
-                    configs = settings.configs(),
-                    selectedProvider = settings.selectedProvider(),
-                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
-                ),
+        prepareAiServiceState(includeHistory = true) { prepared ->
+            AiCommentaryUiState(
+                serviceMenuVisible = true, configs = prepared.configs,
+                selectedProvider = prepared.selectedProvider, callRecords = prepared.callRecords,
             )
         }
     }
 
-    fun openAiServicePage() {
-        val settings = aiCommentarySettings ?: return
-        mutableState.update {
-            it.copy(
-                aiCommentary = AiCommentaryUiState(
-                    configs = settings.configs(),
-                    selectedProvider = settings.selectedProvider(),
-                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
-                ),
+    fun openAiServicePage(onReady: () -> Unit = {}) {
+        prepareAiServiceState(includeHistory = true, onReady = onReady) { prepared ->
+            AiCommentaryUiState(
+                configs = prepared.configs, selectedProvider = prepared.selectedProvider,
+                callRecords = prepared.callRecords,
             )
         }
     }
 
     fun closeAiServiceMenu() {
+        aiServiceReadJob?.cancel()
         mutableState.update { it.copy(aiCommentary = AiCommentaryUiState()) }
     }
 
     fun openAiCallHistory() {
-        mutableState.update {
-            it.copy(
-                aiCommentary = it.aiCommentary.copy(
-                    serviceMenuVisible = false,
-                    historyVisible = true,
-                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
-                    error = null,
-                ),
-            )
+        prepareAiServiceState(includeHistory = true) { prepared ->
+            prepared.copy(serviceMenuVisible = false, historyVisible = true, error = null)
         }
     }
 
     /** Prepares the settings subpage without activating the legacy dialog route. */
-    fun prepareAiServiceSettingsPage() {
-        val settings = aiCommentarySettings ?: return
-        mutableState.update {
-            it.copy(
-                aiCommentary = it.aiCommentary.copy(
-                    serviceMenuVisible = false,
-                    settingsVisible = false,
-                    historyVisible = false,
-                    configs = settings.configs(),
-                    apiKeys = AiCommentaryProviderPresets.providerIds.associateWith { providerId ->
-                        settings.apiKey(providerId).orEmpty()
-                    },
-                    selectedProvider = settings.selectedProvider(),
-                    error = null,
-                ),
-            )
+    fun prepareAiServiceSettingsPage(onReady: () -> Unit = {}) {
+        prepareAiServiceState(includeKeys = true, onReady = onReady) { prepared ->
+            prepared.copy(serviceMenuVisible = false, settingsVisible = false, historyVisible = false, error = null)
         }
     }
 
     /** Prepares the call-ledger subpage without activating the legacy dialog route. */
-    fun prepareAiServiceHistoryPage() {
-        mutableState.update {
-            it.copy(
-                aiCommentary = it.aiCommentary.copy(
-                    serviceMenuVisible = false,
-                    settingsVisible = false,
-                    historyVisible = false,
-                    callRecords = aiCommentaryCallLog?.records().orEmpty(),
-                    error = null,
-                ),
-            )
+    fun prepareAiServiceHistoryPage(onReady: () -> Unit = {}) {
+        prepareAiServiceState(includeHistory = true, onReady = onReady) { prepared ->
+            prepared.copy(serviceMenuVisible = false, settingsVisible = false, historyVisible = false, error = null)
         }
     }
 
     fun closeAiCallHistory() {
+        aiServiceReadJob?.cancel()
         mutableState.update {
             it.copy(
                 aiCommentary = it.aiCommentary.copy(
@@ -8117,24 +8078,13 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun openAiCommentarySettings() {
-        val settings = aiCommentarySettings ?: return
-        mutableState.update {
-            it.copy(
-                aiCommentary = it.aiCommentary.copy(
-                    serviceMenuVisible = false,
-                    settingsVisible = true,
-                    configs = settings.configs(),
-                    apiKeys = AiCommentaryProviderPresets.providerIds.associateWith { providerId ->
-                        settings.apiKey(providerId).orEmpty()
-                    },
-                    selectedProvider = settings.selectedProvider(),
-                    error = null,
-                ),
-            )
+        prepareAiServiceState(includeKeys = true) { prepared ->
+            prepared.copy(serviceMenuVisible = false, settingsVisible = true, error = null)
         }
     }
 
     fun closeAiCommentarySettings() {
+        aiServiceReadJob?.cancel()
         mutableState.update {
             it.copy(
                 aiCommentary = it.aiCommentary.copy(
@@ -8151,6 +8101,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         apiKey: String?,
     ) {
         val settings = aiCommentarySettings ?: return
+        if (aiProviderSaveJob?.isActive == true) return
         if (config.baseUrl.isBlank() || config.model.isBlank()) {
             mutableState.update {
                 it.copy(
@@ -8161,16 +8112,30 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             }
             return
         }
-        runCatching {
-            settings.saveConfig(config, apiKey?.takeIf(String::isNotBlank))
-            if (config.enabled) settings.selectProvider(config.providerId)
-        }.onSuccess {
+        aiServiceReadJob?.cancel()
+        aiProviderSaveJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            mutableState.update { it.copy(aiCommentary = it.aiCommentary.copy(saving = true, error = null)) }
+            val snapshot = try {
+                withContext(ioDispatcher) {
+                    settings.saveConfig(config, apiKey?.takeIf(String::isNotBlank))
+                    if (config.enabled) settings.selectProvider(config.providerId)
+                    settings.configs() to settings.selectedProvider()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                mutableState.update {
+                    it.copy(aiCommentary = it.aiCommentary.copy(saving = false, error = "模型配置保存失败，请重试。"))
+                }
+                return@launch
+            }
             mutableState.update {
                 it.copy(
                     aiCommentary = it.aiCommentary.copy(
-                        configs = settings.configs(),
+                        configs = snapshot.first,
                         apiKeys = emptyMap(),
-                        selectedProvider = settings.selectedProvider(),
+                        selectedProvider = snapshot.second,
+                        saving = false,
                         settingsVisible = false,
                         // Configuration can be saved from a dedicated settings page as well
                         // as from generation. Do not resurrect a modal service menu after it.
@@ -8178,14 +8143,6 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                         error = null,
                     ),
                     message = "${config.providerId.displayName} 配置已安全保存在本机。",
-                )
-            }
-        }.onFailure {
-            mutableState.update {
-                it.copy(
-                    aiCommentary = it.aiCommentary.copy(
-                        error = "模型配置保存失败，请重试。",
-                    ),
                 )
             }
         }
@@ -8225,6 +8182,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         val settings = aiCommentarySettings ?: return
         val generator = aiCommentaryGenerator ?: return
         if (feature.generating || feature.saving) return
+        val generationRequestId = ++aiGenerationRequestId
         if (current.caseNotesDraft != current.caseNotesSavedDraft) {
             mutableState.update {
                 it.copy(
@@ -8257,61 +8215,55 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             }
             return
         }
-        val summary = when (
-            val result = objectiveSummaryGenerator.generate(CaseObjectiveSummaryInput(detail))
-        ) {
-            is CaseObjectiveSummaryResult.Success -> result.summary
-            is CaseObjectiveSummaryResult.Rejected -> {
-                mutableState.update {
-                    it.copy(
-                        aiCommentary = it.aiCommentary.copy(error = result.failure.message),
-                    )
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            mutableState.update { it.copy(aiCommentary = it.aiCommentary.copy(generating = true, error = null)) }
+            val summary = when (
+                val result = withContext(ioDispatcher) {
+                    objectiveSummaryGenerator.generate(CaseObjectiveSummaryInput(detail))
                 }
-                return
-            }
-        }
-        val prompt = when (
-            val result = BaziAiAnalysisPromptContract.prepare(
-                BaziAiAnalysisPromptRequest(
-                    summary = summary,
-                    topic = BaziAiAnalysisTopic.ALL,
-                    referenceDate = LocalDate.now(observationClock),
-                    hideIdentityAndLocation = true,
-                    ownerFeedback = detail.toAiAnalysisOwnerFeedback(),
-                ),
-            )
-        ) {
-            is BaziAiAnalysisPromptResult.Success -> result.prompt
-            is BaziAiAnalysisPromptResult.Rejected -> {
-                mutableState.update {
-                    it.copy(
-                        aiCommentary = it.aiCommentary.copy(error = result.failure.message),
-                    )
+            ) {
+                is CaseObjectiveSummaryResult.Success -> result.summary
+                is CaseObjectiveSummaryResult.Rejected -> {
+                    mutableState.update {
+                        it.copy(
+                            aiCommentary = it.aiCommentary.copy(generating = false, error = result.failure.message),
+                        )
+                    }
+                    return@launch
                 }
-                return
             }
-        }
-        viewModelScope.launch {
-            mutableState.update {
-                it.copy(
-                    aiCommentary = it.aiCommentary.copy(
-                        generating = true,
-                        generatedDraft = null,
-                        editedContent = "",
-                        error = null,
+            val prompt = when (
+                val result = withContext(ioDispatcher) { BaziAiAnalysisPromptContract.prepare(
+                    BaziAiAnalysisPromptRequest(
+                        summary = summary,
+                        topic = BaziAiAnalysisTopic.ALL,
+                        referenceDate = LocalDate.now(observationClock),
+                        hideIdentityAndLocation = true,
+                        ownerFeedback = detail.toAiAnalysisOwnerFeedback(),
                     ),
-                )
+                ) }
+            ) {
+                is BaziAiAnalysisPromptResult.Success -> result.prompt
+                is BaziAiAnalysisPromptResult.Rejected -> {
+                    mutableState.update {
+                        it.copy(
+                            aiCommentary = it.aiCommentary.copy(generating = false, error = result.failure.message),
+                        )
+                    }
+                    return@launch
+                }
             }
             val requestedAt = clock.instant()
+            if (generationRequestId != aiGenerationRequestId || mutableState.value.detail?.id != detail.id) return@launch
             val startedAtNanos = System.nanoTime()
-            val result = generator.generate(
+            val result = withContext(ioDispatcher) { generator.generate(
                 AiCommentaryGenerationRequest(
                     provider = config,
                     apiKey = settings.apiKey(config.providerId),
                     promptId = prompt.id,
                     promptText = prompt.copyText,
                 ),
-            )
+            ) }
             val durationMillis = ((System.nanoTime() - startedAtNanos) / 1_000_000L).coerceAtLeast(0L)
             val callRecord = when (result) {
                 is AiCommentaryGenerationResult.Success -> AiCommentaryCallRecord(
@@ -8340,7 +8292,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                     errorSummary = result.message.trim().take(180),
                 )
             }
-            runCatching { aiCommentaryCallLog?.append(callRecord) }
+            withContext(ioDispatcher) { runCatching { aiCommentaryCallLog?.append(callRecord) } }
+            if (generationRequestId != aiGenerationRequestId || mutableState.value.detail?.id != detail.id) return@launch
             mutableState.update {
                 when (result) {
                     is AiCommentaryGenerationResult.Success -> it.copy(
@@ -8809,6 +8762,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
     }
 
     fun navigateBack() {
+        almanacEntryJob?.cancel()
         if (
             mutableState.value.destination == AppDestination.CreateCase &&
                 mutableState.value.compatibilityParticipantRole != null
@@ -8881,7 +8835,6 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         }
         preparedCaseSaveAttempt = null
         fortunePositionJob?.cancel()
-        fortunePrefetchJob?.cancel()
         fortunePositionRequestId += 1
         mutableState.update {
             it.copy(
@@ -9457,10 +9410,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
         const val CURATED_CELEBRITY_IMPORT_MAX_BYTES = 4 * 1024 * 1024
         const val RETAINED_DETAIL_CACHE_SIZE = 12
         const val FORTUNE_POSITION_CACHE_SIZE = 96
-        const val PREFETCH_ITEMS_PER_FORTUNE_LAYER = 1
-        const val FORTUNE_PREFETCH_DELAY_MILLIS = 1_200L
         const val FORTUNE_POSITION_TIMEOUT_MILLIS = 8_000L
-        const val PROFESSIONAL_SELECTION_SETTLE_MILLIS = 20L
     }
 
     private fun validateExportPassword(password: CharArray): String? = when {
@@ -9470,6 +9420,12 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             "密码不能超过 $MAX_EXPORT_PASSWORD_LENGTH 个字符。"
         else -> null
     }
+}
+
+private fun CivilDateTime.professionalObservationTime(): String = if (second == 0) {
+    String.format(java.util.Locale.ROOT, "%02d:%02d", hour, minute)
+} else {
+    String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", hour, minute, second)
 }
 
 private fun StageTwoUiState.matchesFortuneRequest(

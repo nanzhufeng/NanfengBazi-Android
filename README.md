@@ -1,4 +1,4 @@
-# 南枫八字
+# 南枫八字 · Android
 
 本地优先的 Android 八字排盘与命例研究工具。
 
@@ -6,12 +6,12 @@
 
 ## 软件预览
 
-当前首页预览来自 v1.0.14 的 API 35 模拟器构建（1140 × 2616）；其余页面预览保持独立手机视口。
+以下预览来自 v1.0.16 Release 安装包的 API 35 模拟器运行页面（1080 × 2400），使用合成演示资料。
 
 <p align="center">
   <img src="docs/screenshots/home.png" width="30%" alt="首页排盘" />
   <img src="docs/screenshots/records.png" width="30%" alt="命例记录" />
-  <img src="docs/screenshots/almanac.png" width="30%" alt="万年历" />
+  <img src="docs/screenshots/professional.png" width="30%" alt="专业细盘" />
 </p>
 
 ## 核心功能
@@ -25,6 +25,8 @@
 
 ## 开发
 
+使用 Android Studio 自带的 JBR 运行本地门禁：
+
 ```bash
-JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew test assembleDebug lintDebug
+./gradlew test assembleDebug lintDebug
 ```

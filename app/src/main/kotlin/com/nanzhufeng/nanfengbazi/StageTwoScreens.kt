@@ -51,6 +51,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -117,6 +118,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -126,9 +128,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.Modifier
@@ -165,6 +168,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -287,6 +291,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -667,7 +672,7 @@ fun NanfengBaziApp(
                         onBatchDeleteCases = viewModel::batchDeleteCases,
                         onEditCase = viewModel::openEditCase,
                         onTogglePinnedCase = viewModel::togglePinnedCase,
-                        onPrefetchCase = viewModel::prefetchCaseDetail,
+                        onPrefetchCases = viewModel::prefetchVisibleCaseDetails,
                         onOpenCase = viewModel::openDetailFromList,
                         compatibilitySelectionRole = state.compatibilityParticipantSelectionRole,
                         onSelectCompatibilityCase = viewModel::selectCompatibilityParticipantFromList,
@@ -2426,8 +2431,6 @@ private fun RootNavigationBar(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var optimisticSelectedTag by remember { mutableStateOf<String?>(null) }
-    var pendingNavigationTag by remember { mutableStateOf<String?>(null) }
     val navigationShape = RoundedCornerShape(26.dp)
     val items = rootNavigationActions(
         destination = destination,
@@ -2435,21 +2438,6 @@ private fun RootNavigationBar(
         onOpenRecords = onOpenRecords,
         onOpenSettings = onOpenSettings,
     )
-    val latestItems by rememberUpdatedState(items)
-    LaunchedEffect(destination) {
-        if (pendingNavigationTag == null) {
-            optimisticSelectedTag = null
-        }
-    }
-    LaunchedEffect(pendingNavigationTag) {
-        val targetTag = pendingNavigationTag ?: return@LaunchedEffect
-        withFrameNanos { }
-        latestItems.firstOrNull { it.tag == targetTag }?.onClick?.invoke()
-        if (pendingNavigationTag == targetTag) {
-            pendingNavigationTag = null
-            optimisticSelectedTag = null
-        }
-    }
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -2474,13 +2462,11 @@ private fun RootNavigationBar(
                 .padding(horizontal = 5.dp, vertical = 5.dp),
         ) {
             items.forEach { item ->
-                val selected = optimisticSelectedTag?.let { it == item.tag } ?: item.selected
+                val selected = item.selected
                 Surface(
                     onClick = {
                         if (!selected) {
-                            optimisticSelectedTag = item.tag
-                            // The keyed effect cancels an older target automatically.
-                            pendingNavigationTag = item.tag
+                            item.onClick()
                         }
                     },
                     modifier = Modifier
@@ -2782,9 +2768,9 @@ private fun SettingsHomeScreen(
     onImportCuratedCelebrityCatalog: () -> Unit,
     onExportFullBackup: () -> Unit,
     onRestoreFullBackup: () -> Unit,
-    onOpenAiServicePage: () -> Unit,
-    onPrepareAiSettingsPage: () -> Unit,
-    onPrepareAiHistoryPage: () -> Unit,
+    onOpenAiServicePage: (() -> Unit) -> Unit,
+    onPrepareAiSettingsPage: (() -> Unit) -> Unit,
+    onPrepareAiHistoryPage: (() -> Unit) -> Unit,
     onCloseAiSettingsPage: () -> Unit,
     onSaveAiProvider: (AiCommentaryProviderConfig, String?) -> Unit,
     cloudSyncCoordinator: BaziCloudSyncCoordinator?,
@@ -2793,6 +2779,7 @@ private fun SettingsHomeScreen(
     bottomContentInset: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val settingsScrollState = rememberScrollState()
     var showSkinPicker by rememberSaveable { mutableStateOf(false) }
     var showFontSizePicker by rememberSaveable { mutableStateOf(false) }
     var showRatHourRulePicker by rememberSaveable { mutableStateOf(false) }
@@ -2801,7 +2788,7 @@ private fun SettingsHomeScreen(
     var showCloudSettings by rememberSaveable { mutableStateOf(false) }
     var showAboutPage by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = showAiServicePage) {
-        if (aiServiceSubpage == AiServiceSubpage.MODEL_SETTINGS) onCloseAiSettingsPage()
+        onCloseAiSettingsPage()
         if (aiServiceSubpage != null) aiServiceSubpage = null else showAiServicePage = false
     }
     if (showAiServicePage) {
@@ -2817,19 +2804,21 @@ private fun SettingsHomeScreen(
             )
             AiServiceSubpage.CALL_HISTORY -> AiCommentaryCallHistoryPage(
                 records = aiCommentaryState.callRecords,
-                onBack = { aiServiceSubpage = null },
+                onBack = { onCloseAiSettingsPage(); aiServiceSubpage = null },
                 modifier = modifier,
             )
             null -> AiServiceSettingsPage(
                 state = aiCommentaryState,
-                onBack = { showAiServicePage = false },
+                onBack = { onCloseAiSettingsPage(); showAiServicePage = false },
                 onOpenSettings = {
-                    onPrepareAiSettingsPage()
-                    aiServiceSubpage = AiServiceSubpage.MODEL_SETTINGS
+                    onPrepareAiSettingsPage {
+                        if (showAiServicePage && aiServiceSubpage == null) aiServiceSubpage = AiServiceSubpage.MODEL_SETTINGS
+                    }
                 },
                 onOpenHistory = {
-                    onPrepareAiHistoryPage()
-                    aiServiceSubpage = AiServiceSubpage.CALL_HISTORY
+                    onPrepareAiHistoryPage {
+                        if (showAiServicePage && aiServiceSubpage == null) aiServiceSubpage = AiServiceSubpage.CALL_HISTORY
+                    }
                 },
                 bottomContentInset = bottomContentInset,
                 modifier = modifier,
@@ -2860,7 +2849,7 @@ private fun SettingsHomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(settingsScrollState)
             .testTag("settings_home_screen"),
     ) {
         Surface(
@@ -2912,8 +2901,11 @@ private fun SettingsHomeScreen(
                 description = "模型设置与调用记录",
                 icon = Icons.Filled.Settings,
                 onClick = {
-                    onOpenAiServicePage()
-                    showAiServicePage = true
+                    onOpenAiServicePage {
+                        if (!showCloudSettings && !showAboutPage && !showFontSizePicker && !showSkinPicker && !showRatHourRulePicker) {
+                            showAiServicePage = true
+                        }
+                    }
                 },
                 tag = "settings_ai_commentary",
                 accent = NanfengGold,
@@ -3150,49 +3142,69 @@ private fun AboutBaziScreen(
                 tonalElevation = 0.dp,
                 shadowElevation = 2.dp,
             ) {
-                Column {
-                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp)) {
-                        Text(
-                            "南枫八字",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
+                SelectionContainer {
+                    Column {
+                        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp)) {
+                            Text(
+                                "南枫八字",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "本机排盘、命例与专业细盘。",
+                                modifier = Modifier.padding(top = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        HorizontalDivider()
+                        AboutInfoSection(
+                            title = "版本信息",
+                            lines = listOf(
+                                AboutInfoLine(value = "Android 版 ${BuildConfig.VERSION_NAME}", muted = true),
+                                AboutInfoLine(
+                                    label = "构建时间 ",
+                                    value = BuildConfig.APP_BUILD_TIME,
+                                ),
+                            ),
                         )
-                        Text(
-                            "本机排盘、命例与专业细盘。",
-                            modifier = Modifier.padding(top = 4.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        HorizontalDivider()
+                        AboutInfoSection(
+                            title = "开发者信息",
+                            lines = listOf(
+                                AboutInfoLine(label = "开发者：", value = "席瑞"),
+                                AboutInfoLine(
+                                    label = "联系邮箱：",
+                                    value = "nanzhufeng.studio@gmail.com",
+                                ),
+                                AboutInfoLine(
+                                    label = "源码与更新：",
+                                    value = "GitHub · nanzhufeng/NanfengBazi-Android",
+                                    linkUrl = "https://github.com/nanzhufeng/NanfengBazi-Android",
+                                ),
+                                AboutInfoLine(label = "版权所有 © 2026 ", value = "席瑞"),
+                            ),
                         )
                     }
-                    HorizontalDivider()
-                    AboutInfoSection(
-                        title = "版本信息",
-                        lines = listOf(
-                            "Android 版 ${BuildConfig.VERSION_NAME}",
-                            "构建时间 ${BuildConfig.APP_BUILD_TIME}",
-                        ),
-                    )
-                    HorizontalDivider()
-                    AboutInfoSection(
-                        title = "开发者信息",
-                        lines = listOf(
-                            "开发者：席瑞",
-                            "联系邮箱：nanzhufeng.studio@gmail.com",
-                            "源码与更新：GitHub · nanzhufeng/NanfengBazi-Android",
-                            "版权所有 © 2026 席瑞",
-                        ),
-                    )
                 }
             }
         }
     }
 }
 
+private data class AboutInfoLine(
+    val value: String,
+    val label: String = "",
+    val muted: Boolean = false,
+    val linkUrl: String? = null,
+)
+
 @Composable
 private fun AboutInfoSection(
     title: String,
-    lines: List<String>,
+    lines: List<AboutInfoLine>,
 ) {
+    val uriHandler = LocalUriHandler.current
     Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp)) {
         Text(
             title,
@@ -3200,12 +3212,76 @@ private fun AboutInfoSection(
             fontWeight = FontWeight.SemiBold,
         )
         lines.forEach { line ->
+            val text = buildAnnotatedString {
+                if (line.label.isNotEmpty()) {
+                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                        append(line.label)
+                    }
+                }
+                if (line.linkUrl == null) {
+                    append(line.value)
+                } else {
+                    withStyle(
+                        SpanStyle(
+                            color = NanfengOrange,
+                            textDecoration = TextDecoration.Underline,
+                        ),
+                    ) {
+                        append(line.value)
+                    }
+                }
+            }
+            val linkRange = line.label.length until text.length
+            var textLayoutResult by remember(line) { mutableStateOf<TextLayoutResult?>(null) }
             Text(
-                line,
-                modifier = Modifier.padding(top = 4.dp),
+                text,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .then(
+                        if (line.linkUrl == null) {
+                            Modifier
+                        } else {
+                            Modifier
+                                .testTag("about_github_link")
+                                .semantics {
+                                    role = Role.Button
+                                    onClick(label = "打开 GitHub 仓库") {
+                                        uriHandler.openUri(line.linkUrl)
+                                        true
+                                    }
+                                }
+                                .openAboutLinkWhenTapped(
+                                    textLayoutResult = { textLayoutResult },
+                                    linkRange = linkRange,
+                                    onOpen = { uriHandler.openUri(line.linkUrl) },
+                                )
+                        },
+                    ),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (line.muted) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                onTextLayout = { textLayoutResult = it },
             )
+        }
+    }
+}
+
+private fun Modifier.openAboutLinkWhenTapped(
+    textLayoutResult: () -> TextLayoutResult?,
+    linkRange: IntRange,
+    onOpen: () -> Unit,
+): Modifier = pointerInput(linkRange, onOpen) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+        val isShortTap = up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis
+        val offset = textLayoutResult()?.getOffsetForPosition(up.position)
+        if (isShortTap && offset != null && offset in linkRange) {
+            up.consume()
+            onOpen()
         }
     }
 }
@@ -3485,7 +3561,7 @@ private fun CaseListScreen(
     onBatchDeleteCases: (Set<String>) -> Unit,
     onEditCase: (String) -> Unit,
     onTogglePinnedCase: (String) -> Unit,
-    onPrefetchCase: (String) -> Unit,
+    onPrefetchCases: (List<String>) -> Unit,
     onOpenCase: (String) -> Unit,
     compatibilitySelectionRole: SexForFortuneDirection? = null,
     onSelectCompatibilityCase: ((String) -> Unit)? = null,
@@ -3495,6 +3571,20 @@ private fun CaseListScreen(
     modifier: Modifier = Modifier,
 ) {
     val isCompatibilitySelection = compatibilitySelectionRole != null
+    LaunchedEffect(state.cases, caseListState, isCompatibilitySelection) {
+        snapshotFlow {
+            if (caseListState.isScrollInProgress || isCompatibilitySelection) {
+                emptyList()
+            } else {
+                caseListState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
+                    state.cases.getOrNull(item.index)?.id
+                }.take(3)
+            }
+        }.distinctUntilChanged().collect { ids -> onPrefetchCases(ids) }
+    }
+    DisposableEffect(Unit) {
+        onDispose { onPrefetchCases(emptyList()) }
+    }
     val compatibilityRoleLabel = if (compatibilitySelectionRole == SexForFortuneDirection.MAN) {
         "男方"
     } else {
@@ -3518,6 +3608,7 @@ private fun CaseListScreen(
     val firstCaseIndexByInitial = remember(state.cases) {
         state.cases.indexOfFirstBy { summary -> summary.displayCaseName().caseNameInitial() }
     }
+    val recordSections = remember(state.cases) { state.cases.map(CaseSummary::recordSection) }
     val firstPinnedCaseIndex = remember(state.cases) {
         state.cases.indexOfFirst { it.isPinned }.takeIf { it >= 0 }
     }
@@ -3539,9 +3630,8 @@ private fun CaseListScreen(
                         item.offset <= viewportStart + alphabetActivationDistancePx
                 }
                 .mapNotNull { item ->
-                    val summary = state.cases.getOrNull(item.index) ?: return@mapNotNull null
-                    val section = summary.recordSection()
-                    val previousSection = state.cases.getOrNull(item.index - 1)?.recordSection()
+                    val section = recordSections.getOrNull(item.index) ?: return@mapNotNull null
+                    val previousSection = recordSections.getOrNull(item.index - 1)
                     section.takeIf { it != previousSection }
                 }
                 .lastOrNull()
@@ -3572,7 +3662,7 @@ private fun CaseListScreen(
             add("其他筛选条件")
         }
     }
-    val visibleDeleteCaseIds = state.cases.mapTo(linkedSetOf()) { it.id }
+    val visibleDeleteCaseIds = remember(state.cases) { state.cases.mapTo(linkedSetOf()) { it.id } }
     val allVisibleDeleteCasesSelected = deleteEditMode &&
         visibleDeleteCaseIds.isNotEmpty() &&
         visibleDeleteCaseIds.all { it in deleteSelection }
@@ -3964,11 +4054,8 @@ private fun CaseListScreen(
                     ),
                 ) {
                     itemsIndexed(state.cases, key = { _, item -> item.id }) { index, summary ->
-                        LaunchedEffect(summary.id) {
-                            onPrefetchCase(summary.id)
-                        }
-                        val section = summary.recordSection()
-                        val previousSection = state.cases.getOrNull(index - 1)?.recordSection()
+                        val section = recordSections[index]
+                        val previousSection = recordSections.getOrNull(index - 1)
                         if (section != previousSection) {
                             Text(
                                 section,
@@ -5908,8 +5995,14 @@ private fun CaseSummaryRow(
             )
         }
         summary.fourPillars?.let { pillars ->
+            val previewStyle = MaterialTheme.typography.titleSmall.let { style ->
+                style.copy(
+                    fontSize = appFontSize(12.8.sp),
+                    lineHeight = style.lineHeight * 0.8f,
+                )
+            }
             Row(
-                modifier = Modifier.width(104.dp),
+                modifier = Modifier.width(83.2.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 listOf(pillars.year, pillars.month, pillars.day, pillars.hour).forEach { pillar ->
@@ -5918,7 +6011,7 @@ private fun CaseSummaryRow(
                             Text(
                                 char.toString(),
                                 color = baziElementColor(char),
-                                style = MaterialTheme.typography.titleSmall,
+                                style = previewStyle,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
@@ -7312,8 +7405,8 @@ private fun CompatibilityImportantParameterTable(report: BaziCompatibilityReport
     val rightDayBranch = report.right.pillars.day.lastOrNull()?.toString() ?: "未保存"
     val leftYearBranch = report.left.pillars.year.lastOrNull()?.toString() ?: "未保存"
     val rightYearBranch = report.right.pillars.year.lastOrNull()?.toString() ?: "未保存"
-    val leftStructure = report.left.structuralProfileOrAnalyze()
-    val rightStructure = report.right.structuralProfileOrAnalyze()
+    val leftStructure = remember(report.left) { report.left.structuralProfileOrAnalyze() }
+    val rightStructure = remember(report.right) { report.right.structuralProfileOrAnalyze() }
     CompatibilityComparisonTable(
         title = "核心关系",
         headers = listOf("对比项", report.left.alias, report.right.alias, "解析"),
@@ -11771,41 +11864,6 @@ private fun CaseDetailScreen(
         )
     }
     var managementMenuExpanded by rememberSaveable { mutableStateOf(false) }
-    var requestedDetailSection by remember(state.detail?.id) {
-        mutableStateOf(state.detailSection)
-    }
-    var pendingSectionCommit by remember { mutableStateOf<CaseDetailSection?>(null) }
-    val latestOnSelectSection by rememberUpdatedState(onSelectSection)
-    LaunchedEffect(state.detailSection) {
-        if (pendingSectionCommit == null) {
-            requestedDetailSection = state.detailSection
-        }
-    }
-    LaunchedEffect(pendingSectionCommit) {
-        val target = pendingSectionCommit ?: return@LaunchedEffect
-        withFrameNanos { }
-        latestOnSelectSection(target)
-        if (pendingSectionCommit == target) {
-            pendingSectionCommit = null
-        }
-    }
-    // Keep the identity header on the section that is actually drawn so users
-    // never see a new header paired with old content.
-    var renderedDetailSection by remember(state.detail?.id) {
-        mutableStateOf(state.detailSection)
-    }
-    var mountedDetailContentId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(state.detail?.id) {
-        val detailId = state.detail?.id
-        if (detailId == null) {
-            mountedDetailContentId = null
-        } else {
-            // Commit the correct app bar, tabs and identity header first. The dense
-            // chart body joins on the following frame instead of holding navigation.
-            withFrameNanos { }
-            mountedDetailContentId = detailId
-        }
-    }
     val detailScrollStates = remember(state.detail?.id) {
         CaseDetailSection.entries.associateWith { ScrollState(0) }
     }
@@ -11953,14 +12011,9 @@ private fun CaseDetailScreen(
         )
         if (state.detail != null && state.detailError == null) {
             CaseDetailTabs(
-                selectedSection = requestedDetailSection,
+                selectedSection = state.detailSection,
                 onSelectSection = { section ->
-                    if (section != requestedDetailSection) {
-                        requestedDetailSection = section
-                        // The tab and already-retained page update locally first;
-                        // the keyed effect commits shared/restorable state next frame.
-                        pendingSectionCommit = section
-                    }
+                    if (section != state.detailSection) onSelectSection(section)
                 },
             )
         }
@@ -11969,7 +12022,7 @@ private fun CaseDetailScreen(
                 case = state.detail,
                 adopted = state.detail.calculationSnapshots.asReversed()
                     .firstOrNull { it.adopted },
-                section = renderedDetailSection,
+                section = state.detailSection,
             )
         }
         Box(modifier = Modifier.weight(1f)) {
@@ -11981,7 +12034,7 @@ private fun CaseDetailScreen(
                     actionLabel = "返回列表",
                     onAction = onBack,
                 )
-                state.detail != null && mountedDetailContentId == state.detail.id ->
+                state.detail != null ->
                     ReferenceCaseDetailContent(
                         case = state.detail,
                         onEditCase = onEditCase,
@@ -12004,8 +12057,7 @@ private fun CaseDetailScreen(
                         onNotesTimelineContentChange = onNotesTimelineContentChange,
                         onSaveCaseNotes = onSaveCaseNotes,
                         caseNotesReady = caseNotesReady,
-                        selectedSection = requestedDetailSection,
-                        onDisplayedSectionChanged = { renderedDetailSection = it },
+                        selectedSection = state.detailSection,
                         scrollStates = detailScrollStates,
                         captureRegistry = captureRegistry,
                         mutationSaving = state.mutationSaving,
@@ -12026,7 +12078,7 @@ private fun CaseDetailScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            if (requestedDetailSection == CaseDetailSection.FORTUNE) {
+                            if (state.detailSection == CaseDetailSection.FORTUNE) {
                                 MaterialTheme.colorScheme.background
                             } else {
                                 Color.White
@@ -12416,7 +12468,6 @@ private fun ReferenceCaseDetailContent(
     onSaveCaseNotes: () -> Unit,
     caseNotesReady: Boolean,
     selectedSection: CaseDetailSection,
-    onDisplayedSectionChanged: (CaseDetailSection) -> Unit,
     scrollStates: Map<CaseDetailSection, ScrollState>,
     captureRegistry: CaseDetailPageCaptureRegistry,
     mutationSaving: Boolean,
@@ -12463,28 +12514,9 @@ private fun ReferenceCaseDetailContent(
     var retainedSections by remember(case.id) {
         mutableStateOf(setOf(selectedSection))
     }
-    LaunchedEffect(case.id) {
-        // Let the selected page become fully interactive before doing any
-        // off-screen composition work. This keeps list -> detail entry clean.
-        delay(900L)
-        val selectedIndex = CaseDetailSection.entries.indexOf(selectedSection)
-        CaseDetailSection.entries
-            .filterNot { it == selectedSection }
-            .sortedBy { section ->
-                kotlin.math.abs(CaseDetailSection.entries.indexOf(section) - selectedIndex)
-            }
-            .forEach { section ->
-                // Never compose three dense pages in one frame. Spread the idle warm-up
-                // and keep every finished page resident for layer-only switching.
-                delay(180L)
-                withFrameNanos { }
-                retainedSections = retainedSections + section
-            }
-    }
     LaunchedEffect(selectedSection) {
         retainedSections = retainedSections + selectedSection
         captureRegistry.updateDisplayedSection(selectedSection)
-        onDisplayedSectionChanged(selectedSection)
     }
     val sectionsToRender = retainedSections + selectedSection
     Box(modifier = Modifier.fillMaxSize()) {
@@ -12570,7 +12602,10 @@ private fun ReferenceCaseDetailContent(
                                     pageSection,
                                     pageScrollState,
                                 )
-                                .verticalScroll(pageScrollState)
+                                .then(
+                                    if (pageSection == CaseDetailSection.FORTUNE) Modifier
+                                    else Modifier.verticalScroll(pageScrollState),
+                                )
                                 .background(
                                     color = if (pageSection == CaseDetailSection.FORTUNE) {
                                         MaterialTheme.colorScheme.background
@@ -12618,7 +12653,9 @@ private fun ReferenceCaseDetailContent(
                                     if (adopted == null) {
                                         ReferenceEmptyText("当前命例没有已采用的计算快照。")
                                     } else {
+                                        key(case.id) {
                                         FortuneDetailsView(
+                                            caseId = case.id,
                                             calculation = adopted.result,
                                             fortuneObservationDate = fortuneObservationDate,
                                             fortuneObservationTime = fortuneObservationTime,
@@ -12629,12 +12666,18 @@ private fun ReferenceCaseDetailContent(
                                             onOpenObservationPicker = { showObservationPicker = true },
                                             onObservationSelect = onFortuneObservationSelect,
                                             onToday = onFortuneToday,
+                                            captureForLongImage = captureRegistry.chartCaptureActive,
+                                            captureScrollState = pageScrollState,
+                                            modifier = Modifier.weight(1f),
                                         )
+                                        }
                                     }
                                 }
                                 CaseDetailSection.RECORDS -> Unit
                             }
-                            Spacer(Modifier.height(28.dp))
+                            if (pageSection != CaseDetailSection.FORTUNE) {
+                                Spacer(Modifier.height(28.dp))
+                            }
                         }
                     }
                 }
@@ -12779,7 +12822,7 @@ private fun ReferenceBasicInfo(
             modifier = Modifier.padding(top = 18.dp),
         )
         MangPaiReferenceCard(
-            profile = result.mangPaiProfileOrAnalyze(),
+            profile = remember(result) { result.mangPaiProfileOrAnalyze() },
             modifier = Modifier.padding(top = 14.dp),
         )
         FolkBoneWeightReferenceCard(
@@ -12857,12 +12900,12 @@ private fun NanfengAuxiliaryReferenceCard(
     modifier: Modifier = Modifier,
 ) {
     var selectedElementMetric by rememberSaveable { mutableStateOf(0) }
-    val profile = result.structuralProfileOrAnalyze()
-    val distribution = result.elementDistributionOrAnalyze()
+    val profile = remember(result) { result.structuralProfileOrAnalyze() }
+    val distribution = remember(result) { result.elementDistributionOrAnalyze() }
     val dayStem = profile.dayMaster
     val dayElement = distribution.dayMasterElement
-    val wangShuai = result.wangShuaiProfileOrAnalyze()
-    val yinYang = result.fourPillars.yinYangBalance()
+    val wangShuai = remember(result) { result.wangShuaiProfileOrAnalyze() }
+    val yinYang = remember(result) { result.fourPillars.yinYangBalance() }
     val strength = wangShuai.level.displayName
     val pattern = profile.selectedPattern.name
     val evidence = profile.strengthEvidence.take(3)
@@ -15395,6 +15438,8 @@ private fun CaseDetailContent(
                     }
                 } else {
                     FortuneDetailsView(
+                        caseId = "embedded_${case.id}",
+                        embedded = true,
                         calculation = adopted.result,
                         fortuneObservationDate = fortuneObservationDate,
                         fortuneObservationTime = fortuneObservationTime,
@@ -15754,7 +15799,9 @@ private fun DetailSection(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun FortuneDetailsView(
+    caseId: String,
     calculation: CalculationResult,
     fortuneObservationDate: String,
     fortuneObservationTime: String,
@@ -15765,52 +15812,140 @@ private fun FortuneDetailsView(
     onOpenObservationPicker: () -> Unit,
     onObservationSelect: (ProfessionalFortuneSelection) -> Unit = {},
     onToday: () -> Unit = {},
+    captureForLongImage: Boolean = false,
+    embedded: Boolean = false,
+    captureScrollState: ScrollState = rememberScrollState(),
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
+    // Keep both axes outside lazy items: recycling a row or capturing the page must
+    // not discard its position or the immediate selection feedback.
+    // Explicit case-scoped keys keep the same viewport when the adaptive shell
+    // moves this content between its single-pane and split-pane call sites.
+    val verticalState = rememberSaveable(
+        caseId, key = "professional_vertical_$caseId", saver = LazyListState.Saver,
+    ) { LazyListState() }
+    val rowStates = rememberSaveable(
+        caseId, key = "professional_timelines_$caseId", saver = ProfessionalTimelineViewportSaver,
+    ) {
+        mutableMapOf<ProfessionalFortuneLayer, ProfessionalTimelineViewport>()
+    }
+    var pending by remember {
+        mutableStateOf<Pair<ProfessionalFortunePosition, ProfessionalFortuneSelection>?>(null)
+    }
+    val pendingSelection = pending?.takeIf { it.first === professionalFortunePosition }?.second
+    val latestPosition by rememberUpdatedState(professionalFortunePosition)
+    val latestOnSelect by rememberUpdatedState(onObservationSelect)
+    val selectImmediately: (ProfessionalFortuneSelection) -> Unit = remember {
+        { selection ->
+            latestPosition?.let { pending = it to selection }
+            latestOnSelect(selection)
+        }
+    }
+    val platformViewConfiguration = LocalViewConfiguration.current
+    val exactCellViewConfiguration = remember(platformViewConfiguration) {
+        object : ViewConfiguration by platformViewConfiguration {
+            override val minimumTouchTargetSize = DpSize(0.dp, 0.dp)
+        }
+    }
+    val content: @Composable (ProfessionalPagePart) -> Unit = { part ->
+        val position = professionalFortunePosition
+        if (position == null) {
+            if (part == ProfessionalPagePart.PILLARS) {
+                if (fortunePositionError == null) ProfessionalFortuneLoading(fortunePositionLoading)
+                else ReferenceEmptyText(fortunePositionError)
+            }
+        } else {
+            when (part) {
+                ProfessionalPagePart.PILLARS -> ProfessionalPillarMatrix(position.pillarColumns)
+                ProfessionalPagePart.DATE -> CompositionLocalProvider(
+                    LocalViewConfiguration provides platformViewConfiguration,
+                ) {
+                    ProfessionalSelectedDateBar(
+                    calculation = calculation,
+                    completedAge = position.completedAge,
+                    date = fortuneObservationDate,
+                    time = fortuneObservationTime,
+                    detail = position.selectedDateDetail,
+                    error = fortunePositionError,
+                    onOpenPicker = onOpenObservationPicker,
+                    onToday = onToday,
+                    )
+                }
+                ProfessionalPagePart.INTERACTIONS -> ProfessionalTextSections(
+                    title = "合冲刑害", groups = position.interactionGroups,
+                    tag = "fortune_interactions",
+                )
+                ProfessionalPagePart.SHENSHA -> ProfessionalTextSections(
+                    title = "神煞", groups = position.shenShaGroups,
+                    tag = "fortune_shensha", stackLines = true,
+                )
+                else -> {
+                    val layer = requireNotNull(part.layer)
+                    val items = when (layer) {
+                        ProfessionalFortuneLayer.DECADE -> position.decadeTimeline
+                        ProfessionalFortuneLayer.ANNUAL -> position.annualTimeline
+                        ProfessionalFortuneLayer.MONTHLY -> position.monthlyTimeline
+                        ProfessionalFortuneLayer.DAILY -> position.dailyTimeline
+                        ProfessionalFortuneLayer.HOURLY -> position.hourlyTimeline
+                    }
+                    // Structurally equal parent timelines keep their existing instances,
+                    // so an hour/day change does not recompose every year/month cell.
+                    val stableItems by rememberUpdatedState(items)
+                    ProfessionalTimelineRow(
+                        title = part.title, items = stableItems, tag = part.tag,
+                        layer = layer, pendingSelection = pendingSelection?.takeIf { it.layer == layer },
+                        onSelect = selectImmediately, retainedListStates = rowStates,
+                    )
+                }
+            }
+        }
+    }
+    CompositionLocalProvider(
+        LocalMinimumInteractiveComponentEnforcement provides false,
+        LocalViewConfiguration provides exactCellViewConfiguration,
+    ) {
+        val viewportModifier = modifier
+            .then(if (embedded) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
             .background(MaterialTheme.colorScheme.background)
             .testTag("professional_page_surface")
-            .padding(horizontal = 6.dp, vertical = 8.dp),
-    ) {
-        if (professionalFortunePosition == null) {
-            if (fortunePositionError == null) {
-                ProfessionalFortuneLoading(
-                    loading = fortunePositionLoading,
-                )
-            } else {
-                ReferenceEmptyText(fortunePositionError)
+        if (captureForLongImage || embedded) {
+            // The exporter still scrolls and captures every real Compose section.
+            // Normal viewing uses the lazy viewport; export temporarily mounts all
+            // sections from the very same renderer, then restores this viewport.
+            Column(
+                modifier = viewportModifier
+                    .then(if (embedded) Modifier else Modifier.verticalScroll(captureScrollState))
+                    .padding(horizontal = 6.dp, vertical = 8.dp),
+            ) {
+                ProfessionalPagePart.entries.forEach { part -> key(part) { content(part) } }
+                Spacer(Modifier.height(28.dp))
             }
-            return@Column
+        } else {
+            LazyColumn(
+                state = verticalState,
+                modifier = viewportModifier,
+                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 36.dp),
+            ) {
+                items(ProfessionalPagePart.entries, key = { it.name }, contentType = { it }) { part ->
+                    content(part)
+                }
+            }
         }
-        ProfessionalPillarMatrix(professionalFortunePosition.pillarColumns)
-        ProfessionalSelectedDateBar(
-            calculation = calculation,
-            completedAge = professionalFortunePosition.completedAge,
-            date = fortuneObservationDate,
-            time = fortuneObservationTime,
-            detail = professionalFortunePosition.selectedDateDetail,
-            error = fortunePositionError,
-            onOpenPicker = onOpenObservationPicker,
-            onToday = onToday,
-        )
-        ProfessionalTimelineRows(
-            position = professionalFortunePosition,
-            onSelect = onObservationSelect,
-        )
-        ProfessionalTextSections(
-            title = "合冲刑害",
-            groups = professionalFortunePosition.interactionGroups,
-            tag = "fortune_interactions",
-        )
-        ProfessionalTextSections(
-            title = "神煞",
-            groups = professionalFortunePosition.shenShaGroups,
-            tag = "fortune_shensha",
-            stackLines = true,
-        )
     }
+}
+
+private enum class ProfessionalPagePart(
+    val layer: ProfessionalFortuneLayer? = null,
+    val title: String = "",
+    val tag: String = "",
+) {
+    PILLARS, DATE,
+    DECADE(ProfessionalFortuneLayer.DECADE, "大运", "decade_fortune_details"),
+    ANNUAL(ProfessionalFortuneLayer.ANNUAL, "流年", "annual_fortune_details"),
+    MONTHLY(ProfessionalFortuneLayer.MONTHLY, "流月", "monthly_fortune_details"),
+    DAILY(ProfessionalFortuneLayer.DAILY, "流日", "daily_fortune_details"),
+    HOURLY(ProfessionalFortuneLayer.HOURLY, "流时", "hourly_fortune_details"),
+    INTERACTIONS, SHENSHA,
 }
 
 @Composable
@@ -16085,60 +16220,6 @@ private fun ProfessionalTenGodLabel(
 private val ProfessionalPillarGridSurface = Color(0xFFFBFBFA)
 
 @Composable
-private fun ProfessionalTimelineRows(
-    position: ProfessionalFortunePosition,
-    onSelect: (ProfessionalFortuneSelection) -> Unit,
-) {
-    var pendingSelection by remember(position) {
-        mutableStateOf<ProfessionalFortuneSelection?>(null)
-    }
-    val selectImmediately: (ProfessionalFortuneSelection) -> Unit = { selection ->
-        pendingSelection = selection
-        onSelect(selection)
-    }
-    ProfessionalTimelineRow(
-        title = "大运",
-        items = position.decadeTimeline,
-        tag = "decade_fortune_details",
-        layer = ProfessionalFortuneLayer.DECADE,
-        pendingSelection = pendingSelection,
-        onSelect = selectImmediately,
-    )
-    ProfessionalTimelineRow(
-        title = "流年",
-        items = position.annualTimeline,
-        tag = "annual_fortune_details",
-        layer = ProfessionalFortuneLayer.ANNUAL,
-        pendingSelection = pendingSelection,
-        onSelect = selectImmediately,
-    )
-    ProfessionalTimelineRow(
-        title = "流月",
-        items = position.monthlyTimeline,
-        tag = "monthly_fortune_details",
-        layer = ProfessionalFortuneLayer.MONTHLY,
-        pendingSelection = pendingSelection,
-        onSelect = selectImmediately,
-    )
-    ProfessionalTimelineRow(
-        title = "流日",
-        items = position.dailyTimeline,
-        tag = "daily_fortune_details",
-        layer = ProfessionalFortuneLayer.DAILY,
-        pendingSelection = pendingSelection,
-        onSelect = selectImmediately,
-    )
-    ProfessionalTimelineRow(
-        title = "流时",
-        items = position.hourlyTimeline,
-        tag = "hourly_fortune_details",
-        layer = ProfessionalFortuneLayer.HOURLY,
-        pendingSelection = pendingSelection,
-        onSelect = selectImmediately,
-    )
-}
-
-@Composable
 private fun ProfessionalTimelineRow(
     title: String,
     items: List<ProfessionalTimelineItem>,
@@ -16146,9 +16227,28 @@ private fun ProfessionalTimelineRow(
     layer: ProfessionalFortuneLayer,
     pendingSelection: ProfessionalFortuneSelection?,
     onSelect: (ProfessionalFortuneSelection) -> Unit,
+    retainedListStates: MutableMap<ProfessionalFortuneLayer, ProfessionalTimelineViewport>,
 ) {
     if (items.isEmpty()) return
     val trailingDivider = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+    val selectedIndex = items.indexOfFirst { it.selected }.coerceAtLeast(0)
+    val initialIndex = (selectedIndex - 3).coerceIn(
+        0, (items.size - PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS).coerceAtLeast(0),
+    )
+    val boundary = items.first().key to items.last().key
+    val viewport = retainedListStates.getOrPut(layer) {
+        ProfessionalTimelineViewport(LazyListState(initialIndex), boundary)
+    }
+    val listState = viewport.listState
+    LaunchedEffect(boundary) {
+        // Re-entering a recycled row must preserve the user's horizontal position.
+        if (viewport.boundary != boundary) {
+            if (items.size > PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS) {
+                listState.scrollToItem(initialIndex)
+            }
+            viewport.boundary = boundary
+        }
+    }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -16184,17 +16284,9 @@ private fun ProfessionalTimelineRow(
                     )
                 }
             }
-            BoxWithConstraints(modifier = Modifier.weight(1f)) {
-                val timelineColumnWidth = maxWidth / PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .testTag("${tag}_list"),
-                    contentPadding = PaddingValues(vertical = 6.dp),
-                    horizontalArrangement = Arrangement.Start,
-                ) {
-                    itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
+            val cellContent: @Composable (Int, ProfessionalTimelineItem, Modifier) -> Unit =
+                { index, item, columnModifier ->
+                        val displayedItem by rememberUpdatedState(item)
                         val selected = pendingSelection
                             ?.takeIf { it.layer == layer }
                             ?.observedAt
@@ -16202,7 +16294,7 @@ private fun ProfessionalTimelineRow(
                             ?: item.selected
                         Box(
                             modifier = Modifier
-                                .width(timelineColumnWidth)
+                                .then(columnModifier)
                                 .testTag("${tag}_column")
                                 .then(
                                     if (index < items.lastIndex) {
@@ -16223,13 +16315,41 @@ private fun ProfessionalTimelineRow(
                                 ),
                         ) {
                             ProfessionalTimelineCell(
-                                item = item,
+                                item = displayedItem,
                                 selected = selected,
                                 modifier = Modifier.fillMaxWidth(),
                                 compact = true,
                                 onClick = {
-                                    onSelect(ProfessionalFortuneSelection(layer, item.observedAt))
+                                    onSelect(ProfessionalFortuneSelection(layer, displayedItem.observedAt))
                                 },
+                            )
+                        }
+                }
+            Box(modifier = Modifier.weight(1f)) {
+                if (items.size <= PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS) {
+                    // Short rows already fit completely. Avoid nesting another
+                    // subcomposing LazyRow in the first vertical measure pass.
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(vertical = 6.dp)
+                            .testTag("${tag}_list"),
+                    ) {
+                        items.forEachIndexed { index, item ->
+                            key(item.key) { cellContent(index, item, Modifier.weight(1f)) }
+                        }
+                        val emptyColumns = PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS - items.size
+                        if (emptyColumns > 0) Spacer(Modifier.weight(emptyColumns.toFloat()))
+                    }
+                } else {
+                    LazyRow(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().testTag("${tag}_list"),
+                        contentPadding = PaddingValues(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.Start,
+                    ) {
+                        itemsIndexed(items, key = { _, item -> item.key }) { index, item ->
+                            cellContent(
+                                index, item,
+                                Modifier.fillParentMaxWidth(1f / PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS),
                             )
                         }
                     }
@@ -16238,6 +16358,37 @@ private fun ProfessionalTimelineRow(
         }
     }
 }
+
+private class ProfessionalTimelineViewport(
+    val listState: LazyListState,
+    var boundary: Pair<String, String>,
+)
+
+// Save the actual scroll positions, rather than empty per-row placeholders. This
+// keeps horizontal context when Android recreates the activity on fold/rotation.
+private val ProfessionalTimelineViewportSaver =
+    listSaver<MutableMap<ProfessionalFortuneLayer, ProfessionalTimelineViewport>, Any>(
+        save = { viewports ->
+            viewports.flatMap { (layer, viewport) ->
+                listOf(
+                    layer.name,
+                    viewport.listState.firstVisibleItemIndex,
+                    viewport.listState.firstVisibleItemScrollOffset,
+                    viewport.boundary.first,
+                    viewport.boundary.second,
+                )
+            }
+        },
+        restore = { values ->
+            values.chunked(5).associate { row ->
+                ProfessionalFortuneLayer.valueOf(row[0] as String) to
+                    ProfessionalTimelineViewport(
+                        LazyListState(row[1] as Int, row[2] as Int),
+                        (row[3] as String) to (row[4] as String),
+                    )
+            }.toMutableMap()
+        },
+    )
 
 private const val PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS = 10
 private val ProfessionalTimelineCardHeight = 104.dp
@@ -16259,23 +16410,14 @@ private fun ProfessionalTimelineCell(
     compact: Boolean,
     onClick: () -> Unit,
 ) {
-    val platformViewConfiguration = LocalViewConfiguration.current
-    val exactCellViewConfiguration = remember(platformViewConfiguration) {
-        object : ViewConfiguration by platformViewConfiguration {
-            override val minimumTouchTargetSize = DpSize(0.dp, 0.dp)
-        }
-    }
-    CompositionLocalProvider(
-        LocalMinimumInteractiveComponentEnforcement provides false,
-        LocalViewConfiguration provides exactCellViewConfiguration,
-    ) {
-        Surface(
-            onClick = onClick,
+        Box(
             modifier = modifier
                 .testTag("timeline_${item.key}")
-                .then(if (selected) Modifier.testTag("selected_${item.key}") else Modifier),
-            color = if (selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent,
-            shape = RoundedCornerShape(8.dp),
+                .then(if (selected) Modifier.testTag("selected_${item.key}") else Modifier)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (selected) NanfengGold.copy(alpha = 0.12f) else Color.Transparent)
+                .clickable(onClick = onClick),
+            propagateMinConstraints = true,
         ) {
             Column(
                 modifier = Modifier.padding(
@@ -16355,7 +16497,6 @@ private fun ProfessionalTimelineCell(
             )
             }
         }
-    }
 }
 
 @Composable

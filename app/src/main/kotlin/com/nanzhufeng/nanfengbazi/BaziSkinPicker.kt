@@ -103,13 +103,6 @@ internal fun BaziHomeSkinHeader(
 ) {
     val recipe = skin.visualRecipe
     val tokens = skin.tokens
-    var currentSolarTime by remember { mutableStateOf(baziHomeSolarDateTime()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentSolarTime = baziHomeSolarDateTime()
-            delay(1_000L)
-        }
-    }
     val scope = rememberCoroutineScope()
     val flowProgress = remember(skin.id) { Animatable(0f) }
     val pulseProgress = remember(skin.id) { Animatable(0f) }
@@ -204,8 +197,8 @@ internal fun BaziHomeSkinHeader(
                 primary = tokens.primary,
                 secondary = tokens.secondary,
                 highlight = recipe.headerContentColor,
-                progress = pulseProgress.value,
-                horizontalFlow = flowProgress.value,
+                progressProvider = { pulseProgress.value },
+                horizontalFlowProvider = { flowProgress.value },
                 modifier = Modifier.fillMaxSize(),
             )
             Column(
@@ -233,14 +226,11 @@ internal fun BaziHomeSkinHeader(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Text(
-                currentSolarTime,
+            BaziHomeSolarClock(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(horizontal = 17.dp, vertical = 14.dp),
                 color = recipe.headerContentColor.copy(alpha = 0.76f),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
             )
             Text(
                 "八字",
@@ -264,19 +254,39 @@ internal fun BaziHomeSkinHeader(
     }
 }
 
-private fun baziHomeSolarDateTime(): String = LocalDateTime.now()
-    .format(DateTimeFormatter.ofPattern("yyyy年MM月dd日 · HH:mm:ss"))
+private val BaziHomeSolarDateTimeFormat = DateTimeFormatter.ofPattern("yyyy年MM月dd日 · HH:mm:ss")
+private fun baziHomeSolarDateTime(): String = LocalDateTime.now().format(BaziHomeSolarDateTimeFormat)
+
+@Composable
+private fun BaziHomeSolarClock(modifier: Modifier, color: Color) {
+    var currentSolarTime by remember { mutableStateOf(baziHomeSolarDateTime()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentSolarTime = baziHomeSolarDateTime()
+            delay(1_000L)
+        }
+    }
+    Text(
+        currentSolarTime,
+        modifier = modifier,
+        color = color,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Medium,
+    )
+}
 
 @Composable
 private fun BaziHomeFlowOverlay(
     primary: Color,
     secondary: Color,
     highlight: Color,
-    progress: Float,
-    horizontalFlow: Float,
+    progressProvider: () -> Float,
+    horizontalFlowProvider: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
+        val progress = progressProvider()
+        val horizontalFlow = horizontalFlowProvider()
         val energy = maxOf(progress, horizontalFlow.absoluteValue)
         if (energy < 0.015f) return@Canvas
 
@@ -470,7 +480,7 @@ internal fun BaziSkinPickerDialog(
     }
     LaunchedEffect(pagerState) {
         var previousPage = initialPage
-        snapshotFlow { pagerState.currentPage }
+        snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
             .collect { page ->
                 if (page != previousPage) {

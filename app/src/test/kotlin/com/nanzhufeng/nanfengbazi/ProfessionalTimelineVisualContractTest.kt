@@ -13,21 +13,24 @@ class ProfessionalTimelineVisualContractTest {
             .substringBefore("private const val PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS")
         val cell = source.substringAfter("private fun ProfessionalTimelineCell(")
             .substringBefore("private fun ProfessionalTimelineBranchDetail(")
+        val rows = source.substringAfter("private fun FortuneDetailsView(")
+            .substringBefore("private enum class ProfessionalPagePart(")
 
         assertTrue(row.contains("Modifier.drawWithContent"))
         assertTrue(row.contains(".height(ProfessionalTimelineCardHeight)"))
         assertTrue(row.contains(".fillMaxHeight()"))
-        assertTrue(row.contains(".width(timelineColumnWidth)"))
+        assertTrue(row.contains(".fillParentMaxWidth(1f / PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS)"))
         assertTrue(row.indexOf("drawContent()") < row.indexOf("drawLine("))
         assertTrue(row.contains("size.width - dividerStrokeWidth / 2f"))
         assertFalse(cell.contains("Modifier.drawWithContent"))
         assertFalse(cell.contains("Modifier.drawBehind"))
         assertFalse(cell.contains("showTrailingDivider"))
         assertTrue(
-            cell.contains("LocalMinimumInteractiveComponentEnforcement provides false"),
+            rows.contains("LocalMinimumInteractiveComponentEnforcement provides false"),
         )
-        assertTrue(cell.contains("LocalViewConfiguration provides exactCellViewConfiguration"))
-        assertTrue(cell.contains("minimumTouchTargetSize = DpSize(0.dp, 0.dp)"))
+        assertTrue(rows.contains("LocalViewConfiguration provides exactCellViewConfiguration"))
+        assertTrue(rows.contains("minimumTouchTargetSize = DpSize(0.dp, 0.dp)"))
+        assertFalse(cell.contains("CompositionLocalProvider"))
         assertTrue(
             "天干十神必须排在天干字上方。",
             cell.indexOf("timeline_${'$'}{item.key}_stem_detail") <
@@ -36,11 +39,11 @@ class ProfessionalTimelineVisualContractTest {
     }
 
     @Test
-    fun timelineSelectionRespondsImmediatelyAndPrefetchCannotStarveLowerLayers() {
+    fun timelineSelectionRespondsImmediatelyWithoutSpeculativeFortuneWork() {
         val screenSource = locateStageTwoScreens().readText()
         val viewModelSource = locateStageTwoViewModel().readText()
-        val rows = screenSource.substringAfter("private fun ProfessionalTimelineRows(")
-            .substringBefore("private fun ProfessionalTimelineRow(")
+        val rows = screenSource.substringAfter("private fun FortuneDetailsView(")
+            .substringBefore("private enum class ProfessionalPagePart(")
         val row = screenSource.substringAfter("private fun ProfessionalTimelineRow(")
             .substringBefore("private const val PROFESSIONAL_TIMELINE_VISIBLE_COLUMNS")
         val resolver = viewModelSource.substringAfter("private fun resolveFortunePosition(")
@@ -49,15 +52,15 @@ class ProfessionalTimelineVisualContractTest {
         assertTrue(row.contains("pendingSelection: ProfessionalFortuneSelection?"))
         assertTrue(row.contains("it.layer == layer"))
         assertTrue(row.contains("selected = selected"))
-        assertTrue(rows.contains("var pendingSelection by remember(position)"))
-        assertTrue(rows.contains("pendingSelection = selection"))
+        assertTrue(rows.contains("mutableStateOf<Pair<ProfessionalFortunePosition, ProfessionalFortuneSelection>?>"))
+        assertTrue(rows.contains("pending = it to selection"))
+        assertTrue(rows.contains("it.first === professionalFortunePosition"))
         assertTrue(resolver.contains("requestId != fortunePositionRequestId"))
-        assertTrue(resolver.contains("delay(PROFESSIONAL_SELECTION_SETTLE_MILLIS)"))
+        assertFalse(resolver.contains("delay("))
         assertTrue(viewModelSource.contains("ioDispatcher.limitedParallelism(1)"))
         assertTrue(resolver.contains("withContext(fortuneCalculationDispatcher)"))
-        assertTrue(resolver.contains("ProfessionalFortuneLayer.HOURLY to current.hourlyTimeline"))
-        assertTrue(resolver.contains("distinctBy { it.layer to it.observedAt }"))
-        assertTrue(resolver.contains("selectionLayer = selection.layer"))
+        assertFalse(viewModelSource.contains("prefetchProfessionalFortuneSelections"))
+        assertTrue(resolver.contains("selectionLayer = selection?.layer"))
     }
 
     private fun locateStageTwoScreens(): File = generateSequence(File(".").canonicalFile) {

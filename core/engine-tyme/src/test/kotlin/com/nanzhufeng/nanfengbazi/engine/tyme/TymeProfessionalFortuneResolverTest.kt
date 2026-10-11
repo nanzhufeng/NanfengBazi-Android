@@ -278,7 +278,7 @@ class TymeProfessionalFortuneResolverTest {
     }
 
     @Test
-    fun `流日覆盖当前节令月且流时选择保持流日父级`() = runTest {
+    fun `流日覆盖当前节令月且流时保持同一流日父级`() = runTest {
         val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
         val initial = resolver.locate(result, CivilDateTime(2026, 7, 30, 12, 0, 0))
 
@@ -304,18 +304,50 @@ class TymeProfessionalFortuneResolverTest {
                 afterDaySelect,
                 ProfessionalFortuneSelection(ProfessionalFortuneLayer.HOURLY, hour.observedAt),
             )
-            assertEquals(afterDaySelect.flowPillars.day, afterHourSelect.flowPillars.day)
-            assertEquals(afterDaySelect.flowPillars.month, afterHourSelect.flowPillars.month)
-            assertEquals(
-                afterDaySelect.position.annualFortune.calendarYear,
-                afterHourSelect.position.annualFortune.calendarYear,
-            )
-            assertEquals(
-                afterDaySelect.position.decadeFortune?.startAt,
-                afterHourSelect.position.decadeFortune?.startAt,
-            )
+            val expected = resolver.locate(result, hour.observedAt)
+            assertEquals(expected.flowPillars, afterHourSelect.flowPillars)
+            assertEquals(expected.position.decadeFortune?.startAt, afterHourSelect.position.decadeFortune?.startAt)
             assertEquals(hour.key, afterHourSelect.hourlyTimeline.single { it.selected }.key)
         }
+    }
+
+    @Test
+    fun `交运年和交节日前仍展示完整流月流日流时`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(2027, 11, 4, 6, 37, 0))
+
+        assertEquals(12, current.monthlyTimeline.size)
+        assertEquals("10/8", current.dailyTimeline.first().label)
+        assertEquals("11/8", current.dailyTimeline.last().label)
+        assertEquals(32, current.dailyTimeline.size)
+        assertEquals(12, current.hourlyTimeline.size)
+
+        val earlierMonth = current.monthlyTimeline.first()
+        val afterMonthSelect = resolver.select(
+            result,
+            current,
+            ProfessionalFortuneSelection(ProfessionalFortuneLayer.MONTHLY, earlierMonth.observedAt),
+        )
+        assertEquals(earlierMonth.pillar, afterMonthSelect.flowPillars.month)
+        assertNotEquals(current.position.decadeFortune?.startAt, afterMonthSelect.position.decadeFortune?.startAt)
+
+        val nextJieDay = current.dailyTimeline.last()
+        val afterDaySelect = resolver.select(
+            result,
+            current,
+            ProfessionalFortuneSelection(ProfessionalFortuneLayer.DAILY, nextJieDay.observedAt),
+        )
+        assertEquals(current.flowPillars.month, afterDaySelect.flowPillars.month)
+        assertEquals(nextJieDay.key, afterDaySelect.dailyTimeline.single { it.selected }.key)
+
+        val lateRatHour = current.hourlyTimeline.first { it.label == "23:00" }
+        val afterHourSelect = resolver.select(
+            result,
+            current,
+            ProfessionalFortuneSelection(ProfessionalFortuneLayer.HOURLY, lateRatHour.observedAt),
+        )
+        assertEquals(current.flowPillars.day, afterHourSelect.flowPillars.day)
+        assertEquals(lateRatHour.key, afterHourSelect.hourlyTimeline.single { it.selected }.key)
     }
 
     @Test
@@ -328,7 +360,7 @@ class TymeProfessionalFortuneResolverTest {
             current,
             ProfessionalFortuneSelection(
                 ProfessionalFortuneLayer.DAILY,
-                current.dailyTimeline.first { !it.selected }.observedAt,
+                current.dailyTimeline.first { it.observedAt.day == 14 }.observedAt,
             ),
         )
         assertSame(current.minorTimeline, afterDay.minorTimeline)
@@ -341,7 +373,7 @@ class TymeProfessionalFortuneResolverTest {
             afterDay,
             ProfessionalFortuneSelection(
                 ProfessionalFortuneLayer.HOURLY,
-                afterDay.hourlyTimeline.first { !it.selected }.observedAt,
+                afterDay.hourlyTimeline.first { it.label == "13:00" }.observedAt,
             ),
         )
         assertSame(afterDay.minorTimeline, afterHour.minorTimeline)
@@ -352,7 +384,7 @@ class TymeProfessionalFortuneResolverTest {
     }
 
     @Test
-    fun `五层选择命令逐级保持父层身份`() = runTest {
+    fun `五层选择命令在边界内保留父级并在跨界时同步更新`() = runTest {
         val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
         val current = resolver.locate(result, CivilDateTime(2026, 2, 3, 12, 0, 0))
 
@@ -379,10 +411,139 @@ class TymeProfessionalFortuneResolverTest {
                 current,
                 ProfessionalFortuneSelection(ProfessionalFortuneLayer.DAILY, item.observedAt),
             )
-            assertEquals(current.position.decadeFortune?.startAt, selected.position.decadeFortune?.startAt)
-            assertEquals(current.position.annualFortune.calendarYear, selected.position.annualFortune.calendarYear)
-            assertEquals(current.flowPillars.month, selected.flowPillars.month)
+            val expected = resolver.locate(result, item.observedAt)
+            assertEquals(expected.flowPillars, selected.flowPillars)
+            assertEquals(expected.position.decadeFortune?.startAt, selected.position.decadeFortune?.startAt)
+            if (expected.flowPillars.month == current.flowPillars.month) {
+                assertEquals(current.position.annualFortune.calendarYear, selected.position.annualFortune.calendarYear)
+            }
         }
+    }
+
+    @Test
+    fun `截图寒露流日从十月八日开始并延续到立冬交节前`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(2026, 10, 10, 15, 44, 0))
+        assertEquals("寒露", current.monthlyTimeline.single { it.selected }.subtitle)
+        assertEquals("10/8", current.dailyTimeline.first().label)
+        assertEquals("11/7", current.dailyTimeline.last().label)
+        assertEquals(31, current.dailyTimeline.size)
+        current.dailyTimeline.forEach { day ->
+            val selected = resolver.select(result, current,
+                ProfessionalFortuneSelection(ProfessionalFortuneLayer.DAILY, day.observedAt))
+            assertEquals("戊戌", selected.flowPillars.month)
+            assertEquals(day.pillar, selected.flowPillars.day)
+            assertEquals(day.key, selected.dailyTimeline.single { it.selected }.key)
+        }
+    }
+
+    @Test
+    fun `默认子时十二候选属于同一流日而不是民用日期拼接`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        listOf(CivilDateTime(2026, 10, 10, 15, 44, 0),
+            CivilDateTime(2026, 10, 10, 23, 30, 0),
+            CivilDateTime(2026, 10, 11, 0, 30, 0)).forEach { at ->
+            val current = resolver.locate(result, at)
+            assertEquals(12, current.hourlyTimeline.size)
+            current.hourlyTimeline.forEach { hour ->
+                val selected = resolver.select(result, current,
+                    ProfessionalFortuneSelection(ProfessionalFortuneLayer.HOURLY, hour.observedAt))
+                assertEquals(current.flowPillars.day, selected.flowPillars.day)
+                assertEquals(current.flowPillars.month, selected.flowPillars.month)
+                assertEquals(hour.pillar, selected.flowPillars.hour)
+                assertEquals(hour.key, selected.hourlyTimeline.single { it.selected }.key)
+            }
+            assertEquals(current.flowPillars.day, current.dailyTimeline.single { it.selected }.pillar)
+        }
+    }
+
+    @Test
+    fun `全部节令的首末流日与流时候选不越过精确父级边界`() = runTest {
+        listOf(RatHourRule.TYME_DEFAULT, RatHourRule.LATE_RAT_SAME_DAY).forEach { rule ->
+            val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault(ratHourRule = rule))
+            listOf(2024, 2026, 2033).forEach { year ->
+                val firstJie = SolarTerm.fromName(year, "立春")
+                (0 until 12).forEach { index ->
+                    val jie = firstJie.next(index * 2)
+                    val start = jie.julianDay.solarTime.toCivilDateTime().toLocalDateTime()
+                    val end = jie.next(2).julianDay.solarTime.toCivilDateTime().toLocalDateTime()
+                    listOf(start, end.minusSeconds(1)).forEach { at ->
+                        val current = resolver.locate(result, at.toCivilDateTime())
+                        current.dailyTimeline.forEach { day ->
+                            val candidate = day.observedAt.toLocalDateTime()
+                            assertTrue("$year ${jie.name} ${day.label}", candidate >= start && candidate < end)
+                        }
+                        current.hourlyTimeline.forEach { hour ->
+                            val candidate = hour.observedAt.toLocalDateTime()
+                            assertTrue("$year ${jie.name} ${hour.label}", candidate >= start && candidate < end)
+                            val selected = resolver.locate(result, hour.observedAt)
+                            assertEquals(current.flowPillars.month, selected.flowPillars.month)
+                            assertEquals(current.flowPillars.day, selected.flowPillars.day)
+                        }
+                        assertEquals(current.flowPillars.day, current.dailyTimeline.single { it.selected }.pillar)
+                        assertEquals(current.flowPillars.hour, current.hourlyTimeline.single { it.selected }.pillar)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `晚子同日规则分别呈现早子和晚子且不偷换日柱`() = runTest {
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault(
+            ratHourRule = RatHourRule.LATE_RAT_SAME_DAY))
+        val current = resolver.locate(result, CivilDateTime(2026, 10, 10, 15, 44, 0))
+        assertEquals(13, current.hourlyTimeline.size)
+        assertEquals("早子时", current.hourlyTimeline.first().subtitle)
+        assertEquals("晚子时", current.hourlyTimeline.last().subtitle)
+        assertNotEquals(current.hourlyTimeline.first().pillar, current.hourlyTimeline.last().pillar)
+        current.hourlyTimeline.forEach { hour ->
+            val selected = resolver.select(result, current,
+                ProfessionalFortuneSelection(ProfessionalFortuneLayer.HOURLY, hour.observedAt))
+            assertEquals(current.flowPillars.day, selected.flowPillars.day)
+            assertEquals(hour.pillar, selected.flowPillars.hour)
+            assertEquals(hour.key, selected.hourlyTimeline.single { it.selected }.key)
+        }
+    }
+
+    @Test
+    fun `天文台寒露分钟外部锚点前后定位不同流月`() = runTest {
+        // HKO Almanac 2026: Cold Dew, 8 October 14:29 (Hong Kong civil time).
+        val result = engine.calculate(sampleInput(), CalculationProfile.tymeDefault())
+        val before = resolver.locate(result, CivilDateTime(2026, 10, 8, 14, 28, 0))
+        val after = resolver.locate(result, CivilDateTime(2026, 10, 8, 14, 31, 0))
+        assertEquals("丁酉", before.flowPillars.month)
+        assertEquals("戊戌", after.flowPillars.month)
+        assertEquals("9/7", before.dailyTimeline.first().label)
+        assertEquals("10/8", after.dailyTimeline.first().label)
+    }
+
+    @Test
+    fun `历法支持起点保留仍覆盖当前时刻的节令月与子时片段`() = runTest {
+        val result = engine.calculate(sampleInput().copy(calendarInput =
+            BirthCalendarInput.Solar(CivilDateTime(1800, 1, 1, 12, 0, 0))), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(1800, 1, 1, 12, 0, 0))
+        assertEquals(1, current.monthlyTimeline.count { it.selected })
+        assertEquals("1/1", current.dailyTimeline.first().label)
+        assertEquals(12, current.hourlyTimeline.size)
+        assertEquals("23:00", current.hourlyTimeline.first().label)
+        assertEquals(CivilDateTime(1800, 1, 1, 0, 0, 0), current.hourlyTimeline.first().observedAt)
+        assertTrue(current.dailyTimeline.all { it.observedAt.year >= 1800 })
+    }
+
+    @Test
+    fun `立春前出生的童限保留上一节气年的流年且能选中`() = runTest {
+        val result = engine.calculate(sampleInput().copy(calendarInput =
+            BirthCalendarInput.Solar(CivilDateTime(1990, 1, 1, 12, 0, 0))), CalculationProfile.tymeDefault())
+        val current = resolver.locate(result, CivilDateTime(1990, 1, 1, 12, 0, 0))
+        assertEquals(1989, current.position.annualFortune.calendarYear)
+        assertEquals("1989", current.annualTimeline.single { it.selected }.label)
+        val year = current.annualTimeline.first()
+        val selected = resolver.select(result, current,
+            ProfessionalFortuneSelection(ProfessionalFortuneLayer.ANNUAL, year.observedAt))
+        assertEquals(year.pillar, selected.flowPillars.year)
+        assertEquals(year.key, selected.annualTimeline.single { it.selected }.key)
+        assertEquals("0岁", selected.annualTimeline.single { it.selected }.subtitle)
     }
 
     private fun sampleInput(
@@ -401,3 +562,6 @@ private fun com.tyme.solar.SolarTime.toCivilDateTime(): CivilDateTime =
 
 private fun CivilDateTime.toLocalDateTime(): LocalDateTime =
     LocalDateTime.of(year, month, day, hour, minute, second)
+
+private fun LocalDateTime.toCivilDateTime(): CivilDateTime =
+    CivilDateTime(year, monthValue, dayOfMonth, hour, minute, second)

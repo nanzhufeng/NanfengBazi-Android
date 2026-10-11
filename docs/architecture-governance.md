@@ -145,7 +145,7 @@
 | 入口/消费者 | 当前状态 | 唯一入口 | 最小验证 |
 |---|---|---|---|
 | 排盘首页最近命例 | 只读取活动命例中有 `lastViewedAt` 的最近 3 条，不另存显示副本 | `CaseRepository.search(LAST_VIEWED_DESC)` → `StageTwoViewModel.recentCases` | 仓储请求契约与 API 35 创建—查看—快捷返回流程 |
-| 记录目录投影与局部操作 | 导入包只负责输入；提交后案例按独立 `caseId` 聚合持久化。应用级 `CaseCatalogStore` 维护一次一致的轻量目录快照，页面重建先投影该快照、再静默校准；置顶／软删除／永久删除按仓储变更数精确回写共享快照，只有变更数不一致、导入、恢复或分组结构变更才读取仓储校准。每次投影绑定完整 `CaseListSession`，过期会话只能更新缓存，不能覆盖当前界面。仓储目录读取只聚合已采用计算快照，不扫描整段历史。 | `CaseRepository` 结构化变更结果 → `CaseCatalogStore` → `StageTwoViewModel` 列表投影 | 首屏清理完成后只触发一次目录加载；页面重建复用共享目录；切换用户／名人／回收站时标题、筛选、计数与行同会话；并发校准合并为一次读取；三类局部操作不增加仓储目录读取；已有列表在校准中持续可见 |
+| 记录目录投影与局部操作 | 导入包只负责输入；提交后案例按独立 `caseId` 聚合持久化。应用级 `CaseCatalogStore` 维护一次一致的轻量目录快照，页面重建先投影该快照、再静默校准；置顶／软删除／永久删除按仓储变更数精确回写共享快照，只有变更数不一致、导入、恢复或分组结构变更才读取仓储校准。每次投影绑定完整 `CaseListSession`，过期会话只能更新缓存，不能覆盖当前界面。仓储目录读取只聚合已采用计算快照，不扫描整段历史。 | `CaseRepository` 结构化变更结果 → `CaseCatalogStore` → `StageTwoViewModel` 列表投影 | 冷启动先恢复内存／磁盘目录供首屏使用，清理完成后只触发一次仓储校准；写盘锁不阻塞内存目录修改；页面重建复用共享目录；切换用户／名人／回收站时标题、筛选、计数与行同会话；并发校准合并为一次读取；三类局部操作不增加仓储目录读取；已有列表在校准中持续可见 |
 | 命例详情读取与保留 | 普通详情只执行一次完整 `findById`，`markViewed` 后精确回写 `lastViewedAt`；最后打开的同一案例作为只读回退内容保留。即时排盘临时详情直接消费刚生成的 `BaziCase`；开启保存时先用同一计算结果进入“正在保存”详情，后台 `savePrepared` 成功后以带 revision 的聚合原子升级，不再回读仓储 | `CreateCaseUseCase.preview/previewForSave/savePrepared`、`CaseRepository.findById/markViewed` → `StageTwoViewModel.retainedCaseDetail` | 开关两态都进入专业细盘；未保存路径零写库，保存路径不阻塞首屏且零详情回读；重复或后台失败返回原表单处理 |
 | 详情与断事笔记状态一致性 | `detail`、笔记草稿、已保存草稿和事件时间线必须以同一 `caseId + revision` 原子装载；预取缓存保存完整 `RetainedCaseDetailSnapshot`，不得只缓存父案例或只更新其中一块。渲染和保存前都校验所有权；不匹配时禁止渲染／写入并从 Room 重新 hydrate。空缓存不能证明数据库为空；若详情聚合非空而内存草稿与已保存草稿都为空，必须阻止空内容覆盖 | `StageTwoViewModel.openDetail/restoreCaseBoundDestination/ensureCaseNotesHydrated/persistCaseNotes` → `CaseRepository.findById` | 同 revision 的 A/B 快速切换、预取命中、子记录后台变化、进程恢复、1000+ 案例与空缓存／非空数据库回归；任何迟到任务不得回写另一命例 |
 | 命盘详情四标签 | 基本信息、基本排盘、岁运、分析记录消费同一 `BaziCase` 与已采用快照 | `StageTwoUiState.detailSection` | 四标签真实切换；编辑、记录和岁运长流程回归 |
@@ -157,7 +157,7 @@
 | 能力 | 唯一入口 | 事实边界 |
 |---|---|---|
 | 流年序列 | `BaziEngine.calculate()` → `CalculationResult.annualFortunes` | 从标准公历出生年生成至 120 年／十二步大运终点；保存干支、年份、虚岁和摘要大运归属 |
-| 专业细盘默认观察时刻 | `StageTwoViewModel.resetProfessionalObservation()` | 每次进入专业细盘均重置为设备当前民用分钟；仅明确已故或出生日期严格早于当前日期 100 年的命例定位到出生时刻加 36 年，之后仍由 `ProfessionalFortuneResolver.locate()` 按精确立春切换 |
+| 专业细盘默认观察时刻 | `StageTwoViewModel` 打开命例时建立观察种子，`resetProfessionalObservation()` 响应回今 | 打开命例时以设备当前民用分钟建立默认观察时刻；详情标签往返保留用户已选择时刻；仅明确已故或出生日期严格早于当前日期 100 年的命例定位到出生时刻加 36 年，之后仍由 `ProfessionalFortuneResolver.locate()` 按精确立春切换 |
 | 当前大运 | `FortunePositionResolver.locate()` | 优先使用每步大运的 `[startAt, endAtExclusive)` 精确半开区间；旧快照无精确边界时才按年份降级 |
 | 起运前小运 | `ProfessionalFortuneResolver.locate()` | 从已采用时柱下一位按大运既有顺逆逐年生成，只覆盖出生至精确交运前的半开区间；返回年份、周岁、干支、十神与藏干。UI 仅合并为大运行最左一列，点击后复用流年行，不推算也不单独占行 |
 | 流月/流日/流时 | `ProfessionalFortuneResolver.locate()/select()` | `locate()` 按自由观察时刻定位全部层级；`select()` 消费带层级的选择命令并校验父层不变。流月只在十二节切换；流日按当前节令月与父区间交集生成；流时服从快照子时规则并保持流日父级；观察时刻按民用时直接计算 |
@@ -262,12 +262,15 @@
 | 列表投影读取 | `CaseRepository.searchBatch()` → `RoomCaseRepository.loadSummaries()` | 同一次列表刷新所需的最近、目录、批量与当前筛选结果必须复用一个一致数据库快照；Room 以整表快照和交叉引用映射替代逐命例快照／分组／标签查询，筛选和排序语义仍由同一 `CaseSearchRequest` 执行 |
 | 排盘与专业岁运计算 | `StageTwoViewModel` → `fortuneCalculationDispatcher` → 既有领域用例／`ProfessionalFortuneResolver` | Tyme 排盘、预览、编辑、候选盘和五层专业岁运不得占用 Compose UI 线程；岁运定位和预取共用单通道计算队列，连续选择以请求 id 取消旧任务并合并最终落点，只允许最后一次有效结果原子进入 UI 状态，算法与父级所有权规则不变 |
 | 出生时间滚轮 | `ValueWheel` 本地滚动状态 → 停稳后 `onSelected` | 滑动经过中间项只更新滚轮自身视觉与触觉，停止滚动后才向页面状态提交一次最终值；不得为每个经过项触发整页 `StageTwoUiState` 写入 |
-| 搜索与图片元数据 | `StageTwoViewModel.updateQuery()` / `MainActivity.importScreenshotUrisNow()` | 搜索输入使用 180ms 可取消防抖，筛选按钮仍即时刷新；ContentResolver 文件名与 MIME 查询在 IO 调度器执行，主线程只负责提交准备完成的来源列表 |
-| 专业岁运即时切换 | `ProfessionalTimelineRows` 局部选中态 → `StageTwoViewModel` 版本化缓存 → `ProfessionalFortuneResolver` | 点击先由时间轴局部状态即时高亮，不写全局页面状态；缓存键由命例 id、已采用快照 id、观察时刻和选择层组成。96 项 LRU 保留最近结果，五层首屏各 10 项按逐索引交错顺序在单通道调度器预取，流日／流时不得因大运优先而饥饿。首次计算保留原局四柱稳定首帧；只有最后请求可替换真实结果 |
-| 页面导航与原子输入 | `RootNavigationBar` 局部选中态 → `StageTwoNavigator` / `StageTwoViewModel` | 排盘、记录、设置先在触摸帧内只更新导航胶囊，下一帧再提交唯一最终目的地；根导航不得触发无关命例目录重投影。日期与时间确认作为一次原子输入，不允许“新日期＋旧时间”和“新日期＋新时间”连续重算 |
+| 搜索与图片元数据 | `StageTwoViewModel.updateQuery()` / `MainActivity.importScreenshotUrisNow()` | 已加载目录的搜索不再等待固定防抖；仅缺少目录快照时使用 180ms 可取消防抖。相同输入不重投影，只有最新会话可回写。文件名与 MIME 查询在 IO 调度器执行 |
+| 专业岁运即时切换 | `ProfessionalTimelineRows` 局部选中态 → `StageTwoViewModel` 版本化缓存 → `ProfessionalFortuneResolver` | 即时高亮；96 项 LRU 以命例、采用快照、观察时刻和选择层区分结果。只计算实际点选，连续点选通过协程让出与取消合并，不等待固定毫秒计时器，并拒绝过期回写。五层共用一次精确触摸配置，已在正确位置的列表不重复请求重测量 |
+| 页面导航与原子输入 | `RootNavigationBar` → `StageTwoNavigator` / `StageTwoViewModel` | 根导航与详情标签直接提交目的地，不主动等下一帧；根导航不触发无关命例目录重投影。日期与时间作为一次原子输入，不连续提交半份输入 |
 | 页面重访与长文本派生 | `StageTwoViewModel` 轻量 LRU 详情缓存 / `ioDispatcher` | 最近命例详情先呈现再静默校准 Room；师傅点评句段、反馈主题和客观摘要的提取不得在 Compose UI 线程同步执行。已有可用内容在后台刷新时保持可见 |
-| 列表进入详情 | `CaseListScreen` 可见项预取 → `RetainedCaseDetailSnapshot` → `StageTwoViewModel.openDetailFromList()` | 可见命例在 IO／单通道岁运线程中预取，“详情聚合 + 默认观察时刻 + 专业结果”必须由同一个受跟踪任务完成后才标记为就绪，不得另起脱离所有权的计算协程。点击立即提交专业细盘目的地并取消其他案例的推测计算，目标案例优先复用完整快照；账号头、四标签与身份摘要先完成首帧，密集盘体下一帧加入。Room 校准保证子记录最新，但 `markViewed` 仅更新目录元数据，不得替换已渲染详情或专业结果。连续点击只允许最后一个案例回写 |
-| 详情分页驻留 | `CaseDetailScreen` 局部标签态 → `ReferenceCaseDetailContent` / `CaseDetailPageCaptureRegistry` | 标签胶囊先在触摸帧内切换，下一帧只提交最终标签；当前页先完成首帧，其余页在首屏稳定后错峰预组合并驻留复用，切换不得销毁后重组合整页。每页拥有独立滚动状态和长图捕获目标，驻留不得破坏四页长图顺序 |
+| 列表进入详情 | `CaseListScreen` 停稳可见项预取 → `RetainedCaseDetailSnapshot` → `StageTwoViewModel.openDetailFromList()` | 停稳时只预热前三个真实可见命例；滑动、离开视口或离开列表时取消无关任务，已转入详情的目标任务保留。详情、观察时刻与专业结果由同一受跟踪任务完成；完整命中时正文同帧挂载。Room 静默校准保证子记录最新，`markViewed` 不替换整页 |
+| 详情分页驻留 | `CaseDetailScreen` → `ReferenceCaseDetailContent` / `CaseDetailPageCaptureRegistry` | 标签、身份条与正文同帧使用当前展示页；只创建用户访问过的标签，保留已访问页、独立滚动位置及长图捕获目标，不按定时器组装隐藏页或延后一帧填充正文 |
+| 万年历选中态 | `TymeAlmanacReader` / `StageTwoViewModel` | 月格、日期详情、十二时辰与完整视图分别有界缓存；缓存键覆盖实际年月日、时辰及子时口径。已完成视图同步呈现；缺失结果在后台计算并原子替换，迟到的入口预热不能把用户拉离新页面 |
+| 头图与静态派生 | `BaziSkinPicker` / 详情和合盘组件 | 时钟只重组自己的文字；动画状态在绘制／图层阶段读取。相同快照的结构、旺衰、五行和阴阳派生按输入记忆化，不随点选和重组重复分析 |
+| AI 本机配置 | `StageTwoViewModel.prepareAiServiceState()` / `ioDispatcher` | 配置与密钥读取、加密保存、历史解析、点评提示准备及密钥读取在后台执行；完整配置准备后再进入子页。关闭或离开目标页后，过期请求不打开子页、不写回密钥；生成期间保留上一份可用内容 |
 
 ## alpha83 列表批量写入与点评编辑边界
 
@@ -280,3 +283,8 @@
 | 点评编辑布局 | `ReferenceCaseNotes` → `CaseNotesTextEditor` | 师傅点评与 AI 点评共享剩余高度、内部滚动条和固定底部保存区；提示文本仅是 placeholder，底层提示合同和元数据不进入页面正文 |
 | 专业时间轴高度 | `ProfessionalTimelineRow` | 大运、流年、流月、流日、流时共享固定 104dp 卡片高度；横滑只改变可见列，不触发外层卡片重新测量或页面纵向跳动 |
 | 分组弹窗底部安全区 | `HomeCaseGroupPickerDialog` / `RecordGroupEditorDialog` | 两个分组弹窗都在系统导航栏 inset 之上保留 96dp 的真实布局占位，使输入／添加操作区整体上移；不得用可能被固定内容挤出边界的外层 bottom padding 冒充可见留白 |
+
+### 2026-10-10 交互与规则补充
+
+- 设置根页的滚动状态在 AI／关于／账号分支外创建，返回保留位置。皮肤预览监听 settledPage，滑动过程中不重建全应用主题。时间／地点 ValueWheel 的连续缩放与透明度只在 graphicsLayer 读取布局；选中文字样式使用 derivedStateOf，已有正确滚动位置不重复 scrollToItem。
+- 童限流年仅比较出生与首次交运所覆盖的节气年；立春前出生的上一年度在专业领域层补齐。历法支持起点按区间交集保留有效片段。详见 D-205 与交互验收报告。

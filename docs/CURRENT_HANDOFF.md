@@ -1,9 +1,82 @@
-# 当前交接：v1.0.15 发布基线
+# 当前交接：v1.0.16 本机覆盖更新
 
-更新日期：2026-09-15
+更新日期：2026-10-11
 
 本文件是新 Codex 对话的唯一当前交接入口。它只保存接手所需事实，不保存旧对话过程；
 历史演进以 Git、`decision-log.md` 和需求审计为准。
+
+## v1.0.16 GitHub 发布准备
+
+- 发布仓库 nanzhufeng/NanfengBazi-Android，默认分支main。当前最终APK已同签名覆盖OPPO并逐字节读回确认，发布复用同一文件，不重新构建或重签。
+- 远端安装包名 NanfengBazi-Android-v1.0.16.apk，70604319字节；SHA256 3a5f9f37a56e85ae13416300991bb4936c98595bb58966e50547f010a6f4fcae。附SHA256SUMS.txt，Release构建、原项目既有签名、非Debug；正式发布而非预发布，保留签名范围说明。
+- README预览已更新：当前v1.0.16原APK、API35隔离模拟器、1080×2400，首页／记录／专业细盘，合成示例资料。仅本次emulator-5600，主设备本阶段未操作。
+- 当前提交显式包括app/core相关源码与测试、文档、脚本和预览；tmp与字节码忽略。原有docs/next-codex-prompt.md删除保持未暂存，不擅自恢复或提交。
+- 待完成：提交／推送main、v1.0.16标签与Release、远端附件回读校验和本人模拟器清理。
+
+## 2026-10-11：原签名保数据覆盖更新完成
+
+- 用户最终明确：既有开发项目以现有安装身份正常保数据覆盖，新规则不得阻断旧项目；要求长期记忆。已写 用户长期记忆（仓库外）。此明确授权覆盖本任务之前对旧项目签名来源的限制；下面历史“未覆盖”段落仅保留当时状态。
+- 原手机1.0.15(10047)历史签名0f89bc92…，对应 仓库外原安装密钥；原项目local.properties的Release配置04d91b43…不同，未改动它。当前Release沿用手机原身份，新版本1.0.16(10048)，非DEBUGGABLE。已将已验身份配置保存在用户 用户级 Gradle 配置 的 nanfengBazi.release.*，其余App设置保留，文件0600，凭据不进入日志／仓库／记忆。构建也保留旧项目原配置作为备用，不再一概禁止旧来源。
+- 包含本轮排盘规则、全页与专业细盘性能、记录冷启动、API35性能配置兼容、80%四柱预览全部源码。最终Release门禁 $TMPDIR/bazi-same-identity-overwrite-final-gate-20261011.log exit0：327测试、0失败／错误、跳过1真实问真包；Lint零错误；diff检查通过。先前错误身份构建已精确取消，未安装其产物。
+- 冻结APK NanfengBazi-v1.0.16-same-signature-20261011.apk，70604319字节，SHA256 3a5f9f37a56e85ae13416300991bb4936c98595bb58966e50547f010a6f4fcae。证书SHA256 0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3，与原现装完全相同。
+- 2026-10-11 11:55:42 指定OPPO已通过 pm install -r --user 0 返回Success。应用UID、原首次安装时间、数据目录、CE/DE inode保持；安装后主APK读回SHA完全匹配。临时设备APK已清理；未卸载／清业务数据／自动启动／运行connected测试。此次确认保数据覆盖，不冒充已验证全部真机交互或业务记录内容。
+- 证据 tmp/same-identity-overwrite-before-20261011.json、same-identity-overwrite-artifact-20261011.json、same-identity-overwrite-result-20261011.json。工作树保留既有修改，未提交／发布GitHub。
+
+## 2026-10-11：记录列表四柱预览精致度微调
+
+- 用户随后要求覆盖安装；重新核查完整 NANFENG_BAZI_RELEASE_* 环境与用户 用户级 Gradle 配置 的 nanfengBazi.release.*，四项均缺失。按主设备签名门禁停止于只读取证；OPPO现装1.0.15(10047)，未推包／安装／启动／清数据。80%微调尚未生成新的Release，不能安装旧冻结包冒充此改动。检查 tmp/overwrite-check-20261011.json。
+
+- 用户要求截图中记录行右侧八字预览整体适当缩小。
+- 唯一共享 CaseSummaryRow 内四柱用户最终指定80%：预览宽104→83.2dp，默认字号16→12.8sp，经appFontSize保留App字体缩放；行距按原主题80%。保持四柱顺序、五行色、身份徽标与整行点击结构。
+- 本改动在下方已冻结Release之后；旧 fa484cf6… 包不含此微调。90%初版 Debug 构建与58项交互合同测试通过；本人 emulator-5600 实际前后截图确认缩小，整行bounds不变，打开详情／返回通过，证据 tmp/compact-preview-verification-20261011.json。模拟器收尾关闭；80%最终版本 Debug 构建及58项交互合同测试通过（日志 $TMPDIR/bazi-compact-preview-80-final-gate-20261011.log），未重复设备部署；不重复跑排盘引擎或真机测试。禁止重置已有WIP。
+
+## 2026-10-11：专业细盘与冷启动记录页优化完成（未覆盖主设备）
+
+- 用户重点：专业細盘进入、滑动、连续点选、标签返回；记录页冷启动延迟；遗漏风险。用户明确真机验证另列，本轮完成可做的源码与隔离优化。
+- 专业页正常浏览采用 LazyColumn，导出展开同一个真实分段渲染器；五层横轴由案例级持有，显式 saveable key 保留宽窄布局状态。短序列等权 Row、长序列 LazyRow 父宽十分之一；稳定回调、最后选择守卫、裁切点击反馈；旧嵌入消费者约束兼容。
+- 冷启动先恢复内存／磁盘目录再做占位维护，清理后仍只一次 Room 校准；已有内容不清空。写盘独立锁＋代次守卫，慢盘不挡目录更新；读取取消向上传播。两项新行为测试修前红、修后绿。
+- 遗漏修复：旧 ProfileInstaller 在API35安装配置返回3。升级1.4.1并补手写应用关键流程 baseline-prof.txt，profgen语法／严格二进制校验均通过，最终安装返回1、speed-profile编译Success。系统编译生效后3次冷首次细盘窗口P95 48–81ms，此前未生效曾见200ms；仍有慢帧，不承诺首次安装即零延迟。
+- 第二完整门禁 `$TMPDIR/bazi-profile-records-professional-final-gate-20261011.log` exit0：App Debug／Release各327、无失败／错误、各跳过1；Lint各0错误、50警告、2信息。4项脚本安全测试与diff检查通过；前阶段全模块门禁已通过，最新改动只涉及App。
+- 渲染／记录修复包5b1d3081… 已完整复测3次冷记录、连续日时、十年／年／月、底部可达、标签、导出、宽窄，长图实际生成的“(2)”文件读回，1080×11737／1080×2512，日期10/14 13:00正确。横滑首项10/17在回收、标签、导出、宽窄均保持。配置升级最终包另复测3次冷记录／细盘、笔记、日时连续选择及页签返回；同渲染源码，证据分包保存，不混充哈希。
+- 最终未签名Release：`NanfengBazi-v1.0.15-records-professional-profile-20261011-unsigned.apk`，SHA256 `fa484cf69ca7073adcd8202351c176a8fe0afe67d0986e2cd0b37778fbe3adf7`，1.0.15(10047)，非DEBUGGABLE。元数据 `tmp/profile-records-professional-artifact-20261011.json`；详细结果 `interaction-performance-audit.md` 追加段、D-207。
+- 仅本人emulator-5600安装测试署名副本；主设备与其他模拟器未操作，未运行connected测试。正式签名允许来源均不完整，未覆盖主设备。本人模拟器收尾清理状态见审计末尾；合成资料保留。工作树基于c22d11f，包含已有修改，未提交／发布；不要重置或复用旧产物当最终包。
+
+## 2026-10-11：排盘规则与交互优化收尾（未发布、未覆盖主设备）
+
+- 当前源码：`c22d11f` 加工作树，包含此前已有修改，未提交／上传。完整依据见 `interaction-performance-audit.md`；D-205 修正 D-203 的公历整月补齐错误，D-206 记录性能改动。用户最终允许保留子时选择，默认 23:00 算次日。
+- 已修规则：流日精确节令区间；流时遵循流日与月交集；完整十二流月跨交运重定位；立春前出生童限补上一流年；1800 起点保留有效边界片段；候选秒数显示与再定位保真。旧快照只读兼容，不写回。
+- 优化：直接导航／页签、可见前三例预热与取消、就绪目录搜索、万年历有界缓存、AI 读写准备 IO、静态派生复用、时钟／动画延后读取、选择轮绘制层更新、停稳皮肤预览、设置返回保留滚动、R8／资源压缩及 Android ICU 版本回退。
+- 最终门禁 2026-10-11 exit 0：test + Debug/Release lint + 两种 APK。App 两变体各 325 项（各跳过 1 项真实问真包对账），领域 84、引擎 57、数据两变体各 67、图片解析两变体各 43、真太阳时 5，无失败／错误；脚本 4 项通过。
+- 隔离模拟器仅 emulator-5600；合成两命例及合盘、笔记保存、主入口和关键手势已走通。最终包复测 20 窗口，已核对设置返回保留位置、皮肤翻页、年份轮、流日从 10/8 开始、童限显示 1989 流年。帧数据不等于点击延迟；冷启动第一帧 773ms，首次密集详情曾见 133ms 单帧，不能宣称零丢帧。主设备及其他模拟器未动。
+- 冻结未签名包：`NanfengBazi-v1.0.15-rules-performance-20261011-unsigned.apk`，SHA-256 `b11a329c5ca5a32f444a040623b39c8ebb9bed315ad87427782c8a21f01e300d`。1.0.15 (10047)，非 DEBUGGABLE。开发测试签名副本仅用于模拟器，非正式交付。
+- 覆盖阻点：完整环境签名与用户级 Gradle 的 App 专属签名配置均不可用，未使用旧 local.properties 凭据，未拿开发签名替代正式身份。真实主设备流畅度与外部服务尚未验收。
+- 清理：本轮 emulator-5600 已关闭，设备端临时文件已清理；其他模拟器与主设备未动。
+- 下一步仅在允许来源正式同签名配置可用后按门禁冻结、验签、保数据覆盖；不卸载、清数据、自动打开主设备或执行 connected AndroidTest。
+
+## 2026-09-23：专业细盘修复包在 OPPO 保数据覆盖
+
+- 用户授权覆盖后，使用本次 Debug 主 APK `app/build/outputs/apk/debug/NanfengBazi-Android-v1.0.15-debug.apk` 在 OPPO `3B157F009E800000`（Android 16，1140×2616，字体比例 1.0）执行 `push`、远端哈希核对、`pm install -r --user 0`。这是与现装相同的 Debug 签名验收包，不是正式 Release 签名包；包名 `com.nanzhufeng.nanfengbazi`、版本 `1.0.15 (10047)` 未变，双方证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。
+- 目标 APK 与安装后 `base.apk` 的 SHA-256 均为 `5b2eab0df3b9ec72c73ad3f8e4eac50b6f8671f0e40e13b96bf341c6ee135ed9`。覆盖前旧 `base.apk` 的 SHA-256 为 `d198609e934355e41ff41a49cdb366d8f86a02a2f097f05136b452bb17b9d271`；同哈希旧包已保留在 `NanfengBazi-v1.0.15-about-copy-debug.apk`。`firstInstallTime` 仍是 `2026-08-09 17:27:23`，数据根仍是 `/data/user/0/com.nanzhufeng.nanfengbazi`，`databases/files/shared_prefs` inode 仍为 `1222090/1857315/1567575`，文件数仍为 `5/3/8`，占用量仍为 `34912/1103/36 KB`。设备临时 APK 已删除。
+- 安装前门禁：App 315 项及领域 48 项测试、Debug 构建、Lint 与 `git diff --check` 已通过；隔离模拟器已核对进入、滑动和标签往返。未启动 OPPO 应用，未运行仪器测试、卸载或清数据；流月／流日／流时数量与真实设备流畅度仍需用户手动验收。
+
+## 2026-09-23：专业细盘进入与操作卡顿排查
+
+- 已确认两处无关负载：详情进入约 900 毫秒后，Compose 主线程会自动预组装其余三个完整详情页；专业岁运初次定位后，会把五层各一项的未点选候选排入与用户点选共用的单通道计算队列。前者可能打断首屏后的滑动，后者会推迟真实点选。
+- 修复：取消隐藏详情页的定时预组装，只在首次切到该页时创建并保留已访问页；取消未点选岁运候选的后台计算，保留用户点选的即时选中态、20 毫秒合并与请求代际取消。列表目标案例预热和详情一致性校准仍按原路径执行。
+- 验证：新增 ViewModel 红灯复现静置 1.5 秒产生 5 次无关选项计算，改后为 0 次。Android Studio JBR 的 `:app:testDebugUnitTest :core:engine-tyme:test :app:assembleDebug :app:lintDebug --no-daemon` 通过（App 315 项、领域 48 项，0 失败），`git diff --check` 通过。隔离模拟器 `emulator-5600` 上，更新后可打开名人案例阿黛尔的专业细盘、纵向滑动和在基本排盘／专业细盘间切换；模拟器为软件渲染，详情滑动仍有 8/9 帧卡顿，不能据此宣称真机流畅。随后已按上节在 OPPO 覆盖，但未启动应用；主设备性能仍待手工验收。
+
+## 2026-09-23：专业细盘流月、流日、流时完整候选
+
+- 根因：`TymeProfessionalFortuneResolver` 把流月和流日裁到当前大运／节令父区间，并按当前日柱筛掉流时；交运年、交节前和子时附近因此出现明显缺项。页面仅呈现返回列表，没有再截断。
+- 修复：流月展示当前立春年的十二节令月，流日展示当前民用月全部日期，流时展示当前民用日期的十二时辰。点击同一父区间的候选继续保留上层时间轴，点击跨交运／交节／换日边界的候选则按真实时刻重新定位。长列表首次显示时把选中项放进可见区，同一序列内手动横滑后不强制回跳。
+- 合成命例回归先观察到流月只返回 9 项的红灯；修复后 `TymeProfessionalFortuneResolverTest` 13 项通过，含 12／30／12 候选及跨界点选。Android Studio JBR 的全量 `test assembleDebug lintDebug --no-daemon` 与最终工作树的 `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon` 均通过。旧备份 APK 曾与 Gradle 输出硬链接；已从 OPPO 已安装包只读取回，以原 SHA-256 `d198609e…b9d271` 恢复备份并断开硬链接。新 Debug 输出 SHA-256 为 `acd36a66…b465f0`。未安装、启动或测试 OPPO；真机视觉和手动点选仍待验收。
+
+## 2026-09-19：“关于”信息可复制与 GitHub 实际跳转
+
+- 关于卡片的产品、版本、构建时间、开发者、邮箱、源码和版权文字统一进入系统文本选择容器，可长按选择复制；没有另加复制按钮或改写信息来源。
+- 开发者信息顺序固定为“开发者 → 联系邮箱 → 源码与更新 → 版权所有”。“源码与更新”后的 `GitHub · nanzhufeng/NanfengBazi-Android` 使用橙色下划线，短按只在链接文字范围内打开实际仓库；长按保留文字选择，不触发跳转。
+- `InteractionShapeContractTest` 锁定选择容器、实际 URL、橙色下划线、链接标签、无障碍点击语义和四行顺序；Android Studio JBR 的定向测试、`lintDebug` 与最终 `assembleDebug` 于 2026-09-19 成功，`git diff --check` 通过。
+- OPPO `3B157F009E800000` 已用同签名 Debug 主 APK 原位覆盖 `1.0.15 (10047)`；最终短路径 APK 与安装后 `base.apk` 的 SHA-256 均为 `d198609e934355e41ff41a49cdb366d8f86a02a2f097f05136b452bb17b9d271`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，安装前后 `databases/files/shared_prefs` 顶层计数均为 `5/3/8`。未卸载、清数据、启动 App 或运行 `connected*AndroidTest`，设备临时 APK 已清理；真实视觉、文字选择和系统浏览器跳转待用户手工验收。
 
 ## 2026-09-15：设置页“关于南枫八字”二级页面
 
@@ -22,16 +95,16 @@
 ## 2026-08-24：合盘全链路顶栏返回统一为图标 r137
 
 - 八字合盘主页、合盘结果、合盘记录列表和点进记录详情的顶栏返回现全部使用同一返回箭头；语义由无障碍 `contentDescription` 保留。`InteractionShapeContractTest` 锁定四处图标入口及其 2＋1＋1 个箭头分布，防止再回退成文字按钮。
-- 全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 53 warnings`（既有图标弃用警告）。按授权把 Debug `1.0.9 (10041)` 同签名覆盖到 OPPO `3B157F009E800000`：短路径成品为 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.9.apk`，大小 `91,169,337` 字节、SHA-256 为 `7eb56410392263d3ff18567dedf75404c2d73baf257e640d8b01f205d035f831`；签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。安装后设备 `base.apk` 哈希一致，`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 仍为 `1222090/1857315`；未运行 `connected*AndroidTest`、未卸载、清数据或自动启动 App，临时 APK 已清理。仍待你在真实外屏／内屏确认图标视觉。
+- 全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 53 warnings`（既有图标弃用警告）。按授权把 Debug `1.0.9 (10041)` 同签名覆盖到 OPPO `3B157F009E800000`：短路径成品为 `NanfengBazi-Android/release/NanfengBazi-v1.0.9.apk`，大小 `91,169,337` 字节、SHA-256 为 `7eb56410392263d3ff18567dedf75404c2d73baf257e640d8b01f205d035f831`；签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。安装后设备 `base.apk` 哈希一致，`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 仍为 `1222090/1857315`；未运行 `connected*AndroidTest`、未卸载、清数据或自动启动 App，临时 APK 已清理。仍待你在真实外屏／内屏确认图标视觉。
 
 ## 2026-08-24：合盘记录管理操作统一到底部 r136
 
 - 合盘记录常态的顶栏为返回箭头、居中标题和管理图标；不再显示“返回合盘”或“管理”文字。点管理后，顶栏不再放全选、删除、完成，底部才出现一组等宽的图文操作：全选／取消全选、删除 `N`、完成。删除确认与读取失败的重试保持文字，避免破坏风险说明和恢复语义。
-- 未修改合盘冻结报告、选择状态、删除确认或存储链路；`InteractionShapeContractTest` 锁定顶栏和底部管理操作的图标、文字与测试标签。全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 53 warnings`（既有图标弃用警告）。按授权把 Debug `1.0.8 (10040)` 同签名覆盖到 OPPO `3B157F009E800000`：短路径成品为 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.8.apk`，大小 `91,169,337` 字节、SHA-256 为 `3a91ee77b06f1be6a94c503232feba263815917845dae28a4bd9555c33a5c009`；签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。安装后设备 `base.apk` 哈希一致，`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 仍为 `1222090/1857315`；未运行 `connected*AndroidTest`、未卸载、清数据或自动启动 App，临时 APK 已清理。仍待真实设备在外屏／内屏确认视觉。
+- 未修改合盘冻结报告、选择状态、删除确认或存储链路；`InteractionShapeContractTest` 锁定顶栏和底部管理操作的图标、文字与测试标签。全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 为 `0 errors, 53 warnings`（既有图标弃用警告）。按授权把 Debug `1.0.8 (10040)` 同签名覆盖到 OPPO `3B157F009E800000`：短路径成品为 `NanfengBazi-Android/release/NanfengBazi-v1.0.8.apk`，大小 `91,169,337` 字节、SHA-256 为 `3a91ee77b06f1be6a94c503232feba263815917845dae28a4bd9555c33a5c009`；签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。安装后设备 `base.apk` 哈希一致，`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 仍为 `1222090/1857315`；未运行 `connected*AndroidTest`、未卸载、清数据或自动启动 App，临时 APK 已清理。仍待真实设备在外屏／内屏确认视觉。
 
 ## 2026-08-23：r134 覆盖安装验收 r135
 
-- 已按用户授权把 Debug `1.0.7 (10039)` 同签名覆盖到 OPPO `3B157F009E800000`。最终成品固定在短路径 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.7.apk`，大小 `91,169,337` 字节、SHA-256 为 `fa017ca58a8203826394c60fe4750fd47e80ac2c2ab5a93f24e1e9cdd5801dfb`；包名为 `com.nanzhufeng.nanfengbazi`、`DEBUGGABLE`，v2 签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。
+- 已按用户授权把 Debug `1.0.7 (10039)` 同签名覆盖到 OPPO `3B157F009E800000`。最终成品固定在短路径 `NanfengBazi-Android/release/NanfengBazi-v1.0.7.apk`，大小 `91,169,337` 字节、SHA-256 为 `fa017ca58a8203826394c60fe4750fd47e80ac2c2ab5a93f24e1e9cdd5801dfb`；包名为 `com.nanzhufeng.nanfengbazi`、`DEBUGGABLE`，v2 签名证书 SHA-256 为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`。
 - 安装后设备回读版本 `1.0.7 (10039)`，`base.apk` SHA-256 与短路径成品一致；`firstInstallTime` 仍为 `2026-08-09 17:27:23`，`databases/files` inode 分别仍为 `1222090/1857315`。通过 `pm install -r --user 0` 覆盖，未卸载、清数据、启动应用或运行 `connected*AndroidTest`；`/data/local/tmp/NanfengBazi-v1.0.7.apk` 已清理。用户仍需在真实内外屏上手动确认本轮合盘视觉。
 
 ## 2026-08-23：合盘窗口恢复、窄屏记录与双盘表格收口 r134
@@ -44,7 +117,7 @@
 
 - 合盘记录两侧星座改为直接复用已有 `ConstellationBadge`：黑底、金色符号和星座文字保持完整，只按比例缩小；男方固定左缘、女方固定右缘。外屏（小于 `480dp`）把徽章缩至 `24dp` 并为各自资料预留 `29dp` 外缘，姓名强制单行省略，出生时间与四柱仍保持同一行；记录列表页边距由 `16dp` 收至 `10dp`，展开内屏维持原密度与留白。
 - 八字合盘入口、男方／女方选择卡及合盘记录空态均改用共享白卡令牌（`24dp` 圆角、低对比描边、`4dp` 柔和短阴影），去除默认 `2dp` Material 硬阴影。未改变合盘记录的快照读取、打开、删除或合盘计算链路。
-- `InteractionShapeContractTest` 定向 50 项、全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 仅保留既有 `Icons.Filled` 弃用警告。按授权以短路径 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.6.apk` 覆盖 OPPO `3B157F009E800000` 至 Debug `1.0.6 (10038)`：现装与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `b426e7a1b418bc5e16677886cda3bf15d86dc9650a458b8677cb58ea9d98f8f8`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`。未运行 `connected*AndroidTest`、卸载、清数据或启动应用；待用户在外屏与内屏真实记录数据下确认视觉。
+- `InteractionShapeContractTest` 定向 50 项、全量 `test`、`lintDebug`、`assembleDebug` 与 `git diff --check` 通过；Lint 仅保留既有 `Icons.Filled` 弃用警告。按授权以短路径 `NanfengBazi-Android/release/NanfengBazi-v1.0.6.apk` 覆盖 OPPO `3B157F009E800000` 至 Debug `1.0.6 (10038)`：现装与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `b426e7a1b418bc5e16677886cda3bf15d86dc9650a458b8677cb58ea9d98f8f8`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`。未运行 `connected*AndroidTest`、卸载、清数据或启动应用；待用户在外屏与内屏真实记录数据下确认视觉。
 
 ## 2026-08-23：名人录入返回、合盘记录紧凑资料与白卡材质 r132
 
@@ -52,7 +125,7 @@
 - 分组排序拖动改为拖动期间只维护本地顺序，跨过目标行时补偿布局基线，保证行持续跟手；松手才一次写入，写入期间锁定重复提交。避免原先重排时位置闪回、不同步或卡死。
 - 合盘记录卡双方维持半区居中：男方左缘、女方右缘各有一枚 20dp 对应星座小图案，星座只从冻结报告保存的公历月日派生；出生日期时间与四柱压成一行，列表不再因图案或资料拆行增高。
 - 共享白卡令牌统一为 `24dp` 长卡、`26dp` 胶囊、低对比描边与 `4dp` 柔和短阴影。专业细盘顶部／时间轴、AI 模型服务、设置、录入、记录及合盘历史已采用；悬浮根导航保留自己的下投影合同。
-- `InteractionShapeContractTest` 与 `StageTwoViewModelTest` 定向 182 项通过；全量 `test`、`lintDebug`、`assembleDebug` 和 `git diff --check` 通过，Lint 仅保留既有 `Icons.Filled` 弃用警告。按授权以短路径 `/Users/nanzhufeng/GitHub/NanfengBazi-Android/release/NanfengBazi-v1.0.5.apk` 覆盖 OPPO `3B157F009E800000` 至 Debug `1.0.5 (10037)`：现装与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `0cf75d312342365ee6af744518676dffbcc49c5d43d97420d5957d94ac0687b4`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`。未运行 `connected*AndroidTest`、卸载、清数据或启动应用；待用户手工验收视觉与拖拽。
+- `InteractionShapeContractTest` 与 `StageTwoViewModelTest` 定向 182 项通过；全量 `test`、`lintDebug`、`assembleDebug` 和 `git diff --check` 通过，Lint 仅保留既有 `Icons.Filled` 弃用警告。按授权以短路径 `NanfengBazi-Android/release/NanfengBazi-v1.0.5.apk` 覆盖 OPPO `3B157F009E800000` 至 Debug `1.0.5 (10037)`：现装与目标证书 SHA-256 均为 `0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3`，本地与设备 `base.apk` SHA-256 均为 `0cf75d312342365ee6af744518676dffbcc49c5d43d97420d5957d94ac0687b4`，`firstInstallTime` 保持 `2026-08-09 17:27:23`，`databases/files` inode 保持 `1222090/1857315`。未运行 `connected*AndroidTest`、卸载、清数据或启动应用；待用户手工验收视觉与拖拽。
 
 ## 2026-08-23：合盘记录双人资料按半区居中 r131
 

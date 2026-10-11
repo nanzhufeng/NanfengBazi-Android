@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.File
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -20,16 +21,33 @@ fun localValue(name: String): String = localProperties.getProperty(name)?.trim()
 fun quotedBuildConfig(value: String): String =
     "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-val releaseStoreFile = localValue("nanfeng.release.storeFile")
-val releaseStorePassword = localValue("nanfeng.release.storePassword")
-val releaseKeyAlias = localValue("nanfeng.release.keyAlias")
-val releaseKeyPassword = localValue("nanfeng.release.keyPassword")
-val hasReleaseSigning = listOf(
-    releaseStoreFile,
-    releaseStorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
-).all(String::isNotBlank)
+val userSigningProperties = Properties().apply {
+    val source = File(System.getProperty("user.home"), ".gradle/gradle.properties")
+    if (source.isFile) source.inputStream().use(::load)
+}
+val signingEnvironmentNames = listOf(
+    "NANFENG_BAZI_RELEASE_STORE_FILE", "NANFENG_BAZI_RELEASE_STORE_PASSWORD",
+    "NANFENG_BAZI_RELEASE_KEY_ALIAS", "NANFENG_BAZI_RELEASE_KEY_PASSWORD",
+)
+val environmentSigning = signingEnvironmentNames.map { System.getenv(it).orEmpty() }
+val userSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").map {
+    userSigningProperties.getProperty("nanfengBazi.release.$it").orEmpty()
+}
+// Existing-project identity reuse was explicitly authorized by the user.
+// Preserve its original configuration; the installed certificate is checked before overwrite.
+val legacyProjectSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").map {
+    localValue("nanfeng.release.$it")
+}
+val releaseSigning = when {
+    environmentSigning.any(String::isNotBlank) -> environmentSigning
+    userSigning.any(String::isNotBlank) -> userSigning
+    else -> legacyProjectSigning
+}
+val hasReleaseSigning = releaseSigning.all(String::isNotBlank)
+check(!releaseSigning.any(String::isNotBlank) || hasReleaseSigning) {
+    "南枫八字签名配置不完整：须在同一来源提供 storeFile、storePassword、keyAlias、keyPassword。"
+}
+val (releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword) = releaseSigning
 val appBuildTime = ZonedDateTime.now(ZoneId.of("Asia/Shanghai"))
     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 
@@ -41,8 +59,8 @@ android {
         applicationId = "com.nanzhufeng.nanfengbazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10047
-        versionName = "1.0.15"
+        versionCode = 10048
+        versionName = "1.0.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "APP_BUILD_TIME", quotedBuildConfig(appBuildTime))
         buildConfigField("String", "NANFENG_CLOUD_URL", quotedBuildConfig(localValue("nanfeng.cloud.url")))
@@ -74,7 +92,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("nanzhufengRelease")
             }
@@ -118,6 +137,7 @@ dependencies {
     implementation(project(":core:image-parser"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.1")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.room:room-runtime:2.6.1")

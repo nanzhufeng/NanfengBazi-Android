@@ -1,0 +1,15 @@
+# App critical journeys supplement the Compose library profile.
+# Keep these source symbols: AGP/R8 expands and remaps them for each APK.
+# Startup shell and record list.
+HSPLcom/nanzhufeng/nanfengbazi/MainActivity;->onCreate(**)**
+HSPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt;->NanfengBaziApp(**)**
+HSPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt;->RootNavigation**(**)**
+HSPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt;->CaseList**(**)**
+HSPLcom/nanzhufeng/nanfengbazi/RepositoryCaseCatalogStore;->**(**)**
+# First professional detail render, timeline clicks and scrolling.
+HPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt;->ReferenceCaseDetailContent(**)**
+HPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt;->FortuneDetailsView(**)**
+HPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt;->Professional**(**)**
+HPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt$FortuneDetailsView$**;->**(**)**
+HPLcom/nanzhufeng/nanfengbazi/StageTwoScreensKt$Professional**;->**(**)**
+HPLcom/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolver;->**(**)**

@@ -4,7 +4,8 @@ import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
 import java.time.DateTimeException
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.zone.ZoneRulesProvider
+import java.util.SortedMap
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface BirthTimeZoneResolution {
     data class Resolved(
@@ -39,13 +40,15 @@ sealed interface BirthTimeZoneResolution {
  * 对应哪个 offset，并把平台时区数据库版本写入可审计快照。
  */
 object BirthTimeZoneResolver {
+    private val availableZoneIds = ZoneId.getAvailableZoneIds()
+    private val dataVersions = ConcurrentHashMap<String, String>()
     fun resolve(
         localDateTime: CivilDateTime,
         timeZoneId: String,
         selectedUtcOffsetSeconds: Int? = null,
     ): BirthTimeZoneResolution {
         if (
-            timeZoneId !in ZoneId.getAvailableZoneIds() &&
+            timeZoneId !in availableZoneIds &&
             timeZoneId !in FIXED_REGION_IDS
         ) {
             return BirthTimeZoneResolution.InvalidZone(timeZoneId)
@@ -90,10 +93,26 @@ object BirthTimeZoneResolver {
 
     private fun timeZoneDataVersion(zoneId: ZoneId): String {
         if (zoneId.rules.isFixedOffset) return "fixed-offset:v1"
-        val providerVersion = runCatching {
-            ZoneRulesProvider.getVersions(zoneId.id).lastKey()
-        }.getOrNull()
-        return providerVersion?.let { "tzdb:$it" } ?: "platform-tzdb:unknown"
+        return dataVersions.getOrPut(zoneId.id) {
+            // ZoneRulesProvider is a JVM API absent from Android's public API.
+            // Optional reflection keeps the domain module usable on both runtimes
+            // without shipping a hard reference to an unsupported Android class.
+            val providerVersion = runCatching {
+                val versions = Class.forName("java.time.zone.ZoneRulesProvider")
+                    .getMethod("getVersions", String::class.java)
+                    .invoke(null, zoneId.id) as SortedMap<*, *>
+                versions.lastKey().toString()
+            }.getOrNull()
+            if (providerVersion != null) {
+                "tzdb:$providerVersion"
+            } else {
+                val icuVersion = runCatching {
+                    Class.forName("android.icu.util.TimeZone")
+                        .getMethod("getTZDataVersion").invoke(null) as String
+                }.getOrNull()
+                icuVersion?.let { "platform-icu-tzdb:$it" } ?: "platform-tzdb:unknown"
+            }
+        }
     }
 
     private val FIXED_REGION_IDS = setOf("UTC", "GMT", "UT")

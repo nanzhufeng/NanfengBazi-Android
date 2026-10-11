@@ -7,6 +7,7 @@ import com.nanzhufeng.nanfengbazi.domain.CaseVisibility
 import com.nanzhufeng.nanfengbazi.domain.model.CaseGroup
 import com.nanzhufeng.nanfengbazi.domain.model.CaseLibraryType
 import com.nanzhufeng.nanfengbazi.domain.model.CaseSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -67,7 +68,10 @@ class FileCaseCatalogSnapshotCache(
         file.openRead().bufferedReader().use { reader ->
             json.decodeFromString(CaseCatalogSnapshot.serializer(), reader.readText())
         }
-    }.getOrNull()
+    }.getOrElse { failure ->
+        if (failure is CancellationException) throw failure
+        null
+    }
 
     override suspend fun write(snapshot: CaseCatalogSnapshot) {
         val output = file.startWrite()
@@ -92,6 +96,9 @@ interface CaseCatalogStore {
     /** Publishes a successful, precise list mutation without re-reading the whole catalog. */
     suspend fun replaceCachedCases(cases: List<CaseSummary>): Boolean
 
+    /** Restores only memory/disk; maintenance must not gate an existing first-frame snapshot. */
+    suspend fun restoreCached(): CaseCatalogSnapshot?
+
     /** Returns a memory/disk first-frame snapshot without forcing another Room traversal. */
     suspend fun bootstrap(): CaseCatalogBootstrap
 
@@ -105,6 +112,7 @@ class RepositoryCaseCatalogStore(
     private val persistentCache: CaseCatalogSnapshotCache = EmptyCaseCatalogSnapshotCache,
 ) : CaseCatalogStore {
     private val mutex = Mutex()
+    private val persistenceMutex = Mutex()
     private val persistenceScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     @Volatile
@@ -123,6 +131,13 @@ class RepositoryCaseCatalogStore(
         refreshGeneration += 1
         persistAsync(updated, refreshGeneration)
         true
+    }
+
+    override suspend fun restoreCached(): CaseCatalogSnapshot? = mutex.withLock {
+        latest ?: readPersisted()?.also { snapshot ->
+            latest = snapshot
+            refreshGeneration += 1
+        }
     }
 
     override suspend fun bootstrap(): CaseCatalogBootstrap = mutex.withLock {
@@ -167,12 +182,13 @@ class RepositoryCaseCatalogStore(
 
     /**
      * Disk cache must never delay an optimistic list update. Persist only the newest coherent
-     * generation and serialize the write behind the same mutex, so an older async write cannot
+     * generation and serialize writes separately from catalog publication, so a slow disk cannot
+     * block an in-memory mutation and an older async write cannot
      * overwrite a newer snapshot after a rapid series of edits.
      */
     private fun persistAsync(snapshot: CaseCatalogSnapshot, generation: Long) {
         persistenceScope.launch {
-            mutex.withLock {
+            persistenceMutex.withLock {
                 if (latest === snapshot && refreshGeneration == generation) {
                     runCatching { persistentCache.write(snapshot) }
                 }

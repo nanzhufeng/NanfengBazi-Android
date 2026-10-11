@@ -9,3 +9,8 @@ captures/
 release-assets/
 *.apk
 *.aab
+
+# Local acceptance evidence and Python bytecode
+tmp/
+**/__pycache__/
+*.py[cod]

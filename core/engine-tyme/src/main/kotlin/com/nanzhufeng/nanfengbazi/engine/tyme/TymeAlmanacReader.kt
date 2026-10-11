@@ -22,21 +22,32 @@ import com.tyme.solar.SolarTime
 import com.tyme.sixtycycle.SixtyCycle
 
 class TymeAlmanacReader : AlmanacReader {
+    // The 42 calendar cells do not depend on the selected day/hour. Keep small,
+    // bounded caches so repeated taps reuse finished immutable domain values.
+    private val grids = boundedCache<Pair<Int, Int>, List<AlmanacDaySummary>>(6)
+    private val details = boundedCache<AlmanacMonthQuery, AlmanacDayDetails>(96)
+    private val hours = boundedCache<AlmanacMonthQuery, List<AlmanacHourPillar>>(32)
+
     override suspend fun loadMonth(query: AlmanacMonthQuery): AlmanacResult {
         AlmanacContract.validate(query)?.let { return AlmanacResult.Failed(it) }
         return try {
-            val month = SolarMonth.fromYm(query.year, query.month)
-            val firstDay = month.firstDay
-            val gridStart = firstDay.next(-firstDay.week.index)
-            val cells = List(AlmanacContract.CELL_COUNT) { offset ->
-                gridStart.next(offset).toSummary(query)
+            val cells = cached(grids, query.year to query.month) {
+                val firstDay = SolarMonth.fromYm(query.year, query.month).firstDay
+                val gridStart = firstDay.next(-firstDay.week.index)
+                List(AlmanacContract.CELL_COUNT) { offset -> gridStart.next(offset).toSummary(query) }
             }
-            val selectedDay = SolarDay.fromYmd(query.year, query.month, query.selectedDay)
+            val selected = cached(details, query) {
+                val selectedDay = SolarDay.fromYmd(query.year, query.month, query.selectedDay)
+                val dayHours = cached(hours, query.copy(selectedDoubleHourIndex = 0)) {
+                    selectedDay.toHourPillars(query)
+                }
+                selectedDay.toDetails(query, dayHours)
+            }
             AlmanacResult.Completed(
                 AlmanacMonthView(
                     query = query,
                     cells = cells,
-                    selected = selectedDay.toDetails(query),
+                    selected = selected,
                 ),
             )
         } catch (_: IllegalArgumentException) {
@@ -47,6 +58,13 @@ class TymeAlmanacReader : AlmanacReader {
             AlmanacResult.Failed(AlmanacError.EngineUnavailable)
         }
     }
+
+    private fun <K, V> boundedCache(limit: Int) = object : LinkedHashMap<K, V>(limit, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>?): Boolean = size > limit
+    }
+
+    private fun <K, V> cached(cache: MutableMap<K, V>, key: K, compute: () -> V): V =
+        synchronized(cache) { cache.getOrPut(key, compute) }
 }
 
 private fun SolarDay.toSummary(query: AlmanacMonthQuery): AlmanacDaySummary {
@@ -67,11 +85,8 @@ private fun SolarDay.toSummary(query: AlmanacMonthQuery): AlmanacDaySummary {
     )
 }
 
-private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
-    val lunar = lunarDay
-    val sixtyCycle = sixtyCycleDay
-    val selectedDoubleHour = AlmanacDoubleHours.fromIndex(query.selectedDoubleHourIndex)
-    val hourPillars = AlmanacDoubleHours.all.map { doubleHour ->
+private fun SolarDay.toHourPillars(query: AlmanacMonthQuery): List<AlmanacHourPillar> =
+    AlmanacDoubleHours.all.map { doubleHour ->
         val hourEightChar = SolarTime.fromYmdHms(
             year,
             month,
@@ -82,6 +97,14 @@ private fun SolarDay.toDetails(query: AlmanacMonthQuery): AlmanacDayDetails {
         ).lunarHour.resolveEightChar(query.ratHourRule)
         AlmanacHourPillar(doubleHour = doubleHour, pillar = hourEightChar.hour.name)
     }
+
+private fun SolarDay.toDetails(
+    query: AlmanacMonthQuery,
+    hourPillars: List<AlmanacHourPillar>,
+): AlmanacDayDetails {
+    val lunar = lunarDay
+    val sixtyCycle = sixtyCycleDay
+    val selectedDoubleHour = AlmanacDoubleHours.fromIndex(query.selectedDoubleHourIndex)
     val solarTime = SolarTime.fromYmdHms(
         year,
         month,

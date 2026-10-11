@@ -6,11 +6,31 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthQuery
 import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TymeAlmanacReaderTest {
     private val reader = TymeAlmanacReader()
+
+    @Test
+    fun `changing selected date or hour reuses the same month grid`() = runTest {
+        val morning = reader.loadMonth(AlmanacMonthQuery(2026, 10, 10, 4)) as AlmanacResult.Completed
+        val evening = reader.loadMonth(AlmanacMonthQuery(2026, 10, 11, 9)) as AlmanacResult.Completed
+        assertSame(morning.month.cells, evening.month.cells)
+        assertEquals(11, evening.month.selected.date.day)
+        assertEquals(9, evening.month.selected.selectedDoubleHour.index)
+    }
+
+    @Test
+    fun `revisiting a date and hour reuses completed details without mixing selections`() = runTest {
+        val query = AlmanacMonthQuery(2026, 10, 10, 4)
+        val first = reader.loadMonth(query) as AlmanacResult.Completed
+        reader.loadMonth(query.copy(selectedDoubleHourIndex = 9))
+        val revisited = reader.loadMonth(query) as AlmanacResult.Completed
+        assertSame(first.month.selected, revisited.month.selected)
+        assertEquals(4, revisited.month.selected.selectedDoubleHour.index)
+    }
 
     @Test
     fun `month contains fixed grid and reproducible selected details`() = runTest {
