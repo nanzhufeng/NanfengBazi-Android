@@ -4,10 +4,10 @@
 
 ## Verified
 
-- Last verified: 2026-10-11 13:24 +08:00
+- Last verified: 2026-10-12 12:42 +08:00；合同遗漏复查/维护脚本回归，旧JVM/Lint未重跑
 - Verified branch: main
-- Code baseline: c2c4da75a1cb92a518f4819abfd5c897e97dcf12
-- Verification scope: WORKTREE；生产源码与Code baseline一致，新增fresh_jvm_tests.init.gradle与本轮实跑临时副本字节一致；合同／经验文档增量与永久报告随本地checkpoint冻结。
+- Code baseline: e48996b6071f0c2f6f4dad99331eed475544e69c
+- Verification scope: WORKTREE（文档/Skill及只读维护脚本）；生产源码、测试、依赖与构建配置未变，合同整理、索引驱动检查/锚点/多行命令/Skill元数据和9项回归已验证；未执行Gradle/设备/服务/发布。
 - Verified by: Codex
 - Status: Active
 
@@ -20,7 +20,7 @@
 
 ## In Progress
 
-- 无；本轮回归与增量正式沉淀已完成，随本地checkpoint冻结。
+- 无；合同复查及回归完成，本轮归属增量纳入本地checkpoint-contracts-20261012。
 
 ## Blocked
 
@@ -30,6 +30,9 @@
 
 | 检查 | 结论 | 时间／范围 | 命令或证据 |
 | --- | --- | --- | --- |
+| checkpoint合同复查/维护回归 | PASS | 2026-10-12 12:42 +08:00；18个现行/审计/Skill、9项新回归及4项既有隔离测试 | [Checkpoint报告](verification/checkpoint-contracts-20261012.json) |
+| 现行合同统一与漂移检查 | PASS | 2026-10-12；17个合同/Skill、历史原文字节核验、Schema/危险指令/断链反例验证 | [合同统一报告](verification/contract-consolidation-20261012.json) |
+| 项目完整复盘文档/Skill | PASS | 2026-10-11 14:34 +08:00；全量清点/关键链路复核、5个Skill格式校验、链接/JSON/差异检查 | [复盘清单](verification/project-retrospective-20261011.json)、完整开发档案 |
 | 全模块最终JVM回归 | PASS | 2026-10-11 13:08 +08:00；实际重跑1020项，0失败／错误、2跳过 | [永久验收报告](verification/checkpoint-20261011.json)，test＋fresh_jvm_tests.init.gradle |
 | 两变体最终Lint | PASS | 2026-10-11；各0错误、50警告、2信息 | lintDebug＋lintRelease |
 | 增量经验审计 | PASS | 2026-10-11；11个本地链接、无占位／疑似秘密 | app-experience-audit.md与project-context.md校验 |
@@ -42,7 +45,7 @@
 | GitHub附件回读 | PASS | 2026-10-11 12:45 +08:00；70604319字节APK和98字节校验文件 | [v1.0.16 Release](https://github.com/nanzhufeng/NanfengBazi-Android/releases/tag/v1.0.16) |
 | 真实AI／云服务 | NOT RUN | 本轮未触发外部服务 | — |
 
-已知失败：无本轮未解决的自动测试失败；相关外部包对账跳过1项。
+已知失败：无本轮未解决的自动测试失败；同一外部包对账在两App变体各跳过1项。
 
 ## Verification Gaps
 
@@ -51,12 +54,12 @@
 
 ## Sync & Safety
 
-- Sync checked at: 2026-10-11 13:24 +08:00；checkpoint提交之前的观察值。
-- Code / docs sync: OK；当前版本、签名范围、正式发布及README预览一致。
-- Checkpoint scope: 本轮合同、文档和fresh JVM执行脚本纳入本地checkpoint-v1.0.16-20261011-final；既有docs/next-codex-prompt.md删除保持未暂存。
-- Remote sync: LOCAL ONLY（本轮checkpoint增量）；Code baseline和v1.0.16已推送并发布，本轮只建本地checkpoint，不改变已发布APK。
-- Rollback point: 2d5871f57fe20f2e6753a093f17d2c9c6a7e389f；本地checkpoint-v1.0.16-20261011-pre-consolidation标签保留当前已验证代码与原文档；不代表设备降级验收。
-- Secrets/config risk: NONE（本次新增暂存内容扫描范围）；密钥、签名配置、APK和临时验收文件不入Git。
+- Sync checked at: 2026-10-12 12:42 +08:00；写入摘要前，未刷新远端/设备。
+- Code / docs sync: OK（现行合同与checkpoint复查范围）；唯一正文/历史边界、OCR/后台同步/provider/恢复规则已统一；已知archivesName差异保持不改。
+- Checkpoint scope: 本轮复盘/合同/历史归档/Skill及两份维护脚本纳入checkpoint-contracts-20261012；既有docs/next-codex-prompt.md删除保持未暂存。
+- Remote sync: LOCAL ONLY；本轮checkpoint未推送；此前v1.0.16发布结果沿用旧证据，不重新发布。
+- Rollback point: e48996b6071f0c2f6f4dad99331eed475544e69c，本地checkpoint-v1.0.16-20261011-final；本轮归属文件另有精确备份，不代表设备降级验收。
+- Secrets/config risk: NONE（本轮新增/修改文档及维护脚本扫描范围）；无凭据/真实数据/APK入Git，未触碰私有签名配置。
 
 ## Next
 

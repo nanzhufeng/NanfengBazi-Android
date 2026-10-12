@@ -1,0 +1,3542 @@
+{
+  "reviewed_at": "2026-10-11T14:26:33+08:00",
+  "baseline": "e48996b6071f0c2f6f4dad99331eed475544e69c",
+  "branch": "main",
+  "scope": "all Git-tracked files inventoried; all text structurally scanned; production flow, configuration, contracts and tests reviewed by module; no claim of line-by-line defect-free assurance",
+  "counts": {
+    "tracked": 349,
+    "text_present": 306,
+    "kotlin": 205,
+    "jvm_test_files": 76,
+    "android_test_files": 17,
+    "head_ancestor_commits": 150,
+    "all_ref_commits": 152
+  },
+  "excluded": {
+    "preexisting_missing": [
+      "docs/next-codex-prompt.md"
+    ],
+    "ignored": "build output, tmp, local.properties and user signing credentials are not copied into this report",
+    "external": "no device operations, external services, release or GitHub refresh in this retrospective"
+  },
+  "regression_evidence": "checkpoint-20261011.json; existing 2026-10-11 13:08 +08:00 JVM XML results re-read; not rerun in this documentation-only task",
+  "files": [
+    {
+      "path": ".agents/skills/nanfeng-bazi-code-review/SKILL.md",
+      "exists": true,
+      "bytes": 1344,
+      "sha256": "7c2fe95f311fb2ae83ce5db458364c854e46aa28d9570ed400d6ac206e6465f6",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-code-review/agents/openai.yaml",
+      "exists": true,
+      "bytes": 231,
+      "sha256": "c6ffe4fff30f9e1763d75237b76850f46659216a24ba29a2dabe377334bc802d",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-debugging/SKILL.md",
+      "exists": true,
+      "bytes": 1372,
+      "sha256": "bf5600b699f9be0de61bd68e9c8991a0637f5593507bb67e280dc0e9bf179f64",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-debugging/agents/openai.yaml",
+      "exists": true,
+      "bytes": 230,
+      "sha256": "fb5d6c4c448742e55f9e5ec7394e2f2b66e8e881fb4921a9493bfb8547ee2d90",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-development/SKILL.md",
+      "exists": true,
+      "bytes": 1211,
+      "sha256": "5109dff5899955de5b8be9d4a45a23cd9b0728dfabeb511d480dbaf9b82ffd68",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-development/agents/openai.yaml",
+      "exists": true,
+      "bytes": 245,
+      "sha256": "25530b707e40a26be822032ab0b61050b4f8b6750e8c3d951335c0987fa8c2dc",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-documentation-sync/SKILL.md",
+      "exists": true,
+      "bytes": 1230,
+      "sha256": "11513eddc7e797c05dcb4cfe12d086993cd8e04c044cf77d0da8613767ac2a93",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-documentation-sync/agents/openai.yaml",
+      "exists": true,
+      "bytes": 259,
+      "sha256": "bfc98cfeaf77952b9bde85194ad4c3fdb2c867e6a4cff8a47ff47d041ac71f9b",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-testing/SKILL.md",
+      "exists": true,
+      "bytes": 1259,
+      "sha256": "d78b869f438eefab604aa46ff39a6f486a4fe382c8fde4d5ffab9ff6427b2cd5",
+      "lines": 13,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".agents/skills/nanfeng-bazi-testing/agents/openai.yaml",
+      "exists": true,
+      "bytes": 229,
+      "sha256": "c86b97ada2aa16f2ce0dc1353673aa6728420257abc8cb4a88dd9fc4b535a027",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": ".gitignore",
+      "exists": true,
+      "bytes": 186,
+      "sha256": "cb9c195e394647d1c3def667619ea30c21e5d2d0ce129d3a782a3a15ac3725a9",
+      "lines": 16,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "AGENTS.md",
+      "exists": true,
+      "bytes": 4516,
+      "sha256": "99b5af06fc41bc736fd41022d4be0f35d57d6a1b4e636eadede180e95a8015c5",
+      "lines": 44,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "README.md",
+      "exists": true,
+      "bytes": 1099,
+      "sha256": "ef716185ecdef55d2b25cb782c77f868a7d54bb8b610d42981fd1af0831ab363",
+      "lines": 32,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "exists": true,
+      "bytes": 6461,
+      "sha256": "3510b09866b369e750aa57082768ad705ab15093b395a57b31b1840efb3fb0da",
+      "lines": 166,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/proguard-rules.pro",
+      "exists": true,
+      "bytes": 39,
+      "sha256": "57f08aa9c3ae9b61d87ac43b8591ef56f426378b11e14a657e9ae9c531e25d6f",
+      "lines": 2,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/AutomatedPickerFlowTest.kt",
+      "exists": true,
+      "bytes": 12447,
+      "sha256": "421f89a5ed98852df5bc162b809a5c78468d03719121f8e2e5d0de1e41a42467",
+      "lines": 221,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/CaseDetailReferenceLayoutTest.kt",
+      "exists": true,
+      "bytes": 38100,
+      "sha256": "b68fb3991b3e9f2e62488bfc427f61525d7ff4b983471b2f6cea84b5dc87a758",
+      "lines": 699,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/CaseImageSystemFlowTest.kt",
+      "exists": true,
+      "bytes": 7990,
+      "sha256": "df16cbce2e3c5c89cce47d9d6284124a4b7ffbad27bb8ee9e663bfa90f071b85",
+      "lines": 166,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/CaseListSwipeAndEditFlowTest.kt",
+      "exists": true,
+      "bytes": 7125,
+      "sha256": "712cbb9610d9fa9b048fef67458ba01e0a58ad5b545b40d126e9287feae39bd9",
+      "lines": 155,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/CaseObjectiveSummaryFlowTest.kt",
+      "exists": true,
+      "bytes": 5909,
+      "sha256": "8068a9539f26a45fd3369a74ffed475c06dd31fdfe9fb16031ecc82ce6e62d57",
+      "lines": 119,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/ExternalAnalysisBridgeFlowTest.kt",
+      "exists": true,
+      "bytes": 8126,
+      "sha256": "d497c5d0c11aedd870d07a5a8945e70c11142dc3a537a300c7485775dd9a7dd4",
+      "lines": 166,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/FeedbackThemeCandidateFlowTest.kt",
+      "exists": true,
+      "bytes": 6597,
+      "sha256": "464bc837b67e90daef0eaed32c731135603e1019d8fb99e93b994655cba319fa",
+      "lines": 132,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/MasterCommentaryCandidateFlowTest.kt",
+      "exists": true,
+      "bytes": 6565,
+      "sha256": "2a9a650706323ff234133abb807162cdcbc3eb5170af64650eb46794aa149c73",
+      "lines": 135,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/MlKitLongScreenshotTest.kt",
+      "exists": true,
+      "bytes": 21064,
+      "sha256": "91f14079f77362ad9872b9e3e6d51545ceecd71b4c7065f37af0a4b0a8359709",
+      "lines": 498,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/RecordPreviewFixtureTest.kt",
+      "exists": true,
+      "bytes": 7239,
+      "sha256": "769f808fc0959f551e886ad0d4880cbd6328bea8c443f5ceae9e4ea5573e6976",
+      "lines": 147,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/RestoreProcessRecoveryDeviceTest.kt",
+      "exists": true,
+      "bytes": 4233,
+      "sha256": "a8fc16b1c7b191670b472a96ef4cad1c53554769c48fe36dbd71159b3fe79b1e",
+      "lines": 95,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotShareFlowTest.kt",
+      "exists": true,
+      "bytes": 29471,
+      "sha256": "16735e175348ea501b11d2d8336ac0585fb35249229d8997fead5efe29ec26f8",
+      "lines": 663,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/SingleCaseBundleFlowTest.kt",
+      "exists": true,
+      "bytes": 15713,
+      "sha256": "f07d33d2b946571d5fa3b3f789a40d7c7a21ac864c8e080cdadd6d8fd93a2674",
+      "lines": 367,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/StageSixAccessibilityTest.kt",
+      "exists": true,
+      "bytes": 10398,
+      "sha256": "ad41bd5cfd632fdc0ac6b35f77dc0b408300920bb24df017e3464b1ea85facca",
+      "lines": 224,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/StageTwoFlowTest.kt",
+      "exists": true,
+      "bytes": 69707,
+      "sha256": "b3a57f4652d7a100d6791bcb5d7354caf9d3a2bc4ecbe62e7d6a0c87468cb454",
+      "lines": 1398,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/StageTwoSavedStateTest.kt",
+      "exists": true,
+      "bytes": 21333,
+      "sha256": "45617eafdfdc3d453ad4940dab1eb52143c697e7187a789ad3112eb1d834f5e3",
+      "lines": 494,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/androidTest/kotlin/com/nanzhufeng/nanfengbazi/StageTwoSystemStateRestoreTest.kt",
+      "exists": true,
+      "bytes": 2568,
+      "sha256": "d510014057c67ae1c45cf3c0c3ca258cceac8593eb3a2e6f866739207e432c1f",
+      "lines": 64,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "exists": true,
+      "bytes": 2508,
+      "sha256": "4c401bad2531ebe4f99d74775359d509db30beb22657b213d4bff3a2e4b12f32",
+      "lines": 59,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/assets/catalogs/celebrity-research-v1.json",
+      "exists": true,
+      "bytes": 477088,
+      "sha256": "cc602745b668a83e6e755aaf18343499718675cb5e5cb557b0e0adff6dcfac9a",
+      "lines": 11954,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/assets/catalogs/celebrity-unified-v1.json",
+      "exists": true,
+      "bytes": 1693319,
+      "sha256": "70558d946283f7e7c59f91a07288fe08957b456153daa46760700adfcc3d961d",
+      "lines": 47174,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/assets/fonts/noto_sans_sc_variable.ttf",
+      "exists": true,
+      "bytes": 17773132,
+      "sha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/assets/licenses/tabler-icons-MIT.txt",
+      "exists": true,
+      "bytes": 1073,
+      "sha256": "b740a1d46122672da62833e97f7e7c8a13fa85cbc7445b584b297cc00dde93db",
+      "lines": 21,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/baseline-prof.txt",
+      "exists": true,
+      "bytes": 1051,
+      "sha256": "fb440d02765518a05d0f35a26d43f17fafb5798df7ae9eb1b1cacd556f6b9ebe",
+      "lines": 15,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AiCommentaryCostEstimator.kt",
+      "exists": true,
+      "bytes": 6603,
+      "sha256": "7306615317f7e7ce8918aa380dbb6c5a240d961247f6ca5fb045dcf1980d0818",
+      "lines": 163,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AiCommentaryDialogs.kt",
+      "exists": true,
+      "bytes": 40459,
+      "sha256": "1eefb45c611331a593d239765598a54ca9c1fecbf655772f6053f3493fadf2ad",
+      "lines": 863,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AiCommentaryFeature.kt",
+      "exists": true,
+      "bytes": 29290,
+      "sha256": "782cee9d6678d10b5c5ec783090dd70375c7a3c84c3e4bc825544e1c8fc31aae",
+      "lines": 664,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AiVisionScreenshotOcrEngine.kt",
+      "exists": true,
+      "bytes": 14806,
+      "sha256": "d93a85ca49da22368204b78644f022e64a3af24930f32467a3dde2b83459df0e",
+      "lines": 321,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AlmanacFeature.kt",
+      "exists": true,
+      "bytes": 39847,
+      "sha256": "57168cb98b75e4dbaeee55db2f3301815675b5555fb3c32bb5b1ac7ea9d75bfd",
+      "lines": 1014,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AppContainer.kt",
+      "exists": true,
+      "bytes": 10485,
+      "sha256": "f18ebcfde657f0f700fc78888c17d27cc39cfa8a5d8db1f8995f3053df898b74",
+      "lines": 223,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AppDiagnostics.kt",
+      "exists": true,
+      "bytes": 4506,
+      "sha256": "e74edef6d7c269e9641b45648e9d3f65344859e5171eec9d3a3368a5889d4a37",
+      "lines": 97,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AppFontSizePreference.kt",
+      "exists": true,
+      "bytes": 1535,
+      "sha256": "1a4c67722b420dd80ccab2e739bb8db6253d26c6c6a0c60d011bbe3cc1c33a2b",
+      "lines": 48,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AppHapticFeedback.kt",
+      "exists": true,
+      "bytes": 1179,
+      "sha256": "5e3428aa21573fffde03a578e972530e6181a858ab08a4a2eb2433820caaac01",
+      "lines": 41,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BaziAiPromptDialog.kt",
+      "exists": true,
+      "bytes": 33605,
+      "sha256": "2b0f055520b182a6e8b1aa9e55ca93d3a591540230f4af040a953be3f1c001de",
+      "lines": 674,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BaziCloudSettingsDialog.kt",
+      "exists": true,
+      "bytes": 20993,
+      "sha256": "06a273cbafcbe162fcda5db80198fe0d6f843a3381681e9e8766c70bbd63a12a",
+      "lines": 417,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BaziCompatibilityHistoryStore.kt",
+      "exists": true,
+      "bytes": 6264,
+      "sha256": "f890d2562c141ff00024d20a60169980c06fb9bc77203db7bc95673df58637ac",
+      "lines": 162,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BaziElementPresentation.kt",
+      "exists": true,
+      "bytes": 2320,
+      "sha256": "aebe42c224bd109953c88c9169480a2ffab22318bbf77de4e63b239b3112c272",
+      "lines": 63,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BaziSkin.kt",
+      "exists": true,
+      "bytes": 7118,
+      "sha256": "1bc2b30214309a1ff9b75267994f6f56c9a541dc0d8422c7acd90ba1516446e4",
+      "lines": 216,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BaziSkinPicker.kt",
+      "exists": true,
+      "bytes": 27073,
+      "sha256": "b38489f499e9c17a955ab441118b029b8ba9a985f3cf4ad3a5c44fde3eb49477",
+      "lines": 664,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BirthInputPickers.kt",
+      "exists": true,
+      "bytes": 84742,
+      "sha256": "8b78ff73e52340b1e391e00aa8b435aea865b607efe0ea143cbf58ff068a7194",
+      "lines": 1795,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BoundedIo.kt",
+      "exists": true,
+      "bytes": 769,
+      "sha256": "6bef6942fb05890c8aea6f7d3a7f900dbd2cf97300c4637014f4d1d3af19d858",
+      "lines": 21,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CalculationArchiveComparison.kt",
+      "exists": true,
+      "bytes": 8537,
+      "sha256": "0b159e838e7690d3c1ffb9d65afd2ceb2fe3793722a27bdea91d1ffacee917ad",
+      "lines": 220,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CalculationPreferenceStore.kt",
+      "exists": true,
+      "bytes": 1297,
+      "sha256": "1651bdbe4827ffc8a99d02114536913abd8d5b5f350a6406f7d2715c2cb70646",
+      "lines": 40,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseCatalogStore.kt",
+      "exists": true,
+      "bytes": 7565,
+      "sha256": "0b7df8c03488b25e5082a23a845cd417be4f2c7cfffce8dc80c31ea56f58f22a",
+      "lines": 198,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseComparison.kt",
+      "exists": true,
+      "bytes": 11750,
+      "sha256": "1a27e94455c1541223447f50b176c73d39e3f6e211e8a6caed41d553dfc5ce73",
+      "lines": 268,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseDetailLongImageCapture.kt",
+      "exists": true,
+      "bytes": 13256,
+      "sha256": "e10122731ac3e3575d8b2c2b0466ea50280c068fc70ca0696d871cf7102c91a6",
+      "lines": 367,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseManagement.kt",
+      "exists": true,
+      "bytes": 68653,
+      "sha256": "fadc5a5fe885999a32c92e39edb35f8af62936a11fa29aa08a24e7fc55332757",
+      "lines": 1691,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseWorkflow.kt",
+      "exists": true,
+      "bytes": 20491,
+      "sha256": "385dc0257cce097e50dc60d5d54f23880d9fceffe32817e775f0976af631ad1b",
+      "lines": 496,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CuratedCelebrityImport.kt",
+      "exists": true,
+      "bytes": 20324,
+      "sha256": "c00d189d0e08d8bfba8e5683fc992af5bf5955819e0d41f12c192387b86c1811",
+      "lines": 475,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/ExternalAnalysisBridgeScreen.kt",
+      "exists": true,
+      "bytes": 16236,
+      "sha256": "d20486643d9decede02f3e7027d960376e43352b23491e8b0ffd9858a353bdeb",
+      "lines": 359,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/FourPillarsInputPresentation.kt",
+      "exists": true,
+      "bytes": 6942,
+      "sha256": "efbeb922a3adb7a7dae6aa839fc5567ece573a18ed8318093926348c42d59d94",
+      "lines": 182,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/FourPillarsLookupFeature.kt",
+      "exists": true,
+      "bytes": 18018,
+      "sha256": "9bfe515b7ba79e6fbb30716e7b1bae17554d115a18a2adcf076601b00a7c8287",
+      "lines": 457,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/MainActivity.kt",
+      "exists": true,
+      "bytes": 23604,
+      "sha256": "5d9dd75b834a7316cd88864e090c0d67187709c2a3dbd9f1b7cf0d32dd90feec",
+      "lines": 523,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/NanfengBaziTheme.kt",
+      "exists": true,
+      "bytes": 16441,
+      "sha256": "f6a5b0e8d91529adbb403311c7c6c3c4bed87099b17236354398bd1927cc6ded",
+      "lines": 419,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportCommitter.kt",
+      "exists": true,
+      "bytes": 40731,
+      "sha256": "0e56425e7831c3ee08675936c6d402edf4738fe3338985bba2aecd99492a58cc",
+      "lines": 923,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportViewModel.kt",
+      "exists": true,
+      "bytes": 55448,
+      "sha256": "3717bd97e01d77608e29a5d560642f1376d331000fd1e24937d1464fa1d3c73c",
+      "lines": 1268,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotRecognitionWork.kt",
+      "exists": true,
+      "bytes": 6455,
+      "sha256": "c7d1d61c6245542b9e1a21a8498d7049badced657d025a34873786e0b4253d5f",
+      "lines": 161,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageThreeScreens.kt",
+      "exists": true,
+      "bytes": 25948,
+      "sha256": "464ab09a88808ae5d85e366d28d976e4178a2eb651fabd3096c0fce9995b3111",
+      "lines": 737,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoScreens.kt",
+      "exists": true,
+      "bytes": 752830,
+      "sha256": "e87a903637ae289e78a009cc5f728063adf9f85aa649092b1f7566df0ec73dd7",
+      "lines": 17228,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoViewModel.kt",
+      "exists": true,
+      "bytes": 872965,
+      "sha256": "eda437184c4051eb092617ed65c0e5b7b587bbd89447a748d4b3e6e13328cb77",
+      "lines": 14248,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/UnifiedCelebrityCatalogImport.kt",
+      "exists": true,
+      "bytes": 20024,
+      "sha256": "d3ae3faa7182a247a3ad7eba0684fdb5a91888cd36b2a3a561673d783e460cf7",
+      "lines": 463,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/WenzhenWebImport.kt",
+      "exists": true,
+      "bytes": 19427,
+      "sha256": "17e8d41fe8b76b7d61309f099ecebbd07779e0062e4c0321e290761efa501343",
+      "lines": 508,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/cloud/BaziCloudCore.kt",
+      "exists": true,
+      "bytes": 56542,
+      "sha256": "ba29f1976df9fcc3b71b026cf9ef0a5da1f8f538c2a3d6d30b2ba3c9181f5c29",
+      "lines": 1203,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/cloud/BaziCloudSyncWork.kt",
+      "exists": true,
+      "bytes": 5062,
+      "sha256": "ffe7ba94c6846083bf41cf09ce988135d680dd04d99e3423b154ea66eeedcea5",
+      "lines": 117,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/app_icon_background.png",
+      "exists": true,
+      "bytes": 7485,
+      "sha256": "427fb19652e424b2a75496cc1d63a153fb2f795449e367ba87f3819df85004e9",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/app_icon_source.png",
+      "exists": true,
+      "bytes": 322673,
+      "sha256": "967b226c3c23124f95b104c3d483df9da76874d2ef7430fa91b33a1a82fbfb55",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/skin_header_bazi_cinnabar_cloud.png",
+      "exists": true,
+      "bytes": 2083117,
+      "sha256": "0a612ba239909c2bc4eed7f253ded6f62d388c2867786794073784af675ebe45",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/skin_header_bazi_frost_peach_blossom.png",
+      "exists": true,
+      "bytes": 2069140,
+      "sha256": "1ca09bb82193acee7988536b0fdb9412331e4f44dad01dabd99d287a88437bb4",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/skin_header_bazi_golden_trigram.png",
+      "exists": true,
+      "bytes": 2607080,
+      "sha256": "b125ec87b868d519f56dac39ee294eb4b11db75f2775790f0b91fa70f0110d7e",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/skin_header_bazi_indigo_galaxy.png",
+      "exists": true,
+      "bytes": 2126209,
+      "sha256": "bde2f916fb7fc6dcb46c26a04eb1dac17c4197ea26d83fd2efe946a93b9bbb89",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/skin_header_bazi_ink_star_chart.png",
+      "exists": true,
+      "bytes": 1908448,
+      "sha256": "4d9496476a75c1f7559b20d01ae385c0b90ed5275641a57f9dc32e2fa26505f8",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable-nodpi/skin_header_bazi_jade_five_elements.png",
+      "exists": true,
+      "bytes": 2091072,
+      "sha256": "d0490e0f80095ee1f960bbecd804380c77f0641f011b4947f0be361b47f3224b",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_bazi_compatibility.xml",
+      "exists": true,
+      "bytes": 1356,
+      "sha256": "d5074ff30e1e70aeabd5e796e75d437b5a2e8bf3dec665144451c2459230eb4f",
+      "lines": 22,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_bazi_compatibility_history.xml",
+      "exists": true,
+      "bytes": 1672,
+      "sha256": "a858cfb59c2fe71a9d2bfccc20e6ede4ffb62827f85fc48aecfe26709c1dd1e8",
+      "lines": 25,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_today.xml",
+      "exists": true,
+      "bytes": 457,
+      "sha256": "16337eca754c04457a92f1cdaff45730d365e0b4194838df47ba50fcae390659",
+      "lines": 10,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_visibility.xml",
+      "exists": true,
+      "bytes": 511,
+      "sha256": "fa3d7c65f96b1b45e8fd19347466c135b93e7725696c999820c3b0006342f1bf",
+      "lines": 9,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_visibility_off.xml",
+      "exists": true,
+      "bytes": 829,
+      "sha256": "e7b73ea945327e2aa833cb3e4316194ba9dfd459af1c77432771c935fb47ac1b",
+      "lines": 9,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_aquarius.xml",
+      "exists": true,
+      "bytes": 437,
+      "sha256": "96b4ec458c286bb4a5f9cd89319baade4710ff7093e10418ab5bc687ec414d58",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_aries.xml",
+      "exists": true,
+      "bytes": 820,
+      "sha256": "efb75cb7204e846982dfb18e1de395c100d804d6b995e24eb49a490b12650239",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_cancer.xml",
+      "exists": true,
+      "bytes": 692,
+      "sha256": "d703079881550519e82db36e7a34c01fdb576971840f25caef51b97b9ea558b9",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_capricorn.xml",
+      "exists": true,
+      "bytes": 464,
+      "sha256": "3b45afbabd2bbbecb46042d2f4dd0e90f08df82d2c38589f02bf2dcb9216af08",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_gemini.xml",
+      "exists": true,
+      "bytes": 838,
+      "sha256": "727705d4e7c7bb2ef8a9b65c3c8679d445f55b4660233a3621189440a3607fa5",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_leo.xml",
+      "exists": true,
+      "bytes": 693,
+      "sha256": "e53c02751e3cf929be1a0a454aac5eddbdf5d32addafcfd42d32ba9f3735ac13",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_libra.xml",
+      "exists": true,
+      "bytes": 416,
+      "sha256": "b8be9d8632cc12d00aba62f2bb0ba48a57c6193fc382c9462295d35fe44504fb",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_pisces.xml",
+      "exists": true,
+      "bytes": 427,
+      "sha256": "144de944efda59130231b2c51cafff1aa892812301bee67cbb229415279df8c1",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_sagittarius.xml",
+      "exists": true,
+      "bytes": 405,
+      "sha256": "d309065d6bd38436ab2f3cf174c5b84ede3bcbdc6eccc85cd8376fabc6b178f7",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_scorpio.xml",
+      "exists": true,
+      "bytes": 467,
+      "sha256": "a8a65115e8a47e2f89c60edbb749ce1e25a07530c71f4c5caefd0ced003e979f",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_taurus.xml",
+      "exists": true,
+      "bytes": 625,
+      "sha256": "41d28a452f364ae8769a25760d0a7390c9ee1ba733cd86cec48cc6d8e2c2c9b0",
+      "lines": 4,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/drawable/zodiac_virgo.xml",
+      "exists": true,
+      "bytes": 487,
+      "sha256": "bec547f39d0333e7cea9fb4be10eb44adc4e3647e853a46c21f3ed4a52375aee",
+      "lines": 3,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+      "exists": true,
+      "bytes": 263,
+      "sha256": "f793d1703bc0fa5201c57e51bb0840994a27b666bb526e58a73698b1056eab64",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+      "exists": true,
+      "bytes": 263,
+      "sha256": "f793d1703bc0fa5201c57e51bb0840994a27b666bb526e58a73698b1056eab64",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/mipmap-hdpi/ic_launcher.png",
+      "exists": true,
+      "bytes": 3200,
+      "sha256": "d42b997e8eb44f0e25d67b8594c05f04729507274d869dbd2f83b285dfb11d52",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+      "exists": true,
+      "bytes": 3200,
+      "sha256": "d42b997e8eb44f0e25d67b8594c05f04729507274d869dbd2f83b285dfb11d52",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-mdpi/ic_launcher.png",
+      "exists": true,
+      "bytes": 1772,
+      "sha256": "811af67dd31635616fa5bd9e22b81f2b5f1732b0612f5da84c98b932ec44e0da",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+      "exists": true,
+      "bytes": 1772,
+      "sha256": "811af67dd31635616fa5bd9e22b81f2b5f1732b0612f5da84c98b932ec44e0da",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+      "exists": true,
+      "bytes": 4921,
+      "sha256": "a9846eca1bd15c5a4da96b7221645f5e9629959af22f44d05f892a13f0bb9a54",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+      "exists": true,
+      "bytes": 4921,
+      "sha256": "a9846eca1bd15c5a4da96b7221645f5e9629959af22f44d05f892a13f0bb9a54",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+      "exists": true,
+      "bytes": 9039,
+      "sha256": "ff5ac797b21486a8d7b258507ca21eae424e57dab1a3053db957c9d637887d1e",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+      "exists": true,
+      "bytes": 9039,
+      "sha256": "ff5ac797b21486a8d7b258507ca21eae424e57dab1a3053db957c9d637887d1e",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+      "exists": true,
+      "bytes": 14169,
+      "sha256": "0811fd81753d0091aeaf568537b7d8b69301c67bb394b9fb129e4ac0b779a1a3",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+      "exists": true,
+      "bytes": 14169,
+      "sha256": "0811fd81753d0091aeaf568537b7d8b69301c67bb394b9fb129e4ac0b779a1a3",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "app/src/main/res/values/strings.xml",
+      "exists": true,
+      "bytes": 115,
+      "sha256": "7f7ee26b470c2646ea00eb28852ab2e981ba61e2e1c34ca973eb5135c09b478a",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/values/themes.xml",
+      "exists": true,
+      "bytes": 463,
+      "sha256": "d0261365f28c3fd643fda7195bc24f1e88f31522aa81b42ec5258d68d63d07c2",
+      "lines": 11,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/xml/data_extraction_rules.xml",
+      "exists": true,
+      "bytes": 300,
+      "sha256": "384a08e10e829c5c1552024948f1b58c1afcd1da9c8cb3369a7d41daf266f56c",
+      "lines": 10,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/res/xml/file_paths.xml",
+      "exists": true,
+      "bytes": 199,
+      "sha256": "039274839fe203edb6b346b6a30a3767aabca126fc67e0abcde76bb5a558af9a",
+      "lines": 6,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/resources/birthplace/LICENSE-province-city-china.txt",
+      "exists": true,
+      "bytes": 1061,
+      "sha256": "becf557b4dbb188022e699c2a2eb84828325252e992796b9e102deb303348359",
+      "lines": 21,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/main/resources/birthplace/china-districts.csv",
+      "exists": true,
+      "bytes": 99466,
+      "sha256": "99aa56b33bfd2b6e2b9cb68773b2dd2bbcb232d99e5ed6f04b08e0df9d651454",
+      "lines": 2849,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/AiCommentaryFeatureTest.kt",
+      "exists": true,
+      "bytes": 11631,
+      "sha256": "e551c98dc7334a5acd7d31dcf3d1bcfbe3a4d6913bfaf88d9d1a48f55b86d3ed",
+      "lines": 295,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/AppDiagnosticsTest.kt",
+      "exists": true,
+      "bytes": 2291,
+      "sha256": "0dc8250df4b8aebd0b399fed3cbfcebc66b0b28bf4388885d9afa68c7415532e",
+      "lines": 51,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/BaziAiClipboardTest.kt",
+      "exists": true,
+      "bytes": 1369,
+      "sha256": "0d8d6f0743be558ca1f815e3dc2f0aeef1bd965ff475713e4b4be6edcf0b244a",
+      "lines": 50,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/BaziElementPresentationTest.kt",
+      "exists": true,
+      "bytes": 447,
+      "sha256": "b39799fb69837aa3cfe14ff486ec33e1b2ac00facf03a38ec7b53f903660ed72",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/BirthPickerClockSelectionTest.kt",
+      "exists": true,
+      "bytes": 1178,
+      "sha256": "b4fbb74034b3631d01b7cc8ae4fe876f7db72cbd533e959436a8957962736acf",
+      "lines": 33,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/BirthPickerQuickLocateTest.kt",
+      "exists": true,
+      "bytes": 1227,
+      "sha256": "06c44ceb122697c786bc0dbcbe5bdb30a0659d9b5fa7dd66c296c7f31211ebed",
+      "lines": 37,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/BirthplaceCatalogTest.kt",
+      "exists": true,
+      "bytes": 2937,
+      "sha256": "a85fde8cb6af38eb0515247d584dea1f0770b734e3dcbf34c55f26d5847dce72",
+      "lines": 66,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CalculationArchiveComparisonTest.kt",
+      "exists": true,
+      "bytes": 3829,
+      "sha256": "33cfd56244e8e6f13694369282c341478d9370744500c2e6d7961e7960c98e1b",
+      "lines": 97,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseCatalogStoreTest.kt",
+      "exists": true,
+      "bytes": 2106,
+      "sha256": "a23ad799962dcd0a9ea6948e030010d73a946e1e34605ae2d5ed8845ff6f5436",
+      "lines": 50,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseComparisonTest.kt",
+      "exists": true,
+      "bytes": 2222,
+      "sha256": "360e1b76b061833f500da187b89acdfbc9210eeec34b04d9ce43b22f024077ed",
+      "lines": 66,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseFormValidatorTest.kt",
+      "exists": true,
+      "bytes": 6597,
+      "sha256": "a5ad2afe6bc3e1198d25d92c6460aa2e2dc60d82bf14441bae5f587d99994aac",
+      "lines": 182,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseListEmptyStateContractTest.kt",
+      "exists": true,
+      "bytes": 1570,
+      "sha256": "e60add55f0bdcae78d6b1378829f597b819df8667e67a5fa7c720e707d3b55c8",
+      "lines": 35,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseListScrollRestorationContractTest.kt",
+      "exists": true,
+      "bytes": 1529,
+      "sha256": "fce774174f8036cbfcb0cd3d1327eeaf1228ccec09ce3fec1b86556a3e16b9c1",
+      "lines": 34,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseManagementTest.kt",
+      "exists": true,
+      "bytes": 42950,
+      "sha256": "55d9ab44d03d9497f896d9fab27120c5dd11d81255ce1998c40398a8aed8c56f",
+      "lines": 1092,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseNotesWebLinkTest.kt",
+      "exists": true,
+      "bytes": 1086,
+      "sha256": "6177cfe6bfa83a65ff8d6a0d02a975941b30053de535b10bb69b1b004f8e7854",
+      "lines": 30,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseWorkflowAutoNameTest.kt",
+      "exists": true,
+      "bytes": 725,
+      "sha256": "7186f98d352fa752f893e28fcb32a2e692ffae2d721c20f01dcec1e51453756b",
+      "lines": 21,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CreateCaseUseCaseTest.kt",
+      "exists": true,
+      "bytes": 11738,
+      "sha256": "f473f5911e19748e58e8f72f5beda90097c2972c455f0860799c9e95e04c13ba",
+      "lines": 302,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CuratedCelebrityImportTest.kt",
+      "exists": true,
+      "bytes": 40257,
+      "sha256": "49b814932dba627f153bb0abc190c77ea407b710c0a79ad61c9ab9672a8f6850",
+      "lines": 908,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/InteractionShapeContractTest.kt",
+      "exists": true,
+      "bytes": 93260,
+      "sha256": "ffcf1789d4791bacbc6d5413b04eda2698f718ec98d0dee7abab734994ed3bf6",
+      "lines": 1507,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/ProfessionalTimelineVisualContractTest.kt",
+      "exists": true,
+      "bytes": 4245,
+      "sha256": "fbac17c8327f67fb2e43891f74236cb52b360efca470b12233bd256399669aab",
+      "lines": 79,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportCommitterTest.kt",
+      "exists": true,
+      "bytes": 25971,
+      "sha256": "ec3dc0d538e191385a72affa94a1d559ece3dcbd0c3d964b0dc7781f6452252c",
+      "lines": 577,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportViewModelTest.kt",
+      "exists": true,
+      "bytes": 20400,
+      "sha256": "316a0c6a5598b22e5e831bcb990288f2498ff981a0fde76a9e07f63e44a20488",
+      "lines": 502,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotRecognitionWorkTest.kt",
+      "exists": true,
+      "bytes": 2291,
+      "sha256": "04acbd8e4f197f7219098f2a6ae4dac41a6522bab1f6a6e0db6d1ffc665dfe29",
+      "lines": 75,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/StageTwoNavigatorTest.kt",
+      "exists": true,
+      "bytes": 3259,
+      "sha256": "bb7dfb3417a80b9ea2501129593b20270f82eadf8054c42d1196204797e2c3e7",
+      "lines": 74,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/StageTwoViewModelTest.kt",
+      "exists": true,
+      "bytes": 212029,
+      "sha256": "c0406dc114105a169b9fd5e5a713612aa51ab91bdbee154e603237015da93b01",
+      "lines": 4829,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/TestFixtures.kt",
+      "exists": true,
+      "bytes": 14303,
+      "sha256": "b423bae28a5512c4979ef9e8ca32792991a452a9c3d6585232689cc449f94503",
+      "lines": 368,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/WenzhenWebImportReconciliationTest.kt",
+      "exists": true,
+      "bytes": 10157,
+      "sha256": "ea9068be1317460367b5bbb72e944e5bdc4760a5cb6a9ffe624d1f7f5d842af3",
+      "lines": 189,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/WenzhenWebImportTest.kt",
+      "exists": true,
+      "bytes": 4423,
+      "sha256": "eeb08d6f53cce7e00310be04cafd295db8f5f390e088700ded377b82f8647e89",
+      "lines": 103,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/cloud/BaziCloudCryptoTest.kt",
+      "exists": true,
+      "bytes": 2723,
+      "sha256": "a1a4afdbb93d211047ea9f51714ea62fe1f5c5ec76a37dada43163ea935e4a03",
+      "lines": 70,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/cloud/BaziCloudSyncPolicyTest.kt",
+      "exists": true,
+      "bytes": 4936,
+      "sha256": "bdd68eab013a2fb0554cafe7a761351c58ddc3abbec5eab0d942aca144aa66f6",
+      "lines": 122,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "build.gradle.kts",
+      "exists": true,
+      "bytes": 490,
+      "sha256": "2adc9df1d50aeb25c320880393b5e1695dde6194eff4ae7e1e8679711a657745",
+      "lines": 9,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/build.gradle.kts",
+      "exists": true,
+      "bytes": 1364,
+      "sha256": "49b1c22d6ce0fa60a44850d7467566a88cd6e176a6c05ccf6729c5348a16d41c",
+      "lines": 51,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/consumer-rules.pro",
+      "exists": true,
+      "bytes": 47,
+      "sha256": "633249ce517a9fa56edca6dc0356d2b14212fd185f0c7ee7c869bdadd34bb81d",
+      "lines": 1,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/10.json",
+      "exists": true,
+      "bytes": 33675,
+      "sha256": "26d4db8c9b48593791e575efdd050a9ed377ec3efca0710d919ae9e9f2608e30",
+      "lines": 1074,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/11.json",
+      "exists": true,
+      "bytes": 33870,
+      "sha256": "2674343b04479cbdad4667ef5f7915aae8354d9e04d9bd568ac39c744b209225",
+      "lines": 1080,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/12.json",
+      "exists": true,
+      "bytes": 34340,
+      "sha256": "438f2907a690148e8905ea7348fa56bce85ae32e6139c26a1bce69cdbda72c66",
+      "lines": 1092,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/2.json",
+      "exists": true,
+      "bytes": 22656,
+      "sha256": "eef2b8eea179666b710261f9de495aae5354f6adef1a5bd5516d90ff9b1ac1d7",
+      "lines": 737,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/3.json",
+      "exists": true,
+      "bytes": 23637,
+      "sha256": "6f476b445d9080129e7f545d4efe1491c2625e8fff3789cd7d4f1ac37e4accab",
+      "lines": 764,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/4.json",
+      "exists": true,
+      "bytes": 24409,
+      "sha256": "d878820487536eebcbda917bfe19cc20b329f5b2a344adb2f8545cac4311c285",
+      "lines": 785,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/5.json",
+      "exists": true,
+      "bytes": 30631,
+      "sha256": "4ce90c5c0c03db776a51666be7499c4f814e539fbb5377acdb773ba3077d0a5d",
+      "lines": 981,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/6.json",
+      "exists": true,
+      "bytes": 30862,
+      "sha256": "9dafd09aebcc1f98f498d3c04c61f042b29fe262d2bd60579783111f24c69e40",
+      "lines": 987,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/7.json",
+      "exists": true,
+      "bytes": 33092,
+      "sha256": "08a6c39f7a84c8417615b7fcda4ead86169c4f17c7b9243754f09e8e7c092557",
+      "lines": 1056,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/8.json",
+      "exists": true,
+      "bytes": 33284,
+      "sha256": "5896f874bfe42f40634993834bcd1fbfcfe16a797a2b3f669bcd9730dd310705",
+      "lines": 1062,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/schemas/com.nanzhufeng.nanfengbazi.data.db.NanfengBaziDatabase/9.json",
+      "exists": true,
+      "bytes": 33479,
+      "sha256": "51efc505c5cca6528aff86d9a5502d0d47128e8f3c628c15a4a3b7d40cfc1790",
+      "lines": 1068,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/AndroidManifest.xml",
+      "exists": true,
+      "bytes": 52,
+      "sha256": "daa0fb1f32ba7ea85a07ef6302ab3d58c3407d7fd2aa03ec132cb9e38e8d9849",
+      "lines": 2,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/backup/BackupEncryption.kt",
+      "exists": true,
+      "bytes": 5915,
+      "sha256": "1597202a32dfe63fab3d2c917075976616e6187c4756265976ea101167b9cc02",
+      "lines": 150,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/backup/BackupModels.kt",
+      "exists": true,
+      "bytes": 7297,
+      "sha256": "5d55fdff4f860db30e4f069f6a6649c6e09b21ae757b6104705586dbd45fb580",
+      "lines": 268,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/backup/CaseBackupService.kt",
+      "exists": true,
+      "bytes": 99026,
+      "sha256": "9e178ee7d02e2a6fd9367503faee779a76e52f6510192426a74aed9970565a43",
+      "lines": 2252,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/backup/RestoreJournalProtocol.kt",
+      "exists": true,
+      "bytes": 3899,
+      "sha256": "da12df17e110a80942ea19146be19d0fb4b01f3434046c6466d537ce0b937059",
+      "lines": 111,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/db/CaseDao.kt",
+      "exists": true,
+      "bytes": 13249,
+      "sha256": "a0301fc0b09c5e743c3ee2d2bf09dc6b5ef57038f65b5b3b2730226c1a38ec6a",
+      "lines": 317,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/db/Entities.kt",
+      "exists": true,
+      "bytes": 8726,
+      "sha256": "7141fb9c29f042195fdfa88d487d5c5571dd183ec90f289bd51ea7bb3cce6434",
+      "lines": 344,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/db/ImportSessionDao.kt",
+      "exists": true,
+      "bytes": 756,
+      "sha256": "97a61d24bec3747cbc7c731b23751b2a2c1752ae18e8c6c73451e1e02bc1e797",
+      "lines": 25,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/db/NanfengBaziDatabase.kt",
+      "exists": true,
+      "bytes": 8937,
+      "sha256": "eace0a926409faacfb8c296fa0b9eb42760c57f778e2c73e965b526122c82ecf",
+      "lines": 239,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/exchange/PasswordCrypto.kt",
+      "exists": true,
+      "bytes": 1297,
+      "sha256": "7027d480204d08bdef85c2e7da88c6c461b51ab2bf5a76dc4294fd42e8adf4c5",
+      "lines": 42,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/exchange/SingleCaseBundleEncryption.kt",
+      "exists": true,
+      "bytes": 5960,
+      "sha256": "7437ff50a8a089a3fc8126180ec462b1186b96fe9acb6da781b62eb227ca0920",
+      "lines": 150,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/exchange/SingleCaseBundleService.kt",
+      "exists": true,
+      "bytes": 41393,
+      "sha256": "b25067d355e7b8b5eda1830aaf63cfc024c61ae97420e907a1cecc36a5e6ea73",
+      "lines": 988,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/exchange/SingleCaseEncryption.kt",
+      "exists": true,
+      "bytes": 4320,
+      "sha256": "608265fff294ec9d94a79ba7db622836783c1fef80a4ac2a310f5fea77abf501",
+      "lines": 103,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/exchange/SingleCaseExchangeModels.kt",
+      "exists": true,
+      "bytes": 5940,
+      "sha256": "016f5b91c10725185618a0c21e6eea07b2aeca4968ffe0d87e99afd989c6f5c3",
+      "lines": 245,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/exchange/SingleCaseExchangeService.kt",
+      "exists": true,
+      "bytes": 61823,
+      "sha256": "80b3ee96ecb07f93a9424581a4ba11a707a73c6a52297b15ea6e659fca8d94d8",
+      "lines": 1537,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/imports/PrivateImportImageStore.kt",
+      "exists": true,
+      "bytes": 5290,
+      "sha256": "7141f233dd915ca21a12235585bc211e35ba52cb657b6f946e967b368b9f2a40",
+      "lines": 140,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/repository/RoomCaseRepository.kt",
+      "exists": true,
+      "bytes": 37426,
+      "sha256": "cabb2b61a554b2f2b32993d097b9497ac403a14eab559d203f88f204947969b3",
+      "lines": 912,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/main/kotlin/com/nanzhufeng/nanfengbazi/data/repository/RoomImportSessionRepository.kt",
+      "exists": true,
+      "bytes": 4284,
+      "sha256": "db04c09d93359189a127bc2e307348e3652e8811401ea236369c16c07b672554",
+      "lines": 104,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/CalculationResultCompatibilityTest.kt",
+      "exists": true,
+      "bytes": 2037,
+      "sha256": "ea4d6a1a07870d54ee179f0e6f1d851e85cdda390e794a5336f9e7cf24cc73bd",
+      "lines": 48,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/CaseBackupServiceTest.kt",
+      "exists": true,
+      "bytes": 75683,
+      "sha256": "42e1823b50b47efcae43f44acb945167d2b929eca7763e98c41866f8951e79da",
+      "lines": 1707,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/DatabaseMigrationTest.kt",
+      "exists": true,
+      "bytes": 14002,
+      "sha256": "74ef0f35868d40eff78e6a7a086532b77f4d4bf0993fb4a012bf210c08ee0e16",
+      "lines": 297,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/PrivateImportImageStoreTest.kt",
+      "exists": true,
+      "bytes": 2937,
+      "sha256": "9f7ee041f6920d5b1147ca6a266a62ff636cffb45960f01994c03500032c5f29",
+      "lines": 81,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/RoomCaseRepositoryTest.kt",
+      "exists": true,
+      "bytes": 27233,
+      "sha256": "2218f30b55aa0781068105fa975c7aaac979c176d9a7d70a2ef4e45a8a7e5064",
+      "lines": 656,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/RoomImportSessionRepositoryTest.kt",
+      "exists": true,
+      "bytes": 8162,
+      "sha256": "2424da9d948bbc8eb3d3f81db5eb7ab4e8d96ed05c8efb752be44a63b9d085ab",
+      "lines": 212,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/SingleCaseBundleServiceTest.kt",
+      "exists": true,
+      "bytes": 16621,
+      "sha256": "4bf3c823773778c9464fbc13b43ed8342a652e84c0a3a37a3f28fae806b4626b",
+      "lines": 373,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/SingleCaseExchangeServiceTest.kt",
+      "exists": true,
+      "bytes": 30626,
+      "sha256": "a9e2a29e3b8c3f9acb39a9ea06bbf354fbcc0cb9b32634da70a5d2e1716320ad",
+      "lines": 720,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/TestFixtures.kt",
+      "exists": true,
+      "bytes": 9604,
+      "sha256": "a9c1064ae0e7711e14a5fedd190c7a7751d76b0ba9393b9c010cad44be6f4904",
+      "lines": 228,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/build.gradle.kts",
+      "exists": true,
+      "bytes": 490,
+      "sha256": "731aafa59afa523e8941094cadd8c7245ba35d58e68d0938e87c6a6cf21d9361",
+      "lines": 24,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/Almanac.kt",
+      "exists": true,
+      "bytes": 5863,
+      "sha256": "c3f0c9732fb2ec092c956cb7ce30f5017a346fefda2300358491797f2ec661fb",
+      "lines": 186,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BasicShenShaRules.kt",
+      "exists": true,
+      "bytes": 10317,
+      "sha256": "3514573aded746b1ca0ff346c298bb750dff63eb4c97d6ec038e79217178ea66",
+      "lines": 223,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziAiAnalysisPrompt.kt",
+      "exists": true,
+      "bytes": 13040,
+      "sha256": "d8f6c443dd8ebc3ce6446263c3d0d99ff99a19da35412524c1fef4124a21d4e4",
+      "lines": 261,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziCompatibility.kt",
+      "exists": true,
+      "bytes": 46103,
+      "sha256": "8fdec84240dcda21f8badbec2106ad2e5ce5d80da3e570356a546f45e820f82d",
+      "lines": 859,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziElementDistribution.kt",
+      "exists": true,
+      "bytes": 6565,
+      "sha256": "f9830725a493491e1cbfe3ca6c6845427709ef6b76dea1ef39fde0bea36e7d25",
+      "lines": 160,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziEngine.kt",
+      "exists": true,
+      "bytes": 469,
+      "sha256": "e378c22a7b3f2a871c835f2632340ee1e3042f9bbe0bed41d7b254816450431a",
+      "lines": 16,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziStructuralProfile.kt",
+      "exists": true,
+      "bytes": 17489,
+      "sha256": "56c1d35c297f61f263e2e779a48bab0c6a1c655cce637c2f76778696e21916ce",
+      "lines": 363,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziTimeZoneDefaults.kt",
+      "exists": true,
+      "bytes": 494,
+      "sha256": "6c2dd4d60f2c5878abff1a55e58862d48602abb499b7aba29c1bb7693ab3cc0d",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziYinYangBalance.kt",
+      "exists": true,
+      "bytes": 1557,
+      "sha256": "90ec732682c995357754d5c31a11ac7b467a387ff49512587d882f2cc5168d59",
+      "lines": 43,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BirthTimeZoneResolver.kt",
+      "exists": true,
+      "bytes": 5185,
+      "sha256": "6abb0c3774c4a2685fc34df42f21142870430162457ab7aba2ad1b0b3bb5afbc",
+      "lines": 145,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/CalculationResultDerivedProfiles.kt",
+      "exists": true,
+      "bytes": 1375,
+      "sha256": "efae9db66dac25ab25c6d5bc372c55c59d686bb9a605a7e32b50194de56746c3",
+      "lines": 30,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseImageExport.kt",
+      "exists": true,
+      "bytes": 4364,
+      "sha256": "f8440a10b35b56a631eeef13e1479da82d5a2c376925ce313356429ca8e46093",
+      "lines": 135,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseNameIndex.kt",
+      "exists": true,
+      "bytes": 1649,
+      "sha256": "c676d237ec79f2ba0ede5423a53e5a38aff53f84290e525237ec76ee37417129",
+      "lines": 60,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseObjectiveSummary.kt",
+      "exists": true,
+      "bytes": 39547,
+      "sha256": "bfc4a3e4c7234d3a9a791ddcc06cd8dcf68d443ad98026b79e76addeaead12c1",
+      "lines": 989,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseRepository.kt",
+      "exists": true,
+      "bytes": 12492,
+      "sha256": "2df2e1ef65e729a14f0469773457dac9407b6bf5c7c7a03b5fad087702cae903",
+      "lines": 343,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/ExternalAnalysisBridge.kt",
+      "exists": true,
+      "bytes": 13170,
+      "sha256": "28955caf02da017523432699f7343e0d74b39ef6788c837405bfd1ca61ff1860",
+      "lines": 336,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/FeedbackThemeCandidates.kt",
+      "exists": true,
+      "bytes": 5385,
+      "sha256": "88451297f4ababb68a834f36230a7b741d007be129509afea1f9b3dfe40a6325",
+      "lines": 167,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/FolkBoneWeightRules.kt",
+      "exists": true,
+      "bytes": 3977,
+      "sha256": "5781f2c671e9af1002f44a363f5dd5cbdba4c3b08bfeb266091882cb1cd9308e",
+      "lines": 91,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/FolkBoneWeightVerdicts.kt",
+      "exists": true,
+      "bytes": 13536,
+      "sha256": "15315e34d79288550196e582b945dbfb13968a7b2575cdb977a104de467609b4",
+      "lines": 151,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/FortunePositionResolver.kt",
+      "exists": true,
+      "bytes": 727,
+      "sha256": "fdc8ad122e14dc390247c2b0935c45eeb177479f4255c989a9862947d6a1ce6a",
+      "lines": 26,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/FourPillarsLookup.kt",
+      "exists": true,
+      "bytes": 5453,
+      "sha256": "879d148e266aaf7bb994df1d2af3c8bca924f0e8a52393398b712fbba1071bf9",
+      "lines": 166,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/ImportSessionRepository.kt",
+      "exists": true,
+      "bytes": 1594,
+      "sha256": "fea0b0c6bf8768843fe43c474cc1b5dd8c04f61ed10697dcc062f47782d3b1bd",
+      "lines": 59,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/MangPaiProfile.kt",
+      "exists": true,
+      "bytes": 15551,
+      "sha256": "7466e0633bef9652b7367ebeb594e4e35c57a4a47f1f3413486dcf45776145a0",
+      "lines": 358,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/MasterCommentaryCandidates.kt",
+      "exists": true,
+      "bytes": 4752,
+      "sha256": "80cd934ed9bd8b37d0bf4f07ffbf95d24f6b491237caee5f1b8dcde867070c08",
+      "lines": 151,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/NatalChartRelationResolver.kt",
+      "exists": true,
+      "bytes": 5382,
+      "sha256": "ee7ff3975241d137c6fa142609390a4a46ff30400b5d899acd989a531d8f056d",
+      "lines": 136,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/ProfessionalFortuneResolver.kt",
+      "exists": true,
+      "bytes": 3239,
+      "sha256": "2b7d0c2f75ca34b46859c9c5ab3d3f8c088e82a96c0ba1e99a9677c2c636b293",
+      "lines": 94,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/TrueSolarTimeCalculator.kt",
+      "exists": true,
+      "bytes": 627,
+      "sha256": "94c87fcb11804a93a599121d44805b38ac49764d31915f2fe1b3ee8400fd1bd4",
+      "lines": 20,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/WangShuaiProfile.kt",
+      "exists": true,
+      "bytes": 8119,
+      "sha256": "88eb65a1104e81c37fa4fe4d94e34d7292db814034c1a819519689a811b66eaf",
+      "lines": 214,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/BirthInput.kt",
+      "exists": true,
+      "bytes": 3581,
+      "sha256": "614e01da422b6738aae23f6f54928a243467092618a9cf2febf09fd5b43fafe4",
+      "lines": 118,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CalculationProfile.kt",
+      "exists": true,
+      "bytes": 3095,
+      "sha256": "b7b57a6ac3f62ef06901bfc34c48cd5fe42225a1206270bcd68d21592651e72c",
+      "lines": 92,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CalculationResult.kt",
+      "exists": true,
+      "bytes": 5350,
+      "sha256": "1ac1003627607e3ce87ad8c893989973cd532d18d9f4182f6da2831e10afcb30",
+      "lines": 198,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CaseModels.kt",
+      "exists": true,
+      "bytes": 17834,
+      "sha256": "c4867df359ff961eae02ce87bc8354c224a4b105f6b78a0a05ddd87569a2b41d",
+      "lines": 537,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/DecadeFortuneAgePresentation.kt",
+      "exists": true,
+      "bytes": 1522,
+      "sha256": "4507e3a8bce8fedd31ea4453ea832611c469f354d041c5b2a5025efce39ab77c",
+      "lines": 40,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/ImportModels.kt",
+      "exists": true,
+      "bytes": 13205,
+      "sha256": "97c590a6aef9a9f14523a5aeb55a87baf28a4efade565008ca8d74ccc5c9ce8b",
+      "lines": 367,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/InstantIsoSerializer.kt",
+      "exists": true,
+      "bytes": 780,
+      "sha256": "9209ff159fd327f60be7beb70543bb1275c4c24ee864bda8b3049a181bfe94f4",
+      "lines": 21,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/TraditionalLunarFormatting.kt",
+      "exists": true,
+      "bytes": 1466,
+      "sha256": "47984349c236e5fa2793d645974f425e2a8101ea1da5cd02617c5f32531dfe40",
+      "lines": 76,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/WenzhenSourceFidelityContract.kt",
+      "exists": true,
+      "bytes": 4074,
+      "sha256": "27960f5074a58ba16894455b19d99a94809c98d6790a3199addcb699c2bf902d",
+      "lines": 94,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BasicShenShaRulesTest.kt",
+      "exists": true,
+      "bytes": 1960,
+      "sha256": "af416f0737f052ae347144528a2bfd0d0bc22ada22488a84e18a3154ea66b8ca",
+      "lines": 66,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziAiAnalysisPromptContractTest.kt",
+      "exists": true,
+      "bytes": 8338,
+      "sha256": "4a5fe2ab04e91a7211b029d4036ebd2521ba0710f3b38e46042f6d46c2ecdd12",
+      "lines": 203,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziCompatibilityAnalyzerTest.kt",
+      "exists": true,
+      "bytes": 19828,
+      "sha256": "d018a00e4550eea1723c048facca36b7e2012951a377a10c07d9b29fa8132132",
+      "lines": 364,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziElementDistributionAnalyzerTest.kt",
+      "exists": true,
+      "bytes": 2557,
+      "sha256": "6e783e52194df9965c3d9f6ab4f75eee6eb7087213e0593d34c395a6c42e3a0c",
+      "lines": 46,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziStructuralProfileAnalyzerTest.kt",
+      "exists": true,
+      "bytes": 3092,
+      "sha256": "8c28ba06595e78803e33af48a626af3bf1267cd60c7cd80fba6e1224949d8453",
+      "lines": 70,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziTimeZoneDefaultsTest.kt",
+      "exists": true,
+      "bytes": 492,
+      "sha256": "369d9614d18316007f27079ee65352d166c556ee981b655e402e3257313511fa",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/BirthTimeZoneResolverTest.kt",
+      "exists": true,
+      "bytes": 2723,
+      "sha256": "868c140c165f2dc42c4a67c8d06926e286aa3f2a5a47eebacfdb9518410ef544",
+      "lines": 76,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseImageExportContractTest.kt",
+      "exists": true,
+      "bytes": 6105,
+      "sha256": "071deeb7458efb604e670fb3d4d919127ed83bd973ec50708f7d98e2af4002e1",
+      "lines": 164,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseNameIndexTest.kt",
+      "exists": true,
+      "bytes": 1393,
+      "sha256": "b68cabd47e5f038a9276638aceea688c13cf4bac95b77dfa64d0dcae15452f54",
+      "lines": 36,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/CaseObjectiveSummaryContractTest.kt",
+      "exists": true,
+      "bytes": 16537,
+      "sha256": "e5d7821a737056d85f899399547ba16c26db8dc9eaecf4a7e0aa9f442392e10b",
+      "lines": 418,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/ExternalAnalysisBridgeContractTest.kt",
+      "exists": true,
+      "bytes": 10217,
+      "sha256": "c82f8ee14c416b781be5f37a132b4a07ccd2bbb361dc2b37d5a8ecd2364bd8e3",
+      "lines": 252,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/FolkBoneWeightRulesTest.kt",
+      "exists": true,
+      "bytes": 2628,
+      "sha256": "2c3205fb2bd40b839c8b51a2a4d4f887b717468807155b34ec741e599214e83c",
+      "lines": 72,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/FourPillarsLookupContractTest.kt",
+      "exists": true,
+      "bytes": 2826,
+      "sha256": "9f6ccfc62b69cd63f69dabfc30975f853ff67181af3415b51eb609266c9179c4",
+      "lines": 92,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/MangPaiProfileAnalyzerTest.kt",
+      "exists": true,
+      "bytes": 2151,
+      "sha256": "e8500033b507ab33ffc6578514b72d8a2fe2167f61722b088628b66caa2bb6e0",
+      "lines": 33,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/NatalChartRelationResolverTest.kt",
+      "exists": true,
+      "bytes": 786,
+      "sha256": "551d5a19146b5da8f2dd928e41ff8580192b0c69da883ae4fb1387f014f8c2b1",
+      "lines": 23,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/SeasonalWuxingStateResolverTest.kt",
+      "exists": true,
+      "bytes": 706,
+      "sha256": "404af5e13c4d385b7cc336dc8afcac20ba9a294b1e580f4ae701ce1136c67502",
+      "lines": 14,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/WangShuaiProfileAnalyzerTest.kt",
+      "exists": true,
+      "bytes": 1208,
+      "sha256": "33d98c8d5d7c7e50a2453c6aa2313ca33638b7e3874828e7d775e19d1f63b4e7",
+      "lines": 27,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/BasicChartDetailsTest.kt",
+      "exists": true,
+      "bytes": 1513,
+      "sha256": "a525429d6b1147ef4b1d390873d81b3a50fe6ef6bfd25373388435995eea0332",
+      "lines": 49,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/BirthInputTest.kt",
+      "exists": true,
+      "bytes": 1342,
+      "sha256": "be7ff4db367386bbbf52acde5f2660e1a4cf694863c5e5d2a8ca193b893d9222",
+      "lines": 42,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CaseModelsTest.kt",
+      "exists": true,
+      "bytes": 5673,
+      "sha256": "7c1710e4b49b70de3442602a51e0db5b30fe43fc34bd2706cc92c9c666ab9e09",
+      "lines": 161,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/ImportModelsTest.kt",
+      "exists": true,
+      "bytes": 2576,
+      "sha256": "3c4261bc94d5189b8d434ec74e7c57d2cc3367181e9214601c95bd8703085d7b",
+      "lines": 71,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/TraditionalLunarFormattingTest.kt",
+      "exists": true,
+      "bytes": 972,
+      "sha256": "aa4f8b8ab22c37a95ee9d52c70927a19d9b6b1e04bbb6ba886b40a0de0747da0",
+      "lines": 31,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/WenzhenSourceFidelityContractTest.kt",
+      "exists": true,
+      "bytes": 1255,
+      "sha256": "93fd123f7a6f1fba0d0cd1968fd902b4ff8299604c2432316f82fd5a33da2699",
+      "lines": 36,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/build.gradle.kts",
+      "exists": true,
+      "bytes": 623,
+      "sha256": "ab8bf01fc0be5c4954f1c8b2eb48aae4b70148097ab8e625715762532c4eb2af",
+      "lines": 28,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeAlmanacReader.kt",
+      "exists": true,
+      "bytes": 9021,
+      "sha256": "9de679814c9eba1cd369fb115fb8a42e5cc17916c95cf190a65f2a764d9157b8",
+      "lines": 208,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngine.kt",
+      "exists": true,
+      "bytes": 21544,
+      "sha256": "4881ab82bca0450f4160dc7c5602fbde67ed289ea10ce7355bb9f62fc1ef4da8",
+      "lines": 501,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeEightCharResolver.kt",
+      "exists": true,
+      "bytes": 561,
+      "sha256": "024cacb2e97de49d5c2faffa60fcea184fa8d732b800bc2a6a0c5002c1007825",
+      "lines": 12,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFortunePositionResolver.kt",
+      "exists": true,
+      "bytes": 4169,
+      "sha256": "dd8cac061fc6fe476c1a947a5745a446463f61abd444306fc92e482c8d3e0aed",
+      "lines": 92,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFourPillarsLookup.kt",
+      "exists": true,
+      "bytes": 12364,
+      "sha256": "4bb1283c96df37c1dad9947a8d657b7713955885b86aeeddc2b8b5b85a6eff96",
+      "lines": 300,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolver.kt",
+      "exists": true,
+      "bytes": 40895,
+      "sha256": "95c0336f9c9ce4e1633abf3de3578f3b62ecfe8523aafbedb9e59e5630d007ac",
+      "lines": 914,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/FourPillarsGoldenMatrixTest.kt",
+      "exists": true,
+      "bytes": 5845,
+      "sha256": "4f1be51610063f12548047f098abcf12f701e043c297b7c3d6d6c3e4b07555a4",
+      "lines": 141,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeAlmanacReaderTest.kt",
+      "exists": true,
+      "bytes": 5319,
+      "sha256": "4c8e97beaed9e681776a3bd3e5c2a25bfc2c6cefa59687e90963192a521f6fac",
+      "lines": 105,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngineTest.kt",
+      "exists": true,
+      "bytes": 25049,
+      "sha256": "b973ecbf99373617f3affeb166fa074efbab8395e259b9d2da6e3a22f138bba6",
+      "lines": 624,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFourPillarsLookupTest.kt",
+      "exists": true,
+      "bytes": 10122,
+      "sha256": "891f88fc0f396055caf654d05821857706bd8e2daafe4831ff2859bcdf16f549",
+      "lines": 280,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolverTest.kt",
+      "exists": true,
+      "bytes": 29058,
+      "sha256": "6c4d20ff1a56980913a2e8232f3761ba3c076f3f2d630330fa3b8af4660b4fca",
+      "lines": 567,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/resources/four-pillars-golden-v2.psv",
+      "exists": true,
+      "bytes": 6019,
+      "sha256": "55f11caef0c6ab3e2a319272ed0a7b7cdfa018a64699fac68b9a55b26a38e06a",
+      "lines": 64,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/engine-tyme/src/test/resources/golden-cases-v1.json",
+      "exists": true,
+      "bytes": 3868,
+      "sha256": "98634a5795691af102435130fbbb8e6b28d62f65332df54fd74b3e60af3ae4f0",
+      "lines": 117,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/build.gradle.kts",
+      "exists": true,
+      "bytes": 724,
+      "sha256": "553388f383c49cb6411a07bc9702d5f7bb1e4a6503822c326f4b31c166861443",
+      "lines": 31,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/AndroidManifest.xml",
+      "exists": true,
+      "bytes": 52,
+      "sha256": "daa0fb1f32ba7ea85a07ef6302ab3d58c3407d7fd2aa03ec132cb9e38e8d9849",
+      "lines": 2,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/DeterministicFeedbackThemeCandidateExtractor.kt",
+      "exists": true,
+      "bytes": 8390,
+      "sha256": "5c6f00e7f8074ac27baf2b6f74aae253b74417a1de4b456ecab17ca5c2dae677",
+      "lines": 206,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/DeterministicMasterCommentaryCandidateExtractor.kt",
+      "exists": true,
+      "bytes": 9076,
+      "sha256": "95519442cd8c861d17a1d39478425d6f6f91cd2d913a4ab86ae22317a02cec4d",
+      "lines": 222,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/ImageFingerprint.kt",
+      "exists": true,
+      "bytes": 5182,
+      "sha256": "494515c261fa5d1a4061a5324bced3af4a90f753ff9b60c74a1b9b717b011464",
+      "lines": 147,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/ImportRecognitionCoordinator.kt",
+      "exists": true,
+      "bytes": 11527,
+      "sha256": "02f0ffd83ede3650342c89ef345cb91a2c6c2dd70c31472c019ec5f1065939ba",
+      "lines": 230,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/MlKitChineseOcrEngine.kt",
+      "exists": true,
+      "bytes": 13281,
+      "sha256": "db543f0b4af62373658482da4eec8420d4fd04c6e31e1c4d7b15b596c20dcd96",
+      "lines": 332,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/OcrEngine.kt",
+      "exists": true,
+      "bytes": 1275,
+      "sha256": "74bd0bacc6bda073934e8000e9351529177dfd6c7bb67bb58e7ebbfc4b97ed79",
+      "lines": 48,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenImageGrouper.kt",
+      "exists": true,
+      "bytes": 7560,
+      "sha256": "6c1c76b527940fe83637680695bf9cdbc3b7552859414b986d22339d2307dc2f",
+      "lines": 188,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenP0Parser.kt",
+      "exists": true,
+      "bytes": 74932,
+      "sha256": "cde45f60b028052b60bb00bef64b35af945fe3f5a886444e125c3d5f7eecfe73",
+      "lines": 1725,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenPageClassifier.kt",
+      "exists": true,
+      "bytes": 4713,
+      "sha256": "db78d5fe83ec8d7029b3b0112031fa856ccea723589fd320b0054a6209483a81",
+      "lines": 131,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenPillarDateConsistencyRefiner.kt",
+      "exists": true,
+      "bytes": 3738,
+      "sha256": "5eb685bc4109f4e8a9fdb63dfb8b8c762382efdeff1e6f25579de163348ed47c",
+      "lines": 82,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/main/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenUserListOcrRefiner.kt",
+      "exists": true,
+      "bytes": 8712,
+      "sha256": "6047de345456468275f011722aa867ee31529357538fba9c26da01a1bcad042f",
+      "lines": 198,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/DeterministicFeedbackThemeCandidateExtractorTest.kt",
+      "exists": true,
+      "bytes": 5220,
+      "sha256": "d8357518f41f647920846c47f6a5a110cb828a296fcb18dea72281ae3455456b",
+      "lines": 119,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/DeterministicMasterCommentaryCandidateExtractorTest.kt",
+      "exists": true,
+      "bytes": 4662,
+      "sha256": "ab16736e758f35fc8e5784ef0b7e2bc3b0aa200cf4336ecfb0958f132a28b7c4",
+      "lines": 116,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/ImportImageDuplicateDetectorTest.kt",
+      "exists": true,
+      "bytes": 1853,
+      "sha256": "8688a15aae7f8f48db7b2ef206a16e96daea29e68dced9e9f30ffb8a7d3d8d7d",
+      "lines": 52,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/ImportRecognitionCoordinatorTest.kt",
+      "exists": true,
+      "bytes": 11768,
+      "sha256": "854a8e98c7b5f465784cd5a9ed4f67c29b41ab5877e5e559a319ba4af65d0d28",
+      "lines": 284,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenImageGrouperTest.kt",
+      "exists": true,
+      "bytes": 4538,
+      "sha256": "0349972099d2d0c2a7584eb81d2e3378521f39122891fc1114d6bd2d5354d80d",
+      "lines": 121,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenP0ParserTest.kt",
+      "exists": true,
+      "bytes": 31459,
+      "sha256": "64bb49dc18542207152d28910ffc0566f04f6608b0c9b632dc93a9db2f50519d",
+      "lines": 791,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenPageClassifierTest.kt",
+      "exists": true,
+      "bytes": 2919,
+      "sha256": "66caa7ca5f1d9ccd4ba906525324c10c94f2f0917ebca6ef8cca1035ae63dd00",
+      "lines": 74,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/image-parser/src/test/kotlin/com/nanzhufeng/nanfengbazi/imageparser/WenzhenPillarDateConsistencyRefinerTest.kt",
+      "exists": true,
+      "bytes": 4700,
+      "sha256": "67b299fae06bc1db0ea88cb0265c941ca670bde3c90c023ee7bb686a12485d42",
+      "lines": 113,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/solar-time/build.gradle.kts",
+      "exists": true,
+      "bytes": 467,
+      "sha256": "dabb1292a3a872ba07d142d7ba1f233482aece6bd7f58e31ba3d5cb9a8480a1b",
+      "lines": 25,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/solar-time/src/main/kotlin/com/nanzhufeng/nanfengbazi/solar/SpaTrueSolarTimeCalculator.kt",
+      "exists": true,
+      "bytes": 4241,
+      "sha256": "8e27a02e8edad8a94f61bba573ef04585eb603578405c740ca9d1997b132aa60",
+      "lines": 98,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "core/solar-time/src/test/kotlin/com/nanzhufeng/nanfengbazi/solar/SpaTrueSolarTimeCalculatorTest.kt",
+      "exists": true,
+      "bytes": 3788,
+      "sha256": "1e10d5c9216a02d314658c70a442e625e0aae666cde2c18fe882af449dbd5765",
+      "lines": 115,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "design-qa.md",
+      "exists": true,
+      "bytes": 6880,
+      "sha256": "7c91c3419db99959209f08f698847d2f2621c0a856f07f600e456ca685697ae8",
+      "lines": 106,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "design/assets/app-icon-legacy-alpha75.png",
+      "exists": true,
+      "bytes": 1860464,
+      "sha256": "37d950a103ad56e224e472798a63244e17970d3c56317fce7894df815e70dbf3",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/assets/app-icon-master-alpha75.jpg",
+      "exists": true,
+      "bytes": 73417,
+      "sha256": "067de52d2dafbad4c9b58dfc5de78c45191258a3d104b6f8d8cf4f0e812bf04e",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/assets/app-icon-master.png",
+      "exists": true,
+      "bytes": 1894829,
+      "sha256": "81d0c0bc46413543107c6b8a43edd2c994575945ef3ff4fdb6d6cb762b7030c0",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha73/home.png",
+      "exists": true,
+      "bytes": 192230,
+      "sha256": "39d820ba8801d32f348160081ba0adca50430502e44c351f644c8efd6b30b318",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha73/launcher.jpg",
+      "exists": true,
+      "bytes": 241799,
+      "sha256": "4256841e8e67cc9b85200fb45b0bc3de921263004245a8d2bba40cc0bcfaa5a7",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha73/place-picker.png",
+      "exists": true,
+      "bytes": 195017,
+      "sha256": "51dd3ef8f1d21cff264723e3ed26f57daef1a0543575a86559701621d3616211",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha73/reference-comparison.jpg",
+      "exists": true,
+      "bytes": 210192,
+      "sha256": "73dd17f3024ace0766934291292c4a2d631f9210acce75af8ad703d8727aea4c",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha73/time-picker.png",
+      "exists": true,
+      "bytes": 179836,
+      "sha256": "37f3d7753b39d181235bdfc2342e2b074e5a65e2f575ead66e28624d6b1e23e5",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha74/home-comparison.png",
+      "exists": true,
+      "bytes": 221573,
+      "sha256": "fb940c396611c843d9d474bc872a8f89825fdf061b613877fb8bbc6779927a22",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha74/home.png",
+      "exists": true,
+      "bytes": 99664,
+      "sha256": "6b996987beb473a90e8cc97ad9250bdca6a378c92a54398e9b24567873f6ec68",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha74/records.png",
+      "exists": true,
+      "bytes": 271095,
+      "sha256": "650e4aa886035ed6e42ecd8603500009ccd7291eeffaea602172cfef19209b24",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha75/almanac-mobile.png",
+      "exists": true,
+      "bytes": 187298,
+      "sha256": "dd50aa15a60c4edaf2827bc1082d85169dc962ed2cb2cbb21d3612e862f84c53",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/qa/alpha75/home.png",
+      "exists": true,
+      "bytes": 116072,
+      "sha256": "2babfb80a170f8f2da595d55670c12142054991599294d6c1148ec181c723c47",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/release-previews/github-preview-v1-analysis.png",
+      "exists": true,
+      "bytes": 2421430,
+      "sha256": "718335b5077d33a5106e4fb54b1cbcf753167c7f11b69fab8272cc34cd4c3963",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/release-previews/github-preview-v1-hero.png",
+      "exists": true,
+      "bytes": 2156064,
+      "sha256": "847f33e007be75416b8bafbecb0b01fd00e20a642eb0c2cef5d6c8340f18ce3f",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "design/release-previews/github-preview-v1-release-cover.png",
+      "exists": true,
+      "bytes": 2608686,
+      "sha256": "6a033427af660045c1f79f7fbd9eba0bb16ffe6154efc01b68dccfe3db34b5c3",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "docs/CURRENT_HANDOFF.md",
+      "exists": true,
+      "bytes": 2558,
+      "sha256": "f6881e0322ac7b1779cfc7356886f935915f74c54f009c9355abf8228e9ff270",
+      "lines": 23,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/DATA_CONTRACT.md",
+      "exists": true,
+      "bytes": 2639,
+      "sha256": "3dfaef84c16f35cfec588570ae92a3f2517a01abd7141f89b2ced2dffc67efc1",
+      "lines": 75,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/GOLDEN_CASES.md",
+      "exists": true,
+      "bytes": 1489,
+      "sha256": "8c5f42c144ffb5fd26ec0b281b13ddcc7f88fdc3af7c57a5883cf3d40db88925",
+      "lines": 27,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/PRODUCT_REQUIREMENTS.md",
+      "exists": true,
+      "bytes": 46691,
+      "sha256": "8c0b9fee3a8d9861b63c6d6b3d0c2fbd1b707437eb10fb352169b18b1203db27",
+      "lines": 1745,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/PROJECT_STATUS.md",
+      "exists": true,
+      "bytes": 4248,
+      "sha256": "ec1e7ddd595b9cf5f76273301639e151413c62e6a9f7343f5cbb4042fc0685d0",
+      "lines": 63,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/REFERENCES.md",
+      "exists": true,
+      "bytes": 3404,
+      "sha256": "02a0cf843e18446085a9ce7d43533329696d5439dc70a53a620cd182a9aee5f2",
+      "lines": 67,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/REQUIREMENT_GAP_AUDIT.md",
+      "exists": true,
+      "bytes": 37811,
+      "sha256": "14bbe5fadc36d81c2b32fb7302f7fba1776e596e99fbafbedd0e1f820862e58d",
+      "lines": 234,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/TEST_STRATEGY.md",
+      "exists": true,
+      "bytes": 57035,
+      "sha256": "ec8123f4ff0d838a5fcd3cb9a77bc6db996bdb830f8fcf9af505a0e9dc2138e6",
+      "lines": 529,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/app-experience-audit.md",
+      "exists": true,
+      "bytes": 12725,
+      "sha256": "a507eccae14b1459c8053afc4fd779fde399e0b79430ddea02d3c7eae3539e2e",
+      "lines": 114,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/app-icon-fidelity-standard.md",
+      "exists": true,
+      "bytes": 5236,
+      "sha256": "bdfdb1f43dc6cfe59f20377909d94aa96675d6aeb0681b6e52e60b90022bce91",
+      "lines": 58,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/architecture-governance.md",
+      "exists": true,
+      "bytes": 49301,
+      "sha256": "5f046a6787827ba7941b44ec6b17390eeddf5f47f5360f340bdd05be2adaf1ed",
+      "lines": 290,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/cloud-sync-contract.md",
+      "exists": true,
+      "bytes": 3621,
+      "sha256": "3449663b4150a2d153ba9c9291b45f83ef9a5af156c5aa53204e150cef65e65f",
+      "lines": 56,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/decision-log.md",
+      "exists": true,
+      "bytes": 209857,
+      "sha256": "05f8e7712759ba8d70dc2185f27310ae344d0daf83c465956ee6670734a3c1f0",
+      "lines": 1950,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/domain-rules.md",
+      "exists": true,
+      "bytes": 47590,
+      "sha256": "08dcc64531c6c49b5b5e44602eb077a6149491b9a115358001fdd05434d3972d",
+      "lines": 428,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/interaction-performance-audit.md",
+      "exists": true,
+      "bytes": 13526,
+      "sha256": "6f9851d6aa2d6c1618381dc3ef69d0da71e0d078a87e5e49543928b34224e0f6",
+      "lines": 98,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/next-codex-prompt.md",
+      "exists": false
+    },
+    {
+      "path": "docs/project-context.md",
+      "exists": true,
+      "bytes": 3424,
+      "sha256": "d9ed5af936fadb1f3897c31ede28e66c48c9b588cecf6edf859225a31c9de89f",
+      "lines": 45,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/screenshots/almanac.png",
+      "exists": true,
+      "bytes": 236867,
+      "sha256": "cafe57c22a0a8d629e92f550a045669f2df98831b2e54d931b9a544faf4e19e3",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "docs/screenshots/home.png",
+      "exists": true,
+      "bytes": 686953,
+      "sha256": "d748726c482ae339e3e103a1d461c0b3a82e3049521a76c5e2a55decb7696857",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "docs/screenshots/professional.png",
+      "exists": true,
+      "bytes": 346588,
+      "sha256": "93150ffa50c6535c1eea8555e82f31fe62834ed22b63b07837bc97edeabb2e39",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "docs/screenshots/records.png",
+      "exists": true,
+      "bytes": 138162,
+      "sha256": "546f1d69b8eab593a10395cf41b26d547e2794b6d5c337d3702017a87006f2fb",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "docs/verification/checkpoint-20261011.json",
+      "exists": true,
+      "bytes": 3720,
+      "sha256": "00e1700f8e068b444fa5af0ff191faec1ba75fdf85e661cf099c81864a8e3925",
+      "lines": 130,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/南枫八字完整开发档案.md",
+      "exists": true,
+      "bytes": 9743,
+      "sha256": "d8cba4374535ddb4100aca894c1fe40ee8848e7cc932d37cbc25510517f4ee48",
+      "lines": 117,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "docs/可迁移开发经验.md",
+      "exists": true,
+      "bytes": 5000,
+      "sha256": "42ae460f9c090f3a8a7c0b12a3b6c2f1902f4821f961a406a79d9813986570c0",
+      "lines": 54,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "gradle.properties",
+      "exists": true,
+      "bytes": 134,
+      "sha256": "e69dba2b1bf7794c15197f45edd7170a0d4cd1dba2234884edf059b313671037",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.jar",
+      "exists": true,
+      "bytes": 43453,
+      "sha256": "cb0da6751c2b753a16ac168bb354870ebb1e162e9083f116729cec9c781156b8",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.properties",
+      "exists": true,
+      "bytes": 251,
+      "sha256": "ec50a38cce403f0a387f77960d40d115bf67035b87cfcb13f6710fd293a60ce4",
+      "lines": 7,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "gradlew",
+      "exists": true,
+      "bytes": 8692,
+      "sha256": "fc977a94723af68aaffa4e5d60496fb4aeed1884b6b19e5e2f2fd7612673313d",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "gradlew.bat",
+      "exists": true,
+      "bytes": 2826,
+      "sha256": "95e8ae8e8a256a2f066cdd745d56f7a3fc87aa058a2e4beb483300db7171bd1f",
+      "review": "binary inventory only; not executed or newly rendered"
+    },
+    {
+      "path": "scripts/build_android_launcher_icon.py",
+      "exists": true,
+      "bytes": 7357,
+      "sha256": "5a429ace8964edb54ad4dc9042546233e1c12e930cb83272d9800e324f793f07",
+      "lines": 197,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/check_interaction_performance.py",
+      "exists": true,
+      "bytes": 5639,
+      "sha256": "6e4a3ea8196e14d51901d306a094dbdafe82f2c2c3e168be43797854f36cc5c7",
+      "lines": 128,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/compile_unified_celebrity_catalog.py",
+      "exists": true,
+      "bytes": 23991,
+      "sha256": "477ca06fc2fe2635dbfa6ea4eeb3799e0fccdf2aef1ad939c8b934977be45a75",
+      "lines": 497,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/fresh_jvm_tests.init.gradle",
+      "exists": true,
+      "bytes": 131,
+      "sha256": "e9ae7cf93b93ced485fe02d94295a8ec0bf988ba0b6e8f37f0acbb7f3d8ea245",
+      "lines": 5,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/generate_china_district_catalog.py",
+      "exists": true,
+      "bytes": 1962,
+      "sha256": "3184afce12b46122f2e98ea2e7996f2e424d6c529cc698672f82eec1a1a6d917",
+      "lines": 56,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/normalize_wenzhen_web_export.mjs",
+      "exists": true,
+      "bytes": 6688,
+      "sha256": "3517ec984520201abbbb05d073a21e53728dc3a889f57ddc160e9efafde10f40",
+      "lines": 204,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/run_restore_process_recovery_e2e.sh",
+      "exists": true,
+      "bytes": 3034,
+      "sha256": "a12e6d8a931d19eb9a15aa081381efbf5a7819220196c56c0b12476c2815c2c0",
+      "lines": 89,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/run_stage_six_accessibility_matrix.sh",
+      "exists": true,
+      "bytes": 4929,
+      "sha256": "ae0a444f8c4e5a013a4e55976017fd7cbb22926636476fb8e56653c6ac1e848b",
+      "lines": 141,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/run_stage_two_process_state_e2e.sh",
+      "exists": true,
+      "bytes": 3202,
+      "sha256": "e9d673aaa5ae8ed81cffd6aad74c739912c679ae1e969e89376fab03c4bc7688",
+      "lines": 110,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/test_check_interaction_performance.py",
+      "exists": true,
+      "bytes": 1717,
+      "sha256": "05410edbec642f3837165b4794a9743117187e14d35ca6abb7ac9edc2f8e378b",
+      "lines": 40,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "scripts/verify_wenzhen_import_db.py",
+      "exists": true,
+      "bytes": 12259,
+      "sha256": "ab15b0295ef6aea898b51575f483eda2fdcf2a9fa8690a371d05b7c25434c6f8",
+      "lines": 252,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    },
+    {
+      "path": "settings.gradle.kts",
+      "exists": true,
+      "bytes": 465,
+      "sha256": "e8b3b68e8cde9b632a36dc8a2af6dcde1737b8466fa365e254cc9b9e5fd66ada",
+      "lines": 23,
+      "review": "full structural scan; important flow/contract reviewed by symbol"
+    }
+  ],
+  "history": [
+    {
+      "sha": "edef8be7f8c44e715a4647ba47a046f83345b510",
+      "date": "2026-07-30",
+      "subject": "chore: establish stage 0 calculation baseline"
+    },
+    {
+      "sha": "efb5261731195d200513be5767791dbb7f39b4bc",
+      "date": "2026-07-30",
+      "subject": "feat: add recoverable case data foundation"
+    },
+    {
+      "sha": "d5237d1aeff979474102d6ff1f3b995bcef8c6e5",
+      "date": "2026-07-30",
+      "subject": "feat(android): complete stage 2 case workflow"
+    },
+    {
+      "sha": "3cc7e588694f0152e2bd198d235bd2f4c9b84565",
+      "date": "2026-07-30",
+      "subject": "docs: audit v1 requirements and stage plan"
+    },
+    {
+      "sha": "75f77db0fac779eadf7527e111e52dc14009c16d",
+      "date": "2026-07-30",
+      "subject": "feat(android): add case editing and records"
+    },
+    {
+      "sha": "51084a04b3a85bcf307dbec370f4022ea74e36a1",
+      "date": "2026-07-30",
+      "subject": "feat(android): complete case metadata management"
+    },
+    {
+      "sha": "64fa39e08b3a3c6da137d43820b705111d0a8499",
+      "date": "2026-07-30",
+      "subject": "feat(android): add recoverable case lifecycle"
+    },
+    {
+      "sha": "73aa3f5759a9f59482f1837e4a8e267163e61618",
+      "date": "2026-07-30",
+      "subject": "feat(android): preserve record and event history"
+    },
+    {
+      "sha": "9bbcca634d4e645fdb937a0231c6fc8e138633b3",
+      "date": "2026-07-30",
+      "subject": "feat(android): structure key event timeline"
+    },
+    {
+      "sha": "f09d74e60a1df71501873e3c654273775e1f2a0f",
+      "date": "2026-07-30",
+      "subject": "feat(data): define single case exchange preview"
+    },
+    {
+      "sha": "05a94034362078866dc2b061aed11d290d49e94b",
+      "date": "2026-07-30",
+      "subject": "feat(android): add single case file preview flow"
+    },
+    {
+      "sha": "a25466f297be2f235773d321f9c7af5ef27173d1",
+      "date": "2026-07-30",
+      "subject": "feat(data): add safe keep-both case import"
+    },
+    {
+      "sha": "1b94e54bc9bf511cb7a3e306e34cfddb20f785cd",
+      "date": "2026-07-30",
+      "subject": "feat(data): add scoped single case merge"
+    },
+    {
+      "sha": "7a8055f3bb155b224efd18f77085baf7496b1166",
+      "date": "2026-07-30",
+      "subject": "feat(data): add password-protected case exchange"
+    },
+    {
+      "sha": "860a5fb18a4af39c8ead7a04c0aa382ef9629192",
+      "date": "2026-07-30",
+      "subject": "feat(android): add full backup file preview"
+    },
+    {
+      "sha": "423532bdcaaad074c71980cd71565da45a307a78",
+      "date": "2026-07-30",
+      "subject": "feat(data): add password-protected full backups"
+    },
+    {
+      "sha": "89e043b9f77f7e9b29de0ae777a707ea81ba7d72",
+      "date": "2026-07-30",
+      "subject": "feat(data): preview full backup conflicts"
+    },
+    {
+      "sha": "61761dfc302636a1ad3810cedd16b956db5d31a5",
+      "date": "2026-07-30",
+      "subject": "feat(data): validate full restore decisions"
+    },
+    {
+      "sha": "499c1839605644078bd7992ee9aceeb7bb890ed1",
+      "date": "2026-07-30",
+      "subject": "refactor(data): bind full restore plans to aggregates"
+    },
+    {
+      "sha": "48ede0fc037c06973d96729287a339fccd574d91",
+      "date": "2026-07-30",
+      "subject": "feat(data): share restore merge analysis"
+    },
+    {
+      "sha": "9e9a3bdd7b20134cc651b8c9f54d1ce10ba47b66",
+      "date": "2026-07-30",
+      "subject": "feat(android): model full restore decisions"
+    },
+    {
+      "sha": "6ebdc00132b5944744bf4eef1fcade48da860361",
+      "date": "2026-07-30",
+      "subject": "feat(android): add full restore decision workbench"
+    },
+    {
+      "sha": "9b83192c9526c30b9e4c96f2e3f5b30317ff1819",
+      "date": "2026-07-30",
+      "subject": "feat(data): execute transactional full restores"
+    },
+    {
+      "sha": "7d0b51255244f4438d5261d452b5ad8486485401",
+      "date": "2026-07-30",
+      "subject": "feat(android): add scalable restore workbench"
+    },
+    {
+      "sha": "411430f8ecee6b6eecb415f0645eff0a14860e33",
+      "date": "2026-07-30",
+      "subject": "feat(data): merge attachment-backed restore modules"
+    },
+    {
+      "sha": "1c90f40ab27cb84ef661ce49e4c1653d7cf9f628",
+      "date": "2026-07-30",
+      "subject": "test(android): verify process-kill restore recovery"
+    },
+    {
+      "sha": "f850166c763922f191bf0be060bea8c667de5637",
+      "date": "2026-07-30",
+      "subject": "feat(data): add attachment-backed single-case bundles"
+    },
+    {
+      "sha": "b59cc655e1edae5a5b564e2bf0d0986faefcf608",
+      "date": "2026-07-30",
+      "subject": "feat(calendar): support lunar and leap-month input"
+    },
+    {
+      "sha": "89acb919e42b0106e717d71129d001a3e45a5a38",
+      "date": "2026-07-31",
+      "subject": "feat(calendar): resolve historical birth time zones"
+    },
+    {
+      "sha": "51dab0acbc66849ba4c0664d537eeeb2c03a00ff",
+      "date": "2026-07-31",
+      "subject": "feat(calendar): add auditable true solar time"
+    },
+    {
+      "sha": "3a68d9fd028bc02b00baa598bb0dfba75d1a5e01",
+      "date": "2026-07-31",
+      "subject": "feat(chart): add auditable basic pillar details"
+    },
+    {
+      "sha": "05694c3c48721d5afa0a9a5f34fa909a4522069a",
+      "date": "2026-07-31",
+      "subject": "feat(fortune): show precise transfer and decade ranges"
+    },
+    {
+      "sha": "70fe633e2bd52709addeff246d13f4d7f390a49a",
+      "date": "2026-07-31",
+      "subject": "feat(chart): add zero-write instant preview"
+    },
+    {
+      "sha": "3849a8722dcfb9cf28cd6d65ab82c7942c67270e",
+      "date": "2026-07-31",
+      "subject": "feat(input): preserve time precision and provenance"
+    },
+    {
+      "sha": "02d3931b2f3e172bc657be3e8b764e9465133e23",
+      "date": "2026-07-31",
+      "subject": "feat(case): support birth time candidates"
+    },
+    {
+      "sha": "7aea48902bac1897ce131c385a8c697a3c3549d8",
+      "date": "2026-07-31",
+      "subject": "test(engine): add 60-case differential matrix"
+    },
+    {
+      "sha": "b03afdd6e043230568baa5e305f19a46e8703aef",
+      "date": "2026-07-31",
+      "subject": "feat(import): add recoverable image intake foundation"
+    },
+    {
+      "sha": "ecc76ab998a2fc9aa3dd0baf927693b1079ef5b0",
+      "date": "2026-07-31",
+      "subject": "feat(import): connect offline screenshot intake"
+    },
+    {
+      "sha": "a89221c907ae9a1a4d0f18c7c93e29d5c529bf3b",
+      "date": "2026-07-31",
+      "subject": "feat(import): harden long image batch processing"
+    },
+    {
+      "sha": "e70ca8d33e3fee68842cb0283c7a57a368e0f6c4",
+      "date": "2026-07-31",
+      "subject": "feat(import): persist screenshot recognition work"
+    },
+    {
+      "sha": "d59e8e9e2de38e1777ff1542ac90178fd6b44f23",
+      "date": "2026-07-31",
+      "subject": "feat(import): group screenshot identity evidence"
+    },
+    {
+      "sha": "57a9143b07bbc866e87dd273e3549444fe77d91e",
+      "date": "2026-07-31",
+      "subject": "feat(import): parse wenzhen p0 evidence"
+    },
+    {
+      "sha": "f439ece4bbe95497206ce5621ce98d57911d42a3",
+      "date": "2026-07-31",
+      "subject": "feat(import): confirm and commit screenshot cases"
+    },
+    {
+      "sha": "f2f4b8f8ea83778e6438908345f6ddb7280a23a8",
+      "date": "2026-07-31",
+      "subject": "feat(import): correct screenshot evidence"
+    },
+    {
+      "sha": "04d2ddb99709fbe9bf49f3204e91116d8d47ca1c",
+      "date": "2026-07-31",
+      "subject": "feat(import): decide duplicate screenshot cases"
+    },
+    {
+      "sha": "3498127b48b770a3de16c9945f10c96806e66262",
+      "date": "2026-07-31",
+      "subject": "feat(import): show persisted evidence comparison"
+    },
+    {
+      "sha": "129a1f219a439b35f77f843d789fa5ec1499bd21",
+      "date": "2026-07-31",
+      "subject": "feat(import): locate evidence in source images"
+    },
+    {
+      "sha": "3cba7eb1cc595cecde9474c4890d9b5a904d8574",
+      "date": "2026-07-31",
+      "subject": "feat(ui): add four primary app entries"
+    },
+    {
+      "sha": "6a675b752d98304763b7142d84a7ce88fdc1fadf",
+      "date": "2026-07-31",
+      "subject": "feat(ui): adapt navigation for expanded windows"
+    },
+    {
+      "sha": "17e6295a63d0247890fe92ead70defc0eddb5d72",
+      "date": "2026-07-31",
+      "subject": "feat(import): parse wenzhen basic info fields"
+    },
+    {
+      "sha": "a1e4152af1f3e7f4600429dd19d8e1a3dbac51f2",
+      "date": "2026-07-31",
+      "subject": "feat(import): confirm feedback event candidates"
+    },
+    {
+      "sha": "f2dd2468ad7683bf7d735a65435ad84fabc8bf7b",
+      "date": "2026-07-31",
+      "subject": "feat(import): parse basic chart evidence"
+    },
+    {
+      "sha": "aefd1fcffa7f1e597a568b0cf514d6a5142055cc",
+      "date": "2026-07-31",
+      "subject": "feat(import): summarize candidate review issues"
+    },
+    {
+      "sha": "7b612bc016460ed5a374ff0fe46c768646074f79",
+      "date": "2026-07-31",
+      "subject": "docs(qa): record 2x font and TalkBack gate"
+    },
+    {
+      "sha": "8a5eb1241b88c3ef5b183bb303d2c8de4ca7957b",
+      "date": "2026-07-31",
+      "subject": "feat(import): foreground large OCR batches"
+    },
+    {
+      "sha": "67c52759aa0eb03310e3962aebda28c613d829f6",
+      "date": "2026-07-31",
+      "subject": "feat(import): explain large batch notifications"
+    },
+    {
+      "sha": "a747743dbcedaca377afd6ea1c219bfdb4059d15",
+      "date": "2026-07-31",
+      "subject": "docs(audit): refresh screenshot migration status"
+    },
+    {
+      "sha": "a0e4fafc697cacf6da7d74ce61a8ecfecf06eb27",
+      "date": "2026-07-31",
+      "subject": "feat: complete stage 6 state restoration"
+    },
+    {
+      "sha": "e063abf4279873577a960c3a2a056318266a965f",
+      "date": "2026-07-31",
+      "subject": "feat: complete stage 6 accessibility matrix"
+    },
+    {
+      "sha": "76659b6119017aa81889342a39191e417bcb7232",
+      "date": "2026-07-31",
+      "subject": "feat: complete stage 7a fortune positioning"
+    },
+    {
+      "sha": "d32b070c60dc3d11ebebba94366b189bfca0a8dd",
+      "date": "2026-07-31",
+      "subject": "feat: add professional fortune rules and diagnostics"
+    },
+    {
+      "sha": "02bb5e8ef47babc572b61d474b1bbcd0a3e8ab84",
+      "date": "2026-07-31",
+      "subject": "feat: add Wenzhen professional chart evidence"
+    },
+    {
+      "sha": "f9ce1133635154e0a1baca87aabe1cf9f41f8378",
+      "date": "2026-07-31",
+      "subject": "feat: compare Wenzhen basic chart evidence"
+    },
+    {
+      "sha": "fb834491e54aaecb15cea7d11452fdf9b82e2298",
+      "date": "2026-07-31",
+      "subject": "feat: add privacy-safe app diagnostics"
+    },
+    {
+      "sha": "bec013c32b40aad0005f27b9bca541e3eecce617",
+      "date": "2026-07-31",
+      "subject": "feat: compare Wenzhen basic info derivatives"
+    },
+    {
+      "sha": "dfd48b619080eff8563b0b26b45b873ceaefa005",
+      "date": "2026-07-31",
+      "subject": "feat: explain calculation archive differences"
+    },
+    {
+      "sha": "93f7519c1b9c3ec92337d55f46d65a6e4c630e33",
+      "date": "2026-07-31",
+      "subject": "feat: preserve Wenzhen source-only evidence"
+    },
+    {
+      "sha": "7ca87f317d60bee6a101e80f8180b85b1253c81c",
+      "date": "2026-07-31",
+      "subject": "feat: preflight backup restores in temporary database"
+    },
+    {
+      "sha": "12cfdbed3387aebff60a729bbb172df9d8790344",
+      "date": "2026-07-31",
+      "subject": "feat: compare case archives objectively"
+    },
+    {
+      "sha": "eea3dcb41fcc6942e6c09201c67ce1518c633330",
+      "date": "2026-07-31",
+      "subject": "docs: prepare alpha61 Codex handoff"
+    },
+    {
+      "sha": "b41052bbaf9932555142f07d2805efa6902c2781",
+      "date": "2026-07-31",
+      "subject": "feat: add four pillars reverse lookup"
+    },
+    {
+      "sha": "f886b077b5246d9ec4d17f31ff1fa75378e84e45",
+      "date": "2026-07-31",
+      "subject": "feat: harden real Wenzhen list imports"
+    },
+    {
+      "sha": "6d594f8dcc0a3cb02fc3769da6800cb31a8d189f",
+      "date": "2026-07-31",
+      "subject": "feat: add versioned chart image export"
+    },
+    {
+      "sha": "9223f926cacf62ab719241738aed9d310503649f",
+      "date": "2026-07-31",
+      "subject": "feat: add objective chart summary"
+    },
+    {
+      "sha": "881944a50c74dcfd0729e99d6522cf53d1526631",
+      "date": "2026-07-31",
+      "subject": "feat: add commentary candidate review"
+    },
+    {
+      "sha": "bf5cd9489d786fc9c12557c0680850fd63fef90f",
+      "date": "2026-07-31",
+      "subject": "feat: add feedback theme review"
+    },
+    {
+      "sha": "ed60d5baac06fcc80b1f03feca46bf925d49dd33",
+      "date": "2026-08-01",
+      "subject": "feat: refine Wenzhen user list OCR"
+    },
+    {
+      "sha": "4a050fdd3eaabb3c40aada37d3027c0fc59859a9",
+      "date": "2026-08-01",
+      "subject": "fix: harden Wenzhen list recognition"
+    },
+    {
+      "sha": "a4e76b04e84795242efd0652a1027d5fc96e0f1e",
+      "date": "2026-08-01",
+      "subject": "docs: align VX-09 year contract"
+    },
+    {
+      "sha": "2082c08ed15fe9bbbc32c8d89be84d084020b043",
+      "date": "2026-08-01",
+      "subject": "feat: add manual external analysis bridge"
+    },
+    {
+      "sha": "86bbea67dfe43de0f89ebb12a6b2a43d8e3b095e",
+      "date": "2026-08-02",
+      "subject": "feat: 收口问真式主界面与记录来源治理"
+    },
+    {
+      "sha": "40a4be28cb6ee5a158be1542ff6c52dbec87a0c7",
+      "date": "2026-08-02",
+      "subject": "feat: 重构低输入滚轮与问真式界面"
+    },
+    {
+      "sha": "2e5f59e8b47afba3a01c4fdca41ee177f880587c",
+      "date": "2026-08-02",
+      "subject": "feat: 重构排盘交互与星座案例展示"
+    },
+    {
+      "sha": "a13d6233d579cf4688b4fbe336e6fb01380b9bc8",
+      "date": "2026-08-03",
+      "subject": "feat: 内置本地响应式万年历"
+    },
+    {
+      "sha": "ab8e096c5e71a641808c59dce065fe6dc9adf704",
+      "date": "2026-08-03",
+      "subject": "docs: 固化 alpha75 新线程交接"
+    },
+    {
+      "sha": "e98b7a048df0f0a4506d6b6ce1ef7d2c29a85692",
+      "date": "2026-08-03",
+      "subject": "docs: 对齐 alpha75 需求审计基线"
+    },
+    {
+      "sha": "9ff37f679cf9da6dc3194e9c10debb5168eb5167",
+      "date": "2026-08-08",
+      "subject": "feat: 补齐 UI-11 展开态"
+    },
+    {
+      "sha": "e4c8ac585732918176d4b6d2225c992c8617ca7d",
+      "date": "2026-08-08",
+      "subject": "docs: 记录批量识别回归门禁"
+    },
+    {
+      "sha": "4397b4ae8bc79b01c57f8264b5ddd509f066ed98",
+      "date": "2026-08-08",
+      "subject": "docs: 校正批量识别复验结论"
+    },
+    {
+      "sha": "6f354b8f45077fc869b89f127f0c39ddd1d723e3",
+      "date": "2026-08-08",
+      "subject": "feat: 更新南枫八字启动图标"
+    },
+    {
+      "sha": "403ee9ddc3cad6465637a385d9577976b415820d",
+      "date": "2026-08-08",
+      "subject": "fix: 校正自适应图标安全区"
+    },
+    {
+      "sha": "1a3315f63f49c196c7f47a2ef2db32e6a83a88fa",
+      "date": "2026-08-08",
+      "subject": "fix: 使用图标本色填充自适应背景"
+    },
+    {
+      "sha": "0d6328787741a7dafbeef01bba26563c8b703635",
+      "date": "2026-08-08",
+      "subject": "feat: 收口 alpha82 出生输入、万年历与命例详情"
+    },
+    {
+      "sha": "4f7a1ae98211408ced28988e766b5e4bb65b0219",
+      "date": "2026-08-08",
+      "subject": "feat: 重构专业细盘五层岁运"
+    },
+    {
+      "sha": "32dd80830f2468b6adb2fd1b691df6ddfd11a7fa",
+      "date": "2026-08-08",
+      "subject": "feat: 统一基本排盘信息层级"
+    },
+    {
+      "sha": "dcd2ae16c6b1e210ba04f60769d2cea1f3511097",
+      "date": "2026-08-09",
+      "subject": "feat: 稳定万年历时间切换与排盘详情"
+    },
+    {
+      "sha": "9c6680ba0c9dee5ba3ecfc083584db577ccd79ad",
+      "date": "2026-08-09",
+      "subject": "feat: 完善专业细盘卡片与周岁信息"
+    },
+    {
+      "sha": "55834442d86334f60be0f1d290f29d74e8bdc52d",
+      "date": "2026-08-09",
+      "subject": "feat: 精简万年历称骨信息层级"
+    },
+    {
+      "sha": "7463d53b74a98ff8e4836e38d084de74e196c461",
+      "date": "2026-08-09",
+      "subject": "feat: 修复专业细盘时间轴与藏干展示"
+    },
+    {
+      "sha": "56bcf3eecce2e4363fe6f8c97af46ba93304a29a",
+      "date": "2026-08-09",
+      "subject": "feat: 统一专业细盘神煞与紧凑时间轴"
+    },
+    {
+      "sha": "933f419c8e48703032335b033d2792f99dd0a654",
+      "date": "2026-08-09",
+      "subject": "fix: 稳定专业细盘时间轴选择"
+    },
+    {
+      "sha": "8305b5e01b1867fe15ccb4e91e95d4f2dea39e10",
+      "date": "2026-08-09",
+      "subject": "fix: 调整专业九列天干留白"
+    },
+    {
+      "sha": "4e565e1312b7e8a41074fe4c46fc62de421ecfeb",
+      "date": "2026-08-09",
+      "subject": "fix: 对齐专业九列分区与流日密度"
+    },
+    {
+      "sha": "8e45193174bacd88658b0c08779c372f37d2a624",
+      "date": "2026-08-09",
+      "subject": "feat: 统一专业细盘层级并扩展大运"
+    },
+    {
+      "sha": "d3fd7bf6402b995184d911e49ae1f88def129526",
+      "date": "2026-08-09",
+      "subject": "fix: 放大专业排盘干支与十神"
+    },
+    {
+      "sha": "d355446522bd877e5a9161350f6a679dd178bb62",
+      "date": "2026-08-09",
+      "subject": "fix: 收紧专业排盘藏干行距"
+    },
+    {
+      "sha": "d083e48bb56db0c789628068141fc1a722424412",
+      "date": "2026-08-09",
+      "subject": "feat: 在大运首列补齐起运前小运"
+    },
+    {
+      "sha": "73a35597cb701ba472070e40d23135da61e9d624",
+      "date": "2026-08-09",
+      "subject": "style: 收紧岁运地支与藏干间距"
+    },
+    {
+      "sha": "637ba683bcc25fe6b6ac2a0a12a072f7a3bce52e",
+      "date": "2026-08-09",
+      "subject": "style: 统一专业岁运十列栅格"
+    },
+    {
+      "sha": "f7e5df6a2c64ffdbba1148c2e65674a1e6adc1c8",
+      "date": "2026-08-09",
+      "subject": "style: 加强岁运地支信息归属"
+    },
+    {
+      "sha": "258b633a29a916af93a2ff67e4e2768411df2877",
+      "date": "2026-08-09",
+      "subject": "feat: 联动四柱干支编辑焦点"
+    },
+    {
+      "sha": "e3245d716f08f05874fd590e74aec828d46f3eeb",
+      "date": "2026-08-09",
+      "subject": "feat: 统一命例详情摘要与神煞展示"
+    },
+    {
+      "sha": "fa1a33abc73b075276d9a64d3e2fc694ce9f93f4",
+      "date": "2026-08-09",
+      "subject": "fix: 精简专业细盘矩阵层级"
+    },
+    {
+      "sha": "59bf93c166926526ede391c8dda06ef48388ff51",
+      "date": "2026-08-09",
+      "subject": "fix: 优化专业神煞分组与日期操作"
+    },
+    {
+      "sha": "baae1c84e07b1441113dbc6f4a75236f4b41d319",
+      "date": "2026-08-09",
+      "subject": "fix: 锁定专业岁运父级并提亮排盘"
+    },
+    {
+      "sha": "e53b14588b047bea406786bfc6ff0736d2c8ff34",
+      "date": "2026-08-09",
+      "subject": "style: 收紧断事笔记模式切换"
+    },
+    {
+      "sha": "313b63f55f96ea599b9806d7ee4f27cb35ce1b30",
+      "date": "2026-08-09",
+      "subject": "feat: 重构断事笔记连续编辑时间线"
+    },
+    {
+      "sha": "ad6f923b3616030c7eb3570e4f8c6b4ca24d2783",
+      "date": "2026-08-09",
+      "subject": "fix: 重整详情头与专业细盘信息层级"
+    },
+    {
+      "sha": "fd5a31016facedbbfc12fb5f21517aab3897d314",
+      "date": "2026-08-09",
+      "subject": "fix: 统一断事时间选择与岁运排版"
+    },
+    {
+      "sha": "1cbc76440f50795934cd798e34c52375b88f31ad",
+      "date": "2026-08-09",
+      "subject": "fix: 重设计命例列表工具栏"
+    },
+    {
+      "sha": "4dc697d9c55cd7323941557326c1cbefb3b8e116",
+      "date": "2026-08-09",
+      "subject": "fix: 统一交互反馈轮廓"
+    },
+    {
+      "sha": "00ea28f56bbdd8c9d04ff47111133c7b968b75e7",
+      "date": "2026-08-09",
+      "subject": "feat: 添加基本排盘 AI 指令"
+    },
+    {
+      "sha": "9485bcedaee24d49b2a573681870c4c2febeb0cd",
+      "date": "2026-08-09",
+      "subject": "feat: 更换深蓝南枫启动图标"
+    },
+    {
+      "sha": "0d5632ecfcbcdce6bc2a4870dfa975035194fea8",
+      "date": "2026-08-09",
+      "subject": "feat: 完善记录筛选与批量管理"
+    },
+    {
+      "sha": "3c127bb002b7209749a65957775e24b80bc70bc4",
+      "date": "2026-08-10",
+      "subject": "feat: 收口命例编辑与记录交互"
+    },
+    {
+      "sha": "b16a14c8b0101a7e3f5725a9f106a533f4605c82",
+      "date": "2026-08-12",
+      "subject": "feat: consolidate bazi workflow and cloud sync"
+    },
+    {
+      "sha": "9576fad6a56c16ecd3bad10e9f61744ce6e49ae4",
+      "date": "2026-08-12",
+      "subject": "docs: record checkpoint context and lessons"
+    },
+    {
+      "sha": "cb5723fb694d97badced5a7699766b38089c6fa2",
+      "date": "2026-08-12",
+      "subject": "feat(android): stabilize detail flow and interactive header"
+    },
+    {
+      "sha": "bc21f2dfa350b567b80e02d37bd6d665dcc7346c",
+      "date": "2026-08-12",
+      "subject": "feat(ai): retain switchable commentary versions"
+    },
+    {
+      "sha": "bfaa9fc3dc82afb47a1500a806f528feb39ae8b3",
+      "date": "2026-08-12",
+      "subject": "docs: refresh alpha83 delivery handoff"
+    },
+    {
+      "sha": "8fe4c0148937fdb2aa910becf4e5baafd50ac037",
+      "date": "2026-08-12",
+      "subject": "Merge pull request #1 from nanzhufeng/feat-ai-commentary-versions"
+    },
+    {
+      "sha": "8b834e0bdb541d64eba714e8c4d20644db8077e7",
+      "date": "2026-08-12",
+      "subject": "release: prepare signed v1.0.0"
+    },
+    {
+      "sha": "6f57e61c12aca03a683f3393d9786343699dd44a",
+      "date": "2026-08-14",
+      "subject": "docs: add current app previews"
+    },
+    {
+      "sha": "67b9d925e0c3ba7d75376d3bf7ea842853ed492c",
+      "date": "2026-08-23",
+      "subject": "feat: consolidate bazi workflow and compatibility (#2)"
+    },
+    {
+      "sha": "953ff4acaffd8721fa3fe33e1607fb903f7aa62f",
+      "date": "2026-08-23",
+      "subject": "fix: align compatibility headers and picker rows"
+    },
+    {
+      "sha": "743a42db46ef5f7c318e23927429ef06655d781c",
+      "date": "2026-08-23",
+      "subject": "chore: prepare v1.0.2 compatibility release"
+    },
+    {
+      "sha": "1f27e9c2e00eb53698058a239d3b2046040ac2db",
+      "date": "2026-08-23",
+      "subject": "fix(compatibility): align headers and picker rows (#3)"
+    },
+    {
+      "sha": "5cda8746aa98d062df0af73eaec40851256d9476",
+      "date": "2026-08-23",
+      "subject": "fix(compatibility): show history without blocking entry (#4)"
+    },
+    {
+      "sha": "9e5e9f0c37ae230af948239986bbce7fcc345873",
+      "date": "2026-08-23",
+      "subject": "fix(compatibility): center history participants"
+    },
+    {
+      "sha": "f729ffcf104d89336709d9d8cd624298688b1707",
+      "date": "2026-08-23",
+      "subject": "fix(compatibility): stabilize responsive history"
+    },
+    {
+      "sha": "7534b9927fbcdc177a1fa72a1d25dfc29aab79f8",
+      "date": "2026-08-23",
+      "subject": "Merge pull request #5 from nanzhufeng/fix/compatibility-history-card-centering"
+    },
+    {
+      "sha": "1616b179b9eb480657c8da3426bc5c4cdffabd25",
+      "date": "2026-08-24",
+      "subject": "fix(compatibility): unify history management actions"
+    },
+    {
+      "sha": "711c9bc00aec54f9762360589fd58f5f5f21fa90",
+      "date": "2026-08-24",
+      "subject": "Merge pull request #6 from nanzhufeng/fix/compatibility-history-actions"
+    },
+    {
+      "sha": "69e9cb1575f02f4620e81f734fd84b5323a81740",
+      "date": "2026-08-26",
+      "subject": "feat(settings): add global font size"
+    },
+    {
+      "sha": "a939d31fa927ebc61e0232526a0cd8c90222765c",
+      "date": "2026-08-26",
+      "subject": "Merge pull request #7 from nanzhufeng/feat/global-font-size"
+    },
+    {
+      "sha": "551cc37b4b108010e6b0c870096987da4ebb0ffc",
+      "date": "2026-09-03",
+      "subject": "feat: enrich bazi reference analysis"
+    },
+    {
+      "sha": "4fce43f41da9ef0620e62d46d613b45978ede1c0",
+      "date": "2026-09-12",
+      "subject": "feat: polish bazi reference and AI service pages"
+    },
+    {
+      "sha": "c1920d320b1df4dcd552c131b36b28e1836941f4",
+      "date": "2026-09-15",
+      "subject": "feat: add settings about page"
+    },
+    {
+      "sha": "c22d11f5431f22084d09c48e9147864f3dfbcf91",
+      "date": "2026-09-15",
+      "subject": "release: prepare v1.0.15"
+    },
+    {
+      "sha": "c2c4da75a1cb92a518f4819abfd5c897e97dcf12",
+      "date": "2026-10-11",
+      "subject": "Release v1.0.16: fix fortune boundaries and interaction performance"
+    },
+    {
+      "sha": "2d5871f57fe20f2e6753a093f17d2c9c6a7e389f",
+      "date": "2026-10-11",
+      "subject": "Document v1.0.16 publication and verified project status"
+    },
+    {
+      "sha": "e48996b6071f0c2f6f4dad99331eed475544e69c",
+      "date": "2026-10-11",
+      "subject": "Checkpoint final regression and incremental development contracts"
+    }
+  ],
+  "documentation_validation": {
+    "skills": "5 existing project skills quick_validate PASS",
+    "audit_context": "PASS; 13 local links",
+    "workflow": "no hard errors; existing global soft warnings retained",
+    "business_changes": "none",
+    "test_evidence": "re-read existing XML; no JVM/build rerun",
+    "history_scope": "all local refs only; no new remote fetch",
+    "rollback": "existing local checkpoint e48996b plus exact owned-file backup outside project"
+  }
+}

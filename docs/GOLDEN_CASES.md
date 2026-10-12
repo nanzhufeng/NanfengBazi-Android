@@ -1,5 +1,7 @@
 # 黄金样本
 
+> 本主题现行正文及其适用证据；跨合同路由见[合同索引](CONTRACT_INDEX.md)。历史安装/测试不能覆盖当前授权和安全边界。
+
 机器可读样本位于：
 
 `core/engine-tyme/src/test/resources/golden-cases-v1.json`

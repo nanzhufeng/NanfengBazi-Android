@@ -1,0 +1,100 @@
+{
+  "verified_at": "2026-10-12T12:29:00+08:00",
+  "source_baseline": "e48996b6071f0c2f6f4dad99331eed475544e69c",
+  "scope": "contract/document/Skill consolidation and read-only maintenance script; production business/test/dependency/build files unchanged",
+  "contract_index": "docs/CONTRACT_INDEX.md",
+  "conflict_record": "docs/verification/contract-consolidation-20261012.md",
+  "history": [
+    {
+      "original": "docs/PRODUCT_REQUIREMENTS.md",
+      "historical_snapshot": "docs/history/contracts/PRODUCT_REQUIREMENTS-before-20261012.md",
+      "sha256": "8c0b9fee3a8d9861b63c6d6b3d0c2fbd1b707437eb10fb352169b18b1203db27",
+      "role": "immutable pre-consolidation text; historical evidence, not active contract"
+    },
+    {
+      "original": "docs/architecture-governance.md",
+      "historical_snapshot": "docs/history/contracts/architecture-governance-before-20261012.md",
+      "sha256": "5f046a6787827ba7941b44ec6b17390eeddf5f47f5360f340bdd05be2adaf1ed",
+      "role": "immutable pre-consolidation text; historical evidence, not active contract"
+    },
+    {
+      "original": "docs/TEST_STRATEGY.md",
+      "historical_snapshot": "docs/history/contracts/TEST_STRATEGY-before-20261012.md",
+      "sha256": "ec8123f4ff0d838a5fcd3cb9a77bc6db996bdb830f8fcf9af505a0e9dc2138e6",
+      "role": "immutable pre-consolidation text; historical evidence, not active contract"
+    },
+    {
+      "original": "docs/REQUIREMENT_GAP_AUDIT.md",
+      "historical_snapshot": "docs/history/contracts/REQUIREMENT_GAP_AUDIT-before-20261012.md",
+      "sha256": "14bbe5fadc36d81c2b32fb7302f7fba1776e596e99fbafbedd0e1f820862e58d",
+      "role": "immutable pre-consolidation text; historical evidence, not active contract"
+    },
+    {
+      "original": "docs/domain-rules.md",
+      "historical_snapshot": "docs/history/contracts/domain-rules-before-20261012.md",
+      "sha256": "08dcc64531c6c49b5b5e44602eb077a6149491b9a115358001fdd05434d3972d",
+      "role": "pre-consolidation text; data rules moved to DATA_CONTRACT; historical only"
+    }
+  ],
+  "checks": {
+    "active_contract_guard": "PASS; 17 active contracts/Skills",
+    "guard_negative_examples": [
+      "Schema drift rejected",
+      "connected invocation rejected",
+      "automatic primary-device launch rejected",
+      "stale no-network Manifest claim rejected",
+      "missing local link rejected"
+    ],
+    "history_exclusion": "PASS; old commands preserved as inactive historical text",
+    "pre_consolidation_red_signal": "stale no-network Manifest claim detected in exact backup",
+    "skills": "all five project Skills quick_validate PASS",
+    "production_hashes": "286 unique production/config files unchanged from turn start",
+    "jvm_lint": "NOT RERUN; retained 2026-10-11 results",
+    "device_service_release": "NOT RUN",
+    "local_links": "PASS; 91 non-historical current/report links checked",
+    "secret_scan": "PASS; no known credential indicators",
+    "diff_check": "PASS",
+    "workflow": "PASS; no hard errors; unrelated existing soft warnings retained"
+  },
+  "limits": [
+    "static guard checks selected mechanical facts and links, not complete semantic correctness",
+    "existing archivesName mismatch unchanged",
+    "real services, full device interaction, real Wenzhen reconciliation and PROVISIONAL boundaries still unverified"
+  ],
+  "excluded": "unrelated deletion docs/next-codex-prompt.md; pre-existing WIP preserved; no commit/push/rebuild",
+  "files": {
+    "modified": [
+      ".agents/skills/nanfeng-bazi-documentation-sync/SKILL.md",
+      ".agents/skills/nanfeng-bazi-testing/SKILL.md",
+      "AGENTS.md",
+      "docs/CURRENT_HANDOFF.md",
+      "docs/DATA_CONTRACT.md",
+      "docs/GOLDEN_CASES.md",
+      "docs/PRODUCT_REQUIREMENTS.md",
+      "docs/PROJECT_STATUS.md",
+      "docs/REFERENCES.md",
+      "docs/REQUIREMENT_GAP_AUDIT.md",
+      "docs/TEST_STRATEGY.md",
+      "docs/app-icon-fidelity-standard.md",
+      "docs/architecture-governance.md",
+      "docs/cloud-sync-contract.md",
+      "docs/decision-log.md",
+      "docs/domain-rules.md",
+      "docs/project-context.md",
+      "docs/南枫八字完整开发档案.md",
+      "docs/可迁移开发经验.md"
+    ],
+    "added": [
+      "docs/CONTRACT_INDEX.md",
+      "docs/history/contracts/PRODUCT_REQUIREMENTS-before-20261012.md",
+      "docs/history/contracts/README.md",
+      "docs/history/contracts/REQUIREMENT_GAP_AUDIT-before-20261012.md",
+      "docs/history/contracts/TEST_STRATEGY-before-20261012.md",
+      "docs/history/contracts/architecture-governance-before-20261012.md",
+      "docs/history/contracts/domain-rules-before-20261012.md",
+      "docs/verification/contract-consolidation-20261012.json",
+      "docs/verification/contract-consolidation-20261012.md",
+      "scripts/check_contract_consistency.py"
+    ]
+  }
+}
