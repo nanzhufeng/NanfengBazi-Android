@@ -159,3 +159,10 @@ attachments/
 ## 证据与历史冲突
 
 2026-10-11复核纠正原Schema6及“提交/密码/中断恢复未实现”的过期说明；仅文档变更。实现与最新适用测试优先，冲突记录见[完整开发档案](南枫八字完整开发档案.md#11-文档与代码冲突)，已执行门禁见[回归报告](verification/checkpoint-20261011.json)。
+
+## 立春年界结果证据（2026-10-26）
+
+- `CalculationResult.solarYearMonthEvidence` 是可选嵌入式JSON字段；旧数据缺失按null读取。无新增Room列、无Schema升级、无批量重算或自动切换采用值。
+- 新计算的 `profile.ruleVersion` 与 `evidence.ruleVersion` 同为 `lichun-instant-v2` 或 `lichun-instant-late-rat-v2`，即使调用者传入旧配置版本也记录实际执行版本。输入与来源不被改写；历史版本保持原值。
+- 该字段随已有快照、单例交换、备份与云结构化结果传输；新版本读取旧快照及新旧快照并存恢复须通过回归。不保证旧版App能读取新增字段。
+- 日期／精度／时区无法唯一判定时，预览／保存以明确候选拒绝唯一计算，无待采用的伪确定结果；原输入保留。现行历法语义见 [领域规则](domain-rules.md)。

@@ -1,0 +1,24 @@
+{
+  "provider": "Tyme4j 1.5.1 qiAccurate2, China civil -> UTC once",
+  "reference": "pyswisseph 20230604; engine 2.10.03",
+  "definition": "apparent geocentric tropical solar longitude 315 degrees",
+  "requested_flags": 258,
+  "actual_flags": [
+    260
+  ],
+  "ephemeris_note": "Moshier when actual_flags includes FLG_MOSEPH; no complete Swiss/DE files verified",
+  "time_note": "calc_ut is UT; UTC-labelled modern clocks are compared at seconds scale. Historical UT/UTC and future delta-T uncertainty are not millisecond guarantees.",
+  "rounding_note": "Tyme public SolarTime is rounded to whole seconds; subsecond reference values express numerical output, not an accuracy claim.",
+  "year_range": [
+    1901,
+    2100
+  ],
+  "max_abs_delta_seconds": 92.521846,
+  "review_threshold_seconds_1950_2050": 5,
+  "review_required": [],
+  "table_sha256": "757c70339263cbe056a3df9a86a1b750e72432cbce3a14eca732c4f01e3c3c74",
+  "verified_at": "2026-10-26 Asia/Shanghai",
+  "jar_sha256": "c0214a5f4b5debc6e582011632be2e68b1c788a91b99c83fc25589f5fd3f6338",
+  "reference_table": "core/engine-tyme/src/test/resources/lichun-reference-1901-2100.csv",
+  "runtime_dependency_changed": false
+}

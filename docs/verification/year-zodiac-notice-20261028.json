@@ -1,0 +1,427 @@
+{
+  "verifiedAt": "2026-10-28T11:05:28+08:00",
+  "baseline": "66f95c3f01a300e18141cf9f314854e88ff72893",
+  "scope": "WORKTREE; year/zodiac notice only; pre-existing WIP retained",
+  "problem": "Missing year-boundary evidence previously triggered a warning for every historical adopted snapshot.",
+  "behavior": [
+    "No notice when year and saved zodiac match.",
+    "Confirmed year/zodiac discrepancies show specific expected values.",
+    "Missing fields or unverifiable inputs do not become errors; valid boundary candidates retained.",
+    "Read-only background projection; no full fortune calculation, persistence or automatic re-adoption."
+  ],
+  "red": {
+    "tests": "12",
+    "failures": "12",
+    "errors": "0",
+    "timestamp": "2026-10-28T03:01:12"
+  },
+  "targeted": [
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseYearZodiacNoticeTest",
+      "tests": "12",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:01:56"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseIdentityZodiacTest",
+      "tests": "6",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:01:56"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.LichunBoundaryRegressionTest",
+      "tests": "13",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:01:41"
+    }
+  ],
+  "regression": {
+    "app": {
+      "tests": 353,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "engine": {
+      "tests": 70,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "suiteDetails": [
+    {
+      "name": "com.nanzhufeng.nanfengbazi.BirthplaceCatalogTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.AppDiagnosticsTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:01"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.WenzhenWebImportTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:05"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.ScreenshotImportViewModelTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:04"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.InteractionShapeContractTest",
+      "tests": "58",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:03"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.ProfessionalTimelineVisualContractTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:03"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.BaziAiClipboardTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:01"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseIdentityZodiacTest",
+      "tests": "6",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseComparisonTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseWorkflowAutoNameTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseYearZodiacNoticeTest",
+      "tests": "12",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.ScreenshotImportCommitterTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:03"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.cloud.BaziCloudCryptoTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:05"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseManagementTest",
+      "tests": "25",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.ScreenshotRecognitionWorkTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:04"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.BaziElementPresentationTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:01"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.BirthPickerQuickLocateTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseFormValidatorTest",
+      "tests": "11",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CalculationSnapshotRetentionTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.cloud.BaziCloudSyncPolicyTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:05"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.StageTwoViewModelTest",
+      "tests": "147",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:04"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CreateCaseUseCaseTest",
+      "tests": "14",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.StageTwoNavigatorTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:04"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CalculationArchiveComparisonTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.WenzhenWebImportReconciliationTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "1",
+      "timestamp": "2026-10-28T03:03:05"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseCatalogStoreTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.BirthPickerClockSelectionTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CuratedCelebrityImportTest",
+      "tests": "9",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.AiCommentaryFeatureTest",
+      "tests": "12",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:01"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseNotesWebLinkTest",
+      "tests": "2",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseCatalogZodiacTest",
+      "tests": "3",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseListScrollRestorationContractTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.CaseListEmptyStateContractTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:03:02"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolverTest",
+      "tests": "20",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:02:43"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.TymeFourPillarsLookupTest",
+      "tests": "9",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:02:43"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngineTest",
+      "tests": "21",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:02:43"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.TymeAlmanacReaderTest",
+      "tests": "6",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:02:43"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.FourPillarsGoldenMatrixTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:02:40"
+    },
+    {
+      "name": "com.nanzhufeng.nanfengbazi.engine.tyme.LichunBoundaryRegressionTest",
+      "tests": "13",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "timestamp": "2026-10-28T03:02:40"
+    }
+  ],
+  "lint": {
+    "debug": {
+      "Warning": 51,
+      "Information": 2
+    },
+    "release": {
+      "Warning": 51,
+      "Information": 2
+    }
+  },
+  "build": "PASS: assembleDebug, compileReleaseKotlin, lintDebug, lintRelease",
+  "command": "JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradlew :app:testDebugUnitTest :core:engine-tyme:test :app:assembleDebug :app:compileReleaseKotlin :app:lintDebug :app:lintRelease -I scripts/fresh_jvm_tests.init.gradle",
+  "sourceSha256": {
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoScreens.kt": "0a043f055f82a5df152d74a86444c8ee467523e1f71dc95129df96adf4b5bd34",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseYearZodiacNotice.kt": "86ff3e8005c6a6ba9d7a3194bb121b0903ae81369240e314163d9c5ef86fbd5f",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseYearZodiacNoticeTest.kt": "28d7d0ba0fa737254be1fb2068ab752a885d661a5805c43d1c963988f075faa3",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngine.kt": "0d0d99ba9071edd513163272d79c5b2d600b9e75d579a10c6beecd86ec51ea97"
+  },
+  "evidenceDirectory": "/tmp/bazi-year-notice-20261028",
+  "emulator": "NOT RUN",
+  "mainDevice": "PASS_INSTALL_METADATA_ONLY; PKH120 same-signature non-debuggable Release overlay, no UI/business acceptance",
+  "realServices": "NOT RUN",
+  "git": "LOCAL ONLY; not committed/pushed/published",
+  "overlay": {
+    "verifiedAt": "2026-10-28T12:45:13+08:00",
+    "status": "PASS",
+    "candidate": {
+      "frozenAt": "2026-10-28T12:44:50+08:00",
+      "apk": "/tmp/bazi-year-notice-overlay-20261028/NanfengBazi-Android-v1.0.16-release.apk",
+      "bytes": 70619803,
+      "sha256": "026b47d5c044e577b5aae4c4f93e27186147721c6c755c9a5261d11ab9d9066f",
+      "packageName": "com.nanzhufeng.nanfengbazi",
+      "versionCode": 10048,
+      "versionName": "1.0.16",
+      "certificateSha256": "0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3",
+      "debuggable": false,
+      "sourceInputsVerified": 198,
+      "gateEvidence": "/tmp/bazi-year-notice-20261028/final-gates.log",
+      "releaseBuild": "PASS"
+    },
+    "install": "pm install -r --user 0: Success",
+    "dataIdentityUnchanged": {
+      "appId": true,
+      "ceDataInode": true,
+      "deDataInode": true,
+      "dataDir": true,
+      "firstInstallTime": true
+    },
+    "readbackSha256": "026b47d5c044e577b5aae4c4f93e27186147721c6c755c9a5261d11ab9d9066f",
+    "signatureMatched": true,
+    "remoteTemporaryApkCleanup": "PASS",
+    "realBusinessAcceptance": "NOT RUN; metadata preservation is not full business-data equality",
+    "sourceInputsUnchanged": true,
+    "evidenceDirectory": "/tmp/bazi-year-notice-overlay-20261028"
+  }
+}

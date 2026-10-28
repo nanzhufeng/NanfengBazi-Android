@@ -1,0 +1,1197 @@
+{
+  "checked_at": "2026-10-26 Asia/Shanghai",
+  "baseline": "66f95c3f01a300e18141cf9f314854e88ff72893",
+  "scope": "WORKTREE",
+  "user_plan_sha256": "22c17cb4b9feeaffe1eec7e72b147ceabe8b128a1079578789db6592198cef6c",
+  "root_cause": [
+    "Almanac scalar fields use day-level cycles while detail uses selected hour",
+    "Birth offset persisted but not used to compare year/month physical instants",
+    "Unknown seconds and approximate ranges forced into unique snapshots",
+    "Almanac drops minutes and 23h when mapped to shichen representative",
+    "Reverse lookup assumes Beijing clocks and noon filtering drops boundary-day candidates",
+    "Screenshot commit duplicate check assumes one snapshot despite multiple candidates",
+    "Catalog rule upgrade must preserve existing adopted snapshots"
+  ],
+  "original_main_engine_2000_08_beijing": "PASS before fix; source of screenshot old adopted result UNKNOWN",
+  "before_after": {
+    "2000-02-04T08:00:00+08:00": "己卯/丁丑/兔",
+    "2000-02-04T20:41:00+08:00": "庚辰/戊寅/龙",
+    "2000-02-04 20:40 minute": "AMBIGUOUS 己卯/庚辰、丁丑/戊寅; no unique adoption"
+  },
+  "red": {
+    "command": ":core:engine-tyme:test --tests '*LichunBoundaryRegressionTest' --offline",
+    "tests": 4,
+    "failures": 3,
+    "log": "/tmp/bazi-lichun-20261026/red-precision.log"
+  },
+  "validation": {
+    "status": "PASS",
+    "command": "JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' ./gradlew test :app:assembleDebug :app:assembleRelease :app:lintDebug :app:lintRelease --offline -I scripts/fresh_jvm_tests.init.gradle",
+    "log": "/tmp/bazi-lichun-20261026/final-accepted-gate.log",
+    "summary": {
+      "tests": 1063,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "reports": [
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.BirthplaceCatalogTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.AppDiagnosticsTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.WenzhenWebImportTest.xml",
+        "timestamp": "2026-10-26T03:42:58",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.ScreenshotImportViewModelTest.xml",
+        "timestamp": "2026-10-26T03:42:57",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.InteractionShapeContractTest.xml",
+        "timestamp": "2026-10-26T03:42:56",
+        "tests": 58,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.ProfessionalTimelineVisualContractTest.xml",
+        "timestamp": "2026-10-26T03:42:56",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.BaziAiClipboardTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseIdentityZodiacTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseComparisonTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseWorkflowAutoNameTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.ScreenshotImportCommitterTest.xml",
+        "timestamp": "2026-10-26T03:42:56",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.cloud.BaziCloudCryptoTest.xml",
+        "timestamp": "2026-10-26T03:42:58",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseManagementTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.ScreenshotRecognitionWorkTest.xml",
+        "timestamp": "2026-10-26T03:42:57",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.BaziElementPresentationTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.BirthPickerQuickLocateTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseFormValidatorTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CalculationSnapshotRetentionTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.cloud.BaziCloudSyncPolicyTest.xml",
+        "timestamp": "2026-10-26T03:42:58",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.StageTwoViewModelTest.xml",
+        "timestamp": "2026-10-26T03:42:57",
+        "tests": 147,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CreateCaseUseCaseTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.StageTwoNavigatorTest.xml",
+        "timestamp": "2026-10-26T03:42:57",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CalculationArchiveComparisonTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.WenzhenWebImportReconciliationTest.xml",
+        "timestamp": "2026-10-26T03:42:58",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseCatalogStoreTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.BirthPickerClockSelectionTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CuratedCelebrityImportTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.AiCommentaryFeatureTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseNotesWebLinkTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseCatalogZodiacTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseListScrollRestorationContractTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseListEmptyStateContractTest.xml",
+        "timestamp": "2026-10-26T03:42:55",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.BirthplaceCatalogTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.AppDiagnosticsTest.xml",
+        "timestamp": "2026-10-26T03:42:58",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.WenzhenWebImportTest.xml",
+        "timestamp": "2026-10-26T03:43:02",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.ScreenshotImportViewModelTest.xml",
+        "timestamp": "2026-10-26T03:43:01",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.InteractionShapeContractTest.xml",
+        "timestamp": "2026-10-26T03:43:00",
+        "tests": 58,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.ProfessionalTimelineVisualContractTest.xml",
+        "timestamp": "2026-10-26T03:43:00",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.BaziAiClipboardTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseIdentityZodiacTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseComparisonTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseWorkflowAutoNameTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.ScreenshotImportCommitterTest.xml",
+        "timestamp": "2026-10-26T03:43:00",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.cloud.BaziCloudCryptoTest.xml",
+        "timestamp": "2026-10-26T03:43:02",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseManagementTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.ScreenshotRecognitionWorkTest.xml",
+        "timestamp": "2026-10-26T03:43:01",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.BaziElementPresentationTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.BirthPickerQuickLocateTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseFormValidatorTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CalculationSnapshotRetentionTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.cloud.BaziCloudSyncPolicyTest.xml",
+        "timestamp": "2026-10-26T03:43:02",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.StageTwoViewModelTest.xml",
+        "timestamp": "2026-10-26T03:43:01",
+        "tests": 147,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CreateCaseUseCaseTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.StageTwoNavigatorTest.xml",
+        "timestamp": "2026-10-26T03:43:01",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CalculationArchiveComparisonTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.WenzhenWebImportReconciliationTest.xml",
+        "timestamp": "2026-10-26T03:43:02",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseCatalogStoreTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.BirthPickerClockSelectionTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CuratedCelebrityImportTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.AiCommentaryFeatureTest.xml",
+        "timestamp": "2026-10-26T03:42:58",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseNotesWebLinkTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseCatalogZodiacTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseListScrollRestorationContractTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "app/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.CaseListEmptyStateContractTest.xml",
+        "timestamp": "2026-10-26T03:42:59",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/solar-time/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.solar.SpaTrueSolarTimeCalculatorTest.xml",
+        "timestamp": "2026-10-26T03:43:15",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenPageClassifierTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.DeterministicFeedbackThemeCandidateExtractorTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenPillarDateConsistencyRefinerTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetectorTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenImageGrouperTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.DeterministicMasterCommentaryCandidateExtractorTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenP0ParserTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.ImportRecognitionCoordinatorTest.xml",
+        "timestamp": "2026-10-26T03:42:54",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenPageClassifierTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.DeterministicFeedbackThemeCandidateExtractorTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenPillarDateConsistencyRefinerTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.ImportImageDuplicateDetectorTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenImageGrouperTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.DeterministicMasterCommentaryCandidateExtractorTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.WenzhenP0ParserTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/image-parser/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.imageparser.ImportRecognitionCoordinatorTest.xml",
+        "timestamp": "2026-10-26T03:43:14",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/engine-tyme/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.engine.tyme.TymeProfessionalFortuneResolverTest.xml",
+        "timestamp": "2026-10-26T03:43:06",
+        "tests": 20,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/engine-tyme/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.engine.tyme.TymeFourPillarsLookupTest.xml",
+        "timestamp": "2026-10-26T03:43:06",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/engine-tyme/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngineTest.xml",
+        "timestamp": "2026-10-26T03:43:06",
+        "tests": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/engine-tyme/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.engine.tyme.TymeAlmanacReaderTest.xml",
+        "timestamp": "2026-10-26T03:43:05",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/engine-tyme/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.engine.tyme.FourPillarsGoldenMatrixTest.xml",
+        "timestamp": "2026-10-26T03:43:02",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/engine-tyme/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.engine.tyme.LichunBoundaryRegressionTest.xml",
+        "timestamp": "2026-10-26T03:43:03",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.RoomCaseRepositoryTest.xml",
+        "timestamp": "2026-10-26T03:42:43",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.RoomImportSessionRepositoryTest.xml",
+        "timestamp": "2026-10-26T03:42:43",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.CaseBackupServiceTest.xml",
+        "timestamp": "2026-10-26T03:42:36",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.PrivateImportImageStoreTest.xml",
+        "timestamp": "2026-10-26T03:42:43",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.SingleCaseExchangeServiceTest.xml",
+        "timestamp": "2026-10-26T03:42:44",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.SingleCaseBundleServiceTest.xml",
+        "timestamp": "2026-10-26T03:42:43",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.CalculationResultCompatibilityTest.xml",
+        "timestamp": "2026-10-26T03:42:35",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testDebugUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.DatabaseMigrationTest.xml",
+        "timestamp": "2026-10-26T03:42:43",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.RoomCaseRepositoryTest.xml",
+        "timestamp": "2026-10-26T03:42:51",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.RoomImportSessionRepositoryTest.xml",
+        "timestamp": "2026-10-26T03:42:51",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.CaseBackupServiceTest.xml",
+        "timestamp": "2026-10-26T03:42:45",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.PrivateImportImageStoreTest.xml",
+        "timestamp": "2026-10-26T03:42:51",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.SingleCaseExchangeServiceTest.xml",
+        "timestamp": "2026-10-26T03:42:52",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.SingleCaseBundleServiceTest.xml",
+        "timestamp": "2026-10-26T03:42:51",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.CalculationResultCompatibilityTest.xml",
+        "timestamp": "2026-10-26T03:42:45",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/data/build/test-results/testReleaseUnitTest/TEST-com.nanzhufeng.nanfengbazi.data.DatabaseMigrationTest.xml",
+        "timestamp": "2026-10-26T03:42:51",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BirthTimeZoneResolverTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.ExternalAnalysisBridgeContractTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BaziStructuralProfileAnalyzerTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BasicShenShaRulesTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.model.CaseModelsTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BaziAiAnalysisPromptContractTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BaziElementDistributionAnalyzerTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.NatalChartRelationResolverTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BaziCompatibilityAnalyzerTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.BaziTimeZoneDefaultsTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.model.BirthInputTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.CaseNameIndexTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.MangPaiProfileAnalyzerTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightRulesTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.SeasonalWuxingStateResolverTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.FourPillarsLookupContractTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.model.BasicChartDetailsTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.model.ImportModelsTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.model.WenzhenSourceFidelityContractTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.model.TraditionalLunarFormattingTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.CaseImageExportContractTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.WangShuaiProfileAnalyzerTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "core/domain/build/test-results/test/TEST-com.nanzhufeng.nanfengbazi.domain.CaseObjectiveSummaryContractTest.xml",
+        "timestamp": "2026-10-26T03:42:53",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "builds": [
+      "assembleDebug PASS",
+      "assembleRelease PASS"
+    ],
+    "lint": {
+      "debug": {
+        "errors": 0,
+        "warnings": 44,
+        "information": 2
+      },
+      "release": {
+        "errors": 0,
+        "warnings": 44,
+        "information": 2
+      }
+    },
+    "boundary_years": [
+      1901,
+      2100
+    ],
+    "annual_offset_cases": 1400,
+    "catalog_preflight_records": 574,
+    "data_round_trip": "Room + cloud structured snapshot, synthetic attachment-free old/new snapshot coexistence PASS"
+  },
+  "astronomy": "lichun-astronomy-20261026.json",
+  "ui_validation": {
+    "status": "NOT VERIFIED",
+    "device": "owned emulator-5600/API35/NanfengBaziCompatibilityAcceptance_API35",
+    "attempts": [
+      "debug install and launch",
+      "cold boot without snapshots",
+      "release install and launch"
+    ],
+    "failure": "ActivityManager failed to complete process startup; launch timeout; no business exception stack identified",
+    "evidence": "/tmp/bazi-lichun-20261026/ui",
+    "cleanup": "owned emulator stopped; exact temporary UI XML removed"
+  },
+  "unverified": [
+    "Main device appeared only in final device inventory; no real case scan/recompute/install",
+    "Screenshot old adopted result provenance remains UNKNOWN",
+    "Full Swiss/DE files not used; Moshier only",
+    "2051-2100 model divergence up to 92.521846 seconds; not claimed accurate to seconds",
+    "Existing cloud attachment-reference restoration rejection recorded separately; cloud algorithm unchanged",
+    "All-skin/font/responsive visual QA incomplete"
+  ],
+  "data_policy": "No Room schema change; optional evidence; old adopted/source/AI retained; explicit edit/recalculate for new adoption",
+  "delivery": {
+    "main_device": "PASS preserved-data same-signature non-debuggable Release overlay; business verification NOT RUN",
+    "connectedAndroidTest": "NEVER RUN",
+    "git_commit_push_release": "NOT RUN",
+    "overlay": {
+      "installed": true,
+      "apk": "/tmp/bazi-lichun-overlay-20261026/NanfengBazi-Android-v1.0.16-release.apk",
+      "sha256": "7bee23ae6c6354dcc71473ef1206046fd05e10f3f036944e6c4100ed76dc70b8",
+      "certificate_sha256": "0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3",
+      "non_debuggable": true,
+      "data_directory_identity_preserved": true,
+      "first_install_time_preserved": true,
+      "installed_apk_hash_matches": true,
+      "source_manifest_verified": true,
+      "business_verification": "NOT RUN; no app launch or UI automation on main device"
+    },
+    "overlay_evidence": "/tmp/bazi-lichun-overlay-20261026/"
+  },
+  "rollback": {
+    "baseline_patch": "/tmp/bazi-lichun-20261026/baseline.patch",
+    "baseline_untracked": "/tmp/bazi-lichun-20261026/untracked-baseline",
+    "method": "restore this task hunks/files only; do not reset/clean existing WIP"
+  },
+  "modified_this_task": [
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/Almanac.kt",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziTimeZoneDefaults.kt",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BirthTimeZoneResolver.kt",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/YearMonthBoundaryAmbiguousException.kt",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CalculationProfile.kt",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CalculationResult.kt",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/SolarYearMonthEvidence.kt",
+    "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/BirthInputTest.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeSolarYearMonthResolver.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngine.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeAlmanacReader.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeEightCharResolver.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFortunePositionResolver.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolver.kt",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFourPillarsLookup.kt",
+    "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/LichunBoundaryRegressionTest.kt",
+    "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngineTest.kt",
+    "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolverTest.kt",
+    "core/engine-tyme/src/test/resources/lichun-reference-1901-2100.csv",
+    "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/CaseBackupServiceTest.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AlmanacFeature.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BirthInputPickers.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoScreens.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoViewModel.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CalculationSnapshotRetention.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CuratedCelebrityImport.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/UnifiedCelebrityCatalogImport.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportCommitter.kt",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/StageTwoViewModelTest.kt",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CalculationSnapshotRetentionTest.kt",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CuratedCelebrityImportTest.kt",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportCommitterTest.kt",
+    "scripts/verify_lichun_reference.py"
+  ],
+  "source_sha256": {
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/Almanac.kt": "5f0aa35ad131e45548b8b3d308b6aceb4217f8f7cf83119ec47ce091f196cdaa",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BaziTimeZoneDefaults.kt": "1042a7f83ad75d0e6ae3e473eda0c63019f1d787f264d2f681e8fa388c45339a",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/BirthTimeZoneResolver.kt": "d56e4a021794aeab748911b06a2d8a66ff1ad6fc9a049231769f1ab328966c34",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/YearMonthBoundaryAmbiguousException.kt": "c90a45b8446c120053c5d7281edd0de84e2c501fcb814080d385107dfaf28564",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CalculationProfile.kt": "ee98628351680be6ebaeb5a6a8d312115b0ab3881635879fee7168efe02f6331",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/CalculationResult.kt": "40f30b0544217b48bad7e47c0a60f20432d691f32c0daedb80e2c527869e9ff8",
+    "core/domain/src/main/kotlin/com/nanzhufeng/nanfengbazi/domain/model/SolarYearMonthEvidence.kt": "97165f74d72757f08a7ee22bfc86ab4bc5d02289c1f7dc61e77a5b4c58ed7f8b",
+    "core/domain/src/test/kotlin/com/nanzhufeng/nanfengbazi/domain/model/BirthInputTest.kt": "48eb29a59c354d50904071e7c5d0a2d182f47fdc962bc8fb9494b43cfd9411f1",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeSolarYearMonthResolver.kt": "daea008b8703856039264bf95ea98859fa2d61aafffc2ab903ebd3152f0378e0",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngine.kt": "572d331c6f2d06846afe292262fae0c355f70b9fe19b35eafb61bd77840432a0",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeAlmanacReader.kt": "e9cefa3c505641bbc92e16e727c4524f7bf944c820255ae658234ce16f5d76e1",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeEightCharResolver.kt": "172a403fb648f35ff178c5a3448f191805178efb77b6e015fdf249c4ef5ad63b",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFortunePositionResolver.kt": "d3a0db5ff7c9c1ec55163db557251b554dd27820311aa993fdcc1b7b018e7458",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolver.kt": "7e6cf27f33eb90ec72043cf85303f316f2198bfba05a748e4e9954e0d9f2ffac",
+    "core/engine-tyme/src/main/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeFourPillarsLookup.kt": "1cd339e8968381a33cd0ba66341066d43591f73b174bf9f1892ceb4e0ab05c08",
+    "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/LichunBoundaryRegressionTest.kt": "e8ff04327535c87746d659eb4ce51af1b6612c5de01571b4168d0bf48b84f713",
+    "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeBaziEngineTest.kt": "f107d46b0f4fa5ec9546eccee283436a512d64791203169bd6d50036c71461c0",
+    "core/engine-tyme/src/test/kotlin/com/nanzhufeng/nanfengbazi/engine/tyme/TymeProfessionalFortuneResolverTest.kt": "0a117c7ac5c41f07d8821a362e7c21663867f128f8d00eab5f1e96fc7ee2d798",
+    "core/engine-tyme/src/test/resources/lichun-reference-1901-2100.csv": "757c70339263cbe056a3df9a86a1b750e72432cbce3a14eca732c4f01e3c3c74",
+    "core/data/src/test/kotlin/com/nanzhufeng/nanfengbazi/data/CaseBackupServiceTest.kt": "b2d78bd648aa90d0e118ad2bd78e6aaa3e88980fa55cc59c0117fff044ef65f9",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/AlmanacFeature.kt": "bf2b1a6489eb96c5516f9c17a180a1714c5b285f2444ff6368c63e80bf89ae8c",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/BirthInputPickers.kt": "6d934e76959640182a604191b2d0e3908f9e3633a6378edf152a54cbcec5674d",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoScreens.kt": "3636a3eeb185418eb28a33dd6a50624f083a0476da31e73ac7e861e8cb4ae914",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoViewModel.kt": "5667ae2803a66e00f78f8c52961e50229046f10460b7c6b514268fa410ef314f",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CalculationSnapshotRetention.kt": "8e47d04755f75a94b87a5161fdd8ba3adf542057d8fe174fe57471726170e893",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CuratedCelebrityImport.kt": "1f5096e6944eef415200ff0b4ab39c7deb594852beeaa328785410741624d8c9",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/UnifiedCelebrityCatalogImport.kt": "e637af0688cb148a6df8c09b934397e3a7f8640b33eec67c3d4133d11047d06a",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportCommitter.kt": "8a5788565f2f706e00692d5abbb73eff17b8aa42ed478d20bd41125daedf0085",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/StageTwoViewModelTest.kt": "5a499d38a87a2c726ed56d5d135ce50361a1962c977da7afb1fa4dc53382c1f2",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CalculationSnapshotRetentionTest.kt": "150e3e908ff76bd0e66e4e2c6a4d4b7e1e1facd6be47548e9495214e21956759",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CuratedCelebrityImportTest.kt": "d96d531928d1d2848594f9ec944bc57a04e294f52f18cdf664452b12f6091d5a",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/ScreenshotImportCommitterTest.kt": "53dae8a724f4abe6f4d39459843b70f019864b91b22f0810c9ba0bfe12d253ef",
+    "scripts/verify_lichun_reference.py": "2e3f149b6d025f1a5e0f18fab5583cb4ffd55f8fe07cb929eedf8f1384ae6e3f"
+  },
+  "documentation": [
+    "docs/domain-rules.md",
+    "docs/DATA_CONTRACT.md",
+    "docs/decision-log.md",
+    "docs/TEST_STRATEGY.md",
+    "docs/PROJECT_STATUS.md",
+    "docs/CURRENT_HANDOFF.md",
+    "docs/lichun-year-boundary-20261026.md",
+    "docs/verification/lichun-year-boundary-20261026.json",
+    "docs/verification/lichun-astronomy-20261026.json"
+  ]
+}

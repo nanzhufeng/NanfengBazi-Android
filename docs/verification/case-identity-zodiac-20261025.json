@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-25",
+  "scope": "WORKTREE, detail identity zodiac fallback",
+  "root_cause": "WenzhenCaseIdentityHeader read only adopted basicChartDetails.westernZodiac; catalog fallback was not shared with detail header.",
+  "files": [
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseZodiacPresentation.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/CaseCatalogStore.kt",
+    "app/src/main/kotlin/com/nanzhufeng/nanfengbazi/StageTwoScreens.kt",
+    "app/src/test/kotlin/com/nanzhufeng/nanfengbazi/CaseIdentityZodiacTest.kt"
+  ],
+  "red": {
+    "tests": 6,
+    "failures": 4,
+    "errors": 0,
+    "log": "/tmp/bazi-identity-zodiac-red-20261025.log"
+  },
+  "green": {
+    "tests": 213,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "assembleDebug": "PASS",
+    "log": "/tmp/bazi-identity-zodiac-green-20261025.log"
+  },
+  "ui": {
+    "device": "emulator-5600, API35",
+    "data": "existing synthetic PerfFemale adopted snapshot lacks basicChartDetails",
+    "database_mutation": "NONE; preparation detected field already absent before any write",
+    "sections": [
+      "基本信息",
+      "基本排盘",
+      "专业细盘"
+    ],
+    "observed": "all show 摩羯座 and correct zodiac glyph; no 待计算",
+    "evidence": "/tmp/bazi-identity-qa-20261025/"
+  },
+  "production_install": {
+    "status": "PASS",
+    "device": "OPPO PKH120",
+    "sha256": "fca73621738d153199e19762ca555aafb40d49203c3ed0c3ec747070cf610184",
+    "data_directory_identity_preserved": true,
+    "first_install_time_preserved": true,
+    "installed_apk_readback": "MATCH",
+    "evidence": "/tmp/bazi-identity-overlay-20261025/result.json",
+    "business_verification": "NOT RUN"
+  },
+  "full_release_build": "assembleRelease + lintRelease PASS; /tmp/bazi-identity-zodiac-release-20261025.log",
+  "business_recalculation_or_persisted_chart_changes": "NONE"
+}
