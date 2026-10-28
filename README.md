@@ -6,7 +6,7 @@
 
 ## 软件预览
 
-以下预览来自 v1.0.16 Release 安装包的 API 35 模拟器运行页面（1080 × 2400），使用合成演示资料。
+以下预览来自 v1.0.17 Release 安装包的 API 35 模拟器运行页面（1080 × 2400），使用合成演示资料。
 
 <p align="center">
   <img src="docs/screenshots/home.png" width="30%" alt="首页排盘" />
