@@ -1,0 +1,119 @@
+{
+  "version": "1.0.17",
+  "sourceCommit": "e6b188b149d71a7602a8782877c935bbf0f94d0f",
+  "artifact": {
+    "frozenAt": "2026-10-28T13:00:02+08:00",
+    "apk": "/tmp/bazi-publish-20261028/NanfengBazi-Android-v1.0.17.apk",
+    "sha256": "2ec48eff4457619c8574b6e52915a30dde73817326936ceb34798253ec41754a",
+    "bytes": 70619818,
+    "packageName": "com.nanzhufeng.nanfengbazi",
+    "versionCode": 10049,
+    "versionName": "1.0.17",
+    "certificateSha256": "0f89bc92cb127895e6881cda9d3c3c641e0efc0f39a9728eedf2585f8e12fdf3",
+    "debuggable": false,
+    "sourceInputs": 193,
+    "lintRelease": {
+      "Warning": 51,
+      "Information": 2
+    },
+    "sourceCommit": "e6b188b149d71a7602a8782877c935bbf0f94d0f",
+    "screenshots": {
+      "home.png": "a68a01a37c831b9f5159e5912c9a8f9f1fbaf1ebc00bc2be65c7f71ab92a9839",
+      "records.png": "bafb9c9931e31322e2d1b20922087519bae2152a402b20f2302e48754a4d4ced",
+      "professional.png": "30f311eafa4558118df7f3617a8fd5077423c9b68d23ba86d06a57816f22bf19"
+    }
+  },
+  "sourceInputManifestSha256": "f1cf67a2d0f6f7a2e2007f451aa1290def9649471b39083e0984594c17c1ba56",
+  "validation": {
+    "releaseBuild": "PASS",
+    "releaseLint": {
+      "Warning": 51,
+      "Information": 2
+    },
+    "signature": "PASS; existing identity",
+    "previousBusinessRegression": "423 JVM tests: 422 passed, 1 existing skip at 2026-10-28 11:05 +08:00; unchanged business sources",
+    "emulator": "PASS for synthetic case creation, records and professional detail; final Release exact APK",
+    "emulatorConfiguration": "API 35, 1080x2400, density 420; independent NanfengBaziPublish20261028",
+    "mainDevice": "NOT RUN for v1.0.17; the prior v1.0.16 same-code overlay remains separate evidence"
+  },
+  "screenshots": [
+    {
+      "path": "docs/screenshots/home.png",
+      "sha256": "a68a01a37c831b9f5159e5912c9a8f9f1fbaf1ebc00bc2be65c7f71ab92a9839"
+    },
+    {
+      "path": "docs/screenshots/records.png",
+      "sha256": "bafb9c9931e31322e2d1b20922087519bae2152a402b20f2302e48754a4d4ced"
+    },
+    {
+      "path": "docs/screenshots/professional.png",
+      "sha256": "30f311eafa4558118df7f3617a8fd5077423c9b68d23ba86d06a57816f22bf19"
+    }
+  ],
+  "remoteStatus": "PUBLISHED; source main and annotated tag verified; latest stable Release with APK downloaded and hash matched.",
+  "unrelatedWorktreeChangesPreserved": [
+    "docs/next-codex-prompt.md",
+    "docs/可迁移开发经验.md",
+    "docs/流畅度优化复盘与通用规则.md"
+  ],
+  "publication": {
+    "verifiedAt": "2026-10-28T13:11:09+08:00",
+    "url": "https://github.com/nanzhufeng/NanfengBazi-Android/releases/tag/v1.0.17",
+    "tag": "v1.0.17",
+    "sourceCommit": "e6b188b149d71a7602a8782877c935bbf0f94d0f",
+    "latest": true,
+    "draft": false,
+    "prerelease": false,
+    "publishedAt": "2026-10-28T05:11:08Z",
+    "asset": {
+      "id": 683891242,
+      "name": "NanfengBazi-Android-v1.0.17.apk",
+      "size": 70619818,
+      "state": "uploaded",
+      "digest": "sha256:2ec48eff4457619c8574b6e52915a30dde73817326936ceb34798253ec41754a",
+      "browser_download_url": "https://github.com/nanzhufeng/NanfengBazi-Android/releases/download/v1.0.17/NanfengBazi-Android-v1.0.17.apk"
+    },
+    "downloadSha256": "2ec48eff4457619c8574b6e52915a30dde73817326936ceb34798253ec41754a",
+    "downloadMatchesFrozen": true
+  },
+  "githubReadmePreviews": [
+    {
+      "path": "README.md",
+      "gitBlobSha": "4d25f09a055871b9849fa789456cd70b708f0676",
+      "bytes": 1099,
+      "status": "PASS"
+    },
+    {
+      "path": "docs/screenshots/home.png",
+      "gitBlobSha": "35afe05e90cc064ced5dc128a8966eb8cfeb604b",
+      "bytes": 690796,
+      "status": "PASS"
+    },
+    {
+      "path": "docs/screenshots/records.png",
+      "gitBlobSha": "4d0a56526f4c8fdd5d530b33bb88138184d9b5c8",
+      "bytes": 115071,
+      "status": "PASS"
+    },
+    {
+      "path": "docs/screenshots/professional.png",
+      "gitBlobSha": "edc3835cb072415fcbe627c47a77e86a226fd5ee",
+      "bytes": 351383,
+      "status": "PASS"
+    }
+  ],
+  "emulatorCleanup": {
+    "status": "PASS",
+    "emulator": "emulator-5588",
+    "avd": "NanfengBaziPublish20261028",
+    "createdForThisTask": true,
+    "exactTargetStoppedAndDeleted": true
+  },
+  "releaseNotes": "完善立春年界、历史命例提示与界面体验。\n\n- 修正立春年/月边界、时区换算及万年历时间精度。\n- 仅在年柱或属相确认异常时提示，正常历史命盘不再显示通用提醒。\n- 补齐命例列表与详情星座显示，保留既有排盘快照。\n- 统一导航、图标和模型设置样式，区分云端检查时间与备份时间。\n\n沿用原签名，支持保留数据覆盖升级。\n",
+  "evidenceDirectory": "/tmp/bazi-publish-20261028",
+  "unchangedBusinessSourceSinceCheckpoint": true,
+  "productionConfigurationChangedSinceCheckpoint": [
+    "app/build.gradle.kts"
+  ],
+  "githubCI": "NOT RUN; no CI success inferred from local build/publication."
+}

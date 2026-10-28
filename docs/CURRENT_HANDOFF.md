@@ -1,3 +1,11 @@
+## 2026-10-28 v1.0.17正式发布完成
+
+- 发布源码：`e6b188b149d71a7602a8782877c935bbf0f94d0f`；GitHub main已推送，v1.0.17注释标签指向该提交，正式Release为latest，非draft/非prerelease：[发布页](https://github.com/nanzhufeng/NanfengBazi-Android/releases/tag/v1.0.17)。
+- 1.0.17(10049)，原证书非debuggable Release；只上传 `NanfengBazi-Android-v1.0.17.apk`（70619818字节）。GitHub下载SHA256 `2ec48eff4457619c8574b6e52915a30dde73817326936ceb34798253ec41754a` 与冻结包一致。完整[发布验收](verification/release-v1.0.17-20261028.json)。
+- README三张预览已从该精确APK的独立API35模拟器更新，并核对GitHub main的README与图片blob；演示命例为合成资料。独立模拟器/本任务AVD已精确停止并删除。
+- 本次变更仅版本号、产物命名及交付文档/预览，业务源码沿用此前验证checkpoint；未重跑业务JVM、未操作主设备。手机此前安装的1.0.16覆盖证据不能冒充1.0.17实装证据。真实服务及既有云恢复引用问题仍保留。
+- 三项既有无关文档WIP保持，未混入发布；后续以PROJECT_STATUS与本发布验收接续。以下为此前历史记录。
+
 ## 2026-10-28 当前代码已建立本地checkpoint
 
 - 代码提交：`226e5449f6ff5cc18279a0f5511c78a0c79294a7`（main）；54个代码/测试/脚本文件含16项新增，193项实际生产源码/配置已核对与已安装正式包和Git索引一致。[核验](verification/checkpoint-20261028.json)。

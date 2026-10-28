@@ -4,14 +4,16 @@
 
 ## Verified
 
-- Last verified: 2026-10-28T12:45:13+08:00；年柱/属相提示正式Release构建、同签名保数据覆盖及APK回读通过；11:05本地423项JVM（422通过、1既有跳过）、Debug构建、Release Kotlin编译和两变体Lint证据保留原时间。
+- Last verified: 2026-10-28T13:11:09+08:00；v1.0.17正式Release构建/Lint/验签、API35合成资料三页预览与GitHub发布回读通过；GitHub下载APK与冻结包SHA256一致。既有JVM回归保留原运行时间。
 - Verified branch: main
-- Code baseline: 226e5449f6ff5cc18279a0f5511c78a0c79294a7
-- Verification scope: COMMIT（当前生产源码）；193项实际生产源码/配置与Git及12:45已覆盖的Release一致。JVM/Lint和覆盖证据保留各自原时间，渲染/真实服务缺口仍在；[checkpoint核验](verification/checkpoint-20261028.json)。
+- Code baseline: e6b188b149d71a7602a8782877c935bbf0f94d0f
+- Verification scope: COMMIT；v1.0.17(10049)正式源码/构建配置193项与冻结包一致，GitHub标签指向本基线；版本/产物命名外的业务源码沿用checkpoint。主设备未再次覆盖，真实账号/服务缺口保留；[发布验收](verification/release-v1.0.17-20261028.json)。
 - Verified by: Codex
 - Status: Active
 
 ## Current
+
+- v1.0.17正式版已发布：版本10049，产物名与版本一致，沿用原签名；[GitHub Release](https://github.com/nanzhufeng/NanfengBazi-Android/releases/tag/v1.0.17)。三张README预览来自精确正式APK的独立API35模拟器，GitHub下载字节与本地一致。本轮未再次覆盖手机；[发布验收](verification/release-v1.0.17-20261028.json)。
 
 - 2026-10-28当前代码checkpoint `226e5449f6ff5cc18279a0f5511c78a0c79294a7` 已建立；相关核心新增文件全部纳入Git，详见[核验](verification/checkpoint-20261028.json)。
 
@@ -45,6 +47,7 @@
 
 | 检查 | 结论 | 时间／范围 | 命令或证据 |
 | --- | --- | --- | --- |
+| v1.0.17发布交付 | PASS | 2026-10-28；Release构建/Lint/原签名、API35合成资料三页预览、正式Release/latest及APK下载SHA256回读 | [发布验收](verification/release-v1.0.17-20261028.json) |
 | 年柱/属相提示 | PASS | 2026-10-28；12项专项红绿回归；App 353项/引擎70项，合计0失败/错误、1既有跳过；Debug构建、Release Kotlin编译、两变体Lint | [专项验收](verification/year-zodiac-notice-20261028.json) |
 | 立春年界全链路 | PASS | 2026-10-26；1063项JVM、0失败/错误、2原有跳过；Debug/Release构建；两套Lint各0错误/44警告/2信息 | [专项验收](verification/lichun-year-boundary-20261026.json) |
 | 界面适配Debug门禁 | PASS | 2026-10-21；App 327项、0失败/错误、1跳过；Lint 0错误/43警告/2信息；assembleDebug | [界面记录](ui-refresh-20261021.md) |
@@ -67,7 +70,7 @@
 
 ## Verification Gaps
 
-- 2026-10-28提示专项：同签名正式覆盖及数据目录元数据核验PASS；模拟器/主设备渲染与真实命例验收NOT RUN，未读取或逐条核对业务库。
+- 2026-10-28提示专项：此前1.0.16同签名覆盖及数据目录元数据核验PASS；1.0.17正常合成命例模拟器预览通过，历史异常命例提示的设备矩阵与真实命例验收NOT RUN，未读取或逐条核对主设备业务库。
 
 - 新增秒选择器界面验收NOT VERIFIED：独立API35模拟器进程启动超时，无业务异常栈，已清理；不能由构建/单测推断渲染通过。
 - 年界：1901—2100逐年边界/独立模型对账已执行，1950—2050差异<5秒；2051—2100最大约92.52秒，不宣称未来秒级权威精度。主设备历史采用盘未扫描/自动改写。
@@ -80,10 +83,10 @@
 
 ## Sync & Safety
 
-- Sync checked at: 2026-10-28T12:50:56+08:00；本地代码checkpoint/文档/合同与冻结安装证据核验；本阶段未新增构建或设备操作，未刷新远端。
-- Code / docs sync: OK（当前checkpoint范围）；领域/数据/云/测试合同与相关档案同步，既有未验证项不升级为通过。
+- Sync checked at: 2026-10-28T13:11:09+08:00；GitHub main源码/README预览、v1.0.17标签、正式Release及APK回读已核对；发布记录作为文档提交同步。
+- Code / docs sync: OK（v1.0.17发布范围）；README三页正式包实拍预览、发布验收与当前状态已同步。
 - Checkpoint scope: 当前app/core源码、测试、参考CSV与校验脚本54文件（含16新增）已纳入 226e5449f6ff5cc18279a0f5511c78a0c79294a7；相关文档单独提交。三项既有文档WIP保留，见[核验](verification/checkpoint-20261028.json)。
-- Remote sync: LOCAL ONLY；本轮checkpoint未推送/发布，GitHub v1.0.16沿用此前冻结交付。
+- Remote sync: PUSHED；main已包含当前源码checkpoint；v1.0.17正式Release为latest，只有正式APK附件，下载回读通过。见[发布页](https://github.com/nanzhufeng/NanfengBazi-Android/releases/tag/v1.0.17)。
 - Rollback point: e48996b6071f0c2f6f4dad99331eed475544e69c，本地checkpoint-v1.0.16-20261011-final；本轮归属文件另有精确备份，不代表设备降级验收。
 - Secrets/config risk: 本轮未读取/修改私有签名配置、凭据或主设备业务数据；未将APK或真实命例纳入Git。
 
