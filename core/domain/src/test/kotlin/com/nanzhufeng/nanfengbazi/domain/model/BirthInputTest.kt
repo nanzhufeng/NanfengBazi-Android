@@ -37,6 +37,6 @@ class BirthInputTest {
         val profile = CalculationProfile.tymeDefault()
 
         assertEquals("1.5.1", profile.engineVersion)
-        assertEquals("stage0-v1", profile.ruleVersion)
+        assertEquals("lichun-instant-v2", profile.ruleVersion)
     }
 }

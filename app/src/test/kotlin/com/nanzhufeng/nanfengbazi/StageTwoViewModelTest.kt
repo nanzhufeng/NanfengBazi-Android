@@ -729,6 +729,54 @@ class StageTwoViewModelTest {
     }
 
     @Test
+    fun `万年历保留分钟秒数并禁止把跨立春分钟带入唯一排盘`() = runTest {
+        val repository = FakeCaseRepository()
+        val viewModel = createViewModel(repository=repository, almanacReader=TymeAlmanacReader(), engine=com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine())
+        viewModel.updateForm { validForm() }
+        viewModel.openAlmanac()
+        val date = com.nanzhufeng.nanfengbazi.domain.AlmanacDate(2000,2,4)
+        viewModel.selectAlmanacDateTime(date,20,40)
+        assertTrue(viewModel.state.value.almanacView!!.selected.pillars.isEmpty())
+        assertTrue(viewModel.state.value.almanacView!!.selected.boundaryNotice!!.contains("己卯/庚辰"))
+        viewModel.useAlmanacDateForChart()
+        assertEquals(AppDestination.Almanac, viewModel.state.value.destination)
+        assertTrue(repository.stored.isEmpty())
+        viewModel.selectAlmanacDateTime(date,20,41,0)
+        assertEquals("庚辰", viewModel.state.value.almanacView!!.selected.yearPillar)
+        viewModel.useAlmanacDateForChart()
+        assertEquals("20", viewModel.state.value.form.hour)
+        assertEquals("41", viewModel.state.value.form.minute)
+        assertEquals(TimePrecision.EXACT_TO_SECOND, viewModel.state.value.form.timePrecision)
+        assertEquals("Etc/GMT-8", viewModel.state.value.form.timeZoneId)
+        assertEquals("庚辰", viewModel.state.value.detail!!.calculationSnapshots.last().result.fourPillars.year)
+        assertTrue(repository.stored.isEmpty())
+    }
+
+    @Test
+    fun `历史万年历带入保持固定北京时间而非上海地方平时`() = runTest {
+        val repository = FakeCaseRepository()
+        val viewModel = createViewModel(repository=repository,almanacReader=TymeAlmanacReader(), engine=com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine())
+        viewModel.updateForm { validForm() }
+        viewModel.openAlmanac()
+        val anchor = com.nanzhufeng.nanfengbazi.engine.tyme.TymeBaziEngine().calculate(
+            BirthInput(
+                calendarInput=BirthCalendarInput.Solar(CivilDateTime(1900,2,6,12,0,0)),
+                sexForFortuneDirection=SexForFortuneDirection.MAN,
+                timePrecision=TimePrecision.EXACT_TO_SECOND, timeZoneId="Etc/GMT-8",
+            ), com.nanzhufeng.nanfengbazi.domain.model.CalculationProfile.tymeDefault(),
+        )
+        val spring = java.time.OffsetDateTime.parse(anchor.solarYearMonthEvidence!!.liChunInstantUtc)
+            .withOffsetSameInstant(ZoneOffset.ofHours(8))
+        viewModel.selectAlmanacDateTime(com.nanzhufeng.nanfengbazi.domain.AlmanacDate(1900,spring.monthValue,spring.dayOfMonth),spring.hour,spring.minute,spring.second)
+        assertEquals("庚子",viewModel.state.value.almanacView!!.selected.yearPillar)
+        viewModel.useAlmanacDateForChart()
+        val result = viewModel.state.value.detail!!.calculationSnapshots.last().result
+        assertEquals("庚子",result.fourPillars.year)
+        assertEquals(28800,result.normalizedInput.resolvedUtcOffsetSeconds)
+        assertEquals("Etc/GMT-8",result.normalizedInput.timeZoneId)
+    }
+
+    @Test
     fun `万年历快捷跳转一次性更新日期与对应时辰`() = runTest {
         val viewModel = createViewModel(
             repository = FakeCaseRepository(),

@@ -111,6 +111,18 @@ class BaziCloudSyncPolicyTest {
         assertTrue(scheduler.contains("enqueueRetry"))
     }
 
+    @Test
+    fun `matching cloud check advances confirmation without inventing a new backup`() {
+        val previous = BaziCloudMetadata(remoteRevision = 9, localFingerprint = "unchanged", lastSyncedAt = 11L)
+        assertEquals(BaziCloudSyncAction.ALREADY_CURRENT, decideBaziCloudSyncAction(true, 9, 9, true))
+        val confirmed = previous.confirmedAt(22L)
+        assertEquals(22L, confirmed.lastCheckedAt)
+        assertEquals(11L, confirmed.lastSyncedAt)
+        assertEquals(previous.remoteRevision, confirmed.remoteRevision)
+        assertEquals(previous.localFingerprint, confirmed.localFingerprint)
+        assertEquals(null, previous.lastCheckedAt)
+    }
+
     private fun locateCloudSourceRoot(): File {
         val candidates = listOf(
             File("src/main/kotlin/com/nanzhufeng/nanfengbazi/cloud"),

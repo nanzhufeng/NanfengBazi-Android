@@ -1,5 +1,10 @@
 package com.nanzhufeng.nanfengbazi
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.SwitchAccount
+import androidx.compose.material.icons.automirrored.filled.Logout
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -19,8 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.SwitchAccount
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -105,13 +108,12 @@ fun BaziCloudSettingsPage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            TextButton(onClick = onBack, contentPadding = PaddingValues(0.dp)) { Text("‹ 返回设置") }
-            Text("南枫云", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Google 账号用于确认身份；云端只保存端到端加密的结构化命例。来源图片、附件、字段证据与 AI 密钥不会上传。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回设置")
+                }
+                Text("南枫云", modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.titleLarge)
+            }
         }
         when (val current = state) {
             BaziCloudSyncState.Unconfigured -> item {
@@ -119,7 +121,7 @@ fun BaziCloudSettingsPage(
             }
             BaziCloudSyncState.SignedOut -> item {
                 CloudPanel("使用 Google 账号登录") {
-                    Text("登录后可查看账号详情、切换账号与同步状态；不会自动上传或覆盖本机命例。")
+                    Text("登录后自动加密备份命例与笔记。")
                     Button(
                         onClick = { launchGooglePicker(resetSelection = false) },
                         enabled = googleSignInClient.configured && !pickerBusy,
@@ -134,12 +136,11 @@ fun BaziCloudSettingsPage(
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
                         Text(current.message)
                     }
-                    Text("本机命例仍可正常使用，请勿重复提交。", style = MaterialTheme.typography.bodySmall)
                 }
             }
             is BaziCloudSyncState.RecoveryCodeReady -> item {
                 CloudPanel("请保存恢复码") {
-                    Text("这是唯一一次展示。Google 与南枫云都无法替你找回。")
+                    Text("恢复码仅展示一次，丢失后无法恢复云端数据。")
                     OutlinedTextField(
                         value = current.code,
                         onValueChange = {},
@@ -158,7 +159,7 @@ fun BaziCloudSettingsPage(
             }
             BaziCloudSyncState.RecoveryCodeRequired -> item {
                 CloudPanel("需要恢复码解锁") {
-                    Text("该 Google 账号已有南枫云加密保险库。请输入最初保存的恢复码，验证成功后才会同步。")
+                    Text("输入该账号的恢复码以解锁同步。")
                     OutlinedTextField(
                         value = recoveryCode,
                         onValueChange = { recoveryCode = it },
@@ -175,7 +176,7 @@ fun BaziCloudSettingsPage(
                 }
             }
             is BaziCloudSyncState.AccountEntryChoice -> item {
-                CloudPanel("确认 Google 账号与数据方向") {
+                CloudPanel("确认同步账号") {
                     AccountIdentity(
                         current.displayName,
                         current.email,
@@ -185,9 +186,9 @@ fun BaziCloudSettingsPage(
                     )
                     Text(
                         when {
-                            current.hasRemoteData && current.localHasData -> "本机已有命例。继续后会将本机加密备份更新到云端。"
-                            current.hasRemoteData -> "云端已有八字结构化数据。继续后需要恢复码；仅在本机命例库为空时才恢复。"
-                            else -> "此账号还没有八字云端数据。继续会为这个账号创建加密保险库并显示一次性恢复码。"
+                            current.hasRemoteData && current.localHasData -> "继续后以本机命例更新云端备份。"
+                            current.hasRemoteData -> "验证恢复码后，将云端命例恢复到空白本机。"
+                            else -> "继续后创建加密备份，请保存随后显示的恢复码。"
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -227,7 +228,7 @@ fun BaziCloudSettingsPage(
             onDismissRequest = { confirmSwitch = false },
             containerColor = CloudCardWhite,
             title = { Text("切换 Google 账号？") },
-            text = { Text("本机命例不会删除。选择其他账号后，将先要求恢复码或确认数据方向，绝不会静默覆盖。") },
+            text = { Text("本机命例保留，新账号需确认后才能同步。") },
             confirmButton = { Button(onClick = { confirmSwitch = false; launchGooglePicker(resetSelection = true) }) { Text("选择其他账号") } },
             dismissButton = { TextButton(onClick = { confirmSwitch = false }) { Text("取消") } },
         )
@@ -237,7 +238,7 @@ fun BaziCloudSettingsPage(
             onDismissRequest = { confirmSignOut = false },
             containerColor = CloudCardWhite,
             title = { Text("退出南枫云账号？") },
-            text = { Text("只会移除本机云端会话并停止自动同步；本机命例、附件和设置都会保留。") },
+            text = { Text("退出后停止同步，本机数据保留。") },
             confirmButton = { Button(onClick = { confirmSignOut = false; scope.launch { coordinator.signOut(); googleSignInClient.clearCredentialState() } }) { Text("退出并保留本机数据") } },
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("取消") } },
         )
@@ -280,31 +281,32 @@ private fun AccountReadyPanel(
     AccountActionGroup {
         AccountActionRow(
             title = if (pickerBusy) "正在打开账号选择器…" else "切换 Google 账号",
-            description = "从此设备上的账号中重新选择",
-            icon = { Icon(Icons.Outlined.SwitchAccount, null, tint = CloudActionBlue) },
-            iconColor = CloudActionBlue.copy(alpha = 0.12f),
+            description = "",
+            icon = { Icon(Icons.Filled.SwitchAccount, null, tint = CloudActionBlue) },
             onClick = onSwitchAccount,
             enabled = !pickerBusy,
         )
         HorizontalDivider(modifier = Modifier.padding(start = 68.dp))
         AccountActionRow(
-            title = "退出 Google 账号",
-            description = "保留本机命例并停止自动同步",
-            icon = { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = CloudActionRed) },
-            iconColor = CloudActionRed.copy(alpha = 0.12f),
+            title = "退出南枫云",
+            description = "",
+            icon = { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = CloudActionRed) },
             onClick = onSignOut,
         )
     }
     CloudPanel("南枫云同步") {
+        Text(state.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         Text(
-            state.lastSyncedAt?.let { "上次成功同步：${formatCloudTime(it)}" } ?: "尚未建立八字云端同步版本",
+            state.lastCheckedAt?.let { "最近检查 ${formatCloudTime(it)}" }
+                ?: state.lastSyncedAt?.let { "最近备份 ${formatCloudTime(it)}" }
+                ?: "尚未同步",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(state.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-        Text("命例变化后约 30 秒合并同步；系统每 12 小时做一次兜底检查。", style = MaterialTheme.typography.bodySmall)
         Button(onClick = onSync, modifier = Modifier.fillMaxWidth()) { Text("立即同步") }
-        Text("上传前会加密；来源图片、附件、字段证据与 AI 密钥不上传。", style = MaterialTheme.typography.bodySmall)
+        Text("同步命例与笔记，不含图片和附件。", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+
     }
 }
 
@@ -320,7 +322,6 @@ private fun AccountActionRow(
     title: String,
     description: String,
     icon: @Composable () -> Unit,
-    iconColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
@@ -330,12 +331,10 @@ private fun AccountActionRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Surface(modifier = Modifier.size(42.dp), shape = MaterialTheme.shapes.large, color = iconColor) {
-                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) { icon() }
-            }
+            Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) { icon() }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

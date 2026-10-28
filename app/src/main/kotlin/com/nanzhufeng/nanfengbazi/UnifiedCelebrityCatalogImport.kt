@@ -308,12 +308,16 @@ class UnifiedCelebrityCatalogImporter(
             )
         }
         val adoptedIndex = originals.indexOfFirst { it.adopted }.takeIf { it >= 0 } ?: 0
-        val built = originals.mapIndexed { index, original ->
+        val built = originals.mapIndexedNotNull { index, original ->
             val candidateId = original.id.ifBlank { unifiedStableId("time", "$caseId:$index") }
             val snapshotId = unifiedStableId("snapshot", "$caseId:$candidateId")
             val calculationInput = calculationBirthInput
                 ?: original.birthInput.toSupportedHistoricalCalculationInput()
-            val calculation = baziEngine.calculate(calculationInput, CalculationProfile.tymeDefault())
+            val calculation = try {
+                baziEngine.calculate(calculationInput, CalculationProfile.tymeDefault())
+            } catch (_: com.nanzhufeng.nanfengbazi.domain.YearMonthBoundaryAmbiguousException) {
+                return@mapIndexedNotNull null
+            }
             val historicalBceInput =
                 calculationBirthInput == null && original.birthInput.hasBceCalendarYear()
             val normalized = if (historicalBceInput) {
@@ -362,7 +366,7 @@ class UnifiedCelebrityCatalogImporter(
             sexForFortuneDirection = sex,
             sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
             birthInput = if (calculationBirthInput == null) {
-                built[adoptedIndex].first.birthInput
+                built.firstOrNull { it.first.adopted }?.first?.birthInput ?: birthInput
             } else {
                 birthInput
             },
@@ -404,7 +408,7 @@ private data class UnifiedCelebrityCatalogWritePlan(
 private fun BaziCase.preservePresentationAndUserContributions(existing: BaziCase): BaziCase {
     val userRecords = existing.textRecords.filter { it.sourceType != TextRecordSourceType.CURATED_RESEARCH }
     val retainedRecordIds = userRecords.mapTo(mutableSetOf()) { it.id }
-    return copy(
+    return preservingCalculationsAcrossRuleChange(existing).copy(
         isFavorite = existing.isFavorite,
         isPinned = existing.isPinned,
         lastViewedAt = existing.lastViewedAt,

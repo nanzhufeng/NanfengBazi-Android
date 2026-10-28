@@ -1166,6 +1166,7 @@ internal fun ObservationDateTimePickerSheet(
     confirmTag: String = "confirm_fortune_observation",
     sheetTag: String = "fortune_observation_picker_sheet",
     showQuickLocateInput: Boolean = false,
+    allowOptionalSeconds: Boolean = false,
 ) {
     val now = remember { LocalDateTime.now() }
     val parsedDate = remember(currentDate) {
@@ -1179,6 +1180,7 @@ internal fun ObservationDateTimePickerSheet(
     var day by remember { mutableIntStateOf(parsedDate.dayOfMonth) }
     var hour by remember { mutableIntStateOf(parsedTime.hour) }
     var minute by remember { mutableIntStateOf(parsedTime.minute) }
+    var second by remember { mutableStateOf<Int?>(parsedTime.second.takeIf { currentTime.count { it == ':' } == 2 }) }
     var quickLocateText by remember(currentDate, currentTime) { mutableStateOf("") }
     val maxDay = remember(year, month) {
         runCatching { LocalDate.of(year, month, 1).lengthOfMonth() }.getOrDefault(31)
@@ -1223,7 +1225,8 @@ internal fun ObservationDateTimePickerSheet(
                         haptic.perform(AppHapticEvent.CONFIRM)
                         onConfirm(
                             "%04d-%02d-%02d".format(year, month, day),
-                            "%02d:%02d".format(hour, minute),
+                            if (allowOptionalSeconds && second != null) "%02d:%02d:%02d".format(hour, minute, second)
+                            else "%02d:%02d".format(hour, minute),
                         )
                     },
                     colors = ButtonDefaults.buttonColors(NanfengNavigation, NanfengGoldLight),
@@ -1247,6 +1250,10 @@ internal fun ObservationDateTimePickerSheet(
                 ValueWheel("日", (1..maxDay).toList(), day.coerceAtMost(maxDay), Int::twoDigits, { day = it }, Modifier.weight(1f), "fortune_day_wheel", cyclic = true)
                 ValueWheel("时", (0..23).toList(), hour, Int::twoDigits, { hour = it }, Modifier.weight(1f), "fortune_hour_wheel", cyclic = true)
                 ValueWheel("分", (0..59).toList(), minute, Int::twoDigits, { minute = it }, Modifier.weight(1f), "fortune_minute_wheel", cyclic = true)
+                if (allowOptionalSeconds) {
+                    ValueWheel("秒", listOf<Int?>(null) + (0..59).toList(), second,
+                        { it?.twoDigits() ?: "未知" }, { second = it }, Modifier.weight(1f), "almanac_second_wheel")
+                }
             }
         }
     }

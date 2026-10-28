@@ -3,6 +3,9 @@ package com.nanzhufeng.nanfengbazi.domain
 import kotlinx.serialization.Serializable
 
 import com.nanzhufeng.nanfengbazi.domain.model.RatHourRule
+import com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
+import com.nanzhufeng.nanfengbazi.domain.model.SolarYearMonthEvidence
 
 data class AlmanacDate(
     val year: Int,
@@ -17,6 +20,11 @@ data class AlmanacMonthQuery(
     /** 选中的十二时辰序号；子时以 00:00 作为日内展示代表点。 */
     val selectedDoubleHourIndex: Int = 0,
     val ratHourRule: RatHourRule = RatHourRule.TYME_DEFAULT,
+    /** Calendar uses fixed China standard time. Null hour means the selected shichen range. */
+    val selectedHour: Int? = null,
+    val selectedMinute: Int = 0,
+    val selectedSecond: Int = 0,
+    val timePrecision: TimePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
 )
 
 data class AlmanacDoubleHour(
@@ -90,6 +98,10 @@ data class AlmanacDayDetails(
     val festivalNames: List<String> = emptyList(),
     val recommends: List<String> = emptyList(),
     val avoids: List<String> = emptyList(),
+    val selectedTime: CivilDateTime? = null,
+    val selectedTimePrecision: TimePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+    val boundaryNotice: String? = null,
+    val solarYearMonthEvidence: SolarYearMonthEvidence? = null,
 )
 
 data class AlmanacPillarDetail(
@@ -178,6 +190,11 @@ object AlmanacContract {
         if (query.selectedDoubleHourIndex !in AlmanacDoubleHours.all.indices) {
             return AlmanacError.InvalidDoubleHour(query.selectedDoubleHourIndex)
         }
+        if (query.selectedHour != null && (
+                query.selectedHour !in 0..23 ||
+                AlmanacDoubleHours.indexForCivilHour(query.selectedHour) != query.selectedDoubleHourIndex
+            ) || query.selectedMinute !in 0..59 || query.selectedSecond !in 0..59
+        ) return AlmanacError.InvalidDoubleHour(query.selectedDoubleHourIndex)
         return null
     }
 

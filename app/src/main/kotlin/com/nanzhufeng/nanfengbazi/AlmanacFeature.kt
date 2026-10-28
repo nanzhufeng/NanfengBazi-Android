@@ -23,8 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
@@ -65,6 +63,7 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacDoubleHours
 import com.nanzhufeng.nanfengbazi.domain.AlmanacMonthView
 import com.nanzhufeng.nanfengbazi.domain.AlmanacPillarDetail
 import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeight
+import com.nanzhufeng.nanfengbazi.domain.model.TimePrecision
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -95,19 +94,16 @@ internal fun AlmanacHomeEntry(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp),
             ) {
-            Surface(
+            Box(
                 modifier = Modifier.size(if (compact) 42.dp else 52.dp),
-                shape = CircleShape,
-                color = Color(0xFFF6EFE2),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.DateRange,
-                        contentDescription = null,
-                        modifier = Modifier.size(if (compact) 21.dp else 25.dp),
-                        tint = NanfengGold,
-                    )
-                }
+                Icon(
+                    imageVector = BaziFeatureIcons.Calendar,
+                    contentDescription = null,
+                    modifier = Modifier.size(if (compact) 30.dp else 36.dp),
+                    tint = NanfengOrange,
+                )
             }
             Text(
                 "万年历",
@@ -128,7 +124,7 @@ internal fun AlmanacScreen(
     onNextMonth: () -> Unit,
     onToday: () -> Unit,
     onSelectDate: (AlmanacDate) -> Unit,
-    onSelectDateTime: (AlmanacDate, Int) -> Unit,
+    onSelectDateTime: (AlmanacDate, Int, Int, Int?) -> Unit,
     onSelectDoubleHour: (Int) -> Unit,
     onAdjustFourPillars: (List<String>) -> Unit,
     onUseForChart: () -> Unit,
@@ -194,7 +190,7 @@ internal fun AlmanacScreen(
             }
         }
         AlmanacPrimaryActions(
-            pillars = state.almanacView?.selected?.pillars.orEmpty(),
+            pillars = state.almanacView?.takeIf { !state.almanacRefreshingSelection }?.selected?.pillars.orEmpty(),
             busy = state.previewing,
             onUseForChart = {
                 haptics.perform(AppHapticEvent.CONFIRM)
@@ -210,21 +206,24 @@ internal fun AlmanacScreen(
                 state.almanacMonth,
                 state.almanacSelectedDay,
             ),
-            currentTime = "%02d:00".format(
-                AlmanacDoubleHours.fromIndex(state.almanacSelectedDoubleHourIndex).representativeHour,
-            ),
+            currentTime = state.almanacView?.selected?.selectedTime?.let {
+                if (state.almanacView?.query?.timePrecision == TimePrecision.EXACT_TO_SECOND)
+                    "%02d:%02d:%02d".format(it.hour, it.minute, it.second) else "%02d:%02d".format(it.hour, it.minute)
+            } ?: "%02d:00".format(AlmanacDoubleHours.fromIndex(state.almanacSelectedDoubleHourIndex).representativeHour),
             onDismiss = { showDateTimePicker = false },
             onConfirm = { selectedDate, selectedTime ->
                 val date = runCatching { LocalDate.parse(selectedDate) }.getOrNull()
                 val time = runCatching { LocalTime.parse(selectedTime) }.getOrNull()
                 if (date != null && time != null) {
                     haptics.perform(AppHapticEvent.CONFIRM)
-                    onSelectDateTime(AlmanacDate(date.year, date.monthValue, date.dayOfMonth), time.hour)
+                    onSelectDateTime(AlmanacDate(date.year, date.monthValue, date.dayOfMonth), time.hour, time.minute,
+                        time.second.takeIf { selectedTime.count { it == ':' } == 2 })
                 }
                 showDateTimePicker = false
             },
             title = "快速跳转日期与时间",
-            supportingText = "时间会定位到对应时辰",
+            supportingText = "按北京时间精确交节；交节分钟请补充秒数",
+            allowOptionalSeconds = true,
             confirmTag = "confirm_almanac_date_time",
             sheetTag = "almanac_date_time_picker_sheet",
         )
@@ -298,7 +297,7 @@ private fun AlmanacTopBar(onBack: () -> Unit) {
                 onClick = onBack,
                 modifier = Modifier.align(Alignment.CenterStart),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                Icon(BaziNavigationIcons.Back, contentDescription = "返回")
             }
             Text(
                 "万年历",
@@ -475,7 +474,7 @@ private fun AlmanacDayCell(
         color = when {
             selected -> MaterialTheme.colorScheme.primary
             today -> Color(0xFFF6EFE2)
-            else -> MaterialTheme.colorScheme.background.copy(alpha = if (day.inSelectedMonth) 0.72f else 0.35f)
+            else -> Color.Transparent
         },
         border = when {
             selected -> null
@@ -640,6 +639,17 @@ private fun AlmanacDetailsCard(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+            details.selectedTime?.let {
+                val timeLabel = when (details.selectedTimePrecision) {
+                    TimePrecision.EXACT_TO_SECOND -> "%02d:%02d:%02d".format(it.hour, it.minute, it.second)
+                    TimePrecision.DOUBLE_HOUR_ONLY -> "${details.selectedDoubleHour.branch}时（${details.selectedDoubleHour.timeRangeLabel}）"
+                    else -> "%02d:%02d".format(it.hour, it.minute)
+                }
+                Text("北京时间 $timeLabel", style = MaterialTheme.typography.bodySmall)
+            }
+            details.boundaryNotice?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             AlmanacEightCharacterTable(
                 pillars = details.pillars,
                 modifier = Modifier.padding(top = 10.dp),
@@ -786,7 +796,7 @@ private fun AlmanacEightCharacterTable(
             .fillMaxWidth()
             .testTag("almanac_eight_character_table"),
         shape = RoundedCornerShape(16.dp),
-        color = almanacMutedBackgroundColor(),
+        color = Color.Transparent,
     ) {
         Column(modifier = Modifier.padding(vertical = 10.dp)) {
             AlmanacPillarRow("", pillars) { pillar ->

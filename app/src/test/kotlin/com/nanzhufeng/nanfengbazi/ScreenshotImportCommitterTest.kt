@@ -60,7 +60,7 @@ class ScreenshotImportCommitterTest {
         )
         val result = fixture.committer.commitCandidate("session-1", "candidate-1")
 
-        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        assertTrue(result.toString(), result is ScreenshotCandidateCommitResult.Committed)
         assertTrue((result as ScreenshotCandidateCommitResult.Committed).sessionCompleted)
         val case = fixture.caseRepository.cases.values.single()
         assertEquals(CaseSourceType.WENZHEN_SCREENSHOT, case.sourceType)
@@ -189,7 +189,7 @@ class ScreenshotImportCommitterTest {
 
         val result = fixture.committer.commitCandidate("session-1", "candidate-1")
 
-        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        assertTrue(result.toString(), result is ScreenshotCandidateCommitResult.Committed)
         val case = fixture.caseRepository.cases.values.single()
         assertEquals("席瑞", case.name.value)
         assertEquals(TimePrecision.EXACT_TO_SECOND, case.birthInput.timePrecision)
@@ -216,7 +216,7 @@ class ScreenshotImportCommitterTest {
 
         val result = fixture.committer.commitCandidate("session-1", "candidate-1")
 
-        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        assertTrue(result.toString(), result is ScreenshotCandidateCommitResult.Committed)
         val events = fixture.caseRepository.cases.values.single().events
         assertEquals(listOf(2001, 2005), events.map { it.year })
         assertEquals(
@@ -272,7 +272,7 @@ class ScreenshotImportCommitterTest {
 
         val result = fixture.committer.commitCandidate("session-1", "candidate-1")
 
-        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        assertTrue(result.toString(), result is ScreenshotCandidateCommitResult.Committed)
         val evidenceByKey = fixture.caseRepository.cases.values.single()
             .fieldEvidence
             .associateBy(CaseFieldEvidence::fieldKey)
@@ -326,7 +326,7 @@ class ScreenshotImportCommitterTest {
 
         val result = fixture.committer.commitCandidate("session-1", "candidate-1")
 
-        assertTrue(result is ScreenshotCandidateCommitResult.Committed)
+        assertTrue(result.toString(), result is ScreenshotCandidateCommitResult.Committed)
         val evidenceByKey = fixture.caseRepository.cases.values.single()
             .fieldEvidence
             .associateBy(CaseFieldEvidence::fieldKey)

@@ -250,15 +250,15 @@ class TymeBaziEngineTest {
         (1900..2200 step 10).forEach { year ->
             val spring = SolarTerm.fromIndex(year, 3).julianDay.solarTime
             val before = engine.calculate(
-                spring.next(-1).toBirthInput(),
+                spring.next(-1).toBirthInput().copy(timeZoneId = "Etc/GMT-8"),
                 CalculationProfile.tymeDefault(),
             )
             val at = engine.calculate(
-                spring.toBirthInput(),
+                spring.toBirthInput().copy(timeZoneId = "Etc/GMT-8"),
                 CalculationProfile.tymeDefault(),
             )
             val after = engine.calculate(
-                spring.next(1).toBirthInput(),
+                spring.next(1).toBirthInput().copy(timeZoneId = "Etc/GMT-8"),
                 CalculationProfile.tymeDefault(),
             )
 
@@ -363,7 +363,7 @@ class TymeBaziEngineTest {
             "tyme-late-rat-same-day-v1",
             atLate.profile.id,
         )
-        assertEquals("stage7b-rat-hour-v1", atLate.profile.ruleVersion)
+        assertEquals("lichun-instant-late-rat-v2", atLate.profile.ruleVersion)
     }
 
     @Test

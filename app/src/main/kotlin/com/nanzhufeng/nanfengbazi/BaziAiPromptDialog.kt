@@ -85,8 +85,8 @@ internal fun BasicChartAiPromptSection(
                 .heightIn(min = 68.dp)
                 .testTag("open_basic_chart_ai_prompt"),
             shape = RoundedCornerShape(18.dp),
-            color = Color(0xFFFCFBF8),
-            border = BorderStroke(1.dp, NanfengGold.copy(alpha = 0.24f)),
+            color = Color.White,
+            border = NanfengSoftWhiteCardBorder,
             shadowElevation = 1.dp,
         ) {
             Row(
@@ -94,19 +94,8 @@ internal fun BasicChartAiPromptSection(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Surface(
-                    modifier = Modifier.size(40.dp),
-                    shape = CircleShape,
-                    color = NanfengGold.copy(alpha = 0.14f),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            "AI",
-                            color = NanfengGold,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    Icon(BaziFeatureIcons.Ai, contentDescription = null, modifier = Modifier.size(28.dp), tint = NanfengOrange)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -147,19 +136,19 @@ internal fun CompatibilityAiPromptSection(
             onClick = { dialogVisible = true },
             modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).testTag("open_compatibility_ai_prompt"),
             shape = RoundedCornerShape(18.dp),
-            color = Color(0xFFFCFBF8),
-            border = BorderStroke(1.dp, NanfengGold.copy(alpha = 0.24f)),
+            color = Color.White,
+            border = NanfengSoftWhiteCardBorder,
             shadowElevation = 1.dp,
         ) {
             Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = NanfengGold.copy(alpha = 0.14f)) {
-                    Box(contentAlignment = Alignment.Center) { Text("AI", color = NanfengGold, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    Icon(BaziFeatureIcons.Ai, contentDescription = null, modifier = Modifier.size(28.dp), tint = NanfengOrange)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text("生成双方合盘分析提示词", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                     Text("含命盘、大运、断事笔记与关系证据", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(22.dp), tint = NanfengGold)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(22.dp), tint = NanfengOrange)
             }
         }
     }

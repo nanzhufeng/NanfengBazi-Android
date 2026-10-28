@@ -16,6 +16,7 @@ import com.nanzhufeng.nanfengbazi.domain.AlmanacReader
 import com.nanzhufeng.nanfengbazi.domain.AlmanacResult
 import com.nanzhufeng.nanfengbazi.domain.BasicShenShaRules
 import com.nanzhufeng.nanfengbazi.domain.FolkBoneWeightRulesV1
+import com.nanzhufeng.nanfengbazi.domain.YearMonthBoundaryAmbiguousException
 import com.tyme.solar.SolarDay
 import com.tyme.solar.SolarMonth
 import com.tyme.solar.SolarTime
@@ -38,7 +39,7 @@ class TymeAlmanacReader : AlmanacReader {
             }
             val selected = cached(details, query) {
                 val selectedDay = SolarDay.fromYmd(query.year, query.month, query.selectedDay)
-                val dayHours = cached(hours, query.copy(selectedDoubleHourIndex = 0)) {
+                val dayHours = cached(hours, AlmanacMonthQuery(query.year, query.month, query.selectedDay, ratHourRule = query.ratHourRule)) {
                     selectedDay.toHourPillars(query)
                 }
                 selectedDay.toDetails(query, dayHours)
@@ -109,10 +110,17 @@ private fun SolarDay.toDetails(
         year,
         month,
         day,
-        selectedDoubleHour.representativeHour,
-        0,
-        0,
+        query.selectedHour ?: selectedDoubleHour.representativeHour,
+        query.selectedMinute,
+        query.selectedSecond,
     )
+    var ambiguity: YearMonthBoundaryAmbiguousException? = null
+    val boundary = try {
+        TymeSolarYearMonthResolver.resolve(solarTime, precision = query.timePrecision)
+    } catch (uncertain: YearMonthBoundaryAmbiguousException) {
+        ambiguity = uncertain
+        null
+    }
     val eightChar = solarTime.lunarHour.resolveEightChar(query.ratHourRule)
     val pillarCycles = listOf(eightChar.year, eightChar.month, eightChar.day, eightChar.hour)
     val dayMaster = eightChar.day.heavenStem
@@ -134,13 +142,13 @@ private fun SolarDay.toDetails(
         lunarMonth = kotlin.math.abs(lunar.lunarMonth.monthWithLeap),
         lunarDay = lunar.day,
         isLeapMonth = lunar.lunarMonth.isLeap,
-        yearPillar = sixtyCycle.year.name,
-        monthPillar = sixtyCycle.month.name,
-        dayPillar = sixtyCycle.sixtyCycle.name,
-        hourPillar = hourPillars.first { it.doubleHour.index == selectedDoubleHour.index }.pillar,
+        yearPillar = ambiguity?.candidateYearPillars?.joinToString("/") ?: eightChar.year.name,
+        monthPillar = ambiguity?.candidateMonthPillars?.joinToString("/") ?: eightChar.month.name,
+        dayPillar = eightChar.day.name,
+        hourPillar = eightChar.hour.name,
         selectedDoubleHour = selectedDoubleHour,
         hourPillars = hourPillars,
-        pillars = pillarCycles.mapIndexed { index, cycle ->
+        pillars = if (ambiguity != null) emptyList() else pillarCycles.mapIndexed { index, cycle ->
             cycle.toAlmanacPillar(
                 label = listOf("年柱", "月柱", "日柱", "时柱")[index],
                 tenGod = if (index == 2) "日元" else dayMaster.getTenStar(cycle.heavenStem).name,
@@ -152,7 +160,7 @@ private fun SolarDay.toDetails(
                 ),
             )
         },
-        relations = pillarCycles.toAlmanacRelations(),
+        relations = if (ambiguity != null) emptyList() else pillarCycles.toAlmanacRelations(),
         folkBoneWeight = FolkBoneWeightRulesV1.calculate(
             lunarYearPillar = lunar.lunarMonth.lunarYear.sixtyCycle.name,
             lunarMonth = kotlin.math.abs(lunar.lunarMonth.monthWithLeap),
@@ -165,6 +173,10 @@ private fun SolarDay.toDetails(
         festivalNames = festivals,
         recommends = sixtyCycle.recommends.map { it.name }.distinct().take(12),
         avoids = sixtyCycle.avoids.map { it.name }.distinct().take(12),
+        selectedTime = solarTime.domainDateTime(),
+        selectedTimePrecision = query.timePrecision,
+        boundaryNotice = ambiguity?.message,
+        solarYearMonthEvidence = boundary?.evidence,
     )
 }
 

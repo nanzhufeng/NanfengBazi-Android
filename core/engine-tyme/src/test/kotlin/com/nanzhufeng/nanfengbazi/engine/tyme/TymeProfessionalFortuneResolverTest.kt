@@ -233,7 +233,7 @@ class TymeProfessionalFortuneResolverTest {
             "tyme-late-rat-same-day-v1",
             lateAtRatHour.profileId,
         )
-        assertEquals("stage7b-rat-hour-v1", lateAtRatHour.ruleVersion)
+        assertEquals("lichun-instant-late-rat-v2", lateAtRatHour.ruleVersion)
     }
 
     @Test

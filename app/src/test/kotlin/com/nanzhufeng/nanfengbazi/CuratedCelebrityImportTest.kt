@@ -247,6 +247,10 @@ class CuratedCelebrityImportTest {
 
         assertTrue(result.errors.joinToString(separator = "\n"), result.invalid == 0)
         assertEquals(574, result.created)
+        val boundarySourceOnly = repository.stored.values.single { it.alias == "肯·汤普森" }
+        assertTrue(boundarySourceOnly.calculationSnapshots.none { it.adopted })
+        assertEquals(TimePrecision.APPROXIMATE, boundarySourceOnly.birthInput.timePrecision)
+
         assertEquals(574, repository.stored.values.count { it.libraryType == CaseLibraryType.CELEBRITY })
         val guangwu = repository.stored.values.single { it.alias == "汉世祖光武帝" }
         val adopted = guangwu.calculationSnapshots.single { it.adopted }.result

@@ -229,7 +229,15 @@ internal fun BaziHomeSkinHeader(
             BaziHomeSolarClock(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(horizontal = 17.dp, vertical = 14.dp),
+                    .padding(horizontal = 17.dp, vertical = 14.dp)
+                    .graphicsLayer {
+                        // 与标题共用点击/拖动进度；只更新绘制层，秒钟仍独立刷新。
+                        translationX = -flowProgress.value * textTravelPx
+                        translationY = -pulseProgress.value * with(density) { 3.dp.toPx() }
+                        scaleX = 1f + pulseProgress.value * 0.025f
+                        scaleY = 1f + pulseProgress.value * 0.025f
+                        transformOrigin = TransformOrigin(0f, 1f)
+                    },
                 color = recipe.headerContentColor.copy(alpha = 0.76f),
             )
             Text(

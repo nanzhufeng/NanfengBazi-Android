@@ -55,20 +55,19 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
@@ -79,7 +78,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -115,7 +113,6 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -170,6 +167,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
@@ -1569,7 +1567,7 @@ private fun FullBackupRestoreWorkspace(
             .fillMaxSize()
             .testTag("full_backup_preview"),
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Column {
                         Text("完整备份恢复工作台")
@@ -1580,12 +1578,12 @@ private fun FullBackupRestoreWorkspace(
                     }
                 },
                 navigationIcon = {
-                    TextButton(
+                    androidx.compose.material3.IconButton(
                         onClick = onDismiss,
                         enabled = !busy,
                         modifier = Modifier.testTag("close_full_backup_preview"),
                     ) {
-                        Text("关闭")
+                        Icon(Icons.Filled.Close, contentDescription = "关闭")
                     }
                 },
             )
@@ -2400,14 +2398,14 @@ private fun rootNavigationActions(
 ): List<RootNavigationAction> = listOf(
     RootNavigationAction(
         "排盘",
-        Icons.Filled.Home,
+        BaziNavigationIcons.Chart,
         destination == AppDestination.CreateCase,
         "nav_chart",
         onOpenChart,
     ),
     RootNavigationAction(
         "记录",
-        Icons.Filled.List,
+        BaziNavigationIcons.Records,
         destination == AppDestination.CaseList ||
             destination == AppDestination.RecordHub ||
             destination is AppDestination.CaseDetail,
@@ -2416,7 +2414,7 @@ private fun rootNavigationActions(
     ),
     RootNavigationAction(
         "设置",
-        Icons.Filled.Settings,
+        BaziNavigationIcons.Settings,
         destination == AppDestination.Settings,
         "nav_settings",
         onOpenSettings,
@@ -2473,10 +2471,10 @@ private fun RootNavigationBar(
                         .weight(1f)
                         .padding(horizontal = 4.dp)
                         .height(58.dp)
-                        .semantics { contentDescription = item.label }
+                        .semantics { contentDescription = item.label; this.selected = selected }
                         .testTag(item.tag),
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    shape = NanfengSoftWhitePillShape,
+                    color = Color.Transparent,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
                 ) {
@@ -2488,14 +2486,15 @@ private fun RootNavigationBar(
                         Icon(
                             item.icon,
                             contentDescription = null,
-                            modifier = Modifier.size(19.dp),
-                            tint = if (selected) MaterialTheme.colorScheme.primary else NanfengNavigationMuted,
+                            modifier = Modifier.size(24.dp),
+                            tint = if (selected) NanfengOrange else NanfengInk,
                         )
                         Text(
                             item.label,
                             modifier = Modifier.padding(top = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (selected) MaterialTheme.colorScheme.primary else NanfengNavigationMuted,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) NanfengOrange else NanfengInk,
                         )
                     }
                 }
@@ -2534,11 +2533,11 @@ private fun RootNavigationRail(
                 icon = { Icon(item.icon, contentDescription = null) },
                 label = { Text(item.label) },
                 colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                    unselectedIconColor = NanfengNavigationMuted,
-                    unselectedTextColor = NanfengNavigationMuted,
+                    selectedIconColor = NanfengOrange,
+                    selectedTextColor = NanfengOrange,
+                    indicatorColor = NanfengOrange.copy(alpha = 0.10f),
+                    unselectedIconColor = NanfengInk,
+                    unselectedTextColor = NanfengInk,
                 ),
                 modifier = Modifier
                     .heightIn(min = 48.dp)
@@ -2564,7 +2563,7 @@ private fun ExpandedCaseIndexPane(
     Column(
         modifier = modifier.testTag("expanded_case_index_pane"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = {
                 Column {
                     Text("命例索引", fontWeight = FontWeight.SemiBold)
@@ -2575,11 +2574,8 @@ private fun ExpandedCaseIndexPane(
                 }
             },
             actions = {
-                TextButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) {
-                    Text("刷新")
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "刷新")
                 }
             },
         )
@@ -2858,48 +2854,49 @@ private fun SettingsHomeScreen(
         ) {
             Text(
                 "设置",
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+                textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Medium,
             )
         }
-        SettingsGroupTitle("皮肤")
+        SettingsGroupTitle("外观")
         BaziSkinSettingRow(
             selectedSkin = selectedSkin,
             onClick = { showSkinPicker = true },
             modifier = Modifier.padding(horizontal = 16.dp),
         )
-        SettingsGroupTitle("显示")
+        Spacer(Modifier.height(12.dp))
         SettingsActionGroup {
             SettingsActionRow(
                 title = "字体大小",
                 description = null,
-                icon = Icons.Filled.TextFields,
+                icon = BaziFeatureIcons.Font,
                 onClick = { showFontSizePicker = true },
                 tag = "settings_font_size",
                 accent = NanfengGreen,
             )
         }
-        SettingsGroupTitle("南枫云")
+        SettingsGroupTitle("账号与 AI")
         SettingsActionGroup {
             val cloudState by (cloudSyncCoordinator?.state
                 ?.collectAsStateWithLifecycle(initialValue = BaziCloudSyncState.Unconfigured)
                 ?: remember { mutableStateOf(BaziCloudSyncState.Unconfigured) })
             SettingsActionRow(
-                title = "Google 账号与同步",
+                title = "账号与云同步",
                 description = cloudDescription(cloudState),
-                icon = Icons.Filled.Settings,
+                icon = BaziFeatureIcons.Cloud,
                 onClick = { showCloudSettings = true },
                 tag = "settings_cloud_sync",
                 accent = NanfengGreen,
             )
         }
-        SettingsGroupTitle("AI 点评")
+        Spacer(Modifier.height(12.dp))
         SettingsActionGroup {
             SettingsActionRow(
-                title = "AI 模型服务",
-                description = "模型设置与调用记录",
-                icon = Icons.Filled.Settings,
+                title = "AI 服务",
+                description = null,
+                icon = BaziFeatureIcons.Ai,
                 onClick = {
                     onOpenAiServicePage {
                         if (!showCloudSettings && !showAboutPage && !showFontSizePicker && !showSkinPicker && !showRatHourRulePicker) {
@@ -2908,23 +2905,23 @@ private fun SettingsHomeScreen(
                     }
                 },
                 tag = "settings_ai_commentary",
-                accent = NanfengGold,
+                accent = NanfengOrange,
             )
         }
         SettingsGroupTitle("备份与恢复")
         SettingsActionGroup {
             SettingsActionRow(
-                title = "导出完整备份",
-                description = "命例、记录、快照与附件",
-                icon = Icons.Filled.Home,
+                title = "备份数据",
+                description = "含命例、笔记与附件",
+                icon = BaziFeatureIcons.Backup,
                 onClick = onExportFullBackup,
                 tag = "settings_export_backup",
             )
             HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
             SettingsActionRow(
-                title = "恢复完整备份",
-                description = "先核验清单再决定写入",
-                icon = Icons.Filled.KeyboardArrowRight,
+                title = "恢复备份",
+                description = "确认后恢复",
+                icon = BaziFeatureIcons.Restore,
                 onClick = onRestoreFullBackup,
                 tag = "settings_restore_backup",
                 accent = NanfengOrange,
@@ -2934,8 +2931,8 @@ private fun SettingsHomeScreen(
         SettingsActionGroup {
             SettingsActionRow(
                 title = "导入问真截图",
-                description = "本机识别后逐项确认",
-                icon = Icons.Filled.Search,
+                description = "使用 AI 识别，确认后导入",
+                icon = BaziFeatureIcons.Screenshot,
                 onClick = onImportScreenshots,
                 enabled = !screenshotImportState.busy,
                 tag = "settings_import_screenshots",
@@ -2943,19 +2940,19 @@ private fun SettingsHomeScreen(
             )
             HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
             SettingsActionRow(
-                title = "导入网页案例资料",
-                description = "先核对数量；名人案例会自动纳入统一资料库",
-                icon = Icons.Filled.List,
+                title = "导入网页资料",
+                description = "选择已保存的资料文件",
+                icon = BaziFeatureIcons.Web,
                 onClick = onImportWenzhen,
                 enabled = !state.wenzhenImportBusy,
                 tag = "settings_import_wenzhen_web",
-                accent = NanfengGold,
+                accent = BaziFeatureColors.Web,
             )
             HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
             SettingsActionRow(
-                title = "名人案例统一资料库",
-                description = "安装即自带；应用更新后自动同步。点此可重新同步",
-                icon = Icons.Filled.List,
+                title = "更新内置案例",
+                description = "重新同步内置名人案例",
+                icon = BaziFeatureIcons.Cases,
                 onClick = onImportCuratedCelebrityCatalog,
                 enabled = !state.curatedCelebrityImportBusy && !state.builtInCelebrityCatalogSyncBusy,
                 tag = "settings_import_curated_celebrities",
@@ -2963,9 +2960,9 @@ private fun SettingsHomeScreen(
             )
             HorizontalDivider(modifier = Modifier.padding(start = 54.dp))
             SettingsActionRow(
-                title = "导入南枫命例包",
-                description = "跨设备转移单个命例；先预览冲突再决定合并",
-                icon = Icons.Filled.List,
+                title = "导入命例文件",
+                description = "南枫八字导出的单个命例",
+                icon = BaziFeatureIcons.Import,
                 onClick = onImportSingleCase,
                 tag = "settings_import_case",
             )
@@ -2973,24 +2970,24 @@ private fun SettingsHomeScreen(
         SettingsGroupTitle("排盘偏好")
         SettingsActionGroup {
             SettingsActionRow(
-                title = "子时口径",
+                title = "换日规则",
                 description = if (state.defaultRatHourRule == RatHourRule.TYME_DEFAULT) {
                     "23:00 换日"
                 } else {
-                    "晚子时算当天"
+                    "00:00 换日"
                 },
-                icon = Icons.Filled.Settings,
+                icon = BaziFeatureIcons.DayBoundary,
                 onClick = { showRatHourRulePicker = true },
                 tag = "settings_rat_hour_rule",
-                accent = NanfengGreen,
+                accent = BaziFeatureColors.DayBoundary,
             )
         }
-        SettingsGroupTitle("应用信息")
+        SettingsGroupTitle("关于")
         SettingsActionGroup {
             SettingsActionRow(
-                title = "关于南枫八字",
-                description = "版本、开发者与源码信息",
-                icon = Icons.Filled.Info,
+                title = "南枫八字",
+                description = null,
+                icon = BaziFeatureIcons.About,
                 onClick = { showAboutPage = true },
                 tag = "settings_about",
                 accent = NanfengGreen,
@@ -3057,7 +3054,7 @@ private fun SettingsHomeScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(
                         RatHourRule.TYME_DEFAULT to "23:00 换日",
-                        RatHourRule.LATE_RAT_SAME_DAY to "晚子时算当天",
+                        RatHourRule.LATE_RAT_SAME_DAY to "00:00 换日",
                     ).forEach { (rule, label) ->
                         Surface(
                             onClick = {
@@ -3117,7 +3114,7 @@ private fun AboutBaziScreen(
             },
             navigationIcon = {
                 IconButton(onClick = onBack, modifier = Modifier.testTag("about_bazi_back")) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回设置")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回设置")
                 }
             },
             colors = androidx.compose.material3.TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -3140,7 +3137,8 @@ private fun AboutBaziScreen(
                 shape = RoundedCornerShape(24.dp),
                 color = Color.White,
                 tonalElevation = 0.dp,
-                shadowElevation = 2.dp,
+                shadowElevation = 0.dp,
+                border = null,
             ) {
                 SelectionContainer {
                     Column {
@@ -3287,8 +3285,8 @@ private fun Modifier.openAboutLinkWhenTapped(
 }
 
 private fun cloudDescription(state: BaziCloudSyncState): String = when (state) {
-    BaziCloudSyncState.Unconfigured -> "当前构建尚未配置云端"
-    BaziCloudSyncState.SignedOut -> "登录后加密同步结构化命例"
+    BaziCloudSyncState.Unconfigured -> "云同步暂不可用"
+    BaziCloudSyncState.SignedOut -> "使用 Google 账号登录"
     is BaziCloudSyncState.Ready -> state.message
     is BaziCloudSyncState.Working -> state.message
     is BaziCloudSyncState.RecoveryCodeReady -> "请安全保存一次性恢复码"
@@ -3313,19 +3311,15 @@ private fun AiServiceSettingsPage(
             .testTag("ai_service_settings_page"),
     ) {
         Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp)
-                    .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.testTag("ai_service_back")) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回设置")
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp)) {
+                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).testTag("ai_service_back")) {
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回设置")
                 }
                 Text(
                     "AI 模型服务",
-                    modifier = Modifier.padding(start = 4.dp),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -3344,7 +3338,7 @@ private fun AiServiceSettingsPage(
                     title = "模型设置",
                     description = "已配置 ${state.configs.values.count { it.enabled && it.hasApiKey }} / " +
                         "${AiCommentaryProviderPresets.providerIds.size} 个服务",
-                    icon = Icons.Filled.Settings,
+                    icon = BaziFeatureIcons.ModelSettings,
                     onClick = onOpenSettings,
                     tag = "ai_service_open_settings",
                     accent = NanfengGold,
@@ -3352,7 +3346,7 @@ private fun AiServiceSettingsPage(
                 AiServiceDestinationCard(
                     title = "调用记录",
                     description = if (state.callRecords.isEmpty()) "暂无记录" else "最近 ${state.callRecords.size} 条",
-                    icon = Icons.Filled.List,
+                    icon = BaziFeatureIcons.History,
                     onClick = onOpenHistory,
                     tag = "ai_service_open_history",
                     accent = NanfengGreen,
@@ -3393,19 +3387,8 @@ private fun AiServiceDestinationCard(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                modifier = Modifier.size(38.dp),
-                shape = RoundedCornerShape(14.dp),
-                color = accent.copy(alpha = 0.13f),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        tint = accent,
-                    )
-                }
+            Box(modifier = Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = accent)
             }
             Column(
                 modifier = Modifier
@@ -3481,20 +3464,13 @@ private fun SettingsActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Surface(
-            modifier = Modifier
-                .size(36.dp),
-            color = accent.copy(alpha = 0.10f),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp),
-                    tint = accent,
-                )
-            }
+        Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(26.dp),
+                tint = accent,
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Medium)
@@ -3692,12 +3668,12 @@ private fun CaseListScreen(
                         .heightIn(min = 52.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(
+                    IconButton(
                         onClick = requireNotNull(onCancelCompatibilitySelection),
                         modifier = Modifier.width(64.dp),
                     ) {
-                        Text("返回")
-                    }
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
+                }
                     Text(
                         text = "选择${compatibilityRoleLabel}八字",
                         modifier = Modifier.weight(1f),
@@ -5754,10 +5730,10 @@ private fun String?.constellationIconRes(): Int? = when (this?.removeSuffix("座
 @Composable
 private fun ConstellationBadge(
     westernZodiac: String?,
-    size: Dp = 46.dp,
+    size: Dp = 36.8.dp,
     modifier: Modifier = Modifier,
 ) {
-    val display = westernZodiac?.removeSuffix("座")?.let { "${it}座" } ?: "待计算"
+    val display = westernZodiac?.removeSuffix("座")?.let { "${it}座" } ?: "未识别"
     val scale = (size.value / 46f).coerceAtMost(1f)
     Surface(
         modifier = modifier
@@ -6041,7 +6017,7 @@ private fun CaseComparisonScreen(
             .fillMaxSize()
             .testTag("case_comparison_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = {
                 Column {
                     Text("命例对比", fontWeight = FontWeight.SemiBold)
@@ -6053,13 +6029,13 @@ private fun CaseComparisonScreen(
                 }
             },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier
                         .heightIn(min = 48.dp)
                         .testTag("back_from_case_comparison"),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -6151,7 +6127,7 @@ private fun BaziCompatibilityScreen(
                         modifier = Modifier.testTag("compatibility_history_record_back"),
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            imageVector = BaziNavigationIcons.Back,
                             contentDescription = "返回合盘记录",
                         )
                     }
@@ -6189,7 +6165,7 @@ private fun BaziCompatibilityScreen(
                     modifier = Modifier.testTag("back_from_bazi_compatibility"),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = BaziNavigationIcons.Back,
                         contentDescription = "返回",
                     )
                 }
@@ -6233,7 +6209,7 @@ private fun BaziCompatibilityReportScreen(
                     modifier = Modifier.testTag("compatibility_report_back"),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = BaziNavigationIcons.Back,
                         contentDescription = "返回八字合盘",
                     )
                 }
@@ -6291,17 +6267,12 @@ private fun CompatibilitySetupPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = NanfengGreen.copy(alpha = 0.10f),
-                    contentColor = NanfengGreen,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_bazi_compatibility_history),
-                        contentDescription = null,
-                        modifier = Modifier.padding(10.dp).size(26.dp),
-                    )
-                }
+                Icon(
+                    imageVector = BaziFeatureIcons.History,
+                    contentDescription = null,
+                    modifier = Modifier.size(30.dp),
+                    tint = NanfengGreen,
+                )
                 Text(
                     "合盘记录",
                     modifier = Modifier.padding(start = 12.dp),
@@ -6451,7 +6422,7 @@ private fun CompatibilityParticipantCard(
                             .semantics { contentDescription = "添加${roleLabel}八字" }
                             .testTag("${tagPrefix}_add"),
                         shape = CircleShape,
-                        color = roleAccent.copy(alpha = 0.10f),
+                        color = Color.Transparent,
                         contentColor = roleAccent,
                         tonalElevation = 0.dp,
                         shadowElevation = 0.dp,
@@ -6497,7 +6468,7 @@ private fun CompatibilityHistoryScreen(
                     modifier = Modifier.testTag("compatibility_history_back"),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = BaziNavigationIcons.Back,
                         contentDescription = "返回合盘",
                     )
                 }
@@ -6738,17 +6709,12 @@ private fun CompatibilityHistoryRecordCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                 }
-                Surface(
-                    shape = CircleShape,
-                    color = NanfengGreen.copy(alpha = 0.10f),
-                    contentColor = NanfengGreen,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_bazi_compatibility_history),
-                        contentDescription = null,
-                        modifier = Modifier.padding(7.dp).size(18.dp),
-                    )
-                }
+                Icon(
+                    imageVector = BaziFeatureIcons.History,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = NanfengGreen,
+                )
                 Text(
                     "合盘记录",
                     modifier = Modifier.padding(start = 8.dp),
@@ -7071,7 +7037,6 @@ private fun CompatibilityParticipantHeader(
                             .padding(start = 8.dp)
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.12f), CircleShape)
                             .testTag("replace_${role}_compatibility_participant"),
                     ) {
                         Icon(
@@ -8270,7 +8235,7 @@ private fun ScreenshotImportReviewScreen(
             .fillMaxSize()
             .testTag("screenshot_import_review_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = {
                 Column {
                     Text("核对问真导入", fontWeight = FontWeight.SemiBold)
@@ -8282,11 +8247,11 @@ private fun ScreenshotImportReviewScreen(
                 }
             },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -8850,16 +8815,21 @@ private fun SelectionButton(
     onClick: () -> Unit,
     tag: String,
 ) {
-    val modifier = Modifier
-        .heightIn(min = 48.dp)
-        .testTag(tag)
-    if (selected) {
-        Button(onClick = onClick, modifier = modifier) {
-            Text(text)
-        }
-    } else {
-        OutlinedButton(onClick = onClick, modifier = modifier) {
-            Text(text)
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 48.dp).testTag(tag)
+            .semantics { this.selected = selected },
+        shape = NanfengSoftWhitePillShape,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else NanfengControlSurface,
+        contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (selected) Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+            Text(text, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
         }
     }
 }
@@ -9403,13 +9373,11 @@ private fun WenzhenCreateCaseScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 if (isCompatibilityParticipantCreate) {
-                    TextButton(
+                    IconButton(
                         onClick = onBack,
                         modifier = Modifier.align(Alignment.CenterStart),
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("返回")
+                        Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                     }
                 }
             }
@@ -9757,19 +9725,16 @@ private fun BaziCompatibilityHomeEntry(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp),
             ) {
-                Surface(
+                Box(
                     modifier = Modifier.size(if (compact) 42.dp else 52.dp),
-                    shape = CircleShape,
-                    color = NanfengGold.copy(alpha = 0.12f),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_bazi_compatibility),
-                            contentDescription = null,
-                            modifier = Modifier.size(if (compact) 22.dp else 26.dp),
-                            tint = NanfengGold,
-                        )
-                    }
+                    Icon(
+                        imageVector = BaziFeatureIcons.Compatibility,
+                        contentDescription = null,
+                        modifier = Modifier.size(if (compact) 30.dp else 36.dp),
+                        tint = NanfengGreen,
+                    )
                 }
                 Text(
                     "八字合盘",
@@ -9994,14 +9959,14 @@ internal fun EditCaseScreen(
             .background(MaterialTheme.colorScheme.background)
             .testTag("edit_case_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("编辑命例", fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier.size(48.dp),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -10350,15 +10315,15 @@ internal fun CaseFormScreen(
             .fillMaxSize()
             .testTag(screenTag),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text(title) },
             navigationIcon = {
                 if (showBack) {
-                    TextButton(
+                    IconButton(
                         onClick = onBack,
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) {
-                        Text("返回")
+                        Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                     }
                 }
             },
@@ -11044,14 +11009,14 @@ private fun CaseObjectiveSummaryScreen(
             .fillMaxSize()
             .testTag("objective_summary_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text(state.objectiveSummary?.title ?: "客观命盘摘要") },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -11216,14 +11181,14 @@ private fun MasterCommentaryCandidateScreen(
             .fillMaxSize()
             .testTag("master_commentary_candidates_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("师傅点评观点候选") },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -11510,14 +11475,14 @@ private fun FeedbackThemeCandidateScreen(
             .fillMaxSize()
             .testTag("feedback_theme_candidates_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("命主反馈主题候选") },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -11889,7 +11854,7 @@ private fun CaseDetailScreen(
             .registerCaseDetailPageBounds(captureRegistry)
             .testTag("case_detail_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = {
                 Text(
                     "南枫八字",
@@ -11902,7 +11867,7 @@ private fun CaseDetailScreen(
                     onClick = onBack,
                     modifier = Modifier.size(48.dp),
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
             actions = {
@@ -12024,6 +11989,21 @@ private fun CaseDetailScreen(
                     .firstOrNull { it.adopted },
                 section = state.detailSection,
             )
+            val saved = state.detail.calculationSnapshots.asReversed().firstOrNull { it.adopted }?.result
+            val yearZodiacNotice = remember(saved) { mutableStateOf<String?>(null) }
+            LaunchedEffect(saved) {
+                yearZodiacNotice.value = withContext(Dispatchers.Default) {
+                    saved?.let(::resolveCaseYearZodiacNotice)
+                }
+            }
+            yearZodiacNotice.value?.let { notice ->
+                Text(
+                    notice,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Box(modifier = Modifier.weight(1f)) {
             when {
@@ -12162,7 +12142,17 @@ private fun WenzhenCaseIdentityHeader(
     section: CaseDetailSection,
 ) {
     val result = adopted?.result
-    val westernZodiac = result?.basicChartDetails?.westernZodiac
+    val westernZodiac = remember(
+        case.birthInput.calendarInput,
+        result?.calendarConversion?.solarDateTime,
+        result?.basicChartDetails?.westernZodiac,
+    ) {
+        resolveCaseWesternZodiac(
+            case.birthInput.calendarInput,
+            result?.calendarConversion?.solarDateTime,
+            result?.basicChartDetails?.westernZodiac,
+        )
+    }
     val iconRes = westernZodiac.constellationIconRes()
     Surface(
         modifier = Modifier
@@ -12429,7 +12419,7 @@ private fun ZodiacIdentityBadge(
                 )
             }
             Text(
-                westernZodiac?.let { if (it.endsWith("座")) it else "${it}座" } ?: "待计算",
+                westernZodiac?.let { if (it.endsWith("座")) it else "${it}座" } ?: "未识别",
                 color = NanfengGold,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
@@ -13535,7 +13525,7 @@ private fun FolkBoneWeightCatalogPage(onDismiss: () -> Unit) {
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
+                                BaziNavigationIcons.Back,
                                 contentDescription = "返回",
                             )
                         }
@@ -15387,6 +15377,10 @@ private fun CaseDetailContent(
                     DetailRow("引擎", adopted.result.evidence.engineName)
                     DetailRow("引擎版本", adopted.result.evidence.engineVersion)
                     DetailRow("规则版本", adopted.result.evidence.ruleVersion)
+                    adopted.result.solarYearMonthEvidence?.let { evidence ->
+                        DetailRow("年界依据", "立春精确交节 · ${evidence.liChunInstantUtc}（UTC）")
+                        DetailRow("节气来源", evidence.providerId)
+                    }
                     CalculationArchiveComparisonView(
                         snapshots = case.calculationSnapshots,
                         current = adopted,

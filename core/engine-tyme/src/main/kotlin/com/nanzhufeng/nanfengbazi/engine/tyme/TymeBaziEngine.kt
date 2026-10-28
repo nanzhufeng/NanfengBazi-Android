@@ -61,6 +61,44 @@ class TymeBaziEngine(
     private val trueSolarTimeCalculator: TrueSolarTimeCalculator =
         SpaTrueSolarTimeCalculator(),
 ) : BaziEngine {
+    /**
+     * Read-only verification of the adopted year and zodiac. Reuses the calculation's
+     * calendar/offset/jie owners without computing fortunes or replacing saved evidence.
+     * Null means no proven mismatch, including inputs that cannot be verified.
+     */
+    fun verifyYearAndZodiac(saved: CalculationResult): YearZodiacMismatch? {
+        if (saved.profile.yearBoundaryRule != YearBoundaryRule.SPRING_EXACT) return null
+        val candidates = try {
+            val calendar = resolveCalendar(saved.normalizedInput.calendarInput)
+            val input = resolveTimeZone(saved.normalizedInput, calendar.solar.toDomain())
+            try {
+                listOf(TymeSolarYearMonthResolver.resolve(
+                    civil = calendar.solar,
+                    offsetSeconds = requireNotNull(input.resolvedUtcOffsetSeconds),
+                    precision = input.timePrecision,
+                    timeZoneId = input.timeZoneId,
+                ).year.name)
+            } catch (ambiguous: com.nanzhufeng.nanfengbazi.domain.YearMonthBoundaryAmbiguousException) {
+                ambiguous.candidateYearPillars
+            }
+        } catch (_: IllegalArgumentException) {
+            return null
+        } catch (_: java.time.DateTimeException) {
+            return null
+        }
+        val yearMismatch = saved.fourPillars.year !in candidates
+        // A valid adopted year must agree with its own zodiac even if the birth
+        // range permits two years. Missing old zodiac details are not an error.
+        val zodiacYears = if (yearMismatch) candidates else listOf(saved.fourPillars.year)
+        val zodiacs = zodiacYears.map { SixtyCycle.fromName(it).earthBranch.zodiac.name }.distinct()
+        val savedZodiac = saved.basicChartDetails?.zodiac?.trim()?.takeIf { it.isNotEmpty() }
+        val zodiacMismatch = savedZodiac != null && savedZodiac !in zodiacs
+        return if (yearMismatch || zodiacMismatch) YearZodiacMismatch(
+            expectedYearPillars = if (yearMismatch) candidates else emptyList(),
+            expectedZodiacs = if (zodiacMismatch) zodiacs else emptyList(),
+        ) else null
+    }
+
     override suspend fun calculate(
         input: BirthInput,
         profile: CalculationProfile,
@@ -68,6 +106,17 @@ class TymeBaziEngine(
         validateSupported(input, profile)
         val resolved = resolveCalendar(input.calendarInput)
         val normalizedInput = resolveTimeZone(input, resolved.solar.toDomain())
+        val yearMonth = TymeSolarYearMonthResolver.resolve(
+            civil = resolved.solar,
+            offsetSeconds = requireNotNull(normalizedInput.resolvedUtcOffsetSeconds),
+            precision = input.timePrecision,
+            timeZoneId = input.timeZoneId,
+        )
+        val chinaSolar = LocalDateTime.ofInstant(
+            java.time.Instant.parse(yearMonth.evidence.birthInstantUtc),
+            TymeSolarYearMonthResolver.CHINA_OFFSET,
+        ).tymeSolarTime()
+        val actualProfile = profile.copy(ruleVersion = CalculationProfile.currentRuleVersion(profile.ratHourRule))
         val trueSolarEvidence = calculateTrueSolarTimeIfNeeded(
             input = normalizedInput,
             civilSolarDateTime = resolved.solar.toDomain(),
@@ -78,7 +127,8 @@ class TymeBaziEngine(
             val solar = resolved.solar
             val lunarHour = resolved.lunarHour
             val lunarDateTime = lunarHour.toDomain()
-            val civilEightChar = lunarHour.resolveEightChar(profile.ratHourRule)
+            val localEightChar = lunarHour.resolveEightChar(profile.ratHourRule)
+            val civilEightChar = EightChar(yearMonth.year, yearMonth.month, localEightChar.day, localEightChar.hour)
             val eightChar = trueSolarEvidence?.let { evidence ->
                 val correctedEightChar = evidence.trueSolarDateTime
                     .toTyme()
@@ -92,13 +142,15 @@ class TymeBaziEngine(
                 )
             } ?: civilEightChar
             val childLimit = ChildLimit.fromSolarTime(
-                solar,
+                chinaSolar,
                 when (input.sexForFortuneDirection) {
                     SexForFortuneDirection.WOMAN -> Gender.WOMAN
                     SexForFortuneDirection.MAN -> Gender.MAN
                 },
             )
             val startDecade = childLimit.startDecadeFortune
+            // Fortune observation/timeline clocks are China standard civil time.
+            // Keep these endpoints in that same coordinate, independently of birth zone.
             val firstDecadeStart = childLimit.endTime.toDomain()
             val decades = generateSequence(startDecade) { it.next(1) }
                 .take(DECADE_FORTUNE_COUNT)
@@ -127,11 +179,12 @@ class TymeBaziEngine(
             val basicChartDetails = buildBasicChartDetails(
                 civilSolarTime = solar,
                 eightChar = eightChar,
+                termSolarTime = chinaSolar,
             )
 
             CalculationResult(
                 normalizedInput = normalizedInput,
-                profile = profile,
+                profile = actualProfile,
                 fourPillars = fourPillars,
                 ownSign = eightChar.ownSign.name,
                 bodySign = eightChar.bodySign.name,
@@ -144,7 +197,7 @@ class TymeBaziEngine(
                         FortuneDirection.BACKWARD
                     },
                     startAt = childLimit.startTime.toDomain(),
-                    endAt = childLimit.endTime.toDomain(),
+                    endAt = firstDecadeStart,
                     years = childLimit.yearCount,
                     months = childLimit.monthCount,
                     days = childLimit.dayCount,
@@ -156,7 +209,7 @@ class TymeBaziEngine(
                 evidence = CalculationEvidence(
                     engineName = "Tyme4j",
                     engineVersion = CalculationProfile.TYME_ENGINE_VERSION,
-                    ruleVersion = profile.ruleVersion,
+                    ruleVersion = actualProfile.ruleVersion,
                     calculatedAt = clock.instant(),
                 ),
                 calendarConversion = CalendarConversionResult(
@@ -166,6 +219,7 @@ class TymeBaziEngine(
                 ),
                 trueSolarTimeEvidence = trueSolarEvidence,
                 basicChartDetails = basicChartDetails,
+                solarYearMonthEvidence = yearMonth.evidence,
                 structuralProfile = BaziStructuralProfileAnalyzer.analyze(
                     fourPillars = fourPillars,
                     basicChartDetails = basicChartDetails,
@@ -184,6 +238,17 @@ class TymeBaziEngine(
                     hour = lunarDateTime.hour,
                 ),
                 warnings = buildList {
+                    val born = java.time.Instant.parse(yearMonth.evidence.birthInstantUtc)
+                    val secondsToJie = minOf(
+                        kotlin.math.abs(java.time.Duration.between(born, yearMonth.previous.instant).seconds),
+                        kotlin.math.abs(java.time.Duration.between(born, yearMonth.next.instant).seconds),
+                    )
+                    if (secondsToJie <= if (solar.year in 1950..2050) 5 else 120) {
+                        add(CalculationWarning(
+                            code = "SOLAR_TERM_MODEL_BOUNDARY_REVIEW",
+                            message = "出生接近交节：此盘按Tyme4j 1.5.1秒级时刻定位，天文模型与历史/未来时标仍有误差，请保留边界复核。",
+                        ))
+                    }
                     if (trueSolarEvidence != null) {
                         add(
                             CalculationWarning(
@@ -235,6 +300,7 @@ class TymeBaziEngine(
     private fun buildBasicChartDetails(
         civilSolarTime: SolarTime,
         eightChar: EightChar,
+        termSolarTime: SolarTime,
     ): BasicChartDetails {
         val dayMaster = eightChar.day.heavenStem
         val pillars = listOf(
@@ -245,7 +311,7 @@ class TymeBaziEngine(
         ).map { (position, pillar) ->
             pillar.toDetail(position, dayMaster)
         }
-        val previousTerm = civilSolarTime.term
+        val previousTerm = termSolarTime.term
         val nextTerm = previousTerm.next(1)
         val previousJie = if (previousTerm.isJie) previousTerm else previousTerm.next(-1)
         val nextJie = previousJie.next(2)
@@ -396,6 +462,11 @@ class TymeBaziEngine(
             }
         }
 }
+
+data class YearZodiacMismatch(
+    val expectedYearPillars: List<String>,
+    val expectedZodiacs: List<String>,
+)
 
 private data class ResolvedCalendar(
     val inputCalendarSystem: CalendarSystem,

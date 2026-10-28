@@ -21,7 +21,7 @@ class TymeFortunePositionResolver : FortunePositionResolver {
             "当前只支持按精确立春切换流年。"
         }
         val observation = observedAt.toLocalDateTime()
-        val flowYearName = observedAt.toTyme().sixtyCycleHour.year.name
+        val flowYearName = TymeSolarYearMonthResolver.resolve(observedAt.toTyme()).year.name
         val labelYear = when {
             SixtyCycleYear.fromYear(observedAt.year).sixtyCycle.name == flowYearName ->
                 observedAt.year

@@ -279,14 +279,17 @@ class CuratedCelebrityImporter(
     ): BaziCase {
         val now = clock.instant()
         val timeCandidates = listOf(source.defaultTime) + source.alternativeTimes
-        val builtCandidates = timeCandidates.mapIndexed { index, candidate ->
+        val builtCandidates = timeCandidates.mapIndexedNotNull { index, candidate ->
             val adopted = index == 0
             val candidateId = curatedStableId("time:$caseId", "${index}:${candidate.label}")
             val snapshotId = curatedStableId("snapshot:$caseId", candidateId)
-            val calculation = baziEngine.calculate(
-                source.toBirthInput(candidate),
-                CalculationProfile.tymeDefault(),
-            )
+            val calculation = try {
+                baziEngine.calculate(source.toBirthInput(candidate), CalculationProfile.tymeDefault())
+            } catch (_: com.nanzhufeng.nanfengbazi.domain.YearMonthBoundaryAmbiguousException) {
+                // The original date, uncertainty and candidate rationale remain in source records.
+                // Do not fabricate a unique snapshot, or adopt a different alternative by position.
+                return@mapIndexedNotNull null
+            }
             val normalizedBirthInput = calculation.normalizedInput
             val snapshot = CaseCalculationSnapshot(
                 id = snapshotId,
@@ -338,7 +341,8 @@ class CuratedCelebrityImporter(
             name = ExplicitText.present(source.name.trim()),
             sexForFortuneDirection = source.sex.toCuratedSex(),
             sourceType = CaseSourceType.CURATED_CELEBRITY_CATALOG,
-            birthInput = builtCandidates.first().candidate.birthInput,
+            birthInput = builtCandidates.firstOrNull { it.candidate.adopted }?.candidate?.birthInput
+                ?: source.toBirthInput(source.defaultTime),
             libraryType = CaseLibraryType.CELEBRITY,
             birthTimeCandidates = builtCandidates.map { it.candidate },
             textRecords = records,
@@ -428,7 +432,7 @@ private fun BaziCase.isManagedCuratedCelebrity(): Boolean =
     libraryType == CaseLibraryType.CELEBRITY &&
         sourceType == CaseSourceType.CURATED_CELEBRITY_CATALOG
 
-private fun BaziCase.preservingUserPresentationState(existing: BaziCase): BaziCase = copy(
+private fun BaziCase.preservingUserPresentationState(existing: BaziCase): BaziCase = preservingCalculationsAcrossRuleChange(existing).copy(
     isFavorite = existing.isFavorite,
     isPinned = existing.isPinned,
     lastViewedAt = existing.lastViewedAt,

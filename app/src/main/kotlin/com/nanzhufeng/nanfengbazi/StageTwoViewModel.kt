@@ -758,7 +758,7 @@ class StageTwoViewModel(
     private val caseLifecycle: CaseLifecycleUseCase = CaseLifecycleUseCase(caseRepository),
     private val navigator: StageTwoNavigator = StageTwoNavigator(),
     private val clock: Clock = Clock.systemUTC(),
-    private val observationClock: Clock = Clock.systemDefaultZone(),
+    private val observationClock: Clock = Clock.system(BaziTimeZoneDefaults.beijingZoneId),
     private val fortunePositionResolver: FortunePositionResolver? = null,
     private val professionalFortuneResolver: ProfessionalFortuneResolver? = null,
     private val fourPillarsLookup: FourPillarsLookup? = null,
@@ -1372,7 +1372,9 @@ class StageTwoViewModel(
         val catalog = caseSummaryCatalogCache ?: caseCatalogStore.cached()?.cases ?: return false
         val updatedCatalog = transform(catalog)
         caseSummaryCatalogCache = updatedCatalog
-        caseCatalogStore.replaceCachedCases(updatedCatalog)
+        if (caseCatalogStore.replaceCachedCases(updatedCatalog)) {
+            caseSummaryCatalogCache = caseCatalogStore.cached()?.cases ?: updatedCatalog
+        }
         return true
     }
 
@@ -4303,6 +4305,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             selectedDay = now.dayOfMonth,
             selectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(now.hour),
             ratHourRule = mutableState.value.defaultRatHourRule,
+            selectedHour = now.hour, selectedMinute = now.minute, timePrecision = TimePrecision.EXACT_TO_MINUTE,
         )
     }
 
@@ -4319,6 +4322,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             selectedDay = now.dayOfMonth,
             selectedDoubleHourIndex = doubleHourIndex,
             ratHourRule = mutableState.value.defaultRatHourRule,
+            selectedHour = now.hour, selectedMinute = now.minute, timePrecision = TimePrecision.EXACT_TO_MINUTE,
         )
         birthPickerTodayJob?.cancel()
         birthPickerTodayJob = viewModelScope.launch {
@@ -4331,6 +4335,10 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 AlmanacResult.Failed(AlmanacError.EngineUnavailable)
             }
             val details = (result as? AlmanacResult.Completed)?.month?.selected ?: return@launch
+            if (details.pillars.isEmpty()) {
+                mutableState.update { it.copy(birthPickerTodaySnapshot = null) }
+                return@launch
+            }
             mutableState.update {
                 it.copy(
                     birthPickerTodaySnapshot = BirthPickerTodaySnapshot(
@@ -4374,6 +4382,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 selectedDay = baseQuery.selectedDay.coerceAtMost(target.lengthOfMonth()),
                 selectedDoubleHourIndex = baseQuery.selectedDoubleHourIndex,
                 ratHourRule = baseQuery.ratHourRule,
+                selectedHour = baseQuery.selectedHour, selectedMinute = baseQuery.selectedMinute,
+                selectedSecond = baseQuery.selectedSecond, timePrecision = baseQuery.timePrecision,
             ),
             preserveVisibleContent = true,
         )
@@ -4389,6 +4399,7 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 selectedDay = now.dayOfMonth,
                 selectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(now.hour),
                 ratHourRule = state.defaultRatHourRule,
+                selectedHour = now.hour, selectedMinute = now.minute, timePrecision = TimePrecision.EXACT_TO_MINUTE,
             ),
             preserveVisibleContent = true,
         )
@@ -4406,14 +4417,17 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 selectedDoubleHourIndex = baseQuery?.selectedDoubleHourIndex
                     ?: state.almanacSelectedDoubleHourIndex,
                 ratHourRule = state.defaultRatHourRule,
+                selectedHour = baseQuery?.selectedHour, selectedMinute = baseQuery?.selectedMinute ?: 0,
+                selectedSecond = baseQuery?.selectedSecond ?: 0,
+                timePrecision = baseQuery?.timePrecision ?: TimePrecision.DOUBLE_HOUR_ONLY,
             ),
             preserveVisibleContent = true,
         )
     }
 
     /** 快捷跳转一次性更新日期与民用时间对应的时辰，避免界面重复刷新。 */
-    fun selectAlmanacDateTime(date: AlmanacDate, civilHour: Int) {
-        if (date.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR || civilHour !in 0..23) return
+    fun selectAlmanacDateTime(date: AlmanacDate, civilHour: Int, civilMinute: Int = 0, civilSecond: Int? = null) {
+        if (date.year !in AlmanacContract.MIN_YEAR..AlmanacContract.MAX_YEAR || civilHour !in 0..23 || civilMinute !in 0..59 || (civilSecond != null && civilSecond !in 0..59)) return
         val state = mutableState.value
         loadAlmanac(
             AlmanacMonthQuery(
@@ -4422,6 +4436,8 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
                 selectedDay = date.day,
                 selectedDoubleHourIndex = AlmanacDoubleHours.indexForCivilHour(civilHour),
                 ratHourRule = state.defaultRatHourRule,
+                selectedHour = civilHour, selectedMinute = civilMinute, selectedSecond = civilSecond ?: 0,
+                timePrecision = if (civilSecond == null) TimePrecision.EXACT_TO_MINUTE else TimePrecision.EXACT_TO_SECOND,
             ),
             preserveVisibleContent = true,
         )
@@ -4452,10 +4468,11 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
 
     fun useAlmanacDateForChart() {
         val state = mutableState.value
-        if (state.previewing) return
+        if (state.previewing || state.almanacRefreshingSelection || state.almanacView?.selected?.pillars.isNullOrEmpty()) return
+        val query = state.almanacView?.query
         val selected = state.almanacView?.selected?.date
             ?: AlmanacDate(state.almanacYear, state.almanacMonth, state.almanacSelectedDay)
-        val selectedHour = AlmanacDoubleHours
+        val selectedHour = query?.selectedHour ?: AlmanacDoubleHours
             .fromIndex(state.almanacSelectedDoubleHourIndex)
             .representativeHour
         val instantForm = state.form.copy(
@@ -4466,10 +4483,11 @@ private fun CaseSummary.isPreferredCelebrityPresentationOver(current: CaseSummar
             month = selected.month.toString(),
             day = selected.day.toString(),
             hour = selectedHour.toString(),
-            minute = "0",
-            second = "0",
+            minute = (query?.selectedMinute ?: 0).toString(),
+            second = (query?.selectedSecond ?: 0).toString(),
             isLeapMonth = false,
-            timePrecision = TimePrecision.DOUBLE_HOUR_ONLY,
+            timePrecision = query?.timePrecision ?: TimePrecision.DOUBLE_HOUR_ONLY,
+            timeZoneId = BaziTimeZoneDefaults.CHINA_STANDARD_IANA_ID,
         ).clearTimeZoneResolution()
         viewModelScope.launch {
             mutableState.update {
@@ -9478,7 +9496,7 @@ private fun PreviewCaseResult.Calculated.toTransientCase(
     )
 }
 
-private fun BaziCase.toCaseSummary(): CaseSummary {
+internal fun BaziCase.toCaseSummary(): CaseSummary {
     val adopted = calculationSnapshots.asReversed().firstOrNull { it.adopted }?.result
     return CaseSummary(
         id = id,
@@ -9500,6 +9518,8 @@ private fun BaziCase.toCaseSummary(): CaseSummary {
         deletedAt = deletedAt,
         revision = revision,
         canonicalSolarDateTime = adopted?.calendarConversion?.solarDateTime,
+        zodiac = adopted?.basicChartDetails?.zodiac,
+        westernZodiac = adopted?.basicChartDetails?.westernZodiac,
     )
 }
 

@@ -36,8 +36,8 @@ sealed interface BirthTimeZoneResolution {
 /**
  * 出生民用时到 UTC offset 的唯一解析入口。
  *
- * 排盘仍使用用户输入的本地墙上时间；这里仅负责证明该时间在指定 IANA 时区下
- * 对应哪个 offset，并把平台时区数据库版本写入可审计快照。
+ * 证明输入在指定 IANA 时区下对应哪个 offset，并固化平台时区数据库版本。
+ * 年/月柱据此还原绝对时刻；日/时柱继续使用配置要求的当地民用时或真太阳时。
  */
 object BirthTimeZoneResolver {
     private val availableZoneIds = ZoneId.getAvailableZoneIds()

@@ -74,7 +74,11 @@ data class BaziCloudMetadata(
     val remoteRevision: Long = 0,
     val localFingerprint: String = "",
     val lastSyncedAt: Long? = null,
+    val lastCheckedAt: Long? = null,
 )
+
+/** A successful metadata comparison confirms freshness without pretending to upload again. */
+internal fun BaziCloudMetadata.confirmedAt(now: Long): BaziCloudMetadata = copy(lastCheckedAt = now)
 
 data class BaziCloudCredentials(
     val session: BaziCloudSession,
@@ -171,6 +175,7 @@ sealed interface BaziCloudSyncState {
         val revision: Long,
         val lastSyncedAt: Long?,
         val message: String,
+        val lastCheckedAt: Long? = null,
     ) : BaziCloudSyncState
     data class Failure(val message: String, val detail: String) : BaziCloudSyncState
 }
@@ -311,18 +316,19 @@ class BaziCloudCredentialStore(context: Context) {
         val userId: String, val email: String, val accessToken: String, val refreshToken: String,
         val expiresAtEpochSeconds: Long, val displayName: String? = null, val avatarUrl: String? = null, val vaultKey: String,
         val deviceId: String, val remoteRevision: Long, val localFingerprint: String, val lastSyncedAt: Long? = null,
+        val lastCheckedAt: Long? = null,
     ) {
         fun toRuntime() = BaziCloudCredentials(
             BaziCloudSession(userId, email, accessToken, refreshToken, expiresAtEpochSeconds, displayName, avatarUrl),
             Base64.decode(vaultKey, Base64.NO_WRAP), deviceId,
-            BaziCloudMetadata(remoteRevision, localFingerprint, lastSyncedAt),
+            BaziCloudMetadata(remoteRevision, localFingerprint, lastSyncedAt, lastCheckedAt),
         )
         companion object {
             fun from(value: BaziCloudCredentials) = Persisted(
                 value.session.userId, value.session.email, value.session.accessToken, value.session.refreshToken,
                 value.session.expiresAtEpochSeconds, value.session.displayName, value.session.avatarUrl,
                 Base64.encodeToString(value.vaultKey, Base64.NO_WRAP), value.deviceId,
-                value.metadata.remoteRevision, value.metadata.localFingerprint, value.metadata.lastSyncedAt,
+                value.metadata.remoteRevision, value.metadata.localFingerprint, value.metadata.lastSyncedAt, value.metadata.lastCheckedAt,
             )
         }
     }
@@ -769,7 +775,8 @@ class BaziCloudSyncCoordinator(
                 avatarUrl = it.session.avatarUrl,
                 revision = it.metadata.remoteRevision,
                 lastSyncedAt = it.metadata.lastSyncedAt,
-                message = "已登录，等待同步",
+                message = "自动同步已开启",
+                lastCheckedAt = it.metadata.lastCheckedAt,
             )
         }
             ?: BaziCloudSyncState.SignedOut
@@ -932,6 +939,10 @@ class BaziCloudSyncCoordinator(
                 } finally {
                     local.payload.fill(0)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                return handleSyncFailure(stored, "暂时无法准备同步数据", error, BaziCloudSyncOrigin.BACKGROUND)
             } finally {
                 stored.vaultKey.fill(0)
             }
@@ -968,7 +979,9 @@ class BaziCloudSyncCoordinator(
                     )
                 ) {
                     BaziCloudSyncAction.ALREADY_CURRENT -> {
-                        ready(credentials, "本机与云端数据一致")
+                        val checked = credentials.copy(metadata = credentials.metadata.confirmedAt(System.currentTimeMillis()))
+                        credentialStore.write(checked)
+                        ready(checked, "已同步")
                         BaziCloudSyncRunResult.SUCCESS
                     }
                     BaziCloudSyncAction.UPLOAD_LOCAL -> {
@@ -1057,7 +1070,8 @@ class BaziCloudSyncCoordinator(
                 snapshotBridge.restoreIntoEmpty(payload)
             } finally { payload.fill(0) }
             val local = snapshotBridge.capture()
-            val metadata = BaziCloudMetadata(remote.revision, local.fingerprint, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            val metadata = BaziCloudMetadata(remote.revision, local.fingerprint, now, now)
             local.payload.fill(0)
             val updated = stored.copy(metadata = metadata)
             credentialStore.write(updated)
@@ -1098,9 +1112,10 @@ class BaziCloudSyncCoordinator(
         } finally {
             readBackCiphertext?.fill(0)
         }
-        val updated = credentials.copy(metadata = BaziCloudMetadata(revision, local.fingerprint, System.currentTimeMillis()))
+        val now = System.currentTimeMillis()
+        val updated = credentials.copy(metadata = BaziCloudMetadata(revision, local.fingerprint, now, now))
         credentialStore.write(updated)
-        ready(updated, "端到端加密数据已上传并完成回读校验")
+        ready(updated, "已同步")
     }
 
     private suspend fun commitWithReconciliation(
@@ -1145,6 +1160,7 @@ class BaziCloudSyncCoordinator(
             revision = credentials.metadata.remoteRevision,
             lastSyncedAt = credentials.metadata.lastSyncedAt,
             message = message,
+            lastCheckedAt = credentials.metadata.lastCheckedAt,
         )
     }
 

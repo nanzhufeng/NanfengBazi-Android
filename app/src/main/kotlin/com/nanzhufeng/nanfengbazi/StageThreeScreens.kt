@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,7 +26,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,14 +56,14 @@ internal fun CaseMetadataEditorScreen(
             .fillMaxSize()
             .testTag("metadata_editor_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = { Text("管理命例分类") },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -182,16 +182,16 @@ internal fun TextRecordEditorScreen(
             .fillMaxSize()
             .testTag("record_editor_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = {
                 Text(if (destination.recordId == null) "新增记录" else "编辑记录")
             },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )
@@ -428,16 +428,16 @@ internal fun EventEditorScreen(
             .fillMaxSize()
             .testTag("event_editor_screen"),
     ) {
-        TopAppBar(
+        CenterAlignedTopAppBar(
             title = {
                 Text(if (destination.eventId == null) "新增关键事件" else "编辑关键事件")
             },
             navigationIcon = {
-                TextButton(
+                androidx.compose.material3.IconButton(
                     onClick = onBack,
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text("返回")
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回")
                 }
             },
         )

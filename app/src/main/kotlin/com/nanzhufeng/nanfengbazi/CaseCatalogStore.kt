@@ -126,7 +126,7 @@ class RepositoryCaseCatalogStore(
 
     override suspend fun replaceCachedCases(cases: List<CaseSummary>): Boolean = mutex.withLock {
         val snapshot = latest ?: return@withLock false
-        val updated = snapshot.copy(cases = cases)
+        val updated = snapshot.copy(cases = withContext(ioDispatcher) { cases.withWesternZodiacs() })
         latest = updated
         refreshGeneration += 1
         persistAsync(updated, refreshGeneration)
@@ -162,14 +162,14 @@ class RepositoryCaseCatalogStore(
     }
 
     private suspend fun readPersisted(): CaseCatalogSnapshot? = withContext(ioDispatcher) {
-        persistentCache.read()
+        persistentCache.read()?.let { it.copy(cases = it.cases.withWesternZodiacs()) }
     }
 
     private suspend fun loadFromRepository(): CaseCatalogSnapshot = withContext(ioDispatcher) {
         CaseCatalogSnapshot(
             cases = repository.search(
                 CaseSearchRequest(visibility = CaseVisibility.ALL),
-            ),
+            ).withWesternZodiacs(),
             groupsByLibrary = CaseLibraryType.entries.associateWith { libraryType ->
                 repository.listGroups(libraryType)
             },
@@ -195,4 +195,12 @@ class RepositoryCaseCatalogStore(
             }
         }
     }
+}
+
+/** Repair disposable projections once at publication, never during row composition or scrolling. */
+private fun List<CaseSummary>.withWesternZodiacs(): List<CaseSummary> = map { summary ->
+    if (!summary.westernZodiac.isNullOrBlank()) summary
+    else summary.copy(westernZodiac = resolveCaseWesternZodiac(
+        summary.birthInput.calendarInput, summary.canonicalSolarDateTime, summary.westernZodiac,
+    ))
 }

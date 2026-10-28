@@ -68,7 +68,7 @@ enum class BaziSkin(
         headline = "五行流转",
         subhead = "审时 · 观势 · 定盘",
         tokens = tokens(
-            background = Color(0xFFEAF3F0),
+            background = Color(0xFFF0F4F1),
             surface = Color.White,
             raised = Color.White,
             heavy = Color(0xFF214C47),
@@ -90,7 +90,7 @@ enum class BaziSkin(
         headline = "红鸾照命",
         subhead = "格局 · 用神 · 应期",
         tokens = tokens(
-            background = Color(0xFFF7F1F0),
+            background = Color(0xFFF6F2F2),
             surface = Color.White,
             raised = Color.White,
             heavy = Color(0xFF6D2630),
@@ -112,7 +112,7 @@ enum class BaziSkin(
         headline = "乾坤有序",
         subhead = "四柱 · 十神 · 大运",
         tokens = tokens(
-            background = Color(0xFFF5F1EA),
+            background = Color(0xFFF5F3EF),
             surface = Color.White,
             raised = Color.White,
             heavy = Color(0xFF503C25),
@@ -134,7 +134,7 @@ enum class BaziSkin(
         headline = "星汉垂象",
         subhead = "命局 · 流月 · 流日",
         tokens = tokens(
-            background = Color(0xFFF0F2F7),
+            background = Color(0xFFF2F3F6),
             surface = Color.White,
             raised = Color.White,
             heavy = Color(0xFF263A63),

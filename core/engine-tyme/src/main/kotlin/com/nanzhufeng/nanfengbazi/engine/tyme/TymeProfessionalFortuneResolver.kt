@@ -369,7 +369,10 @@ private fun buildMinorTimeline(
     position: com.nanzhufeng.nanfengbazi.domain.FortunePosition,
     dayMaster: HeavenStem,
 ): List<ProfessionalTimelineItem> {
-    val birth = result.calendarConversion?.solarDateTime
+    val birth = result.solarYearMonthEvidence?.birthInstantUtc?.let {
+        java.time.LocalDateTime.ofInstant(java.time.Instant.parse(it), TymeSolarYearMonthResolver.CHINA_OFFSET)
+            .tymeSolarTime().domainDateTime()
+    } ?: result.calendarConversion?.solarDateTime
         ?: (result.normalizedInput.calendarInput as?
             com.nanzhufeng.nanfengbazi.domain.model.BirthCalendarInput.Solar)?.dateTime
         ?: return emptyList()

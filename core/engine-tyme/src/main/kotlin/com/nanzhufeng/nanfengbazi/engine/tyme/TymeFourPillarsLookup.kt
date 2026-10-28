@@ -65,19 +65,14 @@ class TymeFourPillarsLookup(
         val profile = CalculationProfile.tymeDefault(
             ratHourRule = normalized.ratHourRule,
         )
-        val fallbackUsed = rawCandidates.isEmpty()
-        val civilCandidates = if (fallbackUsed) {
-            try {
-                findVerifiedCivilFallback(normalized, profile)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                return FourPillarsLookupResult.Failed(
-                    FourPillarsLookupError.EngineUnavailable,
-                )
-            }
-        } else {
-            rawCandidates.map(SolarTime::toDomain)
+        // Native reverse lookup assumes Beijing civil clocks. Always supplement it
+        // with a local civil/day scan, then verify every match with the sole engine.
+        val civilCandidates = try {
+            (rawCandidates.map(SolarTime::toDomain) + findVerifiedCivilFallback(normalized, profile)).distinct()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return FourPillarsLookupResult.Failed(FourPillarsLookupError.EngineUnavailable)
         }
         val candidates = mutableListOf<FourPillarsLookupCandidate>()
         for (civilDateTime in civilCandidates) {
@@ -130,11 +125,7 @@ class TymeFourPillarsLookup(
                 engineName = "Tyme4j",
                 engineVersion = CalculationProfile.TYME_ENGINE_VERSION,
                 ruleVersion = profile.ruleVersion,
-                lookupMethod = if (fallbackUsed) {
-                    "EightChar#getSolarTimes(empty)+60-day civil scan+BaziEngine.calculate"
-                } else {
-                    "EightChar#getSolarTimes+BaziEngine.calculate"
-                },
+                lookupMethod = "EightChar#getSolarTimes+60-day civil scan+BaziEngine.calculate",
             ),
         )
     }
@@ -158,25 +149,37 @@ class TymeFourPillarsLookup(
             Math.floorMod(targetDayIndex - referenceDayIndex, SIXTY_CYCLE.size).toLong(),
         )
         val candidates = mutableListOf<CivilDateTime>()
+        val zone = java.time.ZoneId.of(query.timeZoneId)
+        val localJieTimes = (query.startYear - 1..query.endYear).filter {
+            com.tyme.sixtycycle.SixtyCycleYear.fromYear(it).sixtyCycle.name == query.fourPillars.year
+        }.flatMap { TymeSolarYearMonthResolver.jieForSolarYear(it) }
+            .map { LocalDateTime.ofInstant(it.instant, zone) }
+            .distinct()
+            .groupBy { it.toLocalDate() }
         while (!date.isAfter(endDate)) {
-            val noonPillars = calculateAtFirstValidOffset(
-                civilDateTime = date.atCivilTime(REFERENCE_HOUR),
-                query = query,
-                profile = profile,
-            )
-            if (
-                noonPillars?.year == query.fourPillars.year &&
-                noonPillars.month == query.fourPillars.month &&
-                noonPillars.day == query.fourPillars.day
-            ) {
-                for (hour in CIVIL_REPRESENTATIVE_HOURS) {
-                    val civilDateTime = date.atCivilTime(hour)
-                    val pillars = calculateAtFirstValidOffset(
-                        civilDateTime = civilDateTime,
-                        query = query,
-                        profile = profile,
-                    )
-                    if (pillars == query.fourPillars) candidates += civilDateTime
+            // The local civil year can span two solar years. Do not reject a
+            // whole boundary day based only on its noon year/month.
+            val possibleYears = listOf(date.year - 1, date.year).map {
+                com.tyme.sixtycycle.SixtyCycleYear.fromYear(it).sixtyCycle.name
+            }
+            if (query.fourPillars.year in possibleYears) {
+                val times = CIVIL_REPRESENTATIVE_HOURS.map { date.atTime(it, 0) }.toMutableList()
+                // Default 23:00 belongs to the following local stem-branch day.
+                times += date.minusDays(1).atTime(23, 0)
+                // A jie can divide a shichen. Include the real local boundary,
+                // rather than losing matches that have no representative hour.
+                for (local in localJieTimes[date].orEmpty() + localJieTimes[date.minusDays(1)].orEmpty()) {
+                    times += local
+                    times += local.minusSeconds(1)
+                }
+                for (time in times.distinct()) {
+                    if (time.year !in query.startYear..query.endYear) continue
+                    val civil = CivilDateTime(time.year, time.monthValue, time.dayOfMonth, time.hour, time.minute, time.second)
+                    if (civil.resolveTimeZoneVariants(query.timeZoneId).any { variant ->
+                            val localChart = time.tymeSolarTime().lunarHour.resolveEightChar(query.ratHourRule)
+                            val boundary = TymeSolarYearMonthResolver.resolve(time.tymeSolarTime(), variant.utcOffsetSeconds)
+                            FourPillars(boundary.year.name, boundary.month.name, localChart.day.name, localChart.hour.name) == query.fourPillars
+                        }) candidates += civil
                 }
             }
             date = date.plusDays(SIXTY_CYCLE.size.toLong())

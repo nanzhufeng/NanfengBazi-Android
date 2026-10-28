@@ -63,7 +63,12 @@ data class CalculationProfile(
 
     companion object {
         const val TYME_ENGINE_VERSION = "1.5.1"
-        const val DEFAULT_RULE_VERSION = "stage0-v1"
+        const val DEFAULT_RULE_VERSION = "lichun-instant-v2"
+
+        fun currentRuleVersion(rule: RatHourRule): String = when (rule) {
+            RatHourRule.TYME_DEFAULT -> DEFAULT_RULE_VERSION
+            RatHourRule.LATE_RAT_SAME_DAY -> "lichun-instant-late-rat-v2"
+        }
 
         fun tymeDefault(
             solarTimeMode: SolarTimeMode = SolarTimeMode.CIVIL_TIME,
@@ -81,10 +86,7 @@ data class CalculationProfile(
                 }
             },
             engineVersion = TYME_ENGINE_VERSION,
-            ruleVersion = when (ratHourRule) {
-                RatHourRule.TYME_DEFAULT -> DEFAULT_RULE_VERSION
-                RatHourRule.LATE_RAT_SAME_DAY -> "stage7b-rat-hour-v1"
-            },
+            ruleVersion = currentRuleVersion(ratHourRule),
             ratHourRule = ratHourRule,
             solarTimeMode = solarTimeMode,
         )

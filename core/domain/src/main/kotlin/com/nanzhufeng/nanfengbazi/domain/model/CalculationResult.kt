@@ -195,4 +195,6 @@ data class CalculationResult(
     val wangShuaiProfile: WangShuaiProfile? = null,
     /** 传统民俗称骨的版本化查表结果；不属于四柱排盘真值。 */
     val folkBoneWeight: FolkBoneWeight? = null,
+    /** Absent in historical snapshots; never synthesize evidence for an adopted old result. */
+    val solarYearMonthEvidence: SolarYearMonthEvidence? = null,
 )

@@ -117,7 +117,7 @@ class ScreenshotImportCommitter(
                 caseRepository.findDuplicateCandidates(
                     birthInput = prepared.case.birthInput,
                     fourPillars = prepared.case.calculationSnapshots
-                        .single()
+                        .single { it.adopted }
                         .result
                         .fourPillars,
                     canonicalSolarDateTime = prepared.case.birthInput

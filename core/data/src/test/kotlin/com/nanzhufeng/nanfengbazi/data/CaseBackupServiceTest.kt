@@ -59,6 +59,48 @@ class CaseBackupServiceTest {
     private val fixedClock = Clock.fixed(FixtureInstant, ZoneOffset.UTC)
 
     @Test
+    fun `新年界证据和旧采用快照在Room云备份恢复后均原样保留`() = runTest {
+        val root = Files.createTempDirectory("bazi-boundary-backup-")
+        try {
+            val old = sampleCase().calculationSnapshots.first()
+            val point = com.nanzhufeng.nanfengbazi.domain.model.SolarTermPoint(
+                "立春", com.nanzhufeng.nanfengbazi.domain.model.SolarTermType.JIE,
+                com.nanzhufeng.nanfengbazi.domain.model.CivilDateTime(2000,2,4,20,40,24),
+            )
+            val evidence = com.nanzhufeng.nanfengbazi.domain.model.SolarYearMonthEvidence(
+                "lichun-instant-v2", "tyme4j-1.5.1:qiAccurate2", "APPARENT_GEOCENTRIC_TROPICAL_LONGITUDE_315",
+                "2000-02-04T00:00:00Z", 28800, "2000-02-04T12:40:24Z", 1999, point, point, "test fixture",
+            )
+            val next = old.copy(id="snapshot-new-rule", adopted=false, result=old.result.copy(solarYearMonthEvidence=evidence))
+            val sourceCase = sampleCase().copy(
+                calculationSnapshots=listOf(old,next),
+                textRecords=emptyList(), events=emptyList(), attachments=emptyList(), fieldEvidence=emptyList(),
+            )
+            val bytes = withDatabase { db ->
+                val repository = RoomCaseRepository(db)
+                repository.save(sourceCase,null)
+                val read = repository.findById(sourceCase.id)!!
+                assertEquals(sourceCase.calculationSnapshots,read.calculationSnapshots)
+                ByteArrayOutputStream().also {
+                    assertTrue(CaseBackupService(db,fixedClock).exportCloudSnapshot(it,"test") is BackupExportResult.Success)
+                }.toByteArray()
+            }
+            withDatabase { db ->
+                val restored = CaseBackupService(db,fixedClock).restoreCloudSnapshotIntoEmptyStore(
+                    input=ByteArrayInputStream(bytes),workRoot=root.resolve("work"),attachmentRoot=root.resolve("attachments"),
+                )
+                assertTrue(restored.toString(), restored is BackupRestoreResult.Success)
+                val read = RoomCaseRepository(db).findById(sourceCase.id)!!
+                assertEquals(sourceCase.calculationSnapshots,read.calculationSnapshots)
+                assertNull(read.calculationSnapshots.first().result.solarYearMonthEvidence)
+                assertTrue(read.calculationSnapshots.first().adopted)
+                assertEquals(evidence,read.calculationSnapshots.last().result.solarYearMonthEvidence)
+                assertFalse(read.calculationSnapshots.last().adopted)
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test
     fun `云端结构化快照包含合盘记录`() = runTest {
         val root = Files.createTempDirectory("nanfeng-cloud-compatibility-history-")
         val history = root.resolve("bazi-compatibility-history-v1.json")

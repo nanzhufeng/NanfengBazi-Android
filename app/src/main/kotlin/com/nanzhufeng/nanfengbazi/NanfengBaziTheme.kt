@@ -72,14 +72,10 @@ internal val NanfengGoldLight = Color(0xFFF0D7A4)
 internal val NanfengWarmTint = Color(0xFFF8F5EF)
 internal val NanfengControlSurface = Color(0xFFF3F3F2)
 
-// 白卡以细描边界定轮廓、以极浅短阴影抬升。Surface 本身仍持有同一 Shape，
-// 因此可见面、按压反馈和阴影不会各自形成不同的硬边。
+// 白卡以明度差与短阴影分层，形状仍统一拥有按压与裁切。
 internal val NanfengSoftWhiteCardShape = RoundedCornerShape(24.dp)
-internal val NanfengSoftWhitePillShape = RoundedCornerShape(26.dp)
-internal val NanfengSoftWhiteCardBorder = BorderStroke(
-    width = 0.75.dp,
-    color = NanfengInk.copy(alpha = 0.055f),
-)
+internal val NanfengSoftWhitePillShape = RoundedCornerShape(percent = 50)
+internal val NanfengSoftWhiteCardBorder: BorderStroke? = null
 
 internal fun Modifier.nanfengSoftWhiteCardShadow(
     shape: Shape,

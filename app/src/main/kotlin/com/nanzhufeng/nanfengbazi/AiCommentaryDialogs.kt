@@ -17,7 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
@@ -31,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -544,7 +544,9 @@ internal fun AiCommentarySettingsEditor(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(99.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    color = Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                         AiCommentaryProviderPresets.providerIds.forEach { candidate ->
@@ -579,8 +581,10 @@ internal fun AiCommentarySettingsEditor(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
                             .testTag("ai_model_picker"),
                         shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFFAFBFA),
-                        shadowElevation = 1.dp,
+                        color = Color.White,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        border = null,
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -670,6 +674,15 @@ internal fun AiCommentarySettingsEditor(
                     onValueChange = { apiKey = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("API Key") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        disabledContainerColor = Color.White,
+                        errorContainerColor = Color.White,
+                        unfocusedBorderColor = Color.Transparent,
+                        disabledBorderColor = Color.Transparent,
+                    ),
+                    shape = RoundedCornerShape(14.dp),
                     singleLine = true,
                     visualTransformation = if (revealApiKey) {
                         VisualTransformation.None
@@ -701,7 +714,15 @@ internal fun AiCommentarySettingsEditor(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("取消") }
+                    TextButton(
+                        onClick = onCancel,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        shape = NanfengSoftWhitePillShape,
+                        colors = ButtonDefaults.textButtonColors(
+                            containerColor = Color.White,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    ) { Text("取消") }
                     Button(
                         onClick = {
                             onSave(
@@ -713,8 +734,15 @@ internal fun AiCommentarySettingsEditor(
                                 apiKey,
                             )
                         },
-                        modifier = Modifier.weight(1f).testTag("save_ai_provider_config"),
-                    ) { Text(saveLabel) }
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("save_ai_provider_config"),
+                        shape = NanfengSoftWhitePillShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                            disabledContainerColor = Color.White,
+                        ),
+                        elevation = null,
+                    ) { Text(saveLabel, fontWeight = FontWeight.SemiBold) }
                 }
             }
 }
@@ -733,14 +761,16 @@ internal fun AiCommentarySettingsPage(
             .testTag("ai_commentary_settings_page"),
     ) {
         Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.testTag("ai_commentary_settings_page_back")) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回 AI 模型服务")
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp)) {
+                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).testTag("ai_commentary_settings_page_back")) {
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回 AI 模型服务")
                 }
-                Text("AI 模型设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
+                Text(
+                    "AI 模型设置",
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
             }
         }
         Column(
@@ -782,21 +812,16 @@ internal fun AiCommentaryCallHistoryPage(
             .testTag("ai_call_history_page"),
     ) {
         Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.testTag("ai_call_history_page_back")) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回 AI 模型服务")
+            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 10.dp)) {
+                IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).testTag("ai_call_history_page_back")) {
+                    Icon(BaziNavigationIcons.Back, contentDescription = "返回 AI 模型服务")
                 }
-                Column(Modifier.padding(start = 4.dp)) {
-                    Text("调用记录", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Medium)
-                    Text(
-                        "仅记录模型、用量、估算金额和运行状态",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    "调用记录",
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 48.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
             }
         }
         if (records.isEmpty()) {

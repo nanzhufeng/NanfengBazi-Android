@@ -137,9 +137,9 @@ class InteractionShapeContractTest {
         assertTrue(navigation.contains(".height(58.dp)"))
         assertTrue(navigation.contains("val navigationShape = RoundedCornerShape(26.dp)"))
         assertTrue(navigation.contains("RoundedCornerShape(26.dp)"))
-        assertTrue(navigation.contains("RoundedCornerShape(20.dp)"))
-        assertTrue(navigation.contains("MaterialTheme.colorScheme.primaryContainer"))
-        assertTrue(navigation.contains("MaterialTheme.colorScheme.primary"))
+        assertTrue(navigation.contains("shape = NanfengSoftWhitePillShape"))
+        assertTrue(navigation.contains("NanfengOrange else NanfengInk"))
+        assertTrue(navigation.contains("color = Color.White"))
         assertTrue(!navigation.contains("NanfengWarmTint"))
         assertTrue(!navigation.contains("NanfengGold.copy(alpha = 0.26f)"))
         assertTrue(navigation.contains("ambientShadowColor = Color.Transparent"))
@@ -193,7 +193,7 @@ class InteractionShapeContractTest {
         assertTrue(compatibility.contains(".fillMaxHeight()"))
         assertTrue(compatibility.contains("compact: Boolean"))
         assertTrue(compatibility.contains("contentDescription = \"打开八字合盘\""))
-        assertTrue(compatibility.contains("painterResource(R.drawable.ic_bazi_compatibility)"))
+        assertTrue(compatibility.contains("BaziFeatureIcons.Compatibility"))
         assertTrue(compatibility.contains("nanfengSoftWhiteCardShadow(NanfengSoftWhiteCardShape)"))
         assertTrue(compatibility.contains("shape = NanfengSoftWhiteCardShape"))
         assertTrue(compatibility.contains("shadowElevation = 0.dp"))
@@ -237,7 +237,7 @@ class InteractionShapeContractTest {
             .substringBefore("private fun ProfessionalPillarCell(")
 
         assertTrue(theme.contains("internal val NanfengSoftWhiteCardShape = RoundedCornerShape(24.dp)"))
-        assertTrue(theme.contains("internal val NanfengSoftWhitePillShape = RoundedCornerShape(26.dp)"))
+        assertTrue(theme.contains("internal val NanfengSoftWhitePillShape = RoundedCornerShape(percent = 50)"))
         assertTrue(theme.contains("ambientShadowColor = NanfengInk.copy(alpha = 0.035f)"))
         assertTrue(theme.contains("spotShadowColor = NanfengInk.copy(alpha = 0.09f)"))
         assertTrue(aiCard.contains("nanfengSoftWhiteCardShadow(NanfengSoftWhitePillShape)"))
@@ -471,9 +471,9 @@ class InteractionShapeContractTest {
         assertTrue(compatibility.contains("compatibility_history_record_back"))
         assertTrue(result.contains("compatibility_report_back"))
         assertTrue(history.contains("compatibility_history_back"))
-        assertEquals(2, compatibility.split("Icons.AutoMirrored.Filled.ArrowBack").size - 1)
-        assertEquals(1, result.split("Icons.AutoMirrored.Filled.ArrowBack").size - 1)
-        assertEquals(1, history.split("Icons.AutoMirrored.Filled.ArrowBack").size - 1)
+        assertEquals(2, compatibility.split("BaziNavigationIcons.Back").size - 1)
+        assertEquals(1, result.split("BaziNavigationIcons.Back").size - 1)
+        assertEquals(1, history.split("BaziNavigationIcons.Back").size - 1)
     }
 
     @Test
@@ -494,7 +494,7 @@ class InteractionShapeContractTest {
         assertTrue(history.contains("combinedClickable(onClick = onClick, onLongClick = onLongClick)"))
         assertTrue(history.contains("selectionMode"))
         assertTrue(history.contains("compatibility_history_back"))
-        assertTrue(history.contains("Icons.AutoMirrored.Filled.ArrowBack"))
+        assertTrue(history.contains("BaziNavigationIcons.Back"))
         assertTrue(history.contains("contentDescription = \"返回合盘\""))
         assertTrue(history.contains("compatibility_history_manage"))
         assertTrue(history.contains("contentDescription = \"管理合盘记录\""))
@@ -625,10 +625,10 @@ class InteractionShapeContractTest {
         val activity = File(root, "MainActivity.kt").readText()
         val settings = source.substringAfter("SettingsGroupTitle(\"导入与建档\")")
             .substringBefore("SettingsGroupTitle(\"排盘偏好\")")
-        assertTrue(settings.contains("title = \"名人案例统一资料库\""))
-        assertTrue(settings.contains("安装即自带；应用更新后自动同步"))
+        assertTrue(settings.contains("title = \"更新内置案例\""))
+        assertTrue(settings.contains("重新同步内置名人案例"))
         assertTrue(!settings.contains("导入可考名人案例"))
-        assertTrue(settings.contains("名人案例会自动纳入统一资料库"))
+        assertTrue(settings.contains("选择已保存的资料文件"))
         assertTrue(activity.contains("viewModel.synchronizeBuiltInUnifiedCelebrityCatalog("))
         assertTrue(activity.contains("celebrity-unified-v1.json"))
     }
@@ -834,12 +834,12 @@ class InteractionShapeContractTest {
         val container = File(sourceRoot, "AppContainer.kt").readText()
         val preference = File(sourceRoot, "AppFontSizePreference.kt").readText()
 
-        assertTrue(settings.contains("SettingsGroupTitle(\"显示\")"))
+        assertTrue(settings.contains("SettingsGroupTitle(\"外观\")"))
         assertTrue(settings.contains("tag = \"settings_font_size\""))
         assertTrue(settings.contains("description = null"))
         assertTrue(
-            settings.indexOf("SettingsGroupTitle(\"显示\")") >
-                settings.indexOf("SettingsGroupTitle(\"皮肤\")"),
+            settings.indexOf("settings_font_size") >
+                settings.indexOf("SettingsGroupTitle(\"外观\")"),
         )
         assertTrue(settings.contains("AppFontSizePreference.entries.forEach"))
         assertTrue(settings.contains("onFontSizeCommitted(preference)"))
@@ -998,9 +998,9 @@ class InteractionShapeContractTest {
         val recordNavigationRoute = source.substringAfter("AppDestination.CaseList -> CaseListScreen(")
             .substringBefore("AppDestination.CaseComparison")
 
-        assertTrue(settings.contains("title = \"导入南枫命例包\""))
-        assertTrue(settings.contains("跨设备转移单个命例；先预览冲突再决定合并"))
-        assertTrue(settings.contains("title = \"恢复完整备份\""))
+        assertTrue(settings.contains("title = \"导入命例文件\""))
+        assertTrue(settings.contains("南枫八字导出的单个命例"))
+        assertTrue(settings.contains("title = \"恢复备份\""))
         assertTrue(!settings.contains("预览并恢复完整备份"))
         assertFalse(settings.contains("SettingsGroupTitle(\"功能审阅\")"))
         assertFalse(settings.contains("settings_feature_review_"))
@@ -1025,8 +1025,8 @@ class InteractionShapeContractTest {
         val aboutDetails = source.substringAfter("private fun AboutInfoSection(")
             .substringBefore("private fun cloudDescription(")
 
-        assertTrue(settings.contains("SettingsGroupTitle(\"应用信息\")"))
-        assertTrue(settings.contains("title = \"关于南枫八字\""))
+        assertTrue(settings.contains("SettingsGroupTitle(\"关于\")"))
+        assertTrue(settings.contains("title = \"南枫八字\""))
         assertTrue(settings.contains("tag = \"settings_about\""))
         assertTrue(settings.contains("showAboutPage = true"))
         assertTrue(about.contains("CenterAlignedTopAppBar("))
@@ -1350,7 +1350,7 @@ class InteractionShapeContractTest {
     }
 
     @Test
-    fun almanacPillarTableAndUnselectedHoursShareTheHalfStrengthBackground() {
+    fun almanacPillarTableHasNoBackdropAndHourSelectionKeepsItsSurface() {
         val almanac = locateSourceRoot().resolve("AlmanacFeature.kt").readText()
         val rail = almanac.substringAfter("private fun AlmanacHourPillarRail(")
             .substringBefore("private fun AlmanacEightCharacterTable(")
@@ -1359,7 +1359,7 @@ class InteractionShapeContractTest {
 
         assertTrue(almanac.contains("AlmanacMutedBackgroundAlpha = 0.5f"))
         assertTrue(rail.contains("else almanacMutedBackgroundColor()"))
-        assertTrue(table.contains("color = almanacMutedBackgroundColor()"))
+        assertTrue(table.contains("color = Color.Transparent"))
     }
 
     @Test
@@ -1455,8 +1455,8 @@ class InteractionShapeContractTest {
         assertTrue(picker.contains("上下滑动逐套预览，停稳后立即应用"))
         assertTrue(picker.contains("onSkinPreview(originalSkin)"))
         assertTrue(picker.contains("BaziHomeSkinHeader"))
-        assertTrue(screens.indexOf("SettingsGroupTitle(\"皮肤\")") <
-            screens.indexOf("SettingsGroupTitle(\"南枫云\")"))
+        assertTrue(screens.indexOf("SettingsGroupTitle(\"外观\")") <
+            screens.indexOf("SettingsGroupTitle(\"账号与 AI\")"))
         assertTrue(screens.contains("Modifier.testTag(\"home_skin_header\")"))
     }
 
